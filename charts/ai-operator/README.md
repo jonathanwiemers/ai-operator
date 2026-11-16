@@ -6,14 +6,14 @@ The operator ClusterRole includes `get` on `pods/log` (stall checks and
 pilot evidence for hung runs; see
 [Stall detection](../../docs/contributing/design.md#stall-detection)); the UI role stays
 `get` on `pods` and `pods/log` only. AgentProject
-`spec.lifecycle.stallAfter` (default `30m`) and
-`lifecycle.stallCheckInterval` (default `5m`) are CRD fields, not chart
+`spec.lifecycle.stallAfter` and
+`lifecycle.stallCheckInterval` are CRD fields, not chart
 values: set them on each `AgentProject` (see
-[configuration](../../docs/configuration.md#speclifecycle)). The same goes
-for `spec.autopilot.maxParallel` (default `3`, at least `1`): how many issues
+[Lifecycle and CI](../../docs/reference/lifecycle-and-ci.md#speclifecycle)). The same goes
+for `spec.autopilot.maxParallel`: how many issues
 of an autopilot milestone run at the same time, overridden per milestone by
 an `/agent parallel N` line; keep `spec.maxConcurrentRuns` above it (see
-[configuration](../../docs/configuration.md#specautopilot)).
+[AgentProject](../../docs/reference/agentproject.md#specautopilot)).
 
 ```sh
 helm install ai-operator oci://ghcr.io/jonathanwiemers/charts/ai-operator \
@@ -239,12 +239,12 @@ to hand it boilerplate with a short spec and one reference file, and what it
 writes never enters the main context (it answers with paths only), at the
 cost of its own calls. Every other subagent is a reader.
 
-See [docs/configuration.md](../../docs/configuration.md#subagents) for how
+See [Subagents](../../docs/reference/agents-and-models.md#subagents) for how
 the role is told to use it and how to compare the cost in the Spend tab, and
-[Read gate](../../docs/configuration.md#read-gate) for what `readGate`
-blocks (claude only, like `subagents`), and [Roles](../../docs/configuration.md#roles)
+[Read gate](../../docs/reference/agents-and-models.md#read-gate) for what `readGate`
+blocks (claude only, like `subagents`), and [Roles](../../docs/reference/agents-and-models.md#roles)
 for `maxStepLines`, the step-size gate of draft runs (claude only too), and
-[Conflict role](../../docs/configuration.md#conflict-role) for `conflict`.
+[Conflict role](../../docs/reference/agents-and-models.md#conflict-role) for `conflict`.
 
 ### Web UI
 
@@ -257,7 +257,7 @@ AgentProjects and AgentTasks (and AgentResearches with
 | Key | Default | Description |
 |-----|---------|-------------|
 | `ui.enabled` | `false` | |
-| `ui.externalURL` | | URL users open, without a path, e.g. `https://ai.example.com`; required with `oidc`. The redirect URI is `<externalURL>/oauth2/callback` . With the UI enabled, the operator gets it as `--desk-url` (agent pods as `AI_DESK_URL`) for the "Answer in the Desk" links in the prompts it mirrors to GitLab and in its replies to comments; without it those carry no link. Each project's `spec.workflow.inputs` (default `[gitlab, desk]`; `[desk]` stops `/agent` and `/pilot` comments from being acted on) is described in [configuration.md](../../docs/configuration.md#specworkflow) |
+| `ui.externalURL` | | URL users open, without a path, e.g. `https://ai.example.com`; required with `oidc`. The redirect URI is `<externalURL>/oauth2/callback` . With the UI enabled, the operator gets it as `--desk-url` (agent pods as `AI_DESK_URL`) for the "Answer in the Desk" links in the prompts it mirrors to GitLab and in its replies to comments; without it those carry no link. Each project's `spec.workflow.inputs` (default `[gitlab, desk]`; `[desk]` stops `/agent` and `/pilot` comments from being acted on) is described in the [AgentProject reference](../../docs/reference/agentproject.md#specworkflow) |
 | `ui.auth.mode` | `oidc` | `oidc`, or `none`: no login, listens on `127.0.0.1` only (reach it with `kubectl port-forward`), no Service, no HTTPRoute |
 | `ui.auth.sessionTTL` | `12h` | how long a login lasts when the provider returns no refresh token (it is then not renewed); roles are read at login |
 | `ui.auth.renewAfter` | `15m` | how long a session cookie is valid before it is renewed with the refresh token |

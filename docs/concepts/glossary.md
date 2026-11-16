@@ -15,7 +15,7 @@ cluster credentials. See [Security](security.md#two-containers-per-pod).
 
 The Kubernetes resource you write once per GitLab project: which project,
 which tokens, which models, how many runs at a time. Its fields are in the
-planned reference page reference/agentproject.md.
+[AgentProject reference](../reference/agentproject.md).
 
 ### Autopilot
 

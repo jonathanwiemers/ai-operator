@@ -164,7 +164,7 @@ Rows: `usage.md` 38, `ui.md` 57, `configuration.md` 34, `commands.md` 10,
 | ui.md | ### How it works | guides/steer-from-the-desk.md | R6 | open |
 | ui.md | ## Without login | getting-started/turn-on-the-desk.md | R3 | open |
 | ui.md | ## Security | guides/desk.md | R6 | open |
-| ui.md | ## API | reference/desk-api.md | R8b | open |
+| ui.md | ## API | reference/desk-api.md | R8b | done; updated: endpoints grouped, each with its purpose and the grant it needs, checked against the router (48 routes); the answer shapes, parameters and error codes moved to contributing/design.md "Desk API" |
 | ui.md | ## Development | contributing/web-ui.md | R10b | done |
 | ui.md | ## Checks | contributing/web-ui.md | R10b | done |
 | ui.md | ### Docs screenshots | contributing/web-ui.md | R10b | done |
@@ -202,33 +202,33 @@ Rows: `usage.md` 38, `ui.md` 57, `configuration.md` 34, `commands.md` 10,
 | configuration.md | ### Plan | getting-started/turn-on-the-desk.md | R3 | open |
 | configuration.md | ### Pricing | guides/budgets-and-spend.md | R7a | open |
 | configuration.md | ## Secrets | getting-started/install.md | R3 | open |
-| configuration.md | ## `spec.gitlab` | reference/agentproject.md | R8b | open |
-| configuration.md | ## `spec.milestones` | reference/agentproject.md | R8b | open |
-| configuration.md | ## `spec.autopilot` | reference/agentproject.md | R8b | open |
-| configuration.md | ## `spec.houseRules` | reference/agentproject.md | R8b | open |
-| configuration.md | ## `spec.workflow` | reference/agentproject.md | R8b | open |
-| configuration.md | ### `spec.workflow.release` | reference/agentproject.md | R8b | open |
-| configuration.md | ## `spec.agents` | reference/agents.md | R8b | open |
-| configuration.md | ### Roles | reference/agents.md | R8b | open |
-| configuration.md | ### Subagents | reference/agents.md | R8b | open |
-| configuration.md | ### Read gate | reference/agents.md | R8b | open |
-| configuration.md | ### Per-issue model and effort | reference/agents.md | R8b | open |
-| configuration.md | ### Profiles | reference/agents.md | R8b | open |
-| configuration.md | ### Fallback engine | reference/agents.md | R8b | open |
-| configuration.md | ### Engines | reference/agents.md | R8b | open |
-| configuration.md | ## `spec.lifecycle` | reference/agentproject.md | R8b | open |
-| configuration.md | ### Remote git timeouts | reference/agentproject.md | R8b | open |
-| configuration.md | ## `spec.ci` | reference/agentproject.md | R8b | open |
-| configuration.md | ## `spec.checkpoint` | reference/agentproject.md | R8b | open |
-| configuration.md | ## `spec.mainHealth` | reference/agentproject.md | R8b | open |
-| configuration.md | ## `spec.notify` | reference/agentproject.md | R8b | open |
-| configuration.md | ## `spec.pilot` | reference/agentproject.md | R8b | open |
-| configuration.md | ## `spec.budget` | reference/agentproject.md | R8b | open |
-| configuration.md | ## `spec.webhook` | reference/agentproject.md | R8b | open |
-| configuration.md | ## `spec.crossRepo` | reference/agentproject.md | R8b | open |
-| configuration.md | ## Other `spec` fields | reference/agentproject.md | R8b | open |
-| configuration.md | ## Agent image | reference/agentproject.md | R8b | open |
-| configuration.md | ## Network policy | reference/agentproject.md | R8b | open |
+| configuration.md | ## `spec.gitlab` | reference/agentproject.md | R8b | done; updated: `project` and `tokenSecretRef` marked required |
+| configuration.md | ## `spec.milestones` | reference/agentproject.md | R8b | done |
+| configuration.md | ## `spec.autopilot` | reference/agentproject.md | R8b | done; updated: the warning text and `status.autopilot` fields moved to contributing/design.md "Autopilot" |
+| configuration.md | ## `spec.houseRules` | reference/agentproject.md | R8b | done |
+| configuration.md | ## `spec.workflow` | reference/agentproject.md | R8b | done; updated: the Conventional Commits pattern, the describer title rules and `spec.source.chatContext` moved to contributing/design.md |
+| configuration.md | ### `spec.workflow.release` | reference/agentproject.md | R8b | done; updated: the checkpoint paragraph removed here (stated once in `spec.checkpoint`) |
+| configuration.md | ## `spec.agents` | reference/agents-and-models.md | R8b | done; updated: `spec.agents` and `credentialsSecretName` marked required, `imagePullPolicy` (`IfNotPresent`) added, `logLevel` falls back to `info`, roles summarised in one table |
+| configuration.md | ### Roles | reference/agents-and-models.md | R8b | done; updated: effort values listed with `xhigh`, the step-size gate hook moved to contributing/design.md "Token economy"; the conflict role's `engine` defaults to `claude` and does not inherit a cursor implementer |
+| configuration.md | ### Subagents | reference/agents-and-models.md | R8b | done; updated: name, tools and required fields from the CRD; prompt wording and `--agents` moved to contributing/design.md "Token economy" |
+| configuration.md | ### Read gate | reference/agents-and-models.md | R8b | done; updated: hook, messages and timeout moved to contributing/design.md "Token economy" |
+| configuration.md | ### Per-issue model and effort | reference/agents-and-models.md | R8b | done; updated: the default `models` list stated, and that `models: []` allows only the profiles' and `implement`'s models |
+| configuration.md | ### Profiles | reference/agents-and-models.md | R8b | done |
+| configuration.md | ### Fallback engine | reference/agents-and-models.md | R8b | done; updated: the run report lines moved to contributing/design.md "Engines, profiles and subscriptions" |
+| configuration.md | ### Engines | reference/agents-and-models.md | R8b | done; updated: CLI flags moved to contributing/design.md "Engines, profiles and subscriptions"; the table lists what each engine supports |
+| configuration.md | ## `spec.lifecycle` | reference/lifecycle-and-ci.md | R8b | done; updated: stall detection links the watchdog and restart instead of the design page |
+| configuration.md | ### Remote git timeouts | reference/lifecycle-and-ci.md | R8b | done |
+| configuration.md | ## `spec.ci` | reference/lifecycle-and-ci.md | R8b | done; updated: per-milestone rule overrides linked |
+| configuration.md | ## `spec.checkpoint` | reference/lifecycle-and-ci.md | R8b | done; updated: trailer, `status.run` fields and the PVC check moved to contributing/design.md "Checkpoints and Conventional Commits" |
+| configuration.md | ## `spec.mainHealth` | reference/lifecycle-and-ci.md | R8b | done; updated: API call counts moved to contributing/design.md "Main health" |
+| configuration.md | ## `spec.notify` | reference/agentproject.md | R8b | done; updated: default owners named by the chart value `defaultOwners` |
+| configuration.md | ## `spec.pilot` | reference/agentproject.md | R8b | done; updated: the managed actions in plain words, `maxInterventionsPerIssue` at least 1; the spend source moved to contributing/design.md "Autopilot" |
+| configuration.md | ## `spec.budget` | reference/agentproject.md | R8b | done; updated: `spec.budgetStop` and the status fields moved to contributing/design.md "Autopilot" |
+| configuration.md | ## `spec.webhook` | reference/agentproject.md | R8b | done; updated: chart values linked by section |
+| configuration.md | ## `spec.crossRepo` | reference/agentproject.md | R8b | done; updated: the cluster flag table replaced by the chart values (`crossRepo.*`, `selfProject`), the build version moved to contributing/design.md "Cross-repo" |
+| configuration.md | ## Other `spec` fields | reference/agentproject.md | R8b | done; updated: `maxConcurrentRuns` at least 1 |
+| configuration.md | ## Agent image | reference/agent-image.md | R8b | done; updated: no source file names, the build arguments kept |
+| configuration.md | ## Network policy | reference/agent-image.md | R8b | done |
 | commands.md | ## How commands work | reference/commands.md | R8a | done; updated: first-line-only parsing for routing commands (`review` must be the whole comment), case-insensitive words and optional `#`, Desk first |
 | commands.md | ## On an issue or its merge request | reference/commands.md | R8a | done; updated: `use`, `effort`, `budget`, `repo` grouped as no-run commands |
 | commands.md | ### Restart a stuck run (Desk chat) | reference/commands.md | R8a | done; updated: `/agent restart` stated as no GitLab command, heading now "Restart a stuck run" |
@@ -329,3 +329,11 @@ with the requirement label and the issue or merge request.
   and their moves, checked against the code. The overview in `usage.md`'s
   "One-time setup in GitLab" stays until R3 moves that row, which then links
   `reference/labels.md` instead of repeating it.
+- R8b (#510): the `AgentProject` reference is split into four pages (plan
+  decision D510-P1): `reference/agentproject.md`,
+  `reference/agents-and-models.md` (target of the `spec.agents` rows, planned
+  as `reference/agents.md`), `reference/lifecycle-and-ci.md` (`lifecycle`,
+  `ci`, `checkpoint`, `mainHealth`) and `reference/agent-image.md` (agent
+  image, network policy). Internals of these sections and the Desk API's
+  answer shapes moved to `contributing/design.md`. The CRD requires
+  `spec.agents.credentialsSecretName`; the old tables did not say so.

@@ -974,7 +974,8 @@ export interface RoleSpec {
  */
 export const DefaultReadGateLines = 350;
 /**
- * ReadGate configures the read gate of a role, see docs/configuration.md.
+ * ReadGate configures the read gate of a role, see
+ * docs/reference/agents-and-models.md#read-gate.
  */
 export interface ReadGate {
   /**

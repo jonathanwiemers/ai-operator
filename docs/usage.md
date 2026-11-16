@@ -180,7 +180,7 @@ Steps that only time moves on (infra retries, autopilot's auto-resume, the
 main health interval) run on the full syncs, so they can be
 up to `fallbackInterval` late. After `silenceThreshold` without a delivery,
 or after an operator restart, every poll is a full sync again. Details:
-[configuration.md](configuration.md#specwebhook).
+[AgentProject reference](reference/agentproject.md#specwebhook).
 
 ## 1. Write the milestone spec
 
@@ -302,7 +302,7 @@ pod named like `shop-42-add-paypal-button`. In that pod:
    that runs out of steps leaves the MR a draft and says so. Each step's
    commit carries the agent's message and `Refs #42` (see
    [Commit messages](#commit-messages)). With
-   [`agents.implement.maxStepLines`](configuration.md#roles) (or a
+   [`agents.implement.maxStepLines`](reference/agents-and-models.md#roles) (or a
    profile's) the **step-size gate** keeps steps small on claude: once the
    uncommitted diff passes that many changed lines, a hook tells the agent
    to finish the step (get it to build, return it with its commit message),
@@ -389,7 +389,7 @@ the issue title when the agent wrote none. Checkpoints have their own
 `chore(wip): checkpoint …` subject until the next step folds them.
 
 With `workflow.conventionalCommits: true` (see
-[configuration](configuration.md#specworkflow)) the messages follow
+[AgentProject reference](reference/agentproject.md#specworkflow)) the messages follow
 [Conventional Commits](https://www.conventionalcommits.org/):
 `type(scope): subject`, a blank line, then the body.
 
@@ -430,7 +430,7 @@ as before.
 
 The agent runs your tests, linters and formatters itself instead of guessing
 their output, so it needs your toolchains. Besides the tools of the
-[agent image](configuration.md#agent-image), it installs the ones your
+[agent image](reference/agent-image.md), it installs the ones your
 repository pins at the root of the **default branch**:
 
 | Pin file | Installed with | Example |
@@ -490,7 +490,7 @@ the review is fixed, but CI is red now) is announced, and pinged, again. The own
 
 `spec.notify.events` picks the situations, `spec.notify.requestReview: false`
 keeps the reviewers to you (see
-[configuration.md](configuration.md#specnotify)).
+[AgentProject reference](reference/agentproject.md#specnotify)).
 
 #### Commands from owners only
 
@@ -534,7 +534,7 @@ of the default branch itself.
 If you push to the agent's branch yourself and then comment `/agent …`, a run
 that has nothing to add takes your commits over: your head counts as the
 pushed commit, and CI is followed for it like for the agent's push.
-Configure the loop in `spec.ci` (see [configuration.md](configuration.md));
+Configure the loop in `spec.ci` (see [Lifecycle and CI](reference/lifecycle-and-ci.md#specci));
 `ci.disabled: true` restores "review right after the push".
 
 The loop follows the MR's head pipeline if the MR's head is the pushed
@@ -603,7 +603,7 @@ kubectl get agentproject shop -o jsonpath='{.status.mainHealth}'
 
 `state` is `green`, `retrying`, `red` or `flaky`, with the pipeline, commit,
 failing jobs and the open `ci::main-red` issue. Configure it in
-`spec.mainHealth` (see [configuration.md](configuration.md#specmainhealth));
+`spec.mainHealth` (see [Lifecycle and CI](reference/lifecycle-and-ci.md#specmainhealth));
 `mainHealth.retryFailedJobs: false` reports a red pipeline right away.
 
 **Fixing it with the agent.** With `mainHealth.autoFix: true` (off by
@@ -719,7 +719,7 @@ own model. Such a round costs much more per token than an implement run: it
 resumes the implementer's long session, usually after a queue wait, so the
 cache is cold and the whole session is written to the cache again on the
 implementer's model (Opus for `strong`). With
-[`agents.implement.conflict`](configuration.md#conflict-role), e.g.
+[`agents.implement.conflict`](reference/agents-and-models.md#conflict-role), e.g.
 `{model: claude-sonnet-5-5}`, the conflict call runs on that role instead.
 It starts in a fresh session that gets the issue, the agent notes, the MR's
 diff stat and the conflicting files. The implementer's session is kept for
@@ -888,7 +888,7 @@ to, `/agent spec`), the milestone runs without you:
    ([details](#1-write-the-milestone-spec)).
 2. Once planned, the operator moves the issues that can start to
    `agent::ready`, up to the milestone's parallel limit
-   ([`autopilot.maxParallel`](configuration.md), default 3; `1` runs one
+   ([`autopilot.maxParallel`](reference/agentproject.md#specautopilot); `1` runs one
    issue at a time). An issue starts once every issue it depends on is
    merged and a slot is free, in queue order (an issue's "Depends on" first,
    otherwise plan order); there are no waves to wait for. An issue linked as
@@ -933,7 +933,7 @@ no new issue while an older autopilot milestone is open (not done, off or
 closed), also while that one is paused. Its active issues finish, the next one
 waits, and the tracking issue says "⏳ waiting for its turn". So only one
 milestone starts new work: its merge requests (up to
-[`autopilot.maxParallel`](configuration.md#specautopilot) at a time) land one
+[`autopilot.maxParallel`](reference/agentproject.md#specautopilot) at a time) land one
 after another, and merges of one milestone do not rebase a reviewed change of
 another away. The slot stays free while the older milestone waits for
 CI. To let a younger milestone go first, an owner comments `/agent start` on
@@ -1039,7 +1039,7 @@ The others wait in the order they became ready. An issue whose branch gets a
 new push or run leaves that queue; one that needs the agent to merge the
 default branch (conflicts) gives up the lane and queues up again once its new
 head is reviewed and green. Above a limit of 1 the landing issue does not
-count against [`autopilot.maxParallel`](configuration.md), so the next issue
+count against [`autopilot.maxParallel`](reference/agentproject.md#specautopilot), so the next issue
 can start meanwhile.
 
 Above a limit of 1, a problem with one issue (red or canceled CI, review
@@ -1072,7 +1072,7 @@ from GitLab, so mentions and quick actions in it are made inert, in the
 comment and in the tracking issue's description.
 
 **Holds and pauses.** A problem with one issue is a **hold** of that issue
-when the milestone's [limit](configuration.md#specautopilot) is above 1:
+when the milestone's [limit](reference/agentproject.md#specautopilot) is above 1:
 `needsInput`, `runFailed`, `findings`, `reviewErrors`, `notReviewed`,
 `ciRed`, `ciCanceled`, `mergeRequest`, `companion` and `stalled` (the issue
 kinds, `ItemPauseKinds` in `api/v1alpha1/pause.go`). The issue stops
@@ -1273,7 +1273,7 @@ checks on every poll whether the pause still holds (the stuck re-check
 above: a stuck pause ends as soon as an issue can start). If the pause's
 state (the queue's items, their heads and CI states, main health, the
 reason) has not changed for `pilot.stuckAfter` (default 30m, see
-[configuration.md](configuration.md#specpilot)), the pause is **stuck**: the
+[AgentProject reference](reference/agentproject.md#specpilot)), the pause is **stuck**: the
 [pilot](#talking-to-the-pilot) assesses it once per pause and the owners get
 a Desk prompt whose options are the pause's ways out below and the pilot's
 tools (for example `markDone #83` or `startAnyway #88`). That prompt always
@@ -1741,7 +1741,7 @@ propose them, and options of the model that use them are dropped.
 
 Each open issue of the queue (pending or active) can have a budget of its
 own: the project's default `spec.budget.perIssueUSD` (see
-[configuration.md](configuration.md#specbudget)), or for one issue an
+[AgentProject reference](reference/agentproject.md#specbudget)), or for one issue an
 `/agent budget <usd>` comment on it (or its MR), e.g. `/agent budget 40`;
 `/agent budget default` goes back to the project's. The comment starts no
 run and is answered on the issue; it is stored on the issue's Implement
@@ -1795,7 +1795,7 @@ pause for it takes over. The `perIssueAlertUSD` heads-up is no Inbox item.
 An issue can change one **companion repository** besides its own project
 (the design: [specs/cross-repo-changes.spec.md](specs/cross-repo-changes.spec.md)).
 The project must be one of the AgentProject's valid `spec.crossRepo.targets`
-(see [configuration.md](configuration.md#speccrossrepo), allowed by the cluster's
+(see [AgentProject reference](reference/agentproject.md#speccrossrepo), allowed by the cluster's
 `crossRepo.allowedProjects`). Which issue gets one is decided per issue:
 
 - **The milestone line** `/agent repo <project> [merge]` (a full path such as
@@ -1900,7 +1900,7 @@ a submodule fails the run), that the companion lands only after the home
 change is merged and released, and that the runner commits both trees.
 claude is started with `--add-dir /workspace/repos/<slug>`. A cursor
 implementer is moved to claude for such a run, see
-[Fallback engine](configuration.md#fallback-engine). The system prompts
+[Fallback engine](reference/agents-and-models.md#fallback-engine). The system prompts
 are the same with and without a companion.
 
 **CI.** The [CI loop](#ci-feedback) follows the companion's pipeline of
@@ -2966,7 +2966,7 @@ never rewritten.
 **Turning it off.** `checkpoint.disabled: true` in the project saves nothing;
 the next run then resets the work tree from the last pushed commit and the
 uncommitted work of the cut-off call is lost. See
-[configuration](configuration.md#speccheckpoint).
+[Lifecycle and CI](reference/lifecycle-and-ci.md#speccheckpoint).
 
 ## Usage and rate limits
 
@@ -2995,7 +2995,7 @@ CLI reports such a limit, the run is **paused, not failed**:
   and a lost pod (see [When the agent container
   dies](#when-the-agent-container-dies),
   [When the whole pod is lost](#when-the-whole-pod-is-lost) and
-  [configuration.md](configuration.md#speccheckpoint)).
+  [Lifecycle and CI](reference/lifecycle-and-ci.md#speccheckpoint)).
   The progress comment, the note on the issue (on every deferral that saved
   a checkpoint, and on a budget stop that did) and the failure report say
   so: `💾 Saved a checkpoint (<sha>, N files, +A/−D) because …`, plus the
@@ -3037,7 +3037,7 @@ CLI reports such a limit, the run is **paused, not failed**:
   comment says so and mentions the owners (event `blocked`); `/agent retry`
   or a move to `agent::ready` starts it again.
 
-With a [fallback engine](configuration.md#fallback-engine) for the role
+With a [fallback engine](reference/agents-and-models.md#fallback-engine) for the role
 (e.g. `fast` and the reviewers on cursor, falling back to claude), a limit
 does not pause the issue: the work continues on the fallback, the run
 report says so, and the other issues skip the limited engine until its

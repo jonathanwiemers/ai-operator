@@ -161,7 +161,7 @@ const breakdowns = computed(() => {
 })
 
 // The tuning tables: what to set maxInlineDiff, stepSession and subagents
-// by (docs/configuration.md).
+// by (docs/reference/agents-and-models.md).
 const rounds = computed(() => reviewRounds(data.value?.byReviewRound ?? []))
 const sessions = computed(() => sessionRows(data.value?.bySession ?? []))
 const stepLines = computed(() => stepLinesLine(data.value?.stepLines))

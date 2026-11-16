@@ -689,7 +689,8 @@ type RoleSpec struct {
 // DefaultReadGateLines is the ReadGate.MinLines default.
 const DefaultReadGateLines = 350
 
-// ReadGate configures the read gate of a role, see docs/configuration.md.
+// ReadGate configures the read gate of a role, see
+// docs/reference/agents-and-models.md#read-gate.
 type ReadGate struct {
 	// MinLines: reads of files with more lines are blocked.
 	// +kubebuilder:default=350

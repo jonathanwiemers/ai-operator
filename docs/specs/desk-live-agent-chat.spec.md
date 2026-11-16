@@ -342,7 +342,7 @@ dispatcher.
 
 **Status: built** with the Desk prompts milestone (`spec.workflow.inputs`,
 the replies to comments that are not acted on, the fresh-session context).
-See [configuration.md](../configuration.md#specworkflow) and
+See [configuration.md](../reference/agentproject.md#specworkflow) and
 [commands.md](../reference/commands.md).
 
 `spec.workflow.inputs: [gitlab, desk]` (default both, today's behaviour plus
@@ -488,7 +488,7 @@ it and say so in their description.
    9c web buttons.
 10. **`workflow.inputs`** (built with the Desk prompts milestone; see
     [usage.md](../usage.md#prompts) and
-    [configuration.md](../configuration.md#specworkflow)): gate the note
+    [configuration.md](../reference/agentproject.md#specworkflow)): gate the note
     readers, fresh-session context from the chat table, run report wording;
     docs.
 

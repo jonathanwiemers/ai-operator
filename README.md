@@ -166,7 +166,7 @@ Everything else has defaults: Opus for planning, a `fast` (Sonnet) and a
 rounds. [`config/samples/agentproject.yaml`](config/samples/agentproject.yaml)
 shows a full example with Cursor and custom profiles. If your repository
 needs more than Node to build and test, use your
-[own agent image](docs/configuration.md#agent-image).
+[own agent image](docs/reference/agent-image.md).
 
 **5. Plan a milestone**
 
@@ -203,9 +203,10 @@ feature.
 |-|-|
 | [Usage](docs/usage.md) | the GitLab workflow: labels, milestone specs, decisions, CI, autopilot, owners, lifecycle |
 | [Commands](docs/reference/commands.md) and [labels](docs/reference/labels.md) | every `/agent` and `/pilot` command, the marker lines and the labels |
-| [Configuration](docs/configuration.md) | installation (Helm, Flux), secrets, `AgentProject` reference, engines, profiles, models, agent image |
+| [Configuration](docs/configuration.md) | installation (Helm, Flux), secrets |
+| [AgentProject](docs/reference/agentproject.md) and [Desk API](docs/reference/desk-api.md) | every `AgentProject` field with its default, engines, profiles, models, the agent image; the Desk's endpoints |
 | [Design](docs/contributing/design.md) | architecture, CRDs, pod topology, token economy, security |
-| [Web UI](docs/ui.md) | the optional read-only UI: OIDC login, roles, HTTPRoute, API |
+| [Web UI](docs/ui.md) | the optional read-only UI: OIDC login, roles, HTTPRoute |
 | [Web UI development](docs/contributing/web-ui.md) | run, check and build the Desk: dev setup, browser checks, bundle budget, UI kit |
 | [Research](docs/research.md) | news flashes, scheduled and one-off researches |
 | [Helm chart](charts/ai-operator/README.md) | chart values |

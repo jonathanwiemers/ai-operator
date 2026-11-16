@@ -24,7 +24,8 @@ milestone to running it on autopilot and steering it from the Desk.
 
 **[reference/](reference/README.md)**: every `/agent` command in
 [commands](reference/commands.md), the [labels](reference/labels.md), the
-`AgentProject` fields and the Desk API, for looking things up.
+[`AgentProject` fields](reference/agentproject.md) and the
+[Desk API](reference/desk-api.md), for looking things up.
 
 ## Concepts
 
@@ -53,13 +54,11 @@ section goes.
 - **[Usage](usage.md)**: the GitLab workflow. Labels, milestone specs,
   questions and decisions, CI, autopilot and its pauses, the pilot, owners,
   budgets and the retrospective.
-- **[Configuration](configuration.md)**: installation with Helm or Flux,
-  secrets, the `AgentProject` reference, engines, profiles, models and the
-  agent image. Chart values are in the
+- **[Configuration](configuration.md)**: installation with Helm or Flux, the
+  Desk, research, plans, pricing and the secrets. Chart values are in the
   [Helm chart README](../charts/ai-operator/README.md).
 - **[Web UI](ui.md)**: the Desk. What it shows
-  ([screenshots](ui.md#screenshots)), OIDC login, roles, steering and the
-  API.
+  ([screenshots](ui.md#screenshots)), OIDC login, roles and steering.
 - **[Research](research.md)**: news flashes, scheduled and one-off
   researches next to the projects, with their own database.
 

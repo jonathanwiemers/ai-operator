@@ -12,6 +12,15 @@ here once, and the guides link to them. The Helm chart values are in the
 2. **[Labels](labels.md)**: the `agent::` state labels and what moves an
    issue between them, the labels you may set, and the ones the operator
    sets.
-
-The `AgentProject` fields and the Desk API are still on the old pages, see
-the [docs map](../README.md#pages-being-moved).
+3. **[AgentProject](agentproject.md)**: a complete example, then the GitLab,
+   milestone, autopilot, house rules, workflow and release, notify, pilot,
+   budget, webhook and cross-repo fields, each with its default.
+4. **[Agents and models](agents-and-models.md)**: `spec.agents`, the roles,
+   subagents, the read gate, model and effort per issue, profiles,
+   fallbacks and engines.
+5. **[Lifecycle and CI](lifecycle-and-ci.md)**: pods and workspaces,
+   retries, CI feedback, checkpoints and the default branch's health.
+6. **[Agent image](agent-image.md)**: what the agents run in, how to extend
+   it, and the network policy.
+7. **[Desk API](desk-api.md)**: every endpoint of the Desk with what it is
+   for and the grant it needs.
