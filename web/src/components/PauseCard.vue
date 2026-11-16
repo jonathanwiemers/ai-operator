@@ -24,7 +24,7 @@ import {
   type PauseAction,
   type PauseActionID,
 } from '../pauseCard'
-import type { MilestoneView } from '../types'
+import type { HoldView, MilestoneView } from '../types'
 import Badge from './Badge.vue'
 import CompanionChip from './CompanionChip.vue'
 import ExtLink from './ExtLink.vue'
@@ -41,12 +41,17 @@ import RelTime from './RelTime.vue'
 // Utilities only (docs/ui.md, "Pause cards"): the actions are UButtons, at
 // least 44 px high on phones, where the action row and the Way out's rows
 // stack into columns and the skip select is 16 px.
-const props = defineProps<{ namespace: string; name: string; milestone: MilestoneView }>()
+//
+// With hold, the card is that issue's hold (R9): the kind, issue, reason,
+// head, review errors and exits come from it, and Resume lifts only it.
+const props = defineProps<{ namespace: string; name: string; milestone: MilestoneView; hold?: HoldView }>()
 
 const ap = computed(() => props.milestone.autopilot)
-const kind = computed(() => ap.value?.pauseKind)
-const issue = computed(() => ap.value?.pausedFor || 0)
-const head = computed(() => (ap.value?.head || '').trim())
+const kind = computed(() => (props.hold ? props.hold.kind : ap.value?.pauseKind))
+const issue = computed(() => (props.hold ? props.hold.iid : ap.value?.pausedFor) || 0)
+const reason = computed(() => (props.hold ? props.hold.reason : ap.value?.pausedReason) || '')
+const head = computed(() => ((props.hold ? props.hold.head : ap.value?.head) || '').trim())
+const ctx = computed(() => ({ issue: issue.value, head: head.value, hold: !!props.hold }))
 const item = computed(() => (issue.value ? ap.value?.items.find((i) => i.iid === issue.value) : undefined))
 // implTask: the paused issue's implement task (the queue knows it; the
 // milestone's tasks are the fallback).
@@ -57,7 +62,7 @@ const implTask = computed(() => {
   )
 })
 const implTaskName = computed(() => item.value?.task || implTask.value?.name)
-const issueTitle = computed(() => item.value?.title || implTask.value?.issue?.title)
+const issueTitle = computed(() => item.value?.title || props.hold?.title || implTask.value?.issue?.title)
 const issueURL = computed(() =>
   props.milestone.webURL.replace(/\/-\/milestones\/\d+$/, `/-/issues/${issue.value}`),
 )
@@ -66,7 +71,7 @@ const release = computed(() => pauseRelease(kind.value, props.milestone.releases
 // releaseReason: the record's reason, unless the pause reason says it.
 const releaseReason = computed(() => {
   const r = (release.value?.reason || '').trim()
-  return r && !(ap.value?.pausedReason || '').includes(r) ? r : ''
+  return r && !reason.value.includes(r) ? r : ''
 })
 const pipelineURL = computed(() =>
   kind.value === 'release' ? release.value?.pipelineURL : implTask.value?.status.ci?.pipelineURL,
@@ -81,7 +86,8 @@ const prompt = computed(() => pausePrompt(kind.value, props.milestone.prompts))
 const canChat = computed(() => !!props.milestone.permissions?.chat)
 const canMerge = computed(() => !!props.milestone.permissions?.merge)
 const endsBy = computed(() => pauseEndsBy(kind.value, issue.value || undefined))
-const limitLines = computed(() => (kind.value === 'reviewErrors' ? reviewLimitLines(ap.value?.reviewErrors) : []))
+const reviewErrors = computed(() => (props.hold ? props.hold.reviewErrors : ap.value?.reviewErrors))
+const limitLines = computed(() => (kind.value === 'reviewErrors' ? reviewLimitLines(reviewErrors.value) : []))
 const override = computed(() => {
   const o = ap.value?.mergeOverride
   return o && o.issueIID === issue.value && head.value && o.sha === head.value ? o : undefined
@@ -119,12 +125,12 @@ function usable(a: PauseAction): Shown | undefined {
   if (a.target === 'implement' && !implTaskName.value) return undefined
   if (a.ownerOnly && !canMerge.value) return undefined
   if (a.id === 'skip' && !issue.value) return skipOptions.value.length ? { action: a, type: 'skipSelect' } : undefined
-  return pauseCommand(a, { issue: issue.value, head: head.value }) ? { action: a, type: 'command' } : undefined
+  return pauseCommand(a, ctx.value) ? { action: a, type: 'command' } : undefined
 }
 
 // exits: the ways out (an operator without them gets the kind's buttons).
 // The action row then keeps the links; the remedies bring the commands.
-const exits = computed(() => ap.value?.exits || [])
+const exits = computed(() => (props.hold ? props.hold.exits : ap.value?.exits) || [])
 const way = computed(() => wayOut(exits.value))
 const remedyLinks = computed(() => ({
   milestone: props.milestone.webURL,
@@ -139,7 +145,7 @@ const remedies = computed(() =>
     href: r.link ? remedyLinks.value[r.link] : undefined,
   })),
 )
-const all = computed(() => pauseActions(kind.value, issue.value || undefined, exits.value))
+const all = computed(() => pauseActions(kind.value, issue.value || undefined, exits.value, !!props.hold))
 const shown = computed(() => all.value.map(usable).filter((s): s is Shown => !!s))
 const mergeAction = computed(
   () => [...shown.value, ...remedies.value.map((r) => r.shown)].find((s) => s?.action.confirm)?.action,
@@ -148,9 +154,8 @@ const mergeAction = computed(
 const commandsHidden = computed(
   () =>
     !canChat.value &&
-    (exits.value.length
-      ? way.value.remedies.some((r) => r.kind === 'command' && deskCommand(r.command))
-      : all.value.some((a) => a.target !== 'link')),
+    (all.value.some((a) => a.target !== 'link') ||
+      way.value.remedies.some((r) => r.kind === 'command' && deskCommand(r.command))),
 )
 
 // Sending: one command at a time; the card follows the last one sent.
@@ -166,7 +171,7 @@ let seq = 0
 const confirmHead = ref('')
 
 function label(a: PauseAction, cmd: ChatCommand): string {
-  return cmd.cmd === 'skip' ? `Skip #${cmd.issue}` : a.label
+  return (cmd.cmd === 'skip' || cmd.cmd === 'resume') && cmd.issue ? `${a.label} #${cmd.issue}` : a.label
 }
 
 async function send(a: PauseAction, cmd: ChatCommand) {
@@ -198,12 +203,12 @@ function run(a: PauseAction) {
     confirmHead.value = head.value
     return
   }
-  const cmd = pauseCommand(a, { issue: issue.value, head: head.value })
+  const cmd = pauseCommand(a, ctx.value)
   if (cmd) void send(a, cmd)
 }
 
 function confirmMerge(a: PauseAction) {
-  const cmd = pauseCommand(a, { issue: issue.value, head: confirmHead.value })
+  const cmd = pauseCommand(a, { ...ctx.value, head: confirmHead.value })
   if (cmd) void send(a, cmd)
 }
 
@@ -248,9 +253,10 @@ const wrap = '[overflow-wrap:anywhere]'
     v-if="ap"
     class="mt-3 flex min-w-0 flex-col gap-2 rounded-(--radius) border border-l-3 border-(--border) border-l-(--tone-warning-fg) bg-(--surface) px-4 py-3.5 shadow-(--shadow) [&>p]:m-0"
     data-pause-card
+    :data-hold="hold?.iid"
   >
-    <h2 class="m-0">{{ pauseTitle(kind) }}</h2>
-    <Markdown v-if="ap.pausedReason" :class="wrap" :text="ap.pausedReason" />
+    <h2 class="m-0">{{ pauseTitle(kind, hold?.iid) }}</h2>
+    <Markdown v-if="reason" :class="wrap" :text="reason" />
     <p v-else-if="!kind" class="muted">Waiting for a human.</p>
     <p v-if="pauseExplain(kind)" class="muted">{{ pauseExplain(kind) }}</p>
 
@@ -279,7 +285,7 @@ const wrap = '[overflow-wrap:anywhere]'
       <li v-for="l in limitLines" :key="l">{{ l }}</li>
     </ul>
     <p v-if="endsBy && !exits.length" class="faint">{{ endsBy }}</p>
-    <div v-if="ap.waitingFor" class="rounded-(--radius-sm) bg-(--tone-info-bg) px-3 py-2 text-(--tone-info-fg)">
+    <div v-if="ap.waitingFor && !hold" class="rounded-(--radius-sm) bg-(--tone-info-bg) px-3 py-2 text-(--tone-info-fg)">
       A run is working on #{{ ap.waitingFor }} now.
     </div>
     <p v-if="override" class="muted">
@@ -320,7 +326,7 @@ const wrap = '[overflow-wrap:anywhere]'
               :label="sending === r.shown.action.id ? '…' : r.shown.action.label"
               @click="run(r.shown.action)"
             />
-            <code v-else-if="r.elsewhere" :class="wrap">{{ agentCommand(r.command) }}</code>
+            <code v-else-if="r.elsewhere" :class="wrap">{{ agentCommand(r.command, ctx) }}</code>
             <span v-if="r.shown || !r.elsewhere" :class="wrap">{{ r.text }}</span>
             <span v-else :class="wrap">{{ r.elsewhere }}</span>
             <ExtLink v-if="r.href" class="min-h-11 tablet:min-h-0" :href="r.href">open</ExtLink>

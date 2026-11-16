@@ -84,6 +84,7 @@ const reason = 'muted min-w-0 text-[13px] [&[role=button]]:relative [&[role=butt
           :kind="item.pauseKind"
           :reason="item.reason"
           :issue="item.issueIID"
+          :hold="item.hold"
           :project="item.project"
           :milestone-title="item.title"
           :to="inboxRoute(item)"

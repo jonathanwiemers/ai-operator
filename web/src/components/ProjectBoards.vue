@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { autopilotWaitingFor, costChip, costTooltip } from '../format'
-import { queueDone } from '../milestoneQueue'
+import { queueDone, queueHeld } from '../milestoneQueue'
 import type { ProjectDetail } from '../types'
 import Badge from './Badge.vue'
 import Board from './Board.vue'
@@ -42,6 +42,15 @@ const section = 'mt-9 min-w-0 first:mt-0'
       <Badge v-else-if="m.spec?.status.autopilot" :tone="apTone(m.spec.status.autopilot.phase)">
         Autopilot {{ m.spec.status.autopilot.phase.toLowerCase() }}
       </Badge>
+      <!-- Held issues: the Pilot tab has a card per hold. -->
+      <RouterLink
+        v-if="m.spec?.status.autopilot?.items && queueHeld(m.spec.status.autopilot.items)"
+        :class="tap"
+        :to="{ name: 'stream-milestone', params: { namespace, name, iid: String(m.iid) }, query: { tab: 'pilot' } }"
+        data-board-holds
+      >
+        <Badge tone="warning">{{ queueHeld(m.spec.status.autopilot.items) }} held</Badge>
+      </RouterLink>
       <span class="spacer" />
       <RouterLink
         v-if="m.spec"

@@ -52,6 +52,7 @@ export type {
   ModelSplitView as ModelSplit,
   ExitView,
   ExitStatus,
+  HoldView,
   CompanionView,
   CompanionChip,
   OverviewView,

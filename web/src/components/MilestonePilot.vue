@@ -17,13 +17,15 @@ import PausesCard from './PausesCard.vue'
 import PromptCard from './PromptCard.vue'
 
 // MilestonePilot is a milestone's Pilot tab (R11): the full pause card while
-// paused, the prompts (open first, the closed ones folded), the composer to
+// paused and one card per held issue, the prompts (open first, the closed ones folded), the composer to
 // the pilot, the milestone's pilot events (fixed kinds, no chips) and the
 // pause history. A stored milestone has no pilot: only its history shows.
 const props = defineProps<{ namespace: string; name: string; milestone: MilestoneView; project: ProjectDetail | null }>()
 
 const active = computed(() => !props.milestone.stored)
 const paused = computed(() => active.value && props.milestone.autopilot?.phase === 'Paused')
+// holds: one card per held issue, also while the milestone runs.
+const holds = computed(() => props.milestone.autopilot?.holds ?? [])
 // The pause card shows its own prompt (mainRed, budget): the list leaves it
 // out so one prompt is not two answer widgets with the same anchor.
 const prompts = computed(() => {
@@ -60,6 +62,14 @@ const quiet = 'text-[13px] text-(--text-3)'
   <div class="grid max-w-[860px] min-w-0 gap-[18px]">
     <template v-if="active">
       <PauseCard v-if="paused" :key="milestone.iid" :namespace="namespace" :name="name" :milestone="milestone" />
+      <PauseCard
+        v-for="h in holds"
+        :key="`${milestone.iid}/${h.iid}`"
+        :namespace="namespace"
+        :name="name"
+        :milestone="milestone"
+        :hold="h"
+      />
 
       <section v-if="milestone.pilot || prompts.open.length || prompts.closed.length" class="min-w-0">
         <h3 :class="sectionHead">

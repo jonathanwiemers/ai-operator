@@ -84,10 +84,19 @@ function known(kind: string | undefined): kind is KnownPauseKind {
 // kind (from before the field existed) or with an unknown one offers Resume
 // only. issue labels the chat link ("Open #N chat"). With exits (an operator
 // that sends them) the row keeps the kind's links: its command buttons are
-// the Way out's remedies (wayOut), so none shows twice.
-export function pauseActions(kind: PauseKind | undefined, issue?: number, exits?: ExitView[]): PauseAction[] {
+// the Way out's remedies (wayOut), so none shows twice. A hold's card always
+// offers Resume (resume #N lifts the hold), unless a remedy button is one.
+export function pauseActions(
+  kind: PauseKind | undefined,
+  issue?: number,
+  exits?: ExitView[],
+  hold?: boolean,
+): PauseAction[] {
   let actions = known(kind) ? actionsByKind[kind] : [resume]
   if (exits?.length) actions = actions.filter((a) => a.target === 'link')
+  if (hold && !actions.includes(resume) && !wayOut(exits).remedies.some((r) => r.action?.id === 'resume')) {
+    actions = [...actions, resume]
+  }
   return actions.map((a) =>
     a.id === 'openChat' && issue ? { ...a, label: `Open #${issue} chat` } : { ...a },
   )
@@ -246,13 +255,16 @@ export function pausePrompt(kind: PauseKind | undefined, prompts: PromptView[] |
 }
 
 export interface PauseContext {
-  // issue: the paused issue; head: its pushed SHA.
+  // issue: the paused issue; head: its pushed SHA; hold: the card is the
+  // hold of that issue, whose Resume lifts only it.
   issue?: number
   head?: string
+  hold?: boolean
 }
 
 // pauseCommand is the chat command an action sends, or null for links and
-// for skip/merge without the issue (and head) they need.
+// for skip/merge without the issue (and head) they need. Resume of a hold
+// names its issue (resume #N); the milestone pause's lifts everything.
 export function pauseCommand(action: PauseAction, ctx: PauseContext): ChatCommand | null {
   const issue = ctx.issue && ctx.issue > 0 ? ctx.issue : 0
   const head = (ctx.head || '').trim()
@@ -262,7 +274,7 @@ export function pauseCommand(action: PauseAction, ctx: PauseContext): ChatComman
     case 'review':
       return { cmd: 'review' }
     case 'resume':
-      return { cmd: 'resume' }
+      return ctx.hold && issue ? { cmd: 'resume', issue } : { cmd: 'resume' }
     case 'skip':
       return issue ? { cmd: 'skip', issue } : null
     case 'merge':
@@ -325,8 +337,10 @@ const titles: Record<KnownPauseKind, string> = {
   release: 'The final release failed twice',
 }
 
-// pauseTitle is the card's heading for a pause.
-export function pauseTitle(kind: PauseKind | undefined): string {
+// pauseTitle is the card's heading for a pause; with held, for the hold of
+// that issue ("#N is held — CI is red").
+export function pauseTitle(kind: PauseKind | undefined, held?: number): string {
+  if (held && held > 0) return known(kind) ? `#${held} is held — ${titles[kind]}` : `#${held} is held`
   return known(kind) ? titles[kind] : 'Autopilot paused'
 }
 
@@ -339,10 +353,25 @@ export function pauseExplain(kind: PauseKind | undefined): string {
 }
 
 // agentCommand is how a remedy's command word is typed on GitLab:
-// "/agent endMilestone".
-export function agentCommand(word: string | undefined): string {
+// "/agent endMilestone". With the pause's issue the words that take one
+// name it, as the tracking issue's ways out do (exitLines): "/agent skip #7",
+// "/agent merge #7 <head>"; resume only for a hold, where it lifts just
+// that issue (a bare resume lifts the milestone pause and every hold).
+export function agentCommand(word: string | undefined, ctx: PauseContext = {}): string {
   const w = (word || '').trim()
-  return w ? `/agent ${w}` : ''
+  if (!w) return ''
+  const issue = ctx.issue && ctx.issue > 0 ? ` #${ctx.issue}` : ''
+  const head = (ctx.head || '').trim().slice(0, 7)
+  const args: Record<string, string> = {
+    skip: issue,
+    unskip: issue,
+    startAnyway: issue,
+    rebase: issue,
+    mergeBase: issue,
+    merge: issue && head ? `${issue} ${head}` : '',
+    resume: ctx.hold ? issue : '',
+  }
+  return `/agent ${w}${Object.prototype.hasOwnProperty.call(args, w) ? args[w] : ''}`
 }
 
 // pauseRelease is the release record a release pause is about: the newest

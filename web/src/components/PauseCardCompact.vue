@@ -32,6 +32,9 @@ const props = defineProps<{
   to: RouteLocationRaw
   // flat: a row of a list (the Inbox), without the card's border and shadow.
   flat?: boolean
+  // hold: the card is the hold of issue ("#N is held"), not the milestone's
+  // pause; its Resume (on the full card) lifts only that issue.
+  hold?: boolean
 }>()
 
 const endsBy = computed(() => pauseEndsBy(props.kind, props.issue || undefined))
@@ -51,14 +54,14 @@ const way = computed(() => wayOutLine(props.exits))
     <!-- Phones: the title and Open share the first line, where it paused
          wraps below; from 760 px all three share one line. -->
     <div class="flex min-w-0 flex-wrap items-center gap-x-2.5">
-      <strong class="whitespace-nowrap">{{ pauseTitle(kind) }}</strong>
+      <strong class="min-w-0 tablet:whitespace-nowrap">{{ pauseTitle(kind, hold ? issue : undefined) }}</strong>
       <span
-        v-if="project || milestoneTitle || issue"
+        v-if="project || milestoneTitle || (issue && !hold)"
         class="muted order-last flex min-w-0 basis-full flex-wrap gap-x-2 text-[13px] break-words tablet:order-none tablet:flex-1 tablet:basis-auto"
       >
         <span v-if="project" class="min-w-0 font-semibold">{{ project }}</span>
         <span v-if="milestoneTitle" class="min-w-0 before:me-2 before:content-['·'] first:before:hidden">{{ milestoneTitle }}</span>
-        <span v-if="issue" class="before:me-2 before:content-['·'] first:before:hidden">#{{ issue }}</span>
+        <span v-if="issue && !hold" class="before:me-2 before:content-['·'] first:before:hidden">#{{ issue }}</span>
       </span>
       <UButton :to="to" color="neutral" variant="ghost" size="sm" class="ms-auto min-h-11 shrink-0 text-[13px] text-(--link) tablet:-my-1 tablet:min-h-0" label="Open" />
     </div>

@@ -545,3 +545,53 @@ test('pauseRelease: the newest final record of a release pause', () => {
   assert.equal(pauseRelease('release', [{ id: 1, by: 'owner' }]), undefined)
   assert.equal(pauseRelease('release', undefined), undefined)
 })
+
+test('pauseCommand: Resume of a hold lifts only its issue', () => {
+  assert.deepEqual(pauseCommand(action('resume'), { issue: 7, hold: true }), { cmd: 'resume', issue: 7 })
+  // The milestone pause's Resume lifts everything, issue or not.
+  assert.deepEqual(pauseCommand(action('resume'), { issue: 7 }), { cmd: 'resume' })
+  assert.deepEqual(pauseCommand(action('resume'), { hold: true }), { cmd: 'resume' })
+  // Skip and merge of a hold name the issue as before.
+  assert.deepEqual(pauseCommand(action('skip'), { issue: 7, hold: true }), { cmd: 'skip', issue: 7 })
+  assert.deepEqual(pauseCommand(action('merge'), { issue: 7, head: 'abc', hold: true }), {
+    cmd: 'merge',
+    issue: 7,
+    sha: 'abc',
+  })
+})
+
+test('pauseTitle: a hold names its issue', () => {
+  assert.equal(pauseTitle('ciRed', 7), '#7 is held — CI is red')
+  assert.equal(pauseTitle('somethingNew', 7), '#7 is held')
+  assert.equal(pauseTitle(undefined, 7), '#7 is held')
+  assert.equal(pauseTitle(undefined, 0), 'Autopilot paused')
+  assert.equal(pauseTitle('owner'), 'Paused by an owner')
+})
+
+test('pauseActions: a hold always offers Resume, once', () => {
+  const idsOf = (...args) => pauseActions(...args).map((a) => a.id)
+  // Without exits: the kind's buttons, then Resume (ciRed has none of its own).
+  assert.deepEqual(idsOf('ciRed', 5, undefined, true), ['retry', 'openPipeline', 'skip', 'resume'])
+  assert.deepEqual(idsOf('mergeRequest', 5, undefined, true), ['openMR', 'resume', 'skip'])
+  // With exits: the links, then Resume, unless a remedy button is Resume.
+  const exits = [auto('laterRunPasses'), cmd('retry', 'retry', 'implement'), cmd('skip', 'skip', 'spec')]
+  assert.deepEqual(idsOf('ciRed', 5, exits, true), ['openPipeline', 'resume'])
+  assert.deepEqual(idsOf('ciRed', 5, exits), ['openPipeline'])
+  assert.deepEqual(idsOf('companion', 5, [cmd('resume', 'resume', 'spec')], true), ['openCompanion'])
+  // A Resume remedy the viewer may not send is text: the row keeps its own.
+  assert.deepEqual(idsOf('companion', 5, [cmd('resume', 'resume', 'spec', false)], true), ['openCompanion', 'resume'])
+})
+
+test('agentCommand: names the issue as the tracking issue does', () => {
+  // A hold's resume lifts only that issue; the milestone pause's lifts all.
+  assert.equal(agentCommand('resume', { issue: 7, hold: true }), '/agent resume #7')
+  assert.equal(agentCommand('resume', { issue: 7 }), '/agent resume')
+  assert.equal(agentCommand('resume', { hold: true }), '/agent resume')
+  assert.equal(agentCommand('skip', { issue: 7, hold: true }), '/agent skip #7')
+  assert.equal(agentCommand('rebase', { issue: 7 }), '/agent rebase #7')
+  assert.equal(agentCommand('merge', { issue: 7, head: 'abcdef0123456789' }), '/agent merge #7 abcdef0')
+  assert.equal(agentCommand('merge', { issue: 7 }), '/agent merge')
+  assert.equal(agentCommand('endMilestone', { issue: 7, hold: true }), '/agent endMilestone')
+  assert.equal(agentCommand('toString', { issue: 7 }), '/agent toString')
+  assert.equal(agentCommand('skip'), '/agent skip')
+})

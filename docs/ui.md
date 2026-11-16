@@ -194,7 +194,8 @@ The app is a **Desk**: a left rail, the stream, and, on project pages, a context
   asked for with `kinds=`.
 * **Pilot tab** (`…/milestones/<iid>?tab=pilot`): what matters to the
   milestone's owners, apart from the runtime stream. Top to bottom: the
-  full pause card while the autopilot is paused; the milestone's prompts
+  full pause card while the autopilot is paused, then one hold card per held
+  issue (also while it runs, see *Hold cards*); the milestone's prompts
   (the pilot's autonomy, cost and task, the open prompt cards, the closed
   ones folded under *Earlier questions*); the message box to the pilot (the
   Desk chat, *Ask the pilot*, with the `chat` grant; else, with `steer`,
@@ -1100,6 +1101,19 @@ paused issue with its title, MR and pushed head, what ends the pause by
 itself, for failed reviewers which engine is usage-limited until when
 (*Cursor is limited until 13 Nov*), *A run is working on #N now* while one
 is, and a merge anyway an owner already gave for this head.
+
+**Hold cards**: an issue the autopilot holds (`autopilot.holds`, a problem
+of that issue only, while the other issues go on) gets a card of its own on
+the *Pilot* tab, after the milestone's pause card and also while the
+milestone runs: the same card (`PauseCard.vue` with a `hold`), headed
+*#N is held — CI is red*, with the hold's reason, pushed head, review errors
+and ways out. Its *Resume* sends `{"cmd":"resume","issue":N}`
+(`/agent resume #N`), which lifts only that hold; the milestone pause's
+*Resume* lifts the pause and every hold. A hold card always offers *Resume*,
+even for kinds whose pause card has none (`ciRed`). The Inbox's hold items
+and the milestone stream show the compact card with the same heading (one
+per hold, *Open* leads to *Pilot*), and the project board shows *N held*
+beside the autopilot badge, linking to *Pilot*.
 
 A **release pause** (`pauseKind: release`, the final release failed after
 its retry) is headed *The final release failed twice*, says that it can be

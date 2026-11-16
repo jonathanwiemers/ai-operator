@@ -5,6 +5,7 @@ import {
   canRevisit,
   laneGroups,
   queueDone,
+  queueHeld,
   queueRows,
   queueTone,
   resumeCommand,
@@ -126,4 +127,16 @@ test('waitingLabel and resumeCommand', () => {
   assert.equal(waitingLabel([]), 'for a free slot')
   assert.equal(waitingLabel(undefined), 'for a free slot')
   assert.deepEqual(resumeCommand(12), { cmd: 'resume', issue: 12 })
+})
+
+test('queueHeld: counts the Active items with a hold', () => {
+  const hold = { kind: 'ciRed', reason: 'red', since: 't' }
+  const items = [
+    { iid: 1, state: 'Active', hold },
+    { iid: 2, state: 'Active' },
+    { iid: 3, state: 'Active', hold },
+    { iid: 4, state: 'Merged', hold },
+  ]
+  assert.equal(queueHeld(items), 2)
+  assert.equal(queueHeld([]), 0)
 })

@@ -24,6 +24,12 @@ export function queueDone(items: { state: QueueItem['state'] }[]): number {
   return items.filter((i) => i.state === 'Merged' || i.state === 'Skipped').length
 }
 
+// queueHeld counts the held issues: Active items with a hold (as the
+// milestone view's holds).
+export function queueHeld(items: { state: QueueItem['state']; hold?: unknown }[]): number {
+  return items.filter((i) => i.state === 'Active' && !!i.hold).length
+}
+
 export function queueTone(s: QueueItem['state']): 'success' | 'progress' | 'warning' | 'muted' {
   return s === 'Merged' ? 'success' : s === 'Active' ? 'progress' : s === 'Skipped' ? 'warning' : 'muted'
 }

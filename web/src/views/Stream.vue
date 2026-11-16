@@ -228,6 +228,15 @@ const pauseProps = computed(() => {
   }
 })
 
+// holdProps: one compact card per held issue (stream tab; the Issues tab has
+// the Held lane, the Pilot tab the full cards), also while the milestone runs.
+const holdProps = computed(() => {
+  const m = milestone.value
+  if (everything.value || !m || m.stored || !props.namespace || !props.name) return []
+  const to = { name: 'stream-milestone', params: { namespace: props.namespace, name: props.name, iid: String(m.iid) }, query: { tab: 'pilot' } }
+  return (m.autopilot?.holds ?? []).map((h) => ({ kind: h.kind, reason: h.reason, issue: h.iid, hold: true, milestoneTitle: m.title, exits: h.exits, to }))
+})
+
 // milestoneTasks: the Board of a milestone stream, as the milestone page
 // shows it (the project's copy until the milestone loaded).
 const milestoneTasks = computed(() => {
@@ -552,6 +561,7 @@ function showDay(i: number): string | null {
         </div>
         <div v-if="!everything && namespace && name" class="pinned">
           <PauseCardCompact v-if="pauseProps" class="pause" v-bind="pauseProps" />
+          <PauseCardCompact v-for="h in holdProps" :key="h.issue" class="pause" v-bind="h" />
           <!-- A milestone's composer is on its Pilot tab. -->
           <Composer
             v-if="!milestoneIID"

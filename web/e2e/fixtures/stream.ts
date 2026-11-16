@@ -265,7 +265,27 @@ export const paymentsMilestone: MilestoneView = {
     phase: 'Paused',
     running: 1,
     maxParallel: 3,
-    holds: [],
+    // #284's hold (its item below): a card of its own beside the pause's.
+    holds: [
+      {
+        iid: 284,
+        title: 'Document the refund flow for support',
+        kind: 'ciRed',
+        reason: 'CI failed on !306 (job docs-lint).',
+        since: ago(25),
+        head: '9b2e4c6a8d0f1e3a5c7b9d1f3e5a7c9b0d2f4e6a',
+        exits: [
+          {
+            id: 'laterRunPasses',
+            auto: true,
+            when: 'a later run makes the issue pass the merge gate (reviewed and green)',
+            does: 'autopilot continues with the merge',
+            status: 'waiting',
+          },
+          { id: 'skip', command: 'skip', target: 'spec', does: 'the issue is skipped and autopilot goes on', allowed: true },
+        ],
+      },
+    ],
     pausedReason,
     pauseKind: 'needsInput',
     pausedFor: 281,

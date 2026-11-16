@@ -2436,7 +2436,8 @@ test.describe('milestone pilot', () => {
   // The pause cards (PauseCard.vue, PausesCard.vue, R12): on a phone a
   // pause history reason clipped to one line opens in full on a tap, no
   // title holds it, and the Way out's buttons and select are 44 px high.
-  // Skip posts its command to the spec task's chat, as before.
+  // Skip posts its command to the spec task's chat, as before. A held issue
+  // has a card of its own, whose Resume sends resume for that issue only.
   for (const size of [widths[0]!, widths[2]!]) {
     const phone = size.width < 760
 
@@ -2463,7 +2464,7 @@ test.describe('milestone pilot', () => {
       )
       await page.goto(route.path)
       await route.ready(page)
-      const card = page.locator('main [data-pause-card]')
+      const card = page.locator('main [data-pause-card]:not([data-hold])')
       const history = page.locator('main [data-pauses]')
       await expect(card).toBeVisible()
       await expect(history).toBeVisible()
@@ -2495,6 +2496,17 @@ test.describe('milestone pilot', () => {
       await skip.click()
       await expect(card.getByRole('status')).toContainText('Skip #281: sent…')
       expect(posts).toEqual([{ body: JSON.stringify({ cmd: 'skip', issue: 281 }), clientKey: expect.any(String), kind: 'command' }])
+
+      // #284's hold has a card of its own while the milestone pause shows:
+      // its title, its reason, and a Resume that lifts only that hold.
+      const held = page.locator('main [data-pause-card][data-hold="284"]')
+      await expect(held.locator('h2')).toHaveText('#284 is held — CI is red')
+      await expect(held).toContainText('CI failed on !306 (job docs-lint).')
+      const resume = held.getByRole('button', { name: 'Resume', exact: true })
+      if (phone) expect((await resume.boundingBox())!.height, 'Resume height').toBeGreaterThanOrEqual(44)
+      await resume.click()
+      await expect(held.getByRole('status')).toContainText('Resume #284: sent…')
+      expect(posts[1]).toEqual({ body: JSON.stringify({ cmd: 'resume', issue: 284 }), clientKey: expect.any(String), kind: 'command' })
       expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })
