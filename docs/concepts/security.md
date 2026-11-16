@@ -1,0 +1,178 @@
+# Security
+
+A coding agent runs code and reads text that strangers may have written:
+issues, comments, the repository itself. This page explains what the model
+can and cannot reach, what the Desk login protects, and where your secrets
+live. Read it before you give the operator a GitLab token.
+
+## The starting point
+
+Assume the model can do anything a shell in its container can do, including
+following instructions someone planted in an issue, a comment or the code.
+The operator is built so that even then the model cannot get your GitLab
+token or access to your cluster, and cannot make something that has them
+run its code.
+
+## Two containers per pod
+
+Every [task](glossary.md#task) runs in its own pod with two containers (see
+[How it works](how-it-works.md#the-trusted-runner-and-the-agent-container)):
+
+| | The runner | The agent container |
+|--|------------|---------------------|
+| Trusted | yes | no |
+| Runs | the operator's own code | the agent CLI and the model's commands |
+| Holds | the GitLab token, the pod's access to the cluster | the model credentials, the checkout |
+| Talks to | GitLab, the cluster | the model provider, whatever the network allows |
+
+What the agent container does **not** have:
+
+- **No GitLab token.** The model cannot comment, push, merge or read other
+  projects in your name. The runner does all of that.
+- **No cluster credentials.** Only the runner gets the pod's service account
+  token. That account may read its project and the tasks, and write only
+  their status. It cannot read Secrets or touch pods.
+- **No look into the runner.** The containers do not share processes, so
+  the model cannot read the runner's environment.
+
+The model credentials (an Anthropic API key, a Claude subscription login or
+a Cursor key) are the one secret in the agent container. Treat them as
+exposed to the model: use credentials that only work for the model
+provider, and set a spending limit there.
+
+## Commits move as git bundles
+
+Git can run commands from a repository's own settings: hooks, filters and a
+few config options. The model can change those settings in its checkout.
+So the runner never runs git in the agent's checkout:
+
+- The runner keeps its own copy of the repository, which only it touches.
+- Before a run, it hands new commits to the agent container as a git
+  bundle, a file that carries commits and nothing else.
+- After a run, the agent container hands its commits back the same way.
+  Importing a bundle cannot run anything.
+- Everything the agent returns, its report, its diff and its answers, is
+  treated as untrusted data.
+
+## What the runner may push and merge
+
+The runner and the operator limit themselves, also when the bot account in
+GitLab has wider rights:
+
+- They push only commits to branches that start with `agent/`, never to the
+  default branch, never with force, and no tags. (One exception: the runner
+  may fold the agent's own checkpoint commits on its branch.) The only tags
+  are the releases the operator creates through the GitLab API.
+- They merge only in your project, or in a
+  [companion repository](glossary.md#companion-repository) you allowed to
+  merge, and on autopilot only after the merge gate.
+- They delete only `agent/` branches.
+- A model never decides to merge. The operator merges by rule: CI green,
+  review clean, the head unchanged.
+
+The [pilot](glossary.md#pilot) runs in a pod with the same two containers,
+and it cannot merge, push or close issues either. Its actions go through the
+operator, which checks each one before it runs it.
+
+Still use a GitLab account with as few rights as possible, and protect the
+default branch. Autopilot needs the right to merge into it.
+
+## The network
+
+The pods run without root and without extra privileges. The chart can add a
+network policy (`agent.networkPolicy.enabled`, with your exceptions in
+`agent.networkPolicy.allowedCIDRs`):
+
+- nothing can connect to the pods;
+- the pods cannot reach cloud metadata endpoints or private networks, except
+  the address ranges you allow (for example your Kubernetes API or a
+  self-hosted GitLab).
+
+The agent container can still reach the internet: the model providers,
+package registries and GitLab. It needs them to work, and it has no GitLab
+token to use there. If you want to restrict that further, for example to a
+package mirror, use your cluster's own egress controls.
+
+The implementer installs the toolchains your repository pins, from their
+official sources. A change to a pin on the agent's branch only lasts for
+that run. This is an instruction to the agent, not a sandbox: the model can
+download and run what the network allows, as it can run your build.
+
+## What the Desk login protects
+
+The [Desk](glossary.md#desk) is optional and runs apart from the operator.
+
+- **Login.** You log in with OpenID Connect at your own identity provider.
+  Without a login set up, the Desk only listens on localhost inside its
+  pod, and you reach it with `kubectl port-forward`.
+- **Rules.** Access rules map the roles your identity provider gives you to
+  projects. You see only the projects a rule grants you; without a rule you
+  see nothing. What you may do beyond looking, such as reading transcripts,
+  chatting or steering, is granted per rule too. Answering a milestone's
+  prompts also needs your Desk login among its
+  [owners](glossary.md#owner) (`/agent owner-subjects`).
+- **No operator token.** The Desk never holds the operator's GitLab token
+  or the agent credentials. When you connect your GitLab account, it reads
+  threads and posts comments with your own token, in your name.
+- **Little in the cluster.** The Desk's own account can read projects and
+  tasks, and create milestone plans and, if you allow it, researches. It
+  cannot change a task: it steers by posting comments and chat messages
+  that the operator reads.
+- **Sessions** live in encrypted cookies, not in a database.
+
+## Who may command
+
+By default, anyone who can comment on an issue can give `/agent` commands,
+as in GitLab itself. With `workflow.commandsFrom: owners` only the
+milestone's owners can. Owners named with `/agent owners` are checked by
+their GitLab user ID, and the owners of a prompt or proposal are pinned when
+it is posted, so a renamed account or a later owner cannot answer it in
+GitLab.
+
+In the Desk, only the Desk logins named with `/agent owner-subjects` may
+answer a milestone's prompts. A milestone with `/agent owners` but no
+`/agent owner-subjects` cannot be answered in the Desk.
+
+## Where secrets live
+
+All secrets are Kubernetes Secrets in your cluster. You name them in the
+`AgentProject` or in the chart values:
+
+| Secret | Named in | Who gets it |
+|--------|----------|-------------|
+| GitLab token | `spec.gitlab.tokenSecretRef` | the operator and the runner |
+| Model credentials | `spec.agents.credentialsSecretName` | the agent container |
+| Webhook secret | `spec.webhook.secretRef` | the operator |
+| Token of a companion repository | `tokenSecretRef` of the target in `spec.crossRepo.targets` | the runner, only while the target is allowed |
+| Desk login (OIDC client, session key) | `ui.oidc.existingSecret` | the Desk |
+| Desk's GitLab app, or a fixed token for one user | `ui.gitlab.existingSecret` | the Desk |
+| Research database logins | `spec.research.writerSecret`, chart values under `research.database` and `ui.chat` | the runner of a research pod, the operator, the Desk |
+
+Nothing is stored in GitLab, and the model never sees a secret except its
+own model credentials.
+
+## Research runs
+
+Researches read web pages, which may carry instructions too. A research pod
+holds even less: no GitLab token at all, and its database login only in the
+runner, which checks the agent's answer before it stores it. The Desk shows
+the result as checked blocks, never as raw HTML.
+
+## What is left
+
+- The model can push anything to its own `agent/` branch and write anything
+  into the comments it posts. Humans or the merge gate review the merge
+  request before it merges.
+- CI pipelines of agent branches run code the model wrote. Do not expose
+  protected CI variables to unprotected branches.
+- The model can read and send out whatever is in its checkout. Do not let
+  it work on repositories that hold plaintext secrets.
+
+## Next
+
+- [Roles](roles.md): which agent does what.
+- [How it works](how-it-works.md): the flow from spec to release.
+- [Glossary](glossary.md): the terms on this page.
+- [The full threat model](../contributing/design.md#security), for
+  contributors and reviewers.
+- [Reporting a vulnerability](../../SECURITY.md).

@@ -321,3 +321,7 @@ Rows: `usage.md` 38, `ui.md` 57, `configuration.md` 34, `commands.md` 10,
 
 Narrowed requirements, follow-up issues and changes of plan, one line each,
 with the requirement label and the issue or merge request.
+
+- R9 (#508): the four concept pages are new text; no inventory row is only a
+  concept explanation, so none moved. Glossary entries name pages that do
+  not exist yet in plain text; the MRs that add them turn those into links.

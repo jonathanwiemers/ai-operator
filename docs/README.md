@@ -27,8 +27,9 @@ milestone to running it on autopilot and steering it from the Desk.
 
 ## Concepts
 
-**[concepts/](concepts/README.md)**: how it works, the roles of the agents,
-security and a glossary.
+**[concepts/](concepts/README.md)**: [how it works](concepts/how-it-works.md),
+the [roles](concepts/roles.md) of the agents,
+[security](concepts/security.md) and a [glossary](concepts/glossary.md).
 
 ## Contributing
 
