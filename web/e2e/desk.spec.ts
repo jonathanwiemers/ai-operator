@@ -2385,7 +2385,17 @@ test.describe('milestone pilot', () => {
         const box = (e: Element) => e.getBoundingClientRect()
         const items = [...q.querySelectorAll('[data-queue-item]')]
         return {
-          heads: [...q.querySelectorAll('[data-lane-head]')].map((h) => h.textContent!.trim()),
+          // A heading's text nodes joined by spaces: the stepper's limit is a
+          // text node of its own between icon buttons.
+          heads: [...q.querySelectorAll('[data-lane-head]')].map((h) => {
+            const w = document.createTreeWalker(h, NodeFilter.SHOW_TEXT)
+            const t: string[] = []
+            while (w.nextNode()) t.push(w.currentNode.textContent!)
+            return t.join(' ').replace(/\s+/g, ' ').trim()
+          }),
+          waves: q.querySelector('[data-waves]')?.textContent!.trim(),
+          chips: items.map((i) => i.querySelector('[data-wave]')?.textContent!.trim() ?? ''),
+          stepper: [...q.querySelectorAll('[data-stepper] button')].map((b) => box(b).height),
           order: items.map((i) => i.querySelector('[data-iid]')!.textContent!.trim()),
           positions: items.map((i) => i.querySelector('[data-position]')!.textContent!.trim()),
           waiting: [...q.querySelectorAll('[data-waiting]')].map((w) => w.textContent!.trim()),
@@ -2401,7 +2411,11 @@ test.describe('milestone pilot', () => {
           links: [...q.querySelectorAll('a')].map((a) => box(a).height),
         }
       })
-      expect(layout.heads).toEqual(['Running (1 of 3)', 'Waiting', 'Held', 'Done'])
+      // The fixture's viewer is an owner: Running has the limit stepper.
+      expect(layout.heads).toEqual(['Running 1 of 3', 'Waiting', 'Held', 'Done'])
+      expect(layout.waves).toBe('3 waves')
+      expect(layout.chips).toEqual(['W2', 'W3', 'W2', 'W2', 'W1', 'W1'])
+      if (phone) for (const h of layout.stepper) expect(h, 'stepper button height on a phone').toBeGreaterThanOrEqual(44)
       expect(layout.order).toEqual(['#281', '#282', '#283', '#284', '#279', '#280'])
       expect(layout.positions).toEqual(['3', '4', '5', '6', '1', '2'])
       expect(layout.waiting).toEqual(['after #281', 'for a free slot'])
@@ -2429,6 +2443,16 @@ test.describe('milestone pilot', () => {
       await resume.click()
       await expect(queue.getByRole('status')).toHaveText('Resuming #284…')
       expect(posts).toEqual([{ body: '{"cmd":"resume","issue":284}', clientKey: expect.any(String), kind: 'command' }])
+
+      // The stepper: + sends the limit one up, shown as pending until the
+      // view reports it; − is disabled at 1, + at 10 (unit tests).
+      await queue.getByRole('button', { name: 'More at a time' }).click()
+      await expect(queue.getByRole('status')).toHaveText('Setting the limit to 4…')
+      await expect(queue.locator('[data-limit]')).toHaveText('4')
+      expect(posts.at(-1)).toEqual({ body: '{"cmd":"parallel","parallel":4}', clientKey: expect.any(String), kind: 'command' })
+      await expect(queue.getByRole('button', { name: 'Fewer at a time' })).toBeEnabled()
+      await page.emulateMedia({ colorScheme: 'dark' })
+      await queue.screenshot({ path: join(testInfo.project.outputDir, '..', 'screenshots', `milestone-queue-dark@${size.width}.png`) })
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })
   }

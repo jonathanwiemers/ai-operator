@@ -4,6 +4,7 @@ import { test } from 'node:test'
 import {
   canRevisit,
   laneGroups,
+  parallelCommand,
   queueDone,
   queueHeld,
   queueRows,
@@ -13,6 +14,8 @@ import {
   revisitPromptID,
   waitingForTurn,
   waitingLabel,
+  waveChip,
+  wavesLabel,
 } from '../src/milestoneQueue.ts'
 
 test('queueRows: joins decisions and revisits by issue, in queue order', () => {
@@ -127,6 +130,34 @@ test('waitingLabel and resumeCommand', () => {
   assert.equal(waitingLabel([]), 'for a free slot')
   assert.equal(waitingLabel(undefined), 'for a free slot')
   assert.deepEqual(resumeCommand(12), { cmd: 'resume', issue: 12 })
+})
+
+test('parallelCommand: the limit one up or down, within 1 to 10', () => {
+  assert.deepEqual(parallelCommand(3, 1), { cmd: 'parallel', parallel: 4 })
+  assert.deepEqual(parallelCommand(3, -1), { cmd: 'parallel', parallel: 2 })
+  assert.deepEqual(parallelCommand(9, 1), { cmd: 'parallel', parallel: 10 })
+  assert.equal(parallelCommand(10, 1), null)
+  assert.deepEqual(parallelCommand(2, -1), { cmd: 'parallel', parallel: 1 })
+  assert.equal(parallelCommand(1, -1), null)
+})
+
+test('waveChip and wavesLabel: chips on planned rows, a count for several waves', () => {
+  const items = [
+    { iid: 1, wave: 1 },
+    { iid: 2, wave: 1 },
+    { iid: 3, wave: 2 },
+    { iid: 4, wave: 3 },
+    { iid: 9, wave: 0 },
+    { iid: 10 },
+  ]
+  assert.deepEqual(
+    items.map((i) => waveChip(i.wave)),
+    ['W1', 'W1', 'W2', 'W3', '', ''],
+  )
+  assert.equal(wavesLabel(items), '3 waves')
+  assert.equal(wavesLabel([{ wave: 1 }, { wave: 1 }]), '')
+  assert.equal(wavesLabel([{}, { wave: 0 }]), '')
+  assert.equal(wavesLabel([]), '')
 })
 
 test('queueHeld: counts the Active items with a hold', () => {

@@ -114,3 +114,26 @@ export function waitingLabel(waitingFor?: number[] | null): string {
 export function resumeCommand(issue: number): ChatCommand {
   return { cmd: 'resume', issue }
 }
+
+// The bounds of a milestone's parallel limit (`/agent parallel N`).
+export const parallelMin = 1
+export const parallelMax = 10
+
+// parallelCommand is the stepper's command, the limit moved by step, or
+// null when that leaves 1 to 10.
+export function parallelCommand(limit: number, step: 1 | -1): ChatCommand | null {
+  const n = limit + step
+  return n >= parallelMin && n <= parallelMax ? { cmd: 'parallel', parallel: n } : null
+}
+
+// waveChip is an item's wave chip ("W1"), '' outside the plan (wave 0).
+export function waveChip(wave?: number): string {
+  return wave && wave > 0 ? `W${wave}` : ''
+}
+
+// wavesLabel says how many waves the plan has ("3 waves"), '' for one or
+// none: the waves are the layers of the plan graph, numbered from 1.
+export function wavesLabel(items: readonly Pick<QueueItem, 'wave'>[]): string {
+  const n = Math.max(0, ...items.map((i) => i.wave ?? 0))
+  return n > 1 ? `${n} waves` : ''
+}

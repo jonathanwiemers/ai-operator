@@ -2688,6 +2688,18 @@ without scoped CSS.
   empty), *Landing*, *Ready to land* (by `readyAt`), *Waiting*, *Held* and
   *Done*; empty lanes are left out, items keep their queue position and
   order. The context sheet keeps the plain list.
+- Waves (display only, the layers of the plan graph): every planned item
+  shows a chip `W1`, `W2`, … after its number (the view's `wave`; none for
+  wave 0, outside the plan), and above the lanes a line says `N waves` when
+  the plan has more than one (`waveChip`, `wavesLabel`).
+- Owners (the `parallel` grant) get a stepper in the Running heading:
+  *Running n of* − N +, the buttons labelled *Fewer at a time* and *More at
+  a time* (44 px on phones). A click sends `{"cmd":"parallel","parallel":N}`
+  to the spec task, the same as `/agent parallel N`; − is disabled at 1, +
+  at 10 (`parallelCommand`). The new limit shows muted as pending until the
+  view's `maxParallel` reports it; a failed post or answer drops it. The
+  list's status line says *Setting the limit to N…*, then the operator's
+  answer. Everyone else sees *Running (n of N)*.
 - *Resume* (viewers with the `chat` grant, as on the pause card) sends
   `{"cmd":"resume","issue":N}` to the spec task, the same as
   `/agent resume #N`: it lifts that issue's hold only. The list shows
@@ -2697,9 +2709,10 @@ The e2e cases `milestone pilot › pilot tab and prompt link@<width>` and
 `milestone pilot › queue lanes, order and numbers@<width>` at 375, 768 and
 1280 px check the sideways scroll, the touch heights on a phone, the
 prompt link to a closed card, the queue's lanes, order, positions,
-one-line numbers, waiting and hold lines and the Resume payload
+one-line numbers, waiting and hold lines, wave chips and count, the Resume
+payload and the stepper's payload and pending limit
 (`milestone-pilot@<width>.png`,
-`milestone-queue@<width>.png`); the route checks cover
+`milestone-queue@<width>.png`, `milestone-queue-dark@<width>.png`); the route checks cover
 `stream-milestone-pilot` at the three widths.
 
 ### Pause cards
