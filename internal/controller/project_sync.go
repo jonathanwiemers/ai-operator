@@ -264,8 +264,13 @@ func (ph issuePhases) implement(ctx context.Context, is gitlab.Issue) (*aiv1.Age
 			autopilot = st.Spec.Autopilot && onAutopilot(st, is.IID)
 			// The pause reason goes in the same update as a run request,
 			// so the run sees it; a pause from this poll is copied next poll.
-			if ap := st.Status.Autopilot; autopilot && ap != nil && ap.Phase == aiv1.AutopilotPaused && ap.PausedFor == is.IID {
-				pause = ap.PausedReason
+			// A hold of the issue is its pause.
+			if ap := st.Status.Autopilot; autopilot && ap != nil {
+				if it := heldItem(ap, is.IID); ap.Phase == aiv1.AutopilotPaused && ap.PausedFor == is.IID {
+					pause = ap.PausedReason
+				} else if it != nil {
+					pause = it.Hold.Reason
+				}
 			}
 			budgetStop = budgetStopped(st, is.IID)
 		}

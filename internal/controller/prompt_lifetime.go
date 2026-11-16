@@ -142,8 +142,8 @@ func promptResolved(now time.Time, mh *aiv1.MainHealthStatus, issues map[int64]g
 
 // pauseOver reports whether assessment p, of a pause event (pilotEvents), is
 // about a pause that ended or a state that moved on. A "stuck" event can also
-// be an issue's needs-input label, so it stays while its head and the pause
-// it could be about do.
+// be an issue's needs-input label or hold, so it stays while its head and the
+// pause or hold it could be about do.
 func pauseOver(p aiv1.Prompt, st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask) bool {
 	if st == nil || st.Status.Autopilot == nil {
 		return false
@@ -160,6 +160,9 @@ func pauseOver(p aiv1.Prompt, st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTas
 		iid := p.Source.IssueIID
 		if paused && ap.PausedFor == iid && p.PostedAt != nil && ap.PausedAt.After(p.PostedAt.Time) {
 			return true // a later pause of the issue
+		}
+		if it := heldItem(ap, iid); it != nil && p.PostedAt != nil && it.Hold.Since.After(p.PostedAt.Time) {
+			return true // a later hold of the issue
 		}
 		t := tasks[iid]
 		return t != nil && !strings.HasSuffix(key, "/"+t.Status.Run.PushedSHA)

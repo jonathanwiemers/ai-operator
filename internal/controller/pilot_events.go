@@ -23,7 +23,7 @@ import (
 // milestone, once per event key. A new head or a new reason is a new key.
 
 // pilotEvents lists the events of a milestone that hold now: an autopilot
-// pause, an issue that needs input or is blocked by infra or quota, and on
+// pause, a held issue, an issue that needs input or is blocked by infra or quota, and on
 // the main-red lane (lane: the autopilot milestone that drives the main-red
 // issue) a red or flaky default branch, so the owners get one prompt for it;
 // and a stalled run of an Implement task, with its evidence from stalls (by
@@ -53,6 +53,15 @@ func pilotEvents(spec aiv1.AgentProjectSpec, mh *aiv1.MainHealthStatus, st *aiv1
 		add(kind, ap.PausedFor, "Autopilot paused: "+ap.PausedReason)
 		if ev, ok := stalledEvent(spec, ap, tasks, now); ok {
 			out = append(out, ev)
+		}
+	}
+	// A held issue is an event like a pause over it, with the same key, so
+	// the interventions per issue count alike; a pause over it already is one.
+	if ap := st.Status.Autopilot; ap != nil {
+		for _, it := range ap.Items {
+			if heldItem(ap, it.IID) != nil && (ap.Phase != aiv1.AutopilotPaused || ap.PausedFor != it.IID) {
+				add("stuck", it.IID, fmt.Sprintf("Autopilot holds #%d: %s", it.IID, it.Hold.Reason))
+			}
 		}
 	}
 	// A rebase the reviewers check again instead of a pause: the pilot hears

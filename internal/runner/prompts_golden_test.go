@@ -18,7 +18,7 @@ func TestSystemPromptsAreUnchanged(t *testing.T) {
 		"implement":  {implementSystemPrompt, "8fd4977e803db331e4f19625382c5289e23f8bedbfc52097e1dbbdb1e8affa5c"},
 		"bugbot":     {bugbotSystemPrompt, "22853472d19cf325d2ba58ec9d5f8d5b7c1b43ef8ecf5d81b74305a116105e50"},
 		"security":   {securitySystemPrompt, "9251740c21e1e3f4f12d08efbd0a08f133ad8520a515d0478c92de5631de1f69"},
-		"pilot":      {pilotSystemPrompt, "def67f24af86cedd0a397a7f18427832b643b85fa944b21c30c456fd5a0084c5"},
+		"pilot":      {pilotSystemPrompt, "cb6c982cccd5e5a4aa77d52c45e57d5595da6f9d718c3e449e47b37923b6bfaa"},
 		"pilotRules": {pilotRulesPrompt, "acba6301c97a35c00ccceba25e5275d3db2e66e555005e75124be01d51aad954"},
 		"retro":      {retroSystemPrompt, "4045a57f426e954ee971306d52634806668213370b3815ceafac61fa292c1167"},
 		"describe":   {describeSystemPrompt, "602fe49622e80041a3e0bdce43c8d88040b51583e796d07f8c57a7b062c6bb0e"},
@@ -55,6 +55,28 @@ func TestSpecPromptSiblingRule(t *testing.T) {
 	want := "Issues without a dependency between them may be implemented at the same time, so they must not change the same files; if they would, make one depend on the other."
 	if !strings.Contains(flat, want) {
 		t.Errorf("the spec system prompt lacks the sibling rule %q", want)
+	}
+}
+
+// Issues may run in parallel and a problem holds only its issue, so the
+// pilot must know of holds and how they end — Decision 6 / #468.
+func TestPilotPromptParallelAndHolds(t *testing.T) {
+	flat := strings.Join(strings.Fields(pilotSystemPrompt), " ")
+	for _, want := range []string{
+		"issues of the milestone may be implemented at the same time, up to autopilot.maxParallel",
+		"land (rebase, CI, merge) one at a time, in the order they became ready",
+		"A problem with one issue holds that issue (autopilot.items[].hold) and the others go on",
+		`A hold ends by itself once its cause is gone, or with "/agent resume #N".`,
+		"the merge request of an active queue item",
+		"a pause or hold about the issue ends; e.g.",
+		"an autopilot pause, a held issue,",
+	} {
+		if !strings.Contains(flat, want) {
+			t.Errorf("the pilot system prompt lacks %q", want)
+		}
+	}
+	if strings.Contains(flat, "the active queue item") {
+		t.Error("the pilot system prompt still speaks of the one active queue item")
 	}
 }
 

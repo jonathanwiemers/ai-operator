@@ -41,7 +41,7 @@ func MainHealthEvent(e PilotEvent) bool {
 }
 
 // PilotState hashes what a proposal of the pilot is made on: the milestone
-// description (with its rules) and the autopilot's queue and pause (spec task st) and the
+// description (with its rules) and the autopilot's queue, holds and pause (spec task st) and the
 // heads of the issues its actions are about (tasks by issue IID). The
 // proposal no longer applies once it changes.
 func PilotState(st *AgentTask, tasks map[int64]*AgentTask, actions []PilotAction) string {
@@ -53,6 +53,11 @@ func PilotState(st *AgentTask, tasks map[int64]*AgentTask, actions []PilotAction
 	if ap := st.Status.Autopilot; ap != nil {
 		fmt.Fprintf(h, "%s %d %q\n", ap.Phase, ap.PausedFor, ap.PausedReason)
 		for _, it := range ap.Items {
+			// The hold only when set: the states without one hash as before.
+			if it.Hold != nil {
+				fmt.Fprintf(h, "%d %s hold %s %q\n", it.IID, it.State, it.Hold.Kind, it.Hold.Reason)
+				continue
+			}
 			fmt.Fprintf(h, "%d %s\n", it.IID, it.State)
 		}
 	}

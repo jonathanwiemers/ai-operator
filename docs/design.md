@@ -1764,14 +1764,17 @@ counted interventions; more tools are later steps of
   deferred) or a message handed over twice is not answered twice.
 * **Events** (`internal/controller/pilot_events.go`). On every poll the
   operator derives the milestone's events from state it already has: an
-  autopilot pause (`status.autopilot`), an issue with `agent::needs-input`,
+  autopilot pause (`status.autopilot`), each held issue (an active item
+  with `items[].hold`, while the milestone runs or is paused; none for the
+  issue a pause is over), an issue with `agent::needs-input`,
   an issue blocked by `infra` or `quota` (`status.blocked` of its task), an
   automatic re-review of a rebased head (`autoReReviewHead`, while it waits
   for its review),
   and on the main-red lane only (the autopilot milestone that drives the
   main-red issue, so the owners get one prompt) a red default branch with
   its issue or a flaky one (`status.mainHealth`). Each has a key: `stuck/<issue>/<head>`
-  (a pause over the issue and its needs-input label are one event),
+  (a pause or hold over the issue and its needs-input label are one event,
+  so `maxInterventionsPerIssue` counts holds like pauses),
   `infra|quota/<issue>/<head>`, `rereview/<issue>/<head>`, `pause-<reason hash>/0/` for a pause over no
   issue, `main-red/<issue>`, `flaky/<pipeline>/<flaky issue>` (its text
   names the failing tests and ends with the failed attempt's log tail, cut

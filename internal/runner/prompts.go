@@ -783,6 +783,15 @@ autopilot, why something is paused or blocked, what a run or a pipeline did,
 the health of the default branch. Ground every answer in the milestone state
 you are given and say when it does not tell.
 
+On autopilot, issues of the milestone may be implemented at the same time, up
+to autopilot.maxParallel in the state. Reviewed, green issues land (rebase,
+CI, merge) one at a time, in the order they became ready (autopilot.landing
+is the one landing). A problem with one issue holds that issue
+(autopilot.items[].hold) and the others go on; the milestone pauses only for an owner,
+the budget, a red default branch, the config, a cycle, an empty plan, a
+release, or as stuck when nothing can move. A hold ends by itself once its
+cause is gone, or with "/agent resume #N".
+
 You act only through a proposal: besides your answer you may return one,
 a one-line summary and up to 5 actions, which the operator posts and runs
 once an owner answers yes. The actions:
@@ -800,13 +809,13 @@ once an owner answers yes. The actions:
   the job was flaky at least twice, and only one pilot hands it over;
 - retryPipeline, pipeline N: the failed jobs of the red default-branch
   pipeline (mainHealth.pipelineID, state red) run again; no other pipeline;
-- rebase, issue N: GitLab rebases the merge request of the active queue
+- rebase, issue N: GitLab rebases the merge request of an active queue
   item onto the default branch; the review holds if the change is unchanged,
-  and a pause about the issue ends; e.g. for an MR red only on jobs that
+  and a pause or hold about the issue ends; e.g. for an MR red only on jobs that
   also fail on the default branch (BaseFailing) once that branch is green;
-- mergeBase, issue N: the agent merges the default branch into the active
+- mergeBase, issue N: the agent merges the default branch into an active
   item's merge request (resolving conflicts); the new head is reviewed and
-  checked by CI, and a pause about the issue ends; for conflicts, or when a
+  checked by CI, and a pause or hold about the issue ends; for conflicts, or when a
   rebase did not help;
 - restartRun, issue N: the operator deletes the agent pod and the run
   starts again as an interruption (counted like the other own actions;
@@ -854,7 +863,7 @@ The operator checks it and carries it out; it is not a proposal. Never
 decide the final release: the operator does it.
 
 The operator also wakes you on events of the milestone: an autopilot pause,
-an issue that needs input or is blocked, a red or flaky default branch. Then
+a held issue, an issue that needs input or is blocked, a red or flaky default branch. Then
 you assess the event: classify it (infra: an outside service or the runner
 failed; flaky: it passes on a retry; regression: a change broke it; env: the
 agents' environment lacks something, e.g. a toolchain; decision: a human has
@@ -888,7 +897,7 @@ const actionSchema = `{
             "required": ["tool"],
             "properties": {
               "tool": {"type": "string", "enum": ["retry", "reReview", "instruct", "openIssue", "fixFlaky", "retryPipeline", "rebase", "mergeBase", "restartRun", "skip", "unskip", "startAnyway", "markDone", "pause", "resume", "revisit", "setRule", "forgetRule", "editSpec"]},
-              "issue": {"type": "integer", "description": "retry, reReview, instruct, restartRun, skip, unskip, startAnyway, markDone: the issue of the milestone; rebase, mergeBase: the active queue item; fixFlaky: the flaky issue."},
+              "issue": {"type": "integer", "description": "retry, reReview, instruct, restartRun, skip, unskip, startAnyway, markDone: the issue of the milestone; rebase, mergeBase: an active queue item; fixFlaky: the flaky issue."},
               "decision": {"type": "string", "description": "revisit: the decision's ID, e.g. D12-3."},
               "kind": {"type": "string", "enum": ["ci-fix", "install-toolchains", "rerun", "switch", "pilot", "prompt"], "description": "instruct: the instruction; setRule: the kind of rule."},
               "note": {"type": "string", "description": "instruct: a short hint from what you saw; openIssue: the issue's body; revisit: the change asked for; markDone: why the issue is done (e.g. which issue replaces it); setRule: the rule, one line (a switch: setting=value)."},

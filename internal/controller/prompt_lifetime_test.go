@@ -209,6 +209,10 @@ func TestAssessmentOfAPauseClosesWithThePause(t *testing.T) {
 	}
 	running := &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning}
 	since := at(-time.Hour)
+	held := func(since *metav1.Time) *aiv1.AutopilotStatus {
+		return &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning, Items: []aiv1.AutopilotItem{
+			{IID: 1, State: aiv1.AutopilotItemActive, Hold: &aiv1.ItemHold{Kind: aiv1.PauseCIRed, Reason: "CI red", Since: *since}}}}
+	}
 	assessment := func(iid int64, key string) aiv1.Prompt {
 		return aiv1.Prompt{PostedAt: at(-30 * time.Minute), Source: aiv1.PromptSource{Kind: aiv1.PromptAssessment, IssueIID: iid, Key: "event/" + key + "@3"}}
 	}
@@ -234,6 +238,9 @@ func TestAssessmentOfAPauseClosesWithThePause(t *testing.T) {
 		{"stuck pause holds", stuck, paused("x", 1, since), tasks, false},
 		{"a later pause of the issue", stuck, paused("y", 1, at(-time.Minute)), tasks, true},
 		{"the head moved", stuck, paused("x", 1, since), moved, true},
+		{"hold holds", stuck, held(since), tasks, false},
+		{"a later hold of the issue", stuck, held(at(-time.Minute)), tasks, true},
+		{"held, the head moved", stuck, held(since), moved, true},
 		{"needs input without a pause, same head", stuck, running, tasks, false},
 		{"needs input without a pause, head moved", stuck, running, moved, true},
 		{"not about a pause", assessment(1, "reviewRounds/1/sha1"), running, moved, false},

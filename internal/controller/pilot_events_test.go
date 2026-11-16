@@ -220,6 +220,73 @@ func TestPilotEventsFoldAPauseAndItsNeedsInputLabel(t *testing.T) {
 	}
 }
 
+// Each held issue is one event, keyed like a pause over it: by issue and
+// pushed head, with the hold's reason. An ended hold gives none, a new head
+// a new key, and a pause over the held issue (at limit 1) stays one event
+// with the pause's text.
+func TestPilotEventsOnePerHeldIssue(t *testing.T) {
+	spec := testProject().Spec.WithDefaults()
+	m := &gitlab.Milestone{IID: 3}
+	hold := func(iid int64, reason string) aiv1.AutopilotItem {
+		return aiv1.AutopilotItem{IID: iid, State: aiv1.AutopilotItemActive, Hold: &aiv1.ItemHold{Kind: aiv1.PauseCIRed, Reason: reason}}
+	}
+	ap := &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning, Items: []aiv1.AutopilotItem{
+		hold(1, "CI is red on !11"), hold(2, "the run failed"), {IID: 3, State: aiv1.AutopilotItemActive},
+		{IID: 4, State: aiv1.AutopilotItemSkipped, Hold: &aiv1.ItemHold{Kind: aiv1.PauseCIRed, Reason: "stale"}}}}
+	st := &aiv1.AgentTask{Spec: aiv1.AgentTaskSpec{Milestone: &aiv1.MilestoneRef{IID: 3}},
+		Status: aiv1.AgentTaskStatus{Plan: []aiv1.PlannedIssue{{IID: 1}, {IID: 2}, {IID: 3}, {IID: 4}}, Autopilot: ap}}
+	task := func(sha string) *aiv1.AgentTask {
+		return &aiv1.AgentTask{Status: aiv1.AgentTaskStatus{Run: aiv1.RunStatus{PushedSHA: sha}}}
+	}
+	tasks := map[int64]*aiv1.AgentTask{1: task("sha1"), 2: task("sha2"), 3: task("sha3")}
+	issues := map[int64]gitlab.Issue{1: {IID: 1, Milestone: m, Labels: []string{"agent::needs-input"}}, 2: {IID: 2, Milestone: m}, 3: {IID: 3, Milestone: m}}
+	events := func() []aiv1.PilotEvent {
+		return pilotEvents(spec, nil, st, issues, tasks, true, nil, time.Time{})
+	}
+
+	evs := events()
+	if len(evs) != 2 || evs[0].Key != "stuck/1/sha1" || evs[0].IssueIID != 1 || evs[0].Text != "Autopilot holds #1: CI is red on !11" ||
+		evs[1].Key != "stuck/2/sha2" || evs[1].IssueIID != 2 || evs[1].Text != "Autopilot holds #2: the run failed" {
+		t.Fatalf("two held issues are two events with their reasons (the needs-input label folded in): %+v", evs)
+	}
+
+	// The milestone is paused as well (nothing can move): the holds stay.
+	ap.Phase, ap.PausedReason = aiv1.AutopilotPaused, "nothing can move"
+	if evs := events(); len(evs) != 3 || evs[0].Key != "pause-"+hashString("nothing can move")+"/0/" || evs[1].Key != "stuck/1/sha1" || evs[2].Key != "stuck/2/sha2" {
+		t.Fatalf("a milestone pause keeps the holds' events: %+v", evs)
+	}
+
+	// At limit 1 the pause is over #1: one event, the pause's.
+	ap.PausedFor, ap.PausedReason = 1, "CI is red on !11"
+	if evs := events(); len(evs) != 2 || evs[0].Key != "stuck/1/sha1" || evs[0].Text != "Autopilot paused: CI is red on !11" || evs[1].Key != "stuck/2/sha2" {
+		t.Fatalf("a pause over a held issue is its one event: %+v", evs)
+	}
+
+	ap.Phase, ap.PausedFor, ap.PausedReason = aiv1.AutopilotRunning, 0, ""
+	ap.Items[1].Hold = nil
+	tasks[1] = task("sha1b")
+	if evs := events(); len(evs) != 1 || evs[0].Key != "stuck/1/sha1b" {
+		t.Fatalf("an ended hold gives no event, a new head a new key: %+v", evs)
+	}
+}
+
+// A hold starting or changing its reason changes the state a proposal is
+// made on; a queue without holds hashes as before.
+func TestPilotStateHasTheHolds(t *testing.T) {
+	ap := &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning, Items: []aiv1.AutopilotItem{{IID: 1, State: aiv1.AutopilotItemActive}}}
+	st := &aiv1.AgentTask{Status: aiv1.AgentTaskStatus{Autopilot: ap}}
+	state := func() string { return aiv1.PilotState(st, nil, nil) }
+	free := state()
+	ap.Items[0].Hold = &aiv1.ItemHold{Kind: aiv1.PauseCIRed, Reason: "CI is red"}
+	red := state()
+	ap.Items[0].Hold = &aiv1.ItemHold{Kind: aiv1.PauseCIRed, Reason: "CI is red again"}
+	again := state()
+	ap.Items[0].Hold = nil
+	if red == free || again == red || state() != free {
+		t.Fatalf("the state changes with a hold: %s %s %s %s", free, red, again, state())
+	}
+}
+
 // stalled returns the stalled-pause events handed to the pilot so far (the
 // keys it remembers) and its run request.
 func (e *projectEnv) stalled() ([]string, int64) {
