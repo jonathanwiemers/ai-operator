@@ -24,7 +24,9 @@ import type { MilestoneIssueRow, MilestoneView } from '../types'
 // A milestone's Issues tab (R9, decision 8): its state, progress and cost,
 // then one row per issue with its state, merge request, wall, agent and
 // paused time, cost and tokens, and the version it shipped in. Releases are
-// rows between the issues (R12, decision 15). The page header holds the
+// rows between the issues (R12, decision 15). Below the table the autopilot
+// queue is grouped by lane: running, landing, ready to land, waiting, held
+// (with Resume) and done (QueueList grouped). The page header holds the
 // title. Titles, a release's why and reason are untrusted text and render
 // as text.
 //
@@ -222,11 +224,11 @@ const sectionHead =
           Comment <code>/agent start</code> on the tracking issue to plan it now (owners).
         </small>
       </p>
-      <div v-if="milestone.autopilot?.items?.length" class="mt-[18px]">
+      <div v-if="milestone.autopilot?.items?.length" class="mt-[18px]" data-queue>
         <h3 :class="sectionHead">
           Queue <span>{{ queueDone(milestone.autopilot.items) }} / {{ milestone.autopilot.items.length }}</span>
         </h3>
-        <QueueList :namespace="namespace" :name="name" :milestone="milestone" />
+        <QueueList :namespace="namespace" :name="name" :milestone="milestone" grouped />
       </div>
       <div v-if="milestone.companions?.length" class="mt-[18px]">
         <h3 :class="sectionHead">Companions <span>{{ milestone.companions.length }}</span></h3>

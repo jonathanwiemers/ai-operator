@@ -53,3 +53,58 @@ export function waitingForTurn(queuedBehind?: number[] | null): string {
   if (!queuedBehind?.length) return ''
   return `Waiting for its turn: ${queuedBehind.map((iid) => `%${iid}`).join(', ')} go first`
 }
+
+// Lane is where an autopilot item is (decision 8 of the parallel milestone).
+export type Lane = QueueItem['lane']
+
+// LaneGroup is one lane of the Issues tab's queue: its heading and items.
+export interface LaneGroup<T> {
+  lane: Lane
+  label: string
+  items: T[]
+}
+
+const laneLabels: [Lane, string][] = [
+  ['running', 'Running'],
+  ['landing', 'Landing'],
+  ['ready', 'Ready to land'],
+  ['waiting', 'Waiting'],
+  ['held', 'Held'],
+  ['done', 'Done'],
+]
+
+// laneOf is an item's lane; an unknown one (an older operator) counts as
+// done when merged or skipped, else waiting.
+function laneOf(i: Pick<QueueItem, 'lane' | 'state'>): Lane {
+  if (laneLabels.some(([l]) => l === i.lane)) return i.lane
+  return i.state === 'Merged' || i.state === 'Skipped' ? 'done' : 'waiting'
+}
+
+const readyTime = (t?: string) => (t && Date.parse(t)) || Number.MAX_SAFE_INTEGER
+
+// laneGroups groups the queue by lane in the order of decision 8. Groups
+// keep queue order, Ready to land is sorted by readyAt (unknown last).
+// Empty groups are left out, except Running, which says "n of N".
+export function laneGroups<T extends Pick<QueueItem, 'lane' | 'state' | 'readyAt'>>(
+  items: readonly T[],
+  running: number,
+  maxParallel?: number,
+): LaneGroup<T>[] {
+  return laneLabels.flatMap(([lane, name]): LaneGroup<T>[] => {
+    const in_ = items.filter((i) => laneOf(i) === lane)
+    if (lane === 'ready') in_.sort((a, b) => readyTime(a.readyAt) - readyTime(b.readyAt))
+    if (lane !== 'running') return in_.length ? [{ lane, label: name, items: in_ }] : []
+    const label = maxParallel && maxParallel > 0 ? `${name} (${running} of ${maxParallel})` : `${name} (${running})`
+    return [{ lane, label, items: in_ }]
+  })
+}
+
+// waitingLabel says what a waiting item waits for.
+export function waitingLabel(waitingFor?: number[] | null): string {
+  return waitingFor?.length ? `after ${waitingFor.map((iid) => `#${iid}`).join(', ')}` : 'for a free slot'
+}
+
+// resumeCommand lifts the hold on one issue, the same as `/agent resume #N`.
+export function resumeCommand(issue: number): ChatCommand {
+  return { cmd: 'resume', issue }
+}

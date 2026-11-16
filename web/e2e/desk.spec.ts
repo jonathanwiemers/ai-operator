@@ -2377,16 +2377,19 @@ test.describe('milestone pilot', () => {
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })
 
-    test(`queue order and numbers@${size.width}`, async ({ page, baseURL }, testInfo) => {
+    test(`queue lanes, order and numbers@${size.width}`, async ({ page, baseURL }, testInfo) => {
       const problems = await open(page, baseURL, 'stream-milestone-issues', size)
-      const queue = page.locator('main ol[aria-label="Queue"]')
+      const queue = page.locator('main [data-queue]')
       await expect(queue).toBeVisible()
       const layout = await queue.evaluate((q) => {
         const box = (e: Element) => e.getBoundingClientRect()
         const items = [...q.querySelectorAll('[data-queue-item]')]
         return {
+          heads: [...q.querySelectorAll('[data-lane-head]')].map((h) => h.textContent!.trim()),
           order: items.map((i) => i.querySelector('[data-iid]')!.textContent!.trim()),
           positions: items.map((i) => i.querySelector('[data-position]')!.textContent!.trim()),
+          waiting: [...q.querySelectorAll('[data-waiting]')].map((w) => w.textContent!.trim()),
+          hold: q.querySelector('[data-hold] > span')!.textContent!.trim(),
           // One line box per number: a range over its text has one rect.
           iidsOneLine: items.every((i) => {
             const text = [...i.querySelector('[data-iid]')!.childNodes].find((c) => c.nodeType === 3 && c.textContent!.trim())!
@@ -2398,13 +2401,34 @@ test.describe('milestone pilot', () => {
           links: [...q.querySelectorAll('a')].map((a) => box(a).height),
         }
       })
-      expect(layout.order).toEqual(['#279', '#280', '#281', '#282', '#283'])
-      expect(layout.positions).toEqual(['1', '2', '3', '4', '5'])
+      expect(layout.heads).toEqual(['Running (1 of 3)', 'Waiting', 'Held', 'Done'])
+      expect(layout.order).toEqual(['#281', '#282', '#283', '#284', '#279', '#280'])
+      expect(layout.positions).toEqual(['3', '4', '5', '6', '1', '2'])
+      expect(layout.waiting).toEqual(['after #281', 'for a free slot'])
+      expect(layout.hold).toBe('CI failed on !306 (job docs-lint).')
       expect(layout.iidsOneLine, 'issue numbers on one line').toBe(true)
       expect(layout.inside, 'no sideways scroll in the queue').toBe(true)
       if (phone) for (const h of layout.links) expect(h, 'link height on a phone').toBeGreaterThanOrEqual(44)
       expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
       await queue.screenshot({ path: join(testInfo.project.outputDir, '..', 'screenshots', `milestone-queue@${size.width}.png`) })
+
+      // Resume on the held row sends resume for that issue to the spec chat.
+      const posts: unknown[] = []
+      await page.route(
+        (url) => url.pathname === '/api/v1/projects/team-a/shop/tasks/shop-m14-spec/chat',
+        async (r) => {
+          if (r.request().method() === 'POST') {
+            posts.push(r.request().postDataJSON())
+            return r.fulfill({ status: 200, json: { id: 993 } })
+          }
+          return r.fulfill({ status: 200, json: { messages: [] } })
+        },
+      )
+      const resume = queue.getByRole('button', { name: 'Resume #284' })
+      if (phone) expect((await resume.boundingBox())!.height, 'Resume height').toBeGreaterThanOrEqual(44)
+      await resume.click()
+      await expect(queue.getByRole('status')).toHaveText('Resuming #284…')
+      expect(posts).toEqual([{ body: '{"cmd":"resume","issue":284}', clientKey: expect.any(String), kind: 'command' }])
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })
   }

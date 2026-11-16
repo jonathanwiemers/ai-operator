@@ -73,7 +73,7 @@ export type ChatCommand =
   | { cmd: 'use'; default: true }
   | { cmd: 'effort'; effort: string }
   | { cmd: 'pause' }
-  | { cmd: 'resume' }
+  | { cmd: 'resume'; issue?: number }
   | { cmd: 'start' }
   | { cmd: 'unstart' }
   | { cmd: 'restart' }
@@ -109,7 +109,7 @@ export function commandLabel(body: string | undefined): string {
     case 'pause':
       return 'pause'
     case 'resume':
-      return 'resume'
+      return typeof o.issue === 'number' && o.issue > 0 ? `resume #${o.issue}` : 'resume'
     case 'start':
       return 'run next'
     case 'unstart':

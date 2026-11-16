@@ -1,7 +1,18 @@
 // Tests of src/milestoneQueue.ts: npm test (node --test, no extra dependencies).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { canRevisit, queueDone, queueRows, queueTone, revisitCommand, revisitPromptID, waitingForTurn } from '../src/milestoneQueue.ts'
+import {
+  canRevisit,
+  laneGroups,
+  queueDone,
+  queueRows,
+  queueTone,
+  resumeCommand,
+  revisitCommand,
+  revisitPromptID,
+  waitingForTurn,
+  waitingLabel,
+} from '../src/milestoneQueue.ts'
 
 test('queueRows: joins decisions and revisits by issue, in queue order', () => {
   const items = [
@@ -61,4 +72,58 @@ test('waitingForTurn: names the older milestones, nothing when not waiting', () 
   assert.equal(waitingForTurn([7, 9]), 'Waiting for its turn: %7, %9 go first')
   assert.equal(waitingForTurn([]), '')
   assert.equal(waitingForTurn(undefined), '')
+})
+
+test('laneGroups: lanes in order, queue order within, ready by readyAt, Running always', () => {
+  // Two running, one landing, one held, one waiting, two ready and one done.
+  const items = [
+    { iid: 1, state: 'Merged', lane: 'done' },
+    { iid: 2, state: 'Active', lane: 'running' },
+    { iid: 3, state: 'Active', lane: 'ready', readyAt: '2026-11-16T10:05:00Z' },
+    { iid: 4, state: 'Active', lane: 'landing' },
+    { iid: 5, state: 'Active', lane: 'held', hold: { kind: 'ciRed', reason: 'CI is red', since: '2026-11-16T09:00:00Z' } },
+    { iid: 6, state: 'Active', lane: 'running' },
+    { iid: 7, state: 'Active', lane: 'ready', readyAt: '2026-11-16T10:01:00Z' },
+    { iid: 8, state: 'Pending', lane: 'waiting', waitingFor: [5] },
+  ]
+  const groups = laneGroups(items, 2, 3)
+  assert.deepEqual(
+    groups.map((g) => [g.label, g.items.map((i) => i.iid)]),
+    [
+      ['Running (2 of 3)', [2, 6]],
+      ['Landing', [4]],
+      ['Ready to land', [7, 3]],
+      ['Waiting', [8]],
+      ['Held', [5]],
+      ['Done', [1]],
+    ],
+  )
+  assert.deepEqual(laneGroups([], 0, 3).map((g) => g.label), ['Running (0 of 3)'])
+  assert.deepEqual(laneGroups([], 1).map((g) => g.label), ['Running (1)'])
+  // Unknown ready time last; an unknown lane goes by state.
+  assert.deepEqual(
+    laneGroups(
+      [
+        { iid: 1, state: 'Active', lane: 'ready' },
+        { iid: 2, state: 'Active', lane: 'ready', readyAt: '2026-11-16T10:00:00Z' },
+        { iid: 3, state: 'Skipped' },
+        { iid: 4, state: 'Pending' },
+      ],
+      0,
+      3,
+    ).map((g) => [g.lane, g.items.map((i) => i.iid)]),
+    [
+      ['running', []],
+      ['ready', [2, 1]],
+      ['waiting', [4]],
+      ['done', [3]],
+    ],
+  )
+})
+
+test('waitingLabel and resumeCommand', () => {
+  assert.equal(waitingLabel([1, 2]), 'after #1, #2')
+  assert.equal(waitingLabel([]), 'for a free slot')
+  assert.equal(waitingLabel(undefined), 'for a free slot')
+  assert.deepEqual(resumeCommand(12), { cmd: 'resume', issue: 12 })
 })

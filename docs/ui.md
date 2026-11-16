@@ -39,7 +39,8 @@ autopilot queue beside it.
 ![Project page with its milestones, the pilot message box and a run that asks a question, beside the needs-you panel and the queue](assets/screenshots/project-stream.webp)
 
 **Milestone Issues**: one row per issue with its state, merge request, time,
-cost and tokens, the releases between them and the queue.
+cost and tokens, the releases between them and the queue by lane (running,
+landing, ready to land, waiting, held with Resume, done).
 
 ![Paused milestone with its issue table, release rows and the pause banner](assets/screenshots/milestone-issues.webp)
 
@@ -2662,15 +2663,28 @@ without scoped CSS.
   questions* for a closed prompt and scrolls to its card.
 - A queue item shows its position, its number (never wrapped), its title
   (two lines, the rest opens on tap) and its state, which wrap onto lines of
-  their own where the column is narrow; below come the merge request,
-  companion, task and decisions. Links are 44 px high on phones,
-  *Revisit* is a `UButton`. The order is `queueRows` (`milestoneQueue.ts`).
+  their own where the column is narrow; below come what a waiting item
+  waits for (`after #1, #2`, or `for a free slot`), the merge request,
+  companion, task and decisions, and for a held item the hold's reason (as
+  text) with *Resume*. Links and *Resume* are 44 px high on phones,
+  *Revisit* and *Resume* are `UButton`s. The order is `queueRows`
+  (`milestoneQueue.ts`).
+- On the Issues tab the queue is grouped by lane (`laneGroups`):
+  *Running (n of N)* (the view's `running` of `maxParallel`, shown also when
+  empty), *Landing*, *Ready to land* (by `readyAt`), *Waiting*, *Held* and
+  *Done*; empty lanes are left out, items keep their queue position and
+  order. The context sheet keeps the plain list.
+- *Resume* (viewers with the `chat` grant, as on the pause card) sends
+  `{"cmd":"resume","issue":N}` to the spec task, the same as
+  `/agent resume #N`: it lifts that issue's hold only. The list shows
+  *Resuming #N…*, then the operator's answer.
 
 The e2e cases `milestone pilot › pilot tab and prompt link@<width>` and
-`milestone pilot › queue order and numbers@<width>` at 375, 768 and
+`milestone pilot › queue lanes, order and numbers@<width>` at 375, 768 and
 1280 px check the sideways scroll, the touch heights on a phone, the
-prompt link to a closed card and the queue's order, positions and
-one-line numbers (`milestone-pilot@<width>.png`,
+prompt link to a closed card, the queue's lanes, order, positions,
+one-line numbers, waiting and hold lines and the Resume payload
+(`milestone-pilot@<width>.png`,
 `milestone-queue@<width>.png`); the route checks cover
 `stream-milestone-pilot` at the three widths.
 
