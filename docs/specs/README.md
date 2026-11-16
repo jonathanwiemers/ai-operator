@@ -30,6 +30,7 @@ specs were written, so later ones build on earlier ones.
 7. [Autopilot milestones one after another](strict-milestone-order.spec.md)
 8. [Desk: run milestones in the order I choose, and close finished ones](desk-queue-closeout.spec.md)
 9. [Runs that hang get noticed and restarted](run-watchdog.spec.md)
+10. [Autopilot works on several issues of a milestone at once](parallel-issues.spec.md)
 
 ## Web UI (the Desk)
 
