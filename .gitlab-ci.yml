@@ -1,7 +1,7 @@
 # The checks of .github/workflows/ci.yml, one job per check, and the release
 # job, the GitLab counterpart of .github/workflows/release.yml: on a release
 # tag it publishes the images and the chart to registry.gitlab.com and adds
-# the install section to the GitLab release (docs/releasing.md).
+# the install section to the GitLab release (docs/contributing/releasing.md).
 
 include:
   - project: jo.wiemers/devops/ci
@@ -187,7 +187,7 @@ helm-lint:
     - apk add --no-cache make
     - make helm-lint
 
-# A release is a decision, not a side effect of a merge (docs/releasing.md):
+# A release is a decision, not a side effect of a merge (docs/contributing/releasing.md):
 # pushes to main run the checks only. A release is a tag YEAR.MONTH.N on main
 # with a GitLab release, which
 #   - the operator creates through the API (planner, pilot, `/agent release`,

@@ -14,7 +14,7 @@ export function stripComments(src, kind) {
 const COLOUR = /#[0-9a-fA-F]{8}\b|#[0-9a-fA-F]{6}\b|#[0-9a-fA-F]{3,4}\b|\b(?:rgba?|hsla?|oklch)\(/g
 const HTML = /v-html|\binnerHTML\b|\bouterHTML\b|\binsertAdjacentHTML\b/g
 const MEDIA_WIDTH = /@media[^{]*/g
-// The three widths (docs/design.md, "Widths"): a tablet or desktop rule
+// The three widths (docs/contributing/design.md, "Widths"): a tablet or desktop rule
 // starts at 760 or 1180 px, a rule below one ends a hundredth under it, so the
 // two never match together (Tailwind's tablet: and desktop: are min-width).
 const ALLOWED_WIDTHS = { min: new Set(['760', '1180']), max: new Set(['759.98', '1179.98']) }

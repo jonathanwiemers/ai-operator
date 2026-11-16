@@ -1,7 +1,7 @@
 name: Release
 
 # Publishes a GitLab release on GitHub. GitLab decides and tags releases
-# (docs/releasing.md); the push mirror carries each tag YEAR.MONTH.N here, and
+# (docs/contributing/releasing.md); the push mirror carries each tag YEAR.MONTH.N here, and
 # this workflow builds that tag:
 #   - images  ghcr.io/<owner>/ai-operator:<version>, ghcr.io/<owner>/ai-operator-agent:<version>
 #   - chart   oci://ghcr.io/<owner>/charts/ai-operator --version <version>

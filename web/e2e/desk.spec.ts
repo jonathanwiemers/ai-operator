@@ -641,7 +641,7 @@ test('stream-project finishing holds@375', async ({ page, baseURL }, testInfo) =
   expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
 })
 
-// The shell on a phone (App.vue, docs/design.md "Phones"): on a short page
+// The shell on a phone (App.vue, docs/contributing/design.md "Phones"): on a short page
 // the mobile bar keeps its natural height instead of stretching with the
 // grid's rows, on Not found and on an empty list.
 for (const { name, empty } of [

@@ -98,7 +98,7 @@ which has the task's name, e.g. `sandbox-spec-m1-tags-and-due-dates` or
 ### T2 – Planning a milestone
 
 1. Create a milestone **Tags and due dates** and paste
-   [`hack/sandbox/milestone-spec.md`](../hack/sandbox/milestone-spec.md) as its
+   [`hack/sandbox/milestone-spec.md`](../../hack/sandbox/milestone-spec.md) as its
    description. The description contains the line `/agent spec`.
 2. Wait for the next poll.
 
@@ -305,7 +305,7 @@ kubectl -n agents exec $POD -c runner -- ls /runner                             
 the agent container's environment. Its engine credentials are present.
 
 Then run the two probe issues from
-[`hack/sandbox/probe-issues.md`](../hack/sandbox/probe-issues.md). They ask the
+[`hack/sandbox/probe-issues.md`](../../hack/sandbox/probe-issues.md). They ask the
 agent to report its environment, and to plant a malicious `core.fsmonitor`
 and git hook. Check the results as described there. If the agent refuses
 probe 2, run the same `git config` command yourself with

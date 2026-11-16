@@ -1,4 +1,4 @@
-// How a Desk tone looks on Nuxt UI's UBadge (docs/design.md, "Badge tones").
+// How a Desk tone looks on Nuxt UI's UBadge (docs/contributing/design.md, "Badge tones").
 // The class strings are literal so Tailwind finds them.
 import type { Tone } from './format'
 

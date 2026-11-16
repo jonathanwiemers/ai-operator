@@ -7,7 +7,7 @@
 @import 'tailwindcss/utilities.css' layer(utilities);
 @import '@nuxt/ui';
 
-/* The three widths (docs/design.md, "Widths"): phone is the default, tablet
+/* The three widths (docs/contributing/design.md, "Widths"): phone is the default, tablet
    from 760 px, desktop from 1180 px. Tailwind's sm to 2xl are removed, so
    utilities use tablet: and desktop: only. */
 @theme {
@@ -123,7 +123,7 @@
   color-scheme: dark;
 }
 
-/* Nuxt UI's theme, mapped from the tokens above (docs/design.md, "Nuxt UI
+/* Nuxt UI's theme, mapped from the tokens above (docs/contributing/design.md, "Nuxt UI
    tokens"). Its colour plugin would inject these through a <style> element,
    which the CSP (style-src 'self') refuses; it is not installed (main.ts).
    They are set once: the tokens they name change in .dark, so they follow.
@@ -244,7 +244,7 @@
 
 /* Element rules live in the base layer: unlayered CSS (scoped styles, the
    classes below) and Tailwind's later layers win over them, whatever the
-   specificity. Classes do not go here (docs/design.md, "Desk styles"). */
+   specificity. Classes do not go here (docs/contributing/design.md, "Desk styles"). */
 @layer base {
   * {
     box-sizing: border-box;
@@ -358,7 +358,7 @@
     }
 
     /* Hit areas: on phones every control is at least 44 px high and a
-       button at least 44 px wide (docs/design.md, "Phones"). min-height
+       button at least 44 px wide (docs/contributing/design.md, "Phones"). min-height
        beats a smaller height whatever the cascade, so the scoped heights of
        34 px and less give way; !important keeps a rule or utility that sets
        min-height from undoing it. Checkboxes and radios keep their size.

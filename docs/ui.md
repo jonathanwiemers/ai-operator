@@ -1977,9 +1977,9 @@ How it works:
   the fixtures its requests need. The checks run with the system in light
   mode; `overview-dark` sets `colorScheme: 'dark'` for dark screenshots, and
   one more check switches the scheme on an open page and expects the dark
-  tokens and back ([design.md](design.md#desk-styles)).
+  tokens and back ([design.md](contributing/design.md#desk-styles)).
 
-  The phone shell ([design.md](design.md#desk-styles), *Phones*) has
+  The phone shell ([design.md](contributing/design.md#desk-styles), *Phones*) has
   checks of its own at 375 px: the mobile bar stays under 70 px high on Not
   found and on an empty research list, and the inputs of the task's Chat
   tab (the chat composer's among them) and the stream search compute to at
@@ -2142,7 +2142,7 @@ colours through an inline `<style>` (`useHead`), so it is left out:
 `main.ts` installs only Nuxt UI's icons plugin, not the whole
 `@nuxt/ui/vue-plugin` (which would also add the colour plugin and an unhead
 instance), and `style.css` defines the colour variables
-([design.md](design.md#desk-styles)). Colour mode is off (`colorMode: false`,
+([design.md](contributing/design.md#desk-styles)). Colour mode is off (`colorMode: false`,
 `colorScheme.ts` sets `.dark`), fonts are the system's (the plugin's font
 handling is off), and components that use `useHead` (`UBanner`, `UKbd`, and
 the ones that show shortcuts with `UKbd`) are not used. Tailwind's
@@ -2921,7 +2921,7 @@ table at its top; the matchers are in `web/test/conventions.mjs`:
 - `api-call-outside-client`: `get<`/`post<` and calls of the `get`/`post`
   helpers imported from `api.ts`, outside `src/client.ts`. **Enforced.**
 - `breakpoint`: `@media` widths other than the three widths of
-  [design.md](design.md#desk-styles): `min-width` 760 or 1180 px,
+  [design.md](contributing/design.md#desk-styles): `min-width` 760 or 1180 px,
   `max-width` 759.98 or 1179.98 px, nothing else in px. **Enforced.**
 
 All four rules are enforced: any hit fails `npm test`. A rule with

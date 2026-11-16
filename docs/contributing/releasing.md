@@ -1,9 +1,9 @@
 # Releasing
 
 Releases are built twice: by the `release` job in
-[`.gitlab-ci.yml`](../.gitlab-ci.yml) to `registry.gitlab.com` (what the
+[`.gitlab-ci.yml`](../../.gitlab-ci.yml) to `registry.gitlab.com` (what the
 cluster deploys) and by
-[`.github/workflows/release.yml`](../.github/workflows/release.yml) to
+[`.github/workflows/release.yml`](../../.github/workflows/release.yml) to
 `ghcr.io`.
 
 **A release is a decision, not a side effect of a merge.** A merge to `main`
@@ -11,7 +11,7 @@ runs the checks and releases nothing. The cluster follows every GitLab
 release, so a release is a deploy: the operator releases ai-operator like
 any other project it manages, when the planner, the pilot, an owner or the
 end of a milestone decides so, and says why
-([usage.md](usage.md#releases)). GitHub builds the same release again when
+([usage.md](../usage.md#releases)). GitHub builds the same release again when
 the tag arrives (see [GitHub releases](#github-releases)).
 
 ## Where the code lives
@@ -22,10 +22,10 @@ everything is mirrored to GitHub.
 
 **GitHub is the public repository**
 ([jonathanwiemers/ai-operator](https://github.com/jonathanwiemers/ai-operator)):
-issues, pull requests ([CONTRIBUTING.md](../CONTRIBUTING.md)), releases and
+issues, pull requests ([CONTRIBUTING.md](../../CONTRIBUTING.md)), releases and
 security advisories. GitLab push-mirrors `main` and every tag to it. Each
 release tag that arrives starts
-[`release.yml`](../.github/workflows/release.yml), which publishes that
+[`release.yml`](../../.github/workflows/release.yml), which publishes that
 version to `ghcr.io` and as a GitHub release.
 
 The owner sets the mirror up by hand: in GitLab, *Settings → Repository →
@@ -89,7 +89,7 @@ The operator binary knows its release: the Dockerfile's `ARG VERSION`
 (default `dev`) is linked in as `main.version`, which the operator logs at
 start and compares with the tags of `--self-project` (a companion of the
 operator's own project lands once the running release contains the merge,
-see [usage.md](usage.md#landing)). GitHub passes it as a build argument; the
+see [usage.md](../usage.md#landing)). GitHub passes it as a build argument; the
 GitLab job writes it into its copy of the Dockerfile before the build. A
 local `make docker-build` is `dev`, which never counts as a release.
 
@@ -100,7 +100,7 @@ Nothing in CI decides or tags: the release exists first, and the tag's
 pipeline builds it.
 
 * **The operator** creates it through the API (`POST /projects/:id/releases`,
-  like for every project it manages, see [usage.md](usage.md#releases)) when
+  like for every project it manages, see [usage.md](../usage.md#releases)) when
   a release decision is due: the planner's after an issue, the pilot's, an
   owner's `/agent release [reason]` on the tracking issue, a companion
   waiting for its home release, the sweep outside milestones, and the final
@@ -120,7 +120,7 @@ pipeline builds it.
   records, comment `/agent release [reason]` on a milestone's tracking issue
   instead.
 
-The `release` job in [`.gitlab-ci.yml`](../.gitlab-ci.yml) is the only job
+The `release` job in [`.gitlab-ci.yml`](../../.gitlab-ci.yml) is the only job
 in the pipeline of a tag `YEAR.MONTH.N`: the tagged commit is on `main`, and
 its merge request and push pipelines ran the checks already, so the tag
 pipeline does not run them again. Tag only commits of `main` whose pipeline

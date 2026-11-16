@@ -311,7 +311,7 @@ and records their outcome:
 A run's pod has a deadline of the depth's timeout plus 2 minutes and is never
 restarted. Like a task's pod it has a `runner` and an `agent` container, but
 no git, no GitLab token and no workspace volume (see
-[design.md](design.md#pod-topology)). Deleting a research deletes the pod of
+[design.md](contributing/design.md#pod-topology)). Deleting a research deletes the pod of
 its current run.
 
 ## The agent's answer
@@ -459,10 +459,10 @@ tab: each call is an `agent_calls` row (kind `research`, task
 Research stores its runs in a Postgres database you provide; the operator
 owns the schema. The same database holds the factory's tables, which only the
 operator writes and the UI reads: `history_events` and `agent_calls` (see
-[design.md](design.md#history)), `chat_messages`, and the Desk's milestone
+[design.md](contributing/design.md#history)), `chat_messages`, and the Desk's milestone
 snapshot `desk_milestones`, `desk_milestone_issues`, `desk_follow_ups` and
 `desk_milestone_releases` with its backfill records `desk_backfill` and `desk_backfill_projects`
-(see [design.md](design.md#desk-snapshot)). They expire with
+(see [design.md](contributing/design.md#desk-snapshot)). They expire with
 `research.historyRetention`; a backfill record goes with its milestone. The
 chart is set up for the way the Zalando postgres-operator provides a
 database: a host, and one Secret per login with the keys `username` and

@@ -5,7 +5,7 @@ CONTROLLER_TOOLS_VERSION ?= v0.23.0
 HELM ?= helm
 CHART := charts/ai-operator
 # Chart version for helm-package. Releases pass the tag (YEAR.MONTH.N, see
-# docs/releasing.md); the operator picks it, never the build.
+# docs/contributing/releasing.md); the operator picks it, never the build.
 VERSION ?= 0.0.0-dev
 
 .PHONY: all

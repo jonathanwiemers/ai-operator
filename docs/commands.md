@@ -69,7 +69,7 @@ task's *Restart run* control or Desk chat instead.
 
 On an autopilot pause of kind [`stalled`](usage.md#stalled), restarting the
 run (or the run logging again or ending) is a way out; the pause ends once
-the run moves. See [Stall detection](design.md#stall-detection).
+the run moves. See [Stall detection](contributing/design.md#stall-detection).
 
 Moving the issue back to `agent::ready` also starts a run, e.g. after you
 answered the agent's questions.

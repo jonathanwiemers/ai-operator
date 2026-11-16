@@ -20,7 +20,7 @@ Only the latest release (`YEAR.MONTH.N`) gets fixes. Upgrade with
 
 ## Scope
 
-The threat model is described in [docs/design.md](docs/design.md#security).
+The threat model is described in [docs/contributing/design.md](docs/contributing/design.md#security).
 In particular, these are in scope:
 
 - the model, or instructions planted in issues, comments, code or CI logs,

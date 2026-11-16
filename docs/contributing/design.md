@@ -1,10 +1,10 @@
 # ai-operator design
 
 The operator turns GitLab milestones and issues into work for coding agents
-running in Kubernetes pods. Humans stay in GitLab: they write specs, answer
-questions, move cards on the board and review merge requests. For the
-user-facing workflow see [usage.md](usage.md), for all settings
-[configuration.md](configuration.md).
+running in Kubernetes pods. A milestone runs on autopilot; the pilot handles
+what goes wrong, and you steer from the Desk. For the user-facing workflow
+see [usage.md](../usage.md), for all settings
+[configuration.md](../configuration.md).
 
 **Status:** v1alpha1, first version. Unit and end-to-end tests (fake GitLab,
 fake agent, real git) pass. It has not yet run against a real cluster, a real
@@ -77,12 +77,12 @@ run only the factory.
   result (branch, MR, comments, labels).
 * The **agent container** runs the agent CLIs on the checkout. It has the
   model credentials, nothing else (see [Security](#security)).
-* The optional **web UI** (`ai-operator-ui`, [ui.md](ui.md)) shows the tasks
+* The optional **web UI** (`ai-operator-ui`, [ui.md](../ui.md)) shows the tasks
   of the projects a user's OIDC roles grant. It only reads AgentProjects and
   AgentTasks from the Kubernetes API and never uses the operator's GitLab
   token; with a user's GitLab account connected it reads threads and posts
   comments (also the milestone chat to the pilot) with that user's token.
-* The optional **research controller** ([research.md](research.md)) runs
+* The optional **research controller** ([research.md](../research.md)) runs
   each `AgentResearch` once or on its cron schedule: it chooses the agent
   from the usage left, starts one pod per run without git, and records the
   outcome. The runner of that pod asks the agent, validates the answer
@@ -263,7 +263,7 @@ planner's summary is kept in the spec task's status (`kubectl get agenttask
 |------|---------------|---------|
 | `AgentProject` | you | GitLab connection, label workflow, agent image, engines/models per role, lifecycle and limits |
 | `AgentTask` | operator | one per planned milestone (`Spec`), per handed-over issue (`Implement`) and per milestone with a pilot (`Coordinate`); owns the pod and the workspace PVC |
-| `AgentResearch` | you, or the UI for one-offs | a research question run once or on a schedule against a project's engines; owns the pod of its current run. Its results live in Postgres, not in etcd. See [research.md](research.md#agentresearch) |
+| `AgentResearch` | you, or the UI for one-offs | a research question run once or on a schedule against a project's engines; owns the pod of its current run. Its results live in Postgres, not in etcd. See [research.md](../research.md#agentresearch) |
 
 An `AgentResearch` follows the same split: the operator writes the top-level
 status, the runner only `status.run` (outcome, cost, usage readings), and the
@@ -342,7 +342,7 @@ Each pod has two containers, see [Security](#security):
   uses: it deletes the agent pod on purpose (see
   [Stall detection](#stall-detection)).
 
-**Research runs** (`AgentResearch`, see [research.md](research.md#runs)) get
+**Research runs** (`AgentResearch`, see [research.md](../research.md#runs)) get
 one short-lived pod per run, `<research>-<run ID prefix>`, with the label
 `ai.wiemers.me/research` and the same two containers, without git:
 
@@ -432,7 +432,7 @@ on the issue's head are used up and the task is stalled again, or
 pause reason holds the evidence without the logs (those stay in the Desk).
 Resume after Desk chat `restart` (the task's *Restart run* button; not a
 pause-card button) or when the run ends. See the
-[spec](specs/run-watchdog.spec.md).
+[spec](../specs/run-watchdog.spec.md).
 
 ## Lifecycle of long-lived issues
 
@@ -540,7 +540,7 @@ start or keep a pod. On a project with
 agent `message` rows, cut to 30 KiB starting from the oldest. A fresh
 implementer session gets it in place of the issue thread, which the runner
 does not read there. See
-[desk-live-agent-chat.spec.md](specs/desk-live-agent-chat.spec.md).
+[desk-live-agent-chat.spec.md](../specs/desk-live-agent-chat.spec.md).
 
 A chat turn on a pilot (`Coordinate` task) gets the milestone state the
 pilot's GitLab messages get (`pilotState`, as untrusted JSON) and one rule:
@@ -548,7 +548,7 @@ answer from the state and the session, name the Desk command or proposal
 to act, and never claim to have acted. The turn stays read-only. Since
 pilots are outside the run capacity, the Desk's questions to a pilot do not
 wait behind an implementer. See
-[desk-ask-the-pilot.spec.md](specs/desk-ask-the-pilot.spec.md).
+[desk-ask-the-pilot.spec.md](../specs/desk-ask-the-pilot.spec.md).
 
 Spec tasks have no issue to block, but get the same one retry: the runner
 also reports `infra` for a planning run that failed on a transient GitLab or
@@ -690,7 +690,7 @@ nothing is lost.
   with a bounded read up to `minLines + 1`. The runner sets a 5 s timeout
   on the hook in the `--settings` it passes. The runner wiring and the
   `readGate` field come with later slices of the milestone (see
-  [the spec](specs/read-gate-and-writer.spec.md)); until then nothing calls
+  [the spec](../specs/read-gate-and-writer.spec.md)); until then nothing calls
   the hook.
 * **Step-size gate.** `ai-runner step-gate --max-lines N [--state-dir DIR]`
   (`internal/runner/stepgate.go`) is a claude `PostToolUse` hook for
@@ -778,7 +778,7 @@ was introduced keep `usage` and are not rewritten. A call without a split
 `cost_source` is `unknown`, so "n/a" never reads as $0. Claude's cost is
 `reported`; for calls that report tokens but no cost (cursor), the operator
 estimates it from `--pricing-file` when it writes the row (`estimated`,
-see [configuration.md](configuration.md#pricing)). Three jsonb columns
+see [configuration.md](../configuration.md#pricing)). Three jsonb columns
 hold the detail: `models` (per model tokens and `costUSD`, subagent models
 included), `context_series` (context size of each main-thread turn, at most
 500 points) and `subagent_turns` (indexes into it after which a subagent
@@ -1260,7 +1260,7 @@ about it carry a prefix (`about`).
 
 ## Checkpoints and Conventional Commits
 
-Usage: [When a run is cut off](usage.md#when-a-run-is-cut-off). The
+Usage: [When a run is cut off](../usage.md#when-a-run-is-cut-off). The
 implementation notes are under Token economy ("Checkpoints", "Folding
 checkpoints").
 
@@ -1600,7 +1600,7 @@ stateDiagram-v2
   (`status.autopilot.closeWaitsForCompanions`, `<project>!<iid>`). It
   closes first and comments after: the next poll lists active milestones
   only, so the spec task is deleted and the comment cannot repeat. See
-  [autopilot-close-milestone.spec.md](specs/autopilot-close-milestone.spec.md).
+  [autopilot-close-milestone.spec.md](../specs/autopilot-close-milestone.spec.md).
 * **Off.** Removing the marker sets `phase: Off` and closes the tracking
   issue; if the milestone is no longer planned at all, this happens before
   the spec task is deleted.
@@ -1646,7 +1646,7 @@ A milestone's pilot is a `Coordinate` task with its own pod, workspace and
 resumed session (`agents.pilot`, light model). It answers, and acts
 through proposals an owner accepts or, when it manages, on its own within
 counted interventions; more tools are later steps of
-[the spec](specs/milestone-coordinator.spec.md).
+[the spec](../specs/milestone-coordinator.spec.md).
 
 * **Lifecycle.** The project controller keeps one `Coordinate` task per
   planned milestone with a tracking issue (`spec.issue`): the autopilot's
@@ -2350,7 +2350,7 @@ Things to keep in mind with subscriptions:
   `research.maxUsagePercent` (default 70) runs. With none, a one-off waits
   and a scheduled run is skipped until the earliest reset, so the factory
   keeps the rest of every window. See
-  [research.md](research.md#choosing-agents).
+  [research.md](../research.md#choosing-agents).
 * The plans are meant for your own use. Check the terms of your plan before
   running agents for a team on a personal subscription; use API keys for that.
 * With a subscription the reported cost is the notional API price. It is
@@ -2362,8 +2362,8 @@ An issue can change one **companion repository** besides its home project
 (the AgentProject's `spec.gitlab.project`) in the same run and the same
 agent session: typically a feature here plus the infra config that turns it
 on. The spec with the options and trade-offs is
-[specs/cross-repo-changes.spec.md](specs/cross-repo-changes.spec.md); how
-it is used: [usage.md](usage.md#companion-repository).
+[specs/cross-repo-changes.spec.md](../specs/cross-repo-changes.spec.md); how
+it is used: [usage.md](../usage.md#companion-repository).
 
 **The companion checkout in the home task (option A).** The issue's pod
 gets a second mirror and checkout, the one implementer session edits both
@@ -2387,7 +2387,7 @@ model.
    repeated one, and one whose `paths` is empty or matches
    `.gitlab-ci.yml`, `.gitlab/` or the whole tree (`internal/pathspec`);
    condition `CrossRepoReady` names them (see
-   [configuration.md](configuration.md#speccrossrepo)). Every use of the
+   [configuration.md](../configuration.md#speccrossrepo)). Every use of the
    targets goes through `crossRepoTargets`, so a dropped target counts
    nowhere.
 3. The issue: a milestone line `/agent repo <path|url> [merge]`
@@ -2419,7 +2419,7 @@ slug>` (details under [Security](#security)). The implementer's user
 prompt gets a "Companion repository" section, the system prompts are
 unchanged (prompt cache). claude gets `--add-dir`; a cursor implementer is
 routed to the role's claude fallback, else `agents.implement`, with a
-notice (see [configuration.md](configuration.md#fallback-engine)).
+notice (see [configuration.md](../configuration.md#fallback-engine)).
 
 **The path check.** Before any push of either tree the runner checks the
 companion range in its own mirror: every path within `paths`, no CI
@@ -2765,7 +2765,7 @@ PKCE); their roles grant access per project, nothing is visible without a
 rule. Sessions are encrypted cookies: the user name and roles in one, the
 provider's refresh token in another ([session model](#desk-session-model)). Without
 OIDC it only listens on localhost (`kubectl port-forward`). Details in
-[ui.md](ui.md#security).
+[ui.md](../ui.md#security).
 
 **Research runs read untrusted web content.** A web page can carry a prompt
 injection, so a research run's pod holds less than a task's:
@@ -2845,12 +2845,12 @@ deadline) or *refusing* (`invalid_grant` outside the window,
 both cookies are cleared, 401). With several replicas a parallel renewal on
 another pod can lose, since the cache is per process; the chart runs one.
 Logout revokes the refresh token (RFC 7009). The requirements are in
-[desk-session-refresh](specs/desk-session-refresh.spec.md).
+[desk-session-refresh](../specs/desk-session-refresh.spec.md).
 
 ## Desk styles
 
 The Desk's global styles are `web/src/style.css`. It imports Tailwind's
-theme and utilities and Nuxt UI's styles ([ui.md](ui.md#ui-kit)); views on
+theme and utilities and Nuxt UI's styles ([ui.md](../ui.md#ui-kit)); views on
 the kit use utilities, the others add scoped CSS on top.
 
 **Tokens.** CSS custom properties hold the palette and the shared sizes:
@@ -2862,7 +2862,7 @@ danger), `--radius`, `--radius-sm`, `--shadow`, `--shadow-hover`, `--font`
 and `--mono`. The light values are on `:root`, the dark ones on `.dark`, with
 the same names; a token missing from `.dark` is the same in both schemes.
 Colours outside `style.css` are flagged by the conventions check
-([ui.md](ui.md#conventions-check)).
+([ui.md](../ui.md#conventions-check)).
 
 **Light and dark.** The Desk follows the system, there is no toggle.
 `web/src/colorScheme.ts`, called first in `main.ts`, sets the `dark` class
@@ -2889,7 +2889,7 @@ empty state the global `.empty`, an error or reason line utilities
 global class lacks (`EventCard`'s `.card` padding). There is no global
 `.btn` any more. The shell (`App.vue`, `RailNav.vue`, `SignIn.vue`) is in the
 initial bundle, so its controls are plain elements with utilities: a Nuxt UI
-component there costs the bundle budget ([ui.md](ui.md#bundle-budget)).
+component there costs the bundle budget ([ui.md](../ui.md#bundle-budget)).
 Text cut to fit is `Truncated` (opens on tap); a `title` only repeats what
 can also be read elsewhere, since touch cannot show it.
 
@@ -2914,7 +2914,7 @@ Tailwind's `sm` to `2xl`, and defines `--breakpoint-tablet: 760px` and
 `--breakpoint-desktop: 1180px`. A `max-width` ends a hundredth of a pixel
 below a `min-width` breakpoint, so at exactly 760 or 1180 px a scoped rule and
 a `tablet:` or `desktop:` utility never both apply. The conventions check
-([ui.md](ui.md#conventions-check)) fails on any other `@media` width. What
+([ui.md](../ui.md#conventions-check)) fails on any other `@media` width. What
 each component does at a width is its own choice: the board shows four
 columns on a desktop, two below it and one on a phone; the stream's context
 panel is hidden below desktop.
@@ -2924,7 +2924,7 @@ viewport meta of `web/index.html` is `width=device-width, initial-scale=1,
 viewport-fit=cover, interactive-widget=resizes-content`: the page draws
 under notches and rounded corners, and Chrome on Android shrinks the layout
 viewport when the keyboard opens (iOS ignores the key; the composer handles
-it there, with `--keyboard-inset`, see [ui.md](ui.md#composer)).
+it there, with `--keyboard-inset`, see [ui.md](../ui.md#composer)).
 
 - *Viewport height.* Full-height rules use `dvh`, after a `vh` line for
   browsers without it (`height: 100vh; height: 100dvh`), so they follow the
@@ -3056,7 +3056,7 @@ own `--tone-*-bg` and `--tone-*-fg` tokens, so the look is as before. The
 | `internal/controller/companion_gate.go`, `companions.go`, `companions_merge.go`, `companions_queue.go` | the companion in the home merge gate, landing by rule, who merges, the queue rule |
 | `internal/e2e` | end-to-end tests over the exported operator, runner and UI APIs: fake Kubernetes, `gitlabfake.Projects` with local bare git remotes, a scripted engine and a fake clock, stepped poll by poll (a companion milestone with and without `merge`, a path violation) |
 | `internal/ui` | web UI server: OIDC login, CEL claim mapping, access rules, session cookies, JSON API, change events |
-| `cmd/ui`, `web/` | web UI binary; the Vue app (`web/src`), embedded from `web/dist/app`. `web/src/client.ts` is the only API caller, `web/src/ui` holds the kit's own components, `components/Markdown.vue` is the one markdown wrapper, `web/e2e` the Playwright checks and `web/test` the unit and conventions checks (see [ui.md](ui.md#ui-kit)) |
+| `cmd/ui`, `web/` | web UI binary; the Vue app (`web/src`), embedded from `web/dist/app`. `web/src/client.ts` is the only API caller, `web/src/ui` holds the kit's own components, `components/Markdown.vue` is the one markdown wrapper, `web/e2e` the Playwright checks and `web/test` the unit and conventions checks (see [ui.md](../ui.md#ui-kit)) |
 | `charts/ai-operator` | Helm chart (CRDs and operator RBAC are copied in by `make manifests`) |
 | `.gitlab-ci.yml`, `.mise.toml` | the GitLab pipeline (MRs and `main`); the Go and Node pins the agent installs |
 | `.github/workflows` | CI on the GitHub mirror and calendar-versioned releases (`YEAR.MONTH.N`), see [releasing.md](releasing.md) |
@@ -3067,14 +3067,14 @@ Done: credential split into runner and agent containers, bundle-based git
 exchange, optional NetworkPolicy (see Security); usage limit backoff (see
 Engines, profiles and subscriptions); CI feedback loop (see CI feedback);
 GitLab webhooks with polling as the fallback (see GitLab webhooks); the
-web UI's live transcripts, steering and milestone chat ([ui.md](ui.md));
+web UI's live transcripts, steering and milestone chat ([ui.md](../ui.md));
 research with scheduled news flashes and one-off reports in Postgres
-([research.md](research.md)).
+([research.md](../research.md)).
 
 Next:
 
 1. **Web UI:** a few actions and an MCP endpoint on the same host and
-   access rules (see [ui.md](ui.md#roadmap)).
+   access rules (see [ui.md](../ui.md#roadmap)).
 
 Later:
 

@@ -6,7 +6,7 @@
   (`https://gitlab.com/jo.wiemers/ai-operator`). The GitLab pipeline
   (`.gitlab-ci.yml`) must be green before merge. GitHub mirrors `main`.
   Both GitLab (`release` job, registry.gitlab.com, what the cluster runs) and
-  GitHub (`release.yml`, ghcr.io) build releases; see `docs/releasing.md`.
+  GitHub (`release.yml`, ghcr.io) build releases; see `docs/contributing/releasing.md`.
 - Go 1.26. After changing types or kubebuilder markers in `api/` or
   `internal/controller/`, run `make generate manifests`. CI fails if the
   generated files (deepcopy, CRDs, RBAC, the chart's `files/`) are out of date.
@@ -30,7 +30,7 @@
   a human creates one in the UI or with `glab release create`. The tag's
   pipeline builds it (`release` job). The push mirror carries the tag to
   GitHub, where `release.yml` builds the same version for ghcr.io. See
-  `docs/releasing.md`.
+  `docs/contributing/releasing.md`.
 - Keep the docs in `docs/` and the chart README in sync with behavior changes.
 - Write and review milestone specs with the `milestone-spec` skill
   (`skills/milestone-spec/`).

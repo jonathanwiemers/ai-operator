@@ -62,12 +62,6 @@ section goes.
   and how to develop and check it.
 - **[Research](research.md)**: news flashes, scheduled and one-off
   researches next to the projects, with their own database.
-- **[Design](design.md)**: architecture, CRDs, pod topology, token economy
-  and security.
-- **[Releasing](releasing.md)**: calendar versions, who decides a release,
-  the release pipelines, published images and chart.
-- **[Sandbox test plan](sandbox-test-plan.md)**: an end-to-end run with a
-  real GitLab project and the real agent CLIs.
 
 ## Assets
 

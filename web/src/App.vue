@@ -320,7 +320,7 @@ watch(notifyActive, (on) => {
   grid-template-columns: 248px minmax(0, 1fr);
   /* dvh follows the browser's bars and, with interactive-widget=
      resizes-content (index.html), the keyboard. 100vh for browsers without
-     it (docs/design.md, "Phones"). */
+     it (docs/contributing/design.md, "Phones"). */
   height: 100vh;
   height: 100dvh;
   min-height: 0;

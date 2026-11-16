@@ -112,7 +112,7 @@ Create a **project access token** with role *Developer* and the scopes `api` and
 
 The ai-operator itself is developed in a GitLab project and runs its checks
 and releases in a GitLab pipeline; GitHub is a push mirror that builds every
-GitLab release again for `ghcr.io` (see [releasing.md](releasing.md)).
+GitLab release again for `ghcr.io` (see [releasing.md](contributing/releasing.md)).
 
 ### Webhooks (optional)
 
@@ -2154,7 +2154,7 @@ builds; a project without tag pipelines is released by the tag alone. A human
 releases the same way, in the GitLab UI (*Deploy → Releases → New release*)
 or with `glab release create <version> --ref main --notes "<why>"`; the
 operator sees such a tag like its own. ai-operator itself builds in the
-pipeline of its release tags (see [releasing.md](releasing.md)).
+pipeline of its release tags (see [releasing.md](contributing/releasing.md)).
 
 A decision is `Planned` until its commit is merged, then `Waiting`. Each
 poll checks the oldest decisions first, in this order:

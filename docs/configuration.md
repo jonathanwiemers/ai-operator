@@ -142,7 +142,7 @@ login with the keys `username` and `password`.
 | `research.candidates.quick` | `claude/claude-sonnet-5-5`, `cursor/auto` | default agents of quick research runs, in order, see [research.md](research.md#choosing-agents) |
 | `research.candidates.deep` | `claude/claude-opus-5-5` (effort `high`), `claude/claude-sonnet-5-5`, `cursor/auto` | the same for deep runs |
 | `research.maxUsagePercent` | `70` | research uses an engine only while every usage window not reset since is below this (1 to 100) |
-| `research.historyRetention` | `8760h` | how long the factory's history (the Desk's streams, see [ui.md](ui.md#desk-and-history)), the agent calls (`agent_calls`, see [design.md](design.md#history)), Desk chat messages and the Desk's milestone snapshot ([design.md](design.md#desk-snapshot)) are kept; `--history-retention` |
+| `research.historyRetention` | `8760h` | how long the factory's history (the Desk's streams, see [ui.md](ui.md#desk-and-history)), the agent calls (`agent_calls`, see [design.md](contributing/design.md#history)), Desk chat messages and the Desk's milestone snapshot ([design.md](contributing/design.md#desk-snapshot)) are kept; `--history-retention` |
 | `ui.research.allowCreate` | `false` | one-off researches from the UI, see [Web UI](#web-ui) |
 | `ui.research.namespace` | `""` | where the UI creates one-off researches; required with `allowCreate` |
 
@@ -197,7 +197,7 @@ messages and milestone snapshots.
 With the database ready, the operator also fills the Desk's milestone
 snapshot once from GitLab with the closed milestones it planned before the
 snapshot existed (the backfill, see
-[design.md](design.md#desk-snapshot)): one milestone per poll, at most 4
+[design.md](contributing/design.md#desk-snapshot)): one milestone per poll, at most 4
 GitLab requests a step and 16 a minute. It has no setting: it stops by
 itself once every closed milestone is in, and lists them again once a day.
 
@@ -235,7 +235,7 @@ raise limit is below the default.
 ### Pricing
 
 Every agent call is a row of `agent_calls` (see
-[design.md](design.md#history), needs the research database) with a cost
+[design.md](contributing/design.md#history), needs the research database) with a cost
 and its source:
 
 - **claude** reports `total_cost_usd` (the notional API price on a
@@ -532,7 +532,7 @@ See [usage.md](usage.md#commit-messages).
 | `logPrompts` | `false` | log every prompt (role, system prompt, prompt, each cut at 64 KiB) in the agent container, for the web UI's [live transcript](ui.md#live-transcript). Prompts hold issue text, comments, diffs and CI logs |
 | `fallbackAtPercent` | – | switch a role with a [fallback](#fallback-engine) to it before its engine's hard limit, when a usage window of the engine (claude reports them) is at least this full, e.g. `90` |
 | `maxEffort` | `high` | the highest effort an issue may ask for (`agent-effort::` label, `/agent effort`, the planner's choice); higher values are lowered. The roles' own `effort` is not capped |
-| `chat` | `false` | turn Desk [live chat](design.md#desk-live-chat) on for this project's tasks; the operator hands `chat_messages` rows to the tasks. Needs the research database; without it (or with `false`) queued messages are marked failed |
+| `chat` | `false` | turn Desk [live chat](contributing/design.md#desk-live-chat) on for this project's tasks; the operator hands `chat_messages` rows to the tasks. Needs the research database; without it (or with `false`) queued messages are marked failed |
 
 If `resources` sets a memory limit or CPUs (limits, else requests), the
 implementing agent is told them in its system prompt, with the advice to keep
@@ -913,7 +913,7 @@ another engine starts a new session with the full context.
 | `usageLimitBackoff` | `5m` | first wait after a usage or rate limit without a reported reset time; doubles per further hit |
 | `maxUsageLimitBackoff` | `1h` | cap for that wait |
 | `infraRetryAfter` | `30m` | after a run failed for an outside reason (agent pod or container lost, out of memory with no restart left, interrupted 3 times) the issue is blocked (`infra`); this long after the failure the operator starts one new run, once per run request. A planning run is retried the same way, also after a transient GitLab or network error |
-| `stallAfter` | `30m` | a Running task whose `runner` and `agent` containers both logged nothing for this long (Kubernetes log timestamps, newest line of each), or whose pod is `Pending` or waiting in `CrashLoopBackOff` / `ImagePullBackOff` / `ErrImagePull` for this long, is stalled: condition `Stalled=True` (reasons `Silent`, `PodPending`, `CrashLoop`); the task stays `Running`. Clears on the next log line or when the run ends. Tasks shorter than this are never checked. See [Stall detection](design.md#stall-detection) |
+| `stallAfter` | `30m` | a Running task whose `runner` and `agent` containers both logged nothing for this long (Kubernetes log timestamps, newest line of each), or whose pod is `Pending` or waiting in `CrashLoopBackOff` / `ImagePullBackOff` / `ErrImagePull` for this long, is stalled: condition `Stalled=True` (reasons `Silent`, `PodPending`, `CrashLoop`); the task stays `Running`. Clears on the next log line or when the run ends. Tasks shorter than this are never checked. See [Stall detection](contributing/design.md#stall-detection) |
 | `stallCheckInterval` | `5m` | how often the operator checks a Running task for a stall. No LLM call on the timer; the pilot is woken only when a check finds a stall |
 
 ### Remote git timeouts
@@ -1089,7 +1089,7 @@ leader only.
 
 The companion repositories the project's issues may change in the same run
 as their home change, see [usage.md](usage.md#companion-repository) and
-the design in [design.md](design.md#cross-repo). Three gates must all
+the design in [design.md](contributing/design.md#cross-repo). Three gates must all
 agree: the cluster allows the project, the AgentProject names it here, and
 a milestone line `/agent repo <project> [merge]` (or an owner's
 `/agent repo <project>` on the issue) gives it to an issue.
@@ -1148,7 +1148,7 @@ or over 1 MiB of new files, see
 the Dockerfile's `ARG VERSION` (default `dev`) is linked in as
 `main.version` (`-ldflags "-X main.version=…"`), and the release jobs set it
 to the calendar version (`YEAR.MONTH.N`, see
-[releasing.md](releasing.md)). The operator logs it at start
+[releasing.md](contributing/releasing.md)). The operator logs it at start
 (`ai-operator starting`, `version`, `selfProject`). A `dev` build never
 counts as a release, so the companions of `--self-project` wait until a
 released operator runs.
@@ -1183,7 +1183,7 @@ USER 1000
 
 The same image runs both containers of an agent pod: `ai-runner` in the
 `runner` container and `ai-runner agent-server` in the `agent` container (see
-[design.md](design.md#security)). Pods run as uid 1000, non-root, with all
+[design.md](contributing/design.md#security)). Pods run as uid 1000, non-root, with all
 capabilities dropped. In the agent container `HOME` points to the workspace
 (`/workspace/home`), so CLI sessions survive pod restarts. Install tools
 outside `$HOME`.

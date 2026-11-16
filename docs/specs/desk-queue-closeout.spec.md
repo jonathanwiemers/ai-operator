@@ -50,14 +50,14 @@ requirements without an issue go into the [Steering log](#steering-log).
 
 | Requirement | Implemented in |
 | --- | --- |
-| R1 `StartRequestedAt` and ranking (marks, then age) for `queuedAhead` and the planning hold | `api/v1alpha1` status fields, `internal/milestoneorder`, `internal/controller` (`queuedAhead`, pick hold); [design](../design.md#autopilot), [usage](../usage.md#several-milestones-at-once) |
+| R1 `StartRequestedAt` and ranking (marks, then age) for `queuedAhead` and the planning hold | `api/v1alpha1` status fields, `internal/milestoneorder`, `internal/controller` (`queuedAhead`, pick hold); [design](../contributing/design.md#autopilot), [usage](../usage.md#several-milestones-at-once) |
 | R2 `/agent start` marks a planned milestone; `start off` clears; passed milestones get the note | `internal/controller/autopilot.go` (`startNow`, `passedBy`); [commands](../commands.md#on-the-tracking-issue-autopilot) |
 | R3 Desk `start`, `unstart`, `endmilestone` with owner check | `internal/chatcmd`, Desk dispatch; [ui](../ui.md#queue-and-finishing) |
 | R4 Queue view from R1's ranking | `internal/ui/queue.go`, project detail; [ui](../ui.md#queue-and-finishing), [API](../ui.md#api) |
 | R5 Finishing view and `POST …/issues/{issue}/close` | `internal/ui/finishing.go`, `close_issue.go`; [ui](../ui.md#queue-and-finishing), [API](../ui.md#api) |
 | R6 Queue section with buttons | `web/src/components/ProjectQueue.vue`, `projectQueue.ts`; [ui](../ui.md#project-queue-and-finishing) |
 | R7 Finishing section, *Close issue*, Overview *N finishing* | `ProjectFinishing.vue`, `finishing.ts`, `overview.ts`, `DashboardOverview.vue`; [ui](../ui.md#queue-and-finishing) |
-| R8 docs | `docs/design.md`, `docs/ui.md`, steered [strict-milestone-order](strict-milestone-order.spec.md), this file |
+| R8 docs | `docs/contributing/design.md`, `docs/ui.md`, steered [strict-milestone-order](strict-milestone-order.spec.md), this file |
 
 Merged issues of this milestone (R1–R7 landed before R8): #406, #413, #415,
 #416 and their related MRs on main. R8 is #417.

@@ -27,7 +27,7 @@ const props = withDefaults(
 const colors = useChartColors()
 const font = getComputedStyle(document.body).fontFamily
 
-// Fewer ticks below the tablet width (760 px, docs/design.md "Widths").
+// Fewer ticks below the tablet width (760 px, docs/contributing/design.md "Widths").
 const phoneQuery = window.matchMedia('(max-width: 759.98px)')
 const phone = ref(phoneQuery.matches)
 const onPhone = (e: MediaQueryListEvent) => (phone.value = e.matches)

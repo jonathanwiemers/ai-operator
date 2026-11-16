@@ -74,13 +74,13 @@ milestone in work with its progress, cost and tokens, and what needs you.
 | 📌 **Decisions you can revisit** | Every choice an agent makes is recorded with why and the alternatives. Revisit it in the Desk or with `/agent revisit D42-3 …`, even after the merge. |
 | 🏷️ **Planned releases** | The planner puts release points into the plan and the operator tags them as the queue gets there. A merge alone releases nothing, and `/agent release` cuts one in between. |
 | ⚖️ **Right model for the job** | Profiles route each issue to a cheap or a strong model, Claude or Cursor. `/agent use claude opus high` overrides per issue, within the models you allow. |
-| 🔒 **Isolated by design** | The model never sees the GitLab token or cluster credentials: a trusted runner and the agent container exchange commits only as git bundles ([security](docs/design.md#security)). |
+| 🔒 **Isolated by design** | The model never sees the GitLab token or cluster credentials: a trusted runner and the agent container exchange commits only as git bundles ([security](docs/contributing/design.md#security)). |
 | 🪙 **Easy on tokens** | Runs with your Claude or Cursor subscription. Sessions are resumed, pipelines are watched for free, pods stop right after each run, and usage limits pause runs instead of failing them. |
 | 🧭 **The Desk** | Optional web UI where you steer: ask a milestone's pilot, chat with a task's agent, answer prompts, revisit decisions, and watch runs, CI and costs. OIDC login and per-project roles ([Desk](docs/ui.md), [screenshots](docs/ui.md#screenshots)). |
 
 > **Status:** `v1alpha1`. Unit and end-to-end tests pass (fake GitLab, real
 > git); real-world runs are tracked in the
-> [sandbox test plan](docs/sandbox-test-plan.md).
+> [sandbox test plan](docs/contributing/sandbox-test-plan.md).
 
 ## Talk to it in GitLab
 
@@ -204,12 +204,12 @@ feature.
 | [Usage](docs/usage.md) | the GitLab workflow: labels, milestone specs, decisions, CI, autopilot, owners, lifecycle |
 | [Commands](docs/commands.md) | every `/agent` command and the labels behind them |
 | [Configuration](docs/configuration.md) | installation (Helm, Flux), secrets, `AgentProject` reference, engines, profiles, models, agent image |
-| [Design](docs/design.md) | architecture, CRDs, pod topology, token economy, security |
+| [Design](docs/contributing/design.md) | architecture, CRDs, pod topology, token economy, security |
 | [Web UI](docs/ui.md) | the optional read-only UI: OIDC login, roles, HTTPRoute, API |
 | [Research](docs/research.md) | news flashes, scheduled and one-off researches |
 | [Helm chart](charts/ai-operator/README.md) | chart values |
-| [Releasing](docs/releasing.md) | calendar versions, release workflow, published images and chart |
-| [Sandbox test plan](docs/sandbox-test-plan.md) | end-to-end test with a real GitLab project and the real agent CLIs |
+| [Releasing](docs/contributing/releasing.md) | calendar versions, release workflow, published images and chart |
+| [Sandbox test plan](docs/contributing/sandbox-test-plan.md) | end-to-end test with a real GitLab project and the real agent CLIs |
 
 ## Development
 
@@ -234,7 +234,7 @@ a schema and with login roles of its own, dropped afterwards.
 
 A merge to `main` does not release by itself: a release is a decision (the
 operator's or a human's) and gets a calendar version (`2026.10.1`,
-`2026.10.2`, …), see [releasing](docs/releasing.md).
+`2026.10.2`, …), see [releasing](docs/contributing/releasing.md).
 
 ## Contributing
 

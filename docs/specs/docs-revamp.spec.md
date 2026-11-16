@@ -254,68 +254,68 @@ Rows: `usage.md` 38, `ui.md` 57, `configuration.md` 34, `commands.md` 10,
 | research.md | ## Database | contributing/research.md | R7b | open |
 | research.md | ### Example: my-cluster | contributing/research.md | R7b | open |
 | research.md | ## Troubleshooting | guides/research.md | R7b | open |
-| design.md | ## Architecture | contributing/design.md | R10a | open |
-| design.md | ## Flow | contributing/design.md | R10a | open |
-| design.md | ## Custom resources | contributing/design.md | R10a | open |
-| design.md | ## Pod topology | contributing/design.md | R10a | open |
-| design.md | ### Stall detection | contributing/design.md | R10a | open |
-| design.md | ## Lifecycle of long-lived issues | contributing/design.md | R10a | open |
-| design.md | ### Desk live chat | contributing/design.md | R10a | open |
-| design.md | ## Token economy | contributing/design.md | R10a | open |
-| design.md | ## History | contributing/design.md | R10a | open |
-| design.md | ### Research store migrations | contributing/design.md | R10a | open |
-| design.md | ### Desk snapshot | contributing/design.md | R10a | open |
-| design.md | ## GitLab webhooks | contributing/design.md | R10a | open |
-| design.md | ## CI feedback | contributing/design.md | R10a | open |
-| design.md | ### Main health | contributing/design.md | R10a | open |
-| design.md | ## Checkpoints and Conventional Commits | contributing/design.md | R10a | open |
-| design.md | ## Merge conflicts | contributing/design.md | R10a | open |
-| design.md | ## Autopilot | contributing/design.md | R10a | open |
-| design.md | ### Revisiting after the merge | contributing/design.md | R10a | open |
-| design.md | ## Pilot | contributing/design.md | R10a | open |
-| design.md | ### Prompts in GitLab | contributing/design.md | R10a | open |
-| design.md | ### Answering prompts | contributing/design.md | R10a | open |
-| design.md | ## Engines, profiles and subscriptions | contributing/design.md | R10a | open |
-| design.md | ## Cross-repo | contributing/design.md | R10a | open |
-| design.md | ## Security | contributing/design.md | R10a | open |
-| design.md | ## Desk session model | contributing/design.md | R10a | open |
-| design.md | ## Desk styles | contributing/design.md | R10a | open |
-| design.md | ## Code map | contributing/design.md | R10a | open |
-| design.md | ## Roadmap | contributing/design.md | R10a | open |
-| releasing.md | ## Where the code lives | contributing/releasing.md | R10a | open |
-| releasing.md | ## Versioning | contributing/releasing.md | R10a | open |
-| releasing.md | ## GitHub releases | contributing/releasing.md | R10a | open |
-| releasing.md | ## GitLab releases | contributing/releasing.md | R10a | open |
-| releasing.md | ## First release checklist | contributing/releasing.md | R10a | open |
-| releasing.md | ## Local builds | contributing/releasing.md | R10a | open |
-| sandbox-test-plan.md | ## What this test is most likely to find | contributing/sandbox-test-plan.md | R10a | open |
-| sandbox-test-plan.md | ## 0. Prerequisites | contributing/sandbox-test-plan.md | R10a | open |
-| sandbox-test-plan.md | ## 1. Setup | contributing/sandbox-test-plan.md | R10a | open |
-| sandbox-test-plan.md | ### 1.1 GitLab project | contributing/sandbox-test-plan.md | R10a | open |
-| sandbox-test-plan.md | ### 1.2 Cluster and operator | contributing/sandbox-test-plan.md | R10a | open |
-| sandbox-test-plan.md | ## 2. Test cases | contributing/sandbox-test-plan.md | R10a | open |
-| sandbox-test-plan.md | ### T1 – Operator connects to GitLab | contributing/sandbox-test-plan.md | R10a | open |
-| sandbox-test-plan.md | ### T2 – Planning a milestone | contributing/sandbox-test-plan.md | R10a | open |
-| sandbox-test-plan.md | ### T3 – Re-planning | contributing/sandbox-test-plan.md | R10a | open |
-| sandbox-test-plan.md | ### T4 – Implementing a `fast` issue | contributing/sandbox-test-plan.md | R10a | open |
-| sandbox-test-plan.md | ### T5 – Implementing a `strong` issue, questions, resume | contributing/sandbox-test-plan.md | R10a | open |
-| sandbox-test-plan.md | ### T6 – Iterating on the MR | contributing/sandbox-test-plan.md | R10a | open |
-| sandbox-test-plan.md | ### T7 – No triggers from the bot or from chatter | contributing/sandbox-test-plan.md | R10a | open |
-| sandbox-test-plan.md | ### T8 – Queueing | contributing/sandbox-test-plan.md | R10a | open |
-| sandbox-test-plan.md | ### T9 – Lifecycle: idle, hibernate, archive, wake up | contributing/sandbox-test-plan.md | R10a | open |
-| sandbox-test-plan.md | ### T10 – Finishing an issue | contributing/sandbox-test-plan.md | R10a | open |
-| sandbox-test-plan.md | ### T11 – Run limit | contributing/sandbox-test-plan.md | R10a | open |
-| sandbox-test-plan.md | ### T12 – Failure handling | contributing/sandbox-test-plan.md | R10a | open |
-| sandbox-test-plan.md | ### T13 – Security: credential isolation | contributing/sandbox-test-plan.md | R10a | open |
-| sandbox-test-plan.md | ### T14 – Network policy (optional) | contributing/sandbox-test-plan.md | R10a | open |
-| sandbox-test-plan.md | ### T15 – Helm upgrade and uninstall | contributing/sandbox-test-plan.md | R10a | open |
-| sandbox-test-plan.md | ### T16 – Usage limits | contributing/sandbox-test-plan.md | R10a | open |
-| sandbox-test-plan.md | ### T17 – CI feedback loop | contributing/sandbox-test-plan.md | R10a | open |
-| sandbox-test-plan.md | ## 3. When something fails | contributing/sandbox-test-plan.md | R10a | open |
-| sandbox-test-plan.md | ### T18 – Autopilot milestone | contributing/sandbox-test-plan.md | R10a | open |
-| sandbox-test-plan.md | ### T19 – Merge conflicts | contributing/sandbox-test-plan.md | R10a | open |
-| sandbox-test-plan.md | ## 4. Results | contributing/sandbox-test-plan.md | R10a | open |
-| sandbox-test-plan.md | ## 5. Cleanup | contributing/sandbox-test-plan.md | R10a | open |
+| design.md | ## Architecture | contributing/design.md | R10a | done; updated: opening describes autopilot, pilot and Desk |
+| design.md | ## Flow | contributing/design.md | R10a | done |
+| design.md | ## Custom resources | contributing/design.md | R10a | done |
+| design.md | ## Pod topology | contributing/design.md | R10a | done |
+| design.md | ### Stall detection | contributing/design.md | R10a | done |
+| design.md | ## Lifecycle of long-lived issues | contributing/design.md | R10a | done |
+| design.md | ### Desk live chat | contributing/design.md | R10a | done |
+| design.md | ## Token economy | contributing/design.md | R10a | done |
+| design.md | ## History | contributing/design.md | R10a | done |
+| design.md | ### Research store migrations | contributing/design.md | R10a | done |
+| design.md | ### Desk snapshot | contributing/design.md | R10a | done |
+| design.md | ## GitLab webhooks | contributing/design.md | R10a | done |
+| design.md | ## CI feedback | contributing/design.md | R10a | done |
+| design.md | ### Main health | contributing/design.md | R10a | done |
+| design.md | ## Checkpoints and Conventional Commits | contributing/design.md | R10a | done |
+| design.md | ## Merge conflicts | contributing/design.md | R10a | done |
+| design.md | ## Autopilot | contributing/design.md | R10a | done |
+| design.md | ### Revisiting after the merge | contributing/design.md | R10a | done |
+| design.md | ## Pilot | contributing/design.md | R10a | done |
+| design.md | ### Prompts in GitLab | contributing/design.md | R10a | done |
+| design.md | ### Answering prompts | contributing/design.md | R10a | done |
+| design.md | ## Engines, profiles and subscriptions | contributing/design.md | R10a | done |
+| design.md | ## Cross-repo | contributing/design.md | R10a | done |
+| design.md | ## Security | contributing/design.md | R10a | done |
+| design.md | ## Desk session model | contributing/design.md | R10a | done |
+| design.md | ## Desk styles | contributing/design.md | R10a | done |
+| design.md | ## Code map | contributing/design.md | R10a | done |
+| design.md | ## Roadmap | contributing/design.md | R10a | done |
+| releasing.md | ## Where the code lives | contributing/releasing.md | R10a | done |
+| releasing.md | ## Versioning | contributing/releasing.md | R10a | done |
+| releasing.md | ## GitHub releases | contributing/releasing.md | R10a | done |
+| releasing.md | ## GitLab releases | contributing/releasing.md | R10a | done |
+| releasing.md | ## First release checklist | contributing/releasing.md | R10a | done |
+| releasing.md | ## Local builds | contributing/releasing.md | R10a | done |
+| sandbox-test-plan.md | ## What this test is most likely to find | contributing/sandbox-test-plan.md | R10a | done |
+| sandbox-test-plan.md | ## 0. Prerequisites | contributing/sandbox-test-plan.md | R10a | done |
+| sandbox-test-plan.md | ## 1. Setup | contributing/sandbox-test-plan.md | R10a | done |
+| sandbox-test-plan.md | ### 1.1 GitLab project | contributing/sandbox-test-plan.md | R10a | done |
+| sandbox-test-plan.md | ### 1.2 Cluster and operator | contributing/sandbox-test-plan.md | R10a | done |
+| sandbox-test-plan.md | ## 2. Test cases | contributing/sandbox-test-plan.md | R10a | done |
+| sandbox-test-plan.md | ### T1 – Operator connects to GitLab | contributing/sandbox-test-plan.md | R10a | done |
+| sandbox-test-plan.md | ### T2 – Planning a milestone | contributing/sandbox-test-plan.md | R10a | done |
+| sandbox-test-plan.md | ### T3 – Re-planning | contributing/sandbox-test-plan.md | R10a | done |
+| sandbox-test-plan.md | ### T4 – Implementing a `fast` issue | contributing/sandbox-test-plan.md | R10a | done |
+| sandbox-test-plan.md | ### T5 – Implementing a `strong` issue, questions, resume | contributing/sandbox-test-plan.md | R10a | done |
+| sandbox-test-plan.md | ### T6 – Iterating on the MR | contributing/sandbox-test-plan.md | R10a | done |
+| sandbox-test-plan.md | ### T7 – No triggers from the bot or from chatter | contributing/sandbox-test-plan.md | R10a | done |
+| sandbox-test-plan.md | ### T8 – Queueing | contributing/sandbox-test-plan.md | R10a | done |
+| sandbox-test-plan.md | ### T9 – Lifecycle: idle, hibernate, archive, wake up | contributing/sandbox-test-plan.md | R10a | done |
+| sandbox-test-plan.md | ### T10 – Finishing an issue | contributing/sandbox-test-plan.md | R10a | done |
+| sandbox-test-plan.md | ### T11 – Run limit | contributing/sandbox-test-plan.md | R10a | done |
+| sandbox-test-plan.md | ### T12 – Failure handling | contributing/sandbox-test-plan.md | R10a | done |
+| sandbox-test-plan.md | ### T13 – Security: credential isolation | contributing/sandbox-test-plan.md | R10a | done |
+| sandbox-test-plan.md | ### T14 – Network policy (optional) | contributing/sandbox-test-plan.md | R10a | done |
+| sandbox-test-plan.md | ### T15 – Helm upgrade and uninstall | contributing/sandbox-test-plan.md | R10a | done |
+| sandbox-test-plan.md | ### T16 – Usage limits | contributing/sandbox-test-plan.md | R10a | done |
+| sandbox-test-plan.md | ### T17 – CI feedback loop | contributing/sandbox-test-plan.md | R10a | done |
+| sandbox-test-plan.md | ## 3. When something fails | contributing/sandbox-test-plan.md | R10a | done |
+| sandbox-test-plan.md | ### T18 – Autopilot milestone | contributing/sandbox-test-plan.md | R10a | done |
+| sandbox-test-plan.md | ### T19 – Merge conflicts | contributing/sandbox-test-plan.md | R10a | done |
+| sandbox-test-plan.md | ## 4. Results | contributing/sandbox-test-plan.md | R10a | done |
+| sandbox-test-plan.md | ## 5. Cleanup | contributing/sandbox-test-plan.md | R10a | done |
 
 ## Steering log
 

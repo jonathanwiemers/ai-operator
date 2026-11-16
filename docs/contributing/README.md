@@ -7,5 +7,11 @@ may name source files and functions, and they have no length cap.
 
 ## Pages
 
-None yet. The contributor pages are being moved from the old pages, see the
-[docs map](../README.md#pages-being-moved).
+In reading order:
+
+1. **[Design](design.md)**: architecture, CRDs, pod topology, token economy
+   and security.
+2. **[Releasing](releasing.md)**: calendar versions, who decides a release,
+   the release pipelines, published images and chart.
+3. **[Sandbox test plan](sandbox-test-plan.md)**: an end-to-end run with a
+   real GitLab project and the real agent CLIs.
