@@ -9,7 +9,11 @@ pilot evidence for hung runs; see
 `spec.lifecycle.stallAfter` (default `30m`) and
 `lifecycle.stallCheckInterval` (default `5m`) are CRD fields, not chart
 values: set them on each `AgentProject` (see
-[configuration](../../docs/configuration.md#speclifecycle)).
+[configuration](../../docs/configuration.md#speclifecycle)). The same goes
+for `spec.autopilot.maxParallel` (default `3`, at least `1`): how many issues
+of an autopilot milestone run at the same time, overridden per milestone by
+an `/agent parallel N` line; keep `spec.maxConcurrentRuns` above it (see
+[configuration](../../docs/configuration.md#specautopilot)).
 
 ```sh
 helm install ai-operator oci://ghcr.io/jonathanwiemers/charts/ai-operator \

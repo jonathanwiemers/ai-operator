@@ -1232,7 +1232,7 @@ description carries the marker is handed over.
 With `freezeAutopilot`, autopilot reads `status.mainHealth` on every poll
 (`internal/controller/freeze.go`, after `autoResume`, before the queue
 step). `red`, or `retrying` after red (the main-red issue is open, or the
-active issue is blocked already), freezes: once the active issue passes the
+active issue is blocked already), freezes: once an active issue passes the
 gate's run, review and CI checks it is blocked (`main-red`) and autopilot
 pauses with `resumeWhenReady`. Not red (green, flaky, disabled, or not
 checked for 3 intervals) lifts the block and ends that pause. The blocked
@@ -1250,7 +1250,7 @@ the issue carries an active workflow label (an owner's hand-over); the poll
 keeps `status.mainHealth.issueIID` in scope despite `milestones.titlePattern`,
 like the autoFix issue. `loadMainRedFix` reads that issue
 before `autoResume`, since it is in no milestone; `item()` finds it, so
-pauses, `autoResume` and `doneByHand` treat it like the active issue.
+pauses, `autoResume` and `doneByHand` treat it like an active issue.
 `mainRedLane` runs `drive` on it after `freezeOnMainRed`, while autopilot runs
 or is paused for another issue (a pause over the fix is ended by `autoResume`
 or `resume`, and `unblockActive` covers the fix); a merged item stays until
@@ -1423,7 +1423,7 @@ stateDiagram-v2
   there. Holds are not in the history's pause events yet.
 * **Tracking issue above a limit of 1.** The intro says `up to N at a time`
   and that the issues merge one after another; under the status line,
-  `Held:` lists each hold (``- #N <title>: <reason> (`/agent resume`)``). An
+  `Held:` lists each hold (``- #N <title>: <reason> (`/agent resume #N`)``). An
   active item's line shows its lane: `**landing**`, `ready to land`,
   `**held** (<kind>)` or `**in progress**`; a pending issue whose
   dependencies are merged while every slot is taken says `waits for a free
@@ -1511,26 +1511,29 @@ stateDiagram-v2
   carries the done label, so
   issues merged before autopilot started, after a `skip`, or by hand do not
   block their dependants.
-* **Pauses that end by themselves.** A pause over the active issue records
-  it (`pausedFor`); one over its run, review or CI also `resumeWhenReady`.
-  While paused, each poll checks that issue: merged or closed by hand, or
-  (with `resumeWhenReady`) passing the merge gate's run, review and CI
-  checks again, ends the pause. `/agent pause` and every other pause wait
-  for `resume`.
+* **Pauses that end by themselves.** A milestone pause over one issue (at a
+  limit of 1, or the main-red fix) records it (`pausedFor`); one over its
+  run, review or CI also `resumeWhenReady`. While paused, each poll checks
+  that issue: merged or closed by hand, or (with `resumeWhenReady`) passing
+  the merge gate's run, review and CI checks again, ends the pause. Holds
+  keep the same fields on the item (`items[].hold`) and end the same way
+  (see *Holds*). `/agent pause` and every other pause wait for `resume`.
 * **Failure safety.** The autopilot status is saved after every poll, also
   when a step failed, since GitLab side effects (a created tracking issue, a
   requested rebase) already happened. Comments are posted before the state
   that suppresses them is set, so a failed comment is retried. One failing
   milestone or issue does not stop the others or the cleanup.
-* **Pause.** Anything that needs a human pauses the queue with a comment on
+* **Pause.** Anything that needs a human pauses the queue (or, for an item
+  kind above a limit of 1, holds the issue, see *Holds*) with a comment on
   the tracking issue, once per reason. The reason can quote job names, so
   it goes through `notify.Defuse` wherever it reaches GitLab (the pause
   comment and the tracking description; the owners' mention is appended
   after); `status.autopilot.pausedReason` keeps the raw text, and
-  `pauseKind` the cause (`owner`, `cycle`, `stuck`, `needsInput`,
-  `runFailed`, `findings`, `reviewErrors`, `notReviewed`, `ciRed`,
-  `ciCanceled`, `mergeRequest`, `mainRed`, `config`, `budget`, `companion`,
-  `emptyPlan`) for the Desk's pause card. A planning run that succeeded
+  `pauseKind` the cause (`PauseKinds`: `owner`, `cycle`, `stuck`,
+  `needsInput`, `runFailed`, `findings`, `reviewErrors`, `notReviewed`,
+  `ciRed`, `ciCanceled`, `mergeRequest`, `mainRed`, `config`, `budget`,
+  `companion`, `emptyPlan`, `release`, `stalled`) for the Desk's pause
+  card; a hold keeps both in `items[].hold`. A planning run that succeeded
   with no issues pauses with `emptyPlan`; a pending re-plan or a plan with
   issues lifts it. A milestone with a `/agent budget <usd>` line pauses with
   `budget` once its `agent_calls` spend reaches it (read once per poll,

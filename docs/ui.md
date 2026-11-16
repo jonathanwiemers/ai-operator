@@ -40,7 +40,8 @@ autopilot queue beside it.
 
 **Milestone Issues**: one row per issue with its state, merge request, time,
 cost and tokens, the releases between them and the queue by lane (running,
-landing, ready to land, waiting, held with Resume, done).
+landing, ready to land, waiting, held with Resume, done), the waves of the
+plan and, for owners, a stepper for how many issues run at a time.
 
 ![Paused milestone with its issue table, release rows and the pause banner](assets/screenshots/milestone-issues.webp)
 

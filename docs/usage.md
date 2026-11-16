@@ -208,7 +208,11 @@ holds a self-contained sub-spec:
 - the part of the milestone spec it implements, context and implementation
   plan (files, functions)
 - acceptance criteria and a test plan
-- `Depends on #…` for ordering, also as [issue links](#dependencies-as-issue-links)
+- `Depends on #…` for ordering, also as [issue links](#dependencies-as-issue-links).
+  On autopilot, issues without a dependency between them may run at the
+  same time, so the planner keeps them off the same files; where they
+  would overlap, it makes one depend on the other. Conflicts that still
+  happen are [resolved by the agent](#merge-conflicts)
 - a `**Release:**` line with the planner's release decision: `after this issue: <why>`
   (a step users notice, or one that must be live before the next) or `not
   after this issue`. A release needs a one-line reason; without one it is
@@ -648,7 +652,7 @@ Occurrence comments from before this version are not counted. Switch
 default branch fail twice starts an agent run.
 
 **Merge freeze.** While the default branch is `red`, autopilot merges
-nothing (`mainHealth.freezeAutopilot`, on by default). When its active issue
+nothing (`mainHealth.freezeAutopilot`, on by default). When an active issue
 passed review and CI, the issue gets `agent::blocked` +
 `agent-blocked::main-red` and autopilot pauses: "`main` is red (#N): merging
 waits until it is green". The freeze also holds while a red branch's next
@@ -926,10 +930,12 @@ takes it:
 
 Autopilot milestones of a project go **one after another**: a milestone starts
 no new issue while an older autopilot milestone is open (not done, off or
-closed), also while that one is paused. Its active issue finishes, the next one
-waits, and the tracking issue says "⏳ waiting for its turn". So only one merge
-request is open at a time, and merges of one milestone do not rebase a reviewed
-change of another away. The slot stays free while the older milestone waits for
+closed), also while that one is paused. Its active issues finish, the next one
+waits, and the tracking issue says "⏳ waiting for its turn". So only one
+milestone starts new work: its merge requests (up to
+[`autopilot.maxParallel`](configuration.md#specautopilot) at a time) land one
+after another, and merges of one milestone do not rebase a reviewed change of
+another away. The slot stays free while the older milestone waits for
 CI. To let a younger milestone go first, an owner comments `/agent start` on
 its tracking issue: the run-next mark (`status.autopilot.startRequestedAt`)
 ranks it before the unmarked ones, earliest mark first, and the older ones
@@ -1065,9 +1071,33 @@ name the same ways out. The reason can quote job names or other text
 from GitLab, so mentions and quick actions in it are made inert, in the
 comment and in the tracking issue's description.
 
+**Holds and pauses.** A problem with one issue is a **hold** of that issue
+when the milestone's [limit](configuration.md#specautopilot) is above 1:
+`needsInput`, `runFailed`, `findings`, `reviewErrors`, `notReviewed`,
+`ciRed`, `ciCanceled`, `mergeRequest`, `companion` and `stalled` (the issue
+kinds, `ItemPauseKinds` in `api/v1alpha1/pause.go`). The issue stops
+(`items[].hold` in `status.autopilot`: kind, reason, since), gives up its
+slot and, if it was landing, the landing lane, and the other issues run,
+land and merge. The tracking issue says `⏸️ #12 is held: <reason>. The other
+issues go on.` with the ways out of its kind below and the owners' mention,
+and lists every hold under its status line (`Held:`). At a limit of 1 the
+same problems pause the milestone, as does every problem of the
+[main-red fix](#main-health). The milestone kinds (`owner`, `budget`,
+`mainRed`, `config`, `cycle`, `emptyPlan`, `release`, `stuck`) always pause
+the milestone: nothing new starts or merges. When every running issue is
+held and nothing else can start, the milestone pauses `stuck`.
+
+A hold ends by itself in the same cases as a pause over its issue (below),
+also while the milestone is paused: the tracking issue says `▶️ #12 goes on:
+<why> (<who and how>)`. `/agent resume #12` lifts that hold only;
+`/agent resume` lifts the milestone's pause and every hold at once. Neither
+checks the cause: an issue whose problem is still there is held again on
+the next poll. On the Desk each hold has its own card with *Resume*. Holds
+are not in the history's pause events (`autopilot.paused`) yet.
+
 ![Pause card on the milestone's Pilot tab: why it paused, the ways out and the pilot's question](assets/screenshots/milestone-pilot.webp)
 
-It pauses for:
+It pauses (or, for a problem of one issue above a limit of 1, holds that issue) for:
 
 - the issue landed in `agent::needs-input` (CI still red after the fix
   rounds, a failed run). A run that failed for an outside reason blocks
@@ -1089,8 +1119,8 @@ It pauses for:
 - the merge was refused (for example: the bot may not merge), or the rebased
   change differs from the reviewed one and the rebase was not mechanical
   (see [the merge gate](#the-merge-gate); the interdiff is on the MR);
-- the active issue lost its workflow label while open;
-- the default branch is red ([merge freeze](#main-health)): the active issue
+- an active issue lost its workflow label while open;
+- the default branch is red ([merge freeze](#main-health)): an active issue
   is blocked (`agent-blocked::main-red`) until it is green;
 - the fix of the red default branch cannot be merged ([main-red
   lane](#main-health));
@@ -1108,12 +1138,12 @@ A run of the issue the pause is about gets the pause reason in its prompt
 your comments. So `/agent investigate the root and fix it` on that issue
 knows what "it" is.
 
-While a pause over the active issue's run, review or CI holds, autopilot
+While a pause or hold over an issue's run, review or CI lasts, autopilot
 checks the issue on every poll. If the reason it paused for is gone but the
 issue fails the merge gate for another one, it says so with a new pause
 comment (mentioning the owners) instead of keeping the old reason.
 
-A pause over the active issue ends **by itself** when it no longer holds:
+A pause over an active issue (and a hold) ends **by itself** when it no longer applies:
 
 - the issue's MR was merged by hand, or the issue was closed: autopilot
   counts it (merged, or skipped if closed without a merge) and goes on with
@@ -1166,7 +1196,7 @@ A budget pause ends by itself too, once the budget is raised above the
 spend or removed (see [Budget](#budget)).
 
 When such a pause ends, by itself or with `/agent resume` (also after an
-`/agent pause` in between), the active issue's `agent-blocked::infra` block
+`/agent pause` in between), the paused issue's `agent-blocked::infra` block
 is lifted and the issue gets its label back, unless its last run failed
 for an outside reason: that block waits for a new run (the automatic retry,
 `/agent …` or `agent::ready`). Autopilot asks for one
@@ -1285,7 +1315,10 @@ The plan has a dependency cycle.
 
 Nothing can start and no issue runs: the remaining issues wait for skipped
 issues, for issues outside the queue, or for each other. Issues that wait for
-a running issue are no reason to pause. Ends by itself once an issue can start
+a running issue are no reason to pause. Above a limit of 1 it is also
+`stuck` when every running issue is held and nothing else can start
+(`nothing can move: every running issue is held (#1: ciRed, …)`); a hold
+that ends, by itself or with `/agent resume #N`, lifts it. Ends by itself once an issue can start
 (a skipped dependency closed as done, a link removed, an unskip or a
 startAnyway). Owners can:
 
@@ -1305,7 +1338,10 @@ startAnyway). Owners can:
 
 #### `needsInput`
 
-The active issue landed in `agent::needs-input`. Ends by itself once a later
+Above a limit of 1 this holds the issue, not the milestone (see [When it
+pauses](#when-it-pauses)); `/agent resume #N` lifts that hold.
+
+An active issue landed in `agent::needs-input`. Ends by itself once a later
 run passes the merge gate (reviewed and green), or when the MR is merged by
 hand or the issue is closed.
 
@@ -1337,12 +1373,18 @@ for an issue in `agent::needs-input` has the same text.
 
 #### `runFailed`
 
-The active issue's run failed. Ends by itself like `needsInput`.
+Above a limit of 1 this holds the issue, not the milestone (see [When it
+pauses](#when-it-pauses)); `/agent resume #N` lifts that hold.
+
+An active issue's run failed. Ends by itself like `needsInput`.
 
 - `/agent retry` on the issue: the agent runs again.
 - `/agent skip #N`: the issue is skipped.
 
 #### `findings`
+
+Above a limit of 1 this holds the issue, not the milestone (see [When it
+pauses](#when-it-pauses)); `/agent resume #N` lifts that hold.
 
 The review left blocker or major findings. Ends by itself like `needsInput`
 (for example after `/agent fix the findings` on the issue).
@@ -1352,6 +1394,9 @@ The review left blocker or major findings. Ends by itself like `needsInput`
   a full review; CI, the MR's state and approvals still apply.
 
 #### `reviewErrors`
+
+Above a limit of 1 this holds the issue, not the milestone (see [When it
+pauses](#when-it-pauses)); `/agent resume #N` lifts that hold.
 
 Reviewers failed (after the one re-review of a transient outage). Ends by
 itself like `needsInput`. The reason names each failed reviewer and why,
@@ -1366,6 +1411,9 @@ coderabbit failed (timeout)"; runs from before the kinds were recorded say
 
 #### `notReviewed`
 
+Above a limit of 1 this holds the issue, not the milestone (see [When it
+pauses](#when-it-pauses)); `/agent resume #N` lifts that hold.
+
 The review did not see the pushed head, or (with a companion) the pushed
 companion head. Ends by itself like `needsInput`.
 
@@ -1375,6 +1423,9 @@ companion head. Ends by itself like `needsInput`.
 - `/agent merge #N <sha>` (owners only), as for `findings`.
 
 #### `ciRed`
+
+Above a limit of 1 this holds the issue, not the milestone (see [When it
+pauses](#when-it-pauses)); `/agent resume #N` lifts that hold.
 
 CI is red with jobs that also fail on the default branch, or the
 [companion's](#companion-repository) pipeline is red (also after the fix
@@ -1393,11 +1444,17 @@ decides.
 
 #### `ciCanceled`
 
+Above a limit of 1 this holds the issue, not the milestone (see [When it
+pauses](#when-it-pauses)); `/agent resume #N` lifts that hold.
+
 The MR's pipeline was canceled. Ends by itself like `needsInput`.
 
 - `/agent retry` on the issue, or `/agent skip #N`.
 
 #### `mergeRequest`
+
+Above a limit of 1 this holds the issue, not the milestone (see [When it
+pauses](#when-it-pauses)); `/agent resume #N` lifts that hold.
 
 The MR cannot be merged: someone pushed to the branch, it was closed or
 retargeted, needs an approval, has unresolved discussions or conflicts, is a
@@ -1429,7 +1486,7 @@ by itself when:
 
 #### `config`
 
-The setup does not allow a merge: the active issue lost its workflow label,
+The setup does not allow a merge: an active issue lost its workflow label,
 no reviewers are configured, or there is no pushed MR. Ends by itself when
 the MR is merged by hand or the issue is closed.
 
@@ -1446,6 +1503,9 @@ the milestone description, or on the issue for its own budget); see
 [Budget](#budget). `/agent resume` alone pauses again.
 
 #### `companion`
+
+Above a limit of 1 this holds the issue, not the milestone (see [When it
+pauses](#when-it-pauses)); `/agent resume #N` lifts that hold.
 
 The [companion's](#companion-repository) merge request cannot follow the
 home merge: it was closed, a rebase did not resolve its conflicts or it
@@ -1501,7 +1561,10 @@ See [the final release](#the-final-release).
 
 #### `stalled`
 
-The active issue's run is stalled (condition `Stalled=True`) and the
+Above a limit of 1 this holds the issue, not the milestone (see [When it
+pauses](#when-it-pauses)); `/agent resume #N` lifts that hold.
+
+An active issue's run is stalled (condition `Stalled=True`) and the
 pilot's interventions on the issue's head are used up
 (`pilot.maxInterventionsPerIssue`), or the run was interrupted 3 times
 (the next interruption fails it), or the milestone has no pilot. In
@@ -1658,8 +1721,8 @@ A raise rewrites the description's `/agent budget` line, read again first:
 a budget raised above the amount or removed by hand meanwhile is kept, and
 the outcome says so. The next poll reads the new budget and a budget pause
 ends by itself. Ending the milestone skips its pending issues, so none is
-picked any more, and autopilot is done after the active issue; during the
-budget pause the active issue cannot go on without spend, so it is skipped
+picked any more, and autopilot is done after the active issues; during the
+budget pause the active issues cannot go on without spend, so they are skipped
 too and autopilot is done at once. A milestone with nothing in its queue
 (not planned yet, or a re-plan that left no issue) is never done: ending it
 only answers that there is nothing to end; close the milestone in GitLab or
@@ -2280,23 +2343,25 @@ UTF-8: the list is cut at whole lines and ends with "… and N more issues".
 |---------|--------|
 | `/agent start [off]` | owners only: mark the milestone to run next (`status.autopilot.startRequestedBy`, `startRequestedAt`); a milestone waiting for its turn is planned now, a planned one starts issues before the older ones. A repeated `start` keeps the first mark; each older milestone it passes notes "⏭️ %N goes first (by @you)." once (`passedBy`); `start off` clears it. Does nothing on a done milestone |
 | `/agent pause` | stop starting and merging; on a milestone that waits for its turn it also holds the planning when the turn comes, until `resume` (or `start`, which plans and keeps the pause) |
-| `/agent resume` | continue; the active issue is checked again |
+| `/agent resume` | continue; lifts the milestone's pause and every held issue's hold, the active issues are checked again |
+| `/agent resume #12` | lift the hold of #12 only; the other holds and a milestone pause stay |
+| `/agent parallel 2` | owners only: up to 2 issues of the milestone run at the same time (1 to 10); writes the milestone's `/agent parallel N` line |
 | `/agent skip #12` | skip a planned issue; issues that depend on it stay blocked until it is merged by hand or they are skipped too |
 | `/agent unskip #12` | a skipped issue that is still open goes back to pending |
 | `/agent startAnyway #12` | a pending issue may start although an issue it depends on was skipped (see [When it pauses](#when-it-pauses)) |
-| `/agent rebase #12` | the active issue's MR is rebased onto the default branch; a CI red or merge request pause about it ends (see [When it pauses](#when-it-pauses)) |
-| `/agent mergeBase #12` | the agent merges the default branch into the active issue's MR and resolves conflicts; a pause about it ends |
-| `/agent merge #12 <sha>` | owners only: merge the active issue's head `sha` without a full review (when the reviewers cannot run); CI, MR state and approvals still apply, a new push or a later review voids it (`status.autopilot.mergeOverride`) |
+| `/agent rebase #12` | an active issue's MR is rebased onto the default branch; a CI red or merge request pause about it ends (see [When it pauses](#when-it-pauses)) |
+| `/agent mergeBase #12` | the agent merges the default branch into an active issue's MR and resolves conflicts; a pause about it ends |
+| `/agent merge #12 <sha>` | owners only: merge an active issue's head `sha` without a full review (when the reviewers cannot run); CI, MR state and approvals still apply, a new push or a later review voids it (`status.autopilot.mergeOverride`) |
 | `/agent revisit D42-3 …` | change a decision of a merged issue: a [follow-up](#revisiting-after-the-merge) joins the queue |
-| `/agent endMilestone` | owners only: the milestone ends here; the pending issues are skipped and autopilot is done after the active one. During a [release pause](#release) the final release is dropped and autopilot is done |
+| `/agent endMilestone` | owners only: the milestone ends here; the pending issues are skipped and autopilot is done after the active ones. During a [release pause](#release) the final release is dropped and autopilot is done |
 
 Any other `/agent …` comment on the tracking issue (also a bare `/agent` or a
 `revisit` without a decision ID) gets one answer: the commands above, that
 questions go to the [pilot](#talking-to-the-pilot) (`/pilot …`), and that
-instructions for the agent go on the active issue (`#N`). The tracking issue
+instructions for the agent go on the issue (`#N`). The tracking issue
 does not pass them on to the agent.
 
-Everything else works as on any issue: comment `/agent …` on the active issue
+Everything else works as on any issue: comment `/agent …` on an active issue
 or its MR, revisit decisions with `/agent revisit <id> …`, or fix things by
 hand and `resume`. If you pushed to the agent's branch (to resolve a
 conflict the agent could not, say), comment `/agent …` on the issue: the run

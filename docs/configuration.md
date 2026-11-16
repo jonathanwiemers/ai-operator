@@ -313,7 +313,7 @@ kubectl -n agents create secret generic agent-credentials \
 | Field | Default | Description |
 |-------|---------|-------------|
 | `specMarker` | `/agent spec` | text that must appear in a milestone description for it to be planned; `""` plans every active milestone with a description |
-| `autopilotMarker` | `/agent autopilot` | text that plans a milestone and runs it end to end: agents take their defaults, issues are worked one at a time and each MR is merged when CI is green and the review is clean (see [Autopilot](usage.md#autopilot-a-milestone-end-to-end)); `""` disables autopilot. The bot must be allowed to merge into the default branch |
+| `autopilotMarker` | `/agent autopilot` | text that plans a milestone and runs it end to end: agents take their defaults, up to [`autopilot.maxParallel`](#specautopilot) issues are worked at the same time (each once its dependencies are merged), the MRs land one after another and each is merged when CI is green and the review is clean (see [Autopilot](usage.md#autopilot-a-milestone-end-to-end)); `""` disables autopilot. The bot must be allowed to merge into the default branch |
 | `titlePattern` | – | optional regex for milestone titles; if set, issues are also only picked up from matching milestones |
 
 Neither marker has a setting for *when* planning happens. A milestone with the
@@ -322,6 +322,30 @@ reviews the issues. An autopilot milestone is planned when its turn comes,
 that is when no older autopilot milestone of the project is still open (or
 when an owner comments `/agent start`); until then it only has a tracking
 issue. See [Autopilot](usage.md#autopilot-a-milestone-end-to-end).
+
+## `spec.autopilot`
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `maxParallel` | `3` | how many issues of an autopilot milestone are implemented at the same time (at least 1). An issue starts once every issue it depends on is merged and fewer than this many are running; held issues and, above 1, the issue that is landing do not count. `1` runs one issue at a time, and every problem of an issue pauses the milestone instead of holding the issue (see [When it pauses](usage.md#when-it-pauses)) |
+
+A milestone overrides it with the description line `/agent parallel N`
+(1 to 10), which an owner can also set with the `parallel N` command on the
+tracking issue or the Desk's stepper (see [commands.md](commands.md)). A line
+with another value is ignored (logged), and the project's value applies. The
+limit in effect is in the spec task's `status.autopilot.maxParallel`.
+
+The merges stay one at a time whatever the limit: the issues that are ready
+wait in the order they became ready, and one of them is landing (rebase, CI,
+merge; `status.autopilot.landing`). See [The merge gate](usage.md#the-merge-gate).
+
+Every running issue needs an agent run, and those count against the
+project's [`maxConcurrentRuns`](#other-spec-fields), as do chat, review and
+fix runs. When a milestone's limit is above `maxConcurrentRuns`, the
+tracking issue warns ("⚠️ Up to N issues may run at the same time, but the
+project allows M agent runs at a time (`maxConcurrentRuns`): further runs
+queue."), and the extra runs wait in the project's run queue. Set
+`maxConcurrentRuns` to at least `maxParallel` plus one for a chat or fix run.
 
 ## `spec.houseRules`
 
@@ -1134,7 +1158,7 @@ released operator runs.
 | Field | Default | Description |
 |-------|---------|-------------|
 | `pollInterval` | `1m` | GitLab polling interval (with webhooks receiving, see [`spec.webhook`](#specwebhook)) |
-| `maxConcurrentRuns` | `3` | runs in flight per project; more runs queue, the main-red fix first, then review-only runs, then issues without a milestone, then the oldest milestone (see [several milestones at once](usage.md#several-milestones-at-once)). Pilots (`Coordinate` tasks) are not counted and never queue for it. Keep this low on subscriptions, which have usage windows |
+| `maxConcurrentRuns` | `3` | runs in flight per project; more runs queue, the main-red fix first, then review-only runs, then issues without a milestone, then the oldest milestone (see [several milestones at once](usage.md#several-milestones-at-once)). Pilots (`Coordinate` tasks) are not counted and never queue for it. Keep this low on subscriptions, which have usage windows. With autopilot, keep it above [`autopilot.maxParallel`](#specautopilot), else the milestone's issues queue for runs |
 | `suspend` | `false` | stop polling and starting runs |
 | `research` | | research runs of the AgentResearches that reference this project: `writerSecret` (`{name, usernameKey: username, passwordKey: password}`, the database login of their runner, a Secret in this namespace) and `candidates` (`quick`, `deep`: up to 5 `{engine, model, effort}` each, replacing the chart's `research.candidates`), see [research.md](research.md#specresearch-on-agentproject) |
 
