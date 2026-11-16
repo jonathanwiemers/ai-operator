@@ -69,6 +69,11 @@ in `docs/README.md`. Folder READMEs link only pages that exist.
 - **Move, don't copy.** The merge request that adds the new text removes the
   old text, so no fact exists twice and none disappears. It sets the status
   of its rows below.
+- **The docs check.** `make test` runs `internal/docscheck` (R2): relative
+  links and their anchors, every `docs/….md` ref in code and config, the cap
+  and the source-ref rule, and the outside entry points `docs/README.md`
+  and `README.md#quick-start`. Run `go test ./internal/docscheck/` and fix
+  what it reports in the same merge request.
 
 ## Inventory
 

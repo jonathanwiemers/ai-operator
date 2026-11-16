@@ -469,7 +469,7 @@ With Desk chat on (`ui.chat.writerSecret` and the `plans` feature from
 `GET /api/v1/features`), an owner drafts a new milestone with an agent that
 reads the project's default branch, its milestones and its issues, then
 creates it on GitLab. Plans are `AgentPlan` resources; see
-[design.md](design.md#agentplan).
+[configuration.md](configuration.md#plan).
 
 **Who may plan.** Creating, chatting, editing the draft, raising the budget,
 creating the milestone and deleting need the `steer` grant and the caller
