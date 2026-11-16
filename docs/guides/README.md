@@ -7,5 +7,25 @@ comment second.
 
 ## Pages
 
-None yet. The guides are being written from the old pages, see the
+In the order you need them for a milestone:
+
+1. [Write a milestone](write-a-milestone.md): the spec, its marker lines,
+   what the planner makes of it, and the order of the issues.
+2. [Answer and hand over](answer-and-hand-over.md): answer the agent's
+   questions in the Desk or in GitLab, and hand an issue over by label.
+3. [While the agent works](while-the-agent-works.md): the draft merge
+   request, its steps and review, commit messages, toolchains, CI, the
+   default branch's health and merge conflicts.
+4. [Owners and pings](owners-and-pings.md): who gets mentioned when the
+   agent needs a human, and who may give commands.
+5. [Iterate and finish](iterate-and-finish.md): ask for changes, revisit
+   decisions, also after the merge, and finish an issue.
+
+The other guides are being written from the old pages, see the
 [docs map](../README.md#pages-being-moved).
+
+## Next
+
+- [Commands](../reference/commands.md): every `/agent` command.
+- [How it works](../concepts/how-it-works.md): what happens between spec
+  and merge.

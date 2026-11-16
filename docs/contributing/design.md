@@ -1274,6 +1274,17 @@ when every GitLab call of a check succeeded, so a failed one is repeated on
 the next check. The issues are found again by a marker at the start of the
 description, in issues the bot wrote.
 
+The logs of the first 3 failing jobs are attached, the last 40 lines each.
+The failing tests come from the log: nextest's
+`FAIL [2.715s] <binary> <test>`, cargo test's `test <name> ... FAILED` and
+vitest's `FAIL <file> > <test>`, at most 10, made safe for code spans. Job
+names in titles keep only letters, digits and ` :._/-`, at most 60
+characters. A flaky issue's description stays the marker and its first
+one-liner; the logs live only in the occurrence comments. Read the state
+with `kubectl get agentproject <name> -o jsonpath='{.status.mainHealth}'`:
+`state` (`green`, `retrying`, `red`, `flaky`), the pipeline, commit,
+failing jobs and the open `ci::main-red` issue.
+
 Canceled pipelines (`mainHealth.retryCanceled`, `checkCanceled`, on the
 same pipeline list): the first check records the newest finished pipeline
 as the baseline (`status.mainHealth.canceledSince`), so history is not

@@ -33,7 +33,8 @@ ENV PATH="/opt/cursor/.local/bin:${PATH}"
 # Toolchain installers, pinned and checksum-verified: mise (.mise.toml,
 # .tool-versions) and rustup (rust-toolchain.toml; mise's rust backend would
 # fetch the rustup script). What they install lives on the workspace PVC
-# (HOME is /workspace/home in the agent container), see docs/usage.md. No
+# (HOME is /workspace/home in the agent container), see
+# docs/guides/while-the-agent-works.md#toolchains-the-agent-installs. No
 # auto-install: a pin the branch changes must not land there unasked.
 ARG MISE_VERSION=2026.10.8 RUSTUP_VERSION=1.29.2
 RUN set -eu; case "$(dpkg --print-architecture)" in \

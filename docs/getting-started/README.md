@@ -14,8 +14,8 @@ any of it.
 2. **[Turn on the Desk](turn-on-the-desk.md)**: the OIDC client, the
    Secret and the chart values, then log in.
 3. **[Your first milestone](first-milestone.md)**: write a short spec on
-   autopilot, watch it get planned in the Desk, answer a prompt and see the
-   first merge request.
+   autopilot, watch it get planned in the Desk, see the first merge request
+   and answer a prompt.
 
 ## Next
 

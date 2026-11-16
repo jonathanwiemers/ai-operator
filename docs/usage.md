@@ -2,700 +2,12 @@
 
 Every `/agent` command is listed in [commands.md](reference/commands.md).
 
-Everything happens in GitLab. You write specs, answer questions, move cards
-and review merge requests. The operator turns those actions into agent work.
+Writing a milestone, answering the agent, following its work and iterating
+are in the [guides](guides/README.md). This page keeps autopilot and the
+rest until those sections move too.
 
 Setting up GitLab (the bot user, labels, board and webhooks) is part of
 [Install](getting-started/install.md#set-up-gitlab).
-
-## 1. Write the milestone spec
-
-Create a milestone. Its description is the overarching spec for the whole
-feature. Add the marker line `/agent spec` anywhere in the description.
-The skill [`skills/milestone-spec`](../skills/milestone-spec/SKILL.md) is
-the house style for these descriptions, with a [template](../skills/milestone-spec/template.md)
-and a checklist. Claude Code loads it in this repository.
-
-```markdown
-/agent spec
-
-## Goal
-Customers can pay with PayPal in the new checkout.
-
-## Requirements
-- ...
-```
-
-Within a poll interval (default 1 minute), a spec pod named like
-`shop-spec-m3-checkout-v2` starts. It reads the spec and the repository, then
-creates one **sub-issue per merge request** in the milestone. Each sub-issue
-holds a self-contained sub-spec:
-
-- the part of the milestone spec it implements, context and implementation
-  plan (files, functions)
-- acceptance criteria and a test plan
-- `Depends on #…` for ordering, also as [issue links](#dependencies-as-issue-links).
-  On autopilot, issues without a dependency between them may run at the
-  same time, so the planner keeps them off the same files; where they
-  would overlap, it makes one depend on the other. Conflicts that still
-  happen are [resolved by the agent](#merge-conflicts)
-- a `**Release:**` line with the planner's release decision: `after this issue: <why>`
-  (a step users notice, or one that must be live before the next) or `not
-  after this issue`. A release needs a one-line reason; without one it is
-  recorded as none. A re-plan keeps the decision of an issue that is no draft
-  any more
-- **Open questions**, each with the default the agent would pick
-- labels `ai-generated`, `agent::draft` and the chosen `agent-profile::…`
-
-The operator never edits the milestone description on its own; only the
-pilot writes it, after an owner's `yes`, for a
-[spec change](#spec-changes-through-the-pilot) or a standing rule. If you
-edit the spec later, the spec agent runs again. It updates sub-issues that are still drafts and leaves
-issues that are in progress, done, or created by hand alone.
-
-If planning fails for an outside reason (a GitLab or network error such as a
-timeout, or the agent pod or container lost), the operator plans again once,
-`spec.lifecycle.infraRetryAfter` (default 30m) after the failure. A run
-keeps the issues it created, and the next one finds them by their plan key.
-Other failures (e.g. a plan that does not decode), and a retry that fails
-too, wait for you: change the milestone's spec to plan again. On autopilot
-every planning failure is a comment on the [tracking issue](#tracking-issue)
-with the error and whether a retry follows, and it mentions the owners
-(event `failed`). Without autopilot it is in the task status
-(`status.run.summary`) and the spec pod's log.
-
-### Dependencies as issue links
-
-The planner's dependencies are also GitLab issue links, so the issue page and
-the boards show them:
-
-- On **GitLab Premium/Ultimate** an issue is linked as **is blocked by** the
-  issues it depends on, and GitLab shows the blocked badge.
-- On **GitLab Free** blocking links do not exist; the operator falls back to
-  **relates to** links, which have no direction. The `Depends on` list in the
-  description stays the record of the order.
-
-A re-plan adds links for new dependencies and removes the links it made for
-dependencies it dropped, on drafts only. Links you made are never removed,
-and a link of the plan you remove stays removed. On autopilot, an **is
-blocked by** link you add (Premium) holds an issue back until the linked
-issue is closed, even if the plan does not list it or it is in another
-project, so you can order or block work right on the issue. The run log's
-`link dependencies` step says which link type was used.
-
-## 2. Answer questions and hand the issue over
-
-Answer the questions as comments on the issue. Check the profile label: change
-`agent-profile::fast` to `agent-profile::strong` if the issue is harder than
-the planner thought, or the other way round. Then move the issue to
-**`agent::ready`**.
-
-You can also hand over issues you wrote yourself. Just add `agent::ready`
-(and optionally a profile label; without one, `agents.implement` is used).
-
-## 3. The agent works
-
-The operator moves the issue to `agent::working`, assigns the bot user if
-nobody is assigned (see [Watching progress](#watching-progress)) and starts a
-pod named like `shop-42-add-paypal-button`. In that pod:
-
-1. On the first run, the **draft MR** `Closes #42` is opened right away, in
-   the issue's milestone, before the agent changes anything. Its description
-   holds a placeholder until the first push is described (step 7). The branch
-   `agent/42-add-paypal-button` starts with an empty "Start work on #42"
-   commit pushed with `ci.skip`, so no pipeline runs for it (the message has
-   no `[skip ci]`, which a merge commit template could copy to the default
-   branch). With `workflow.conventionalCommits` it is
-   `chore: start work on #42` (see [Commit messages](#commit-messages)).
-   The issue gets a comment linking the MR; from then on every run reports
-   there.
-2. While a run goes on, the MR has a **progress comment** with the run log so
-   far: each step, its time and result, and the step in progress. It is
-   edited as steps start and end (at most every 3 seconds) and replaced by the
-   run's report when the run ends. A run that fails or waits for a usage limit
-   leaves it with its run log and the reason.
-3. The implementing agent (engine and model from the issue's profile) works on
-   the branch. It follows your comments, runs the tests, and stops with
-   questions if a design decision is unresolved. While the MR is a draft it
-   works in **steps** (`workflow.stepCommits`): after each piece that is worth
-   a commit of its own, the step is committed and pushed with `ci.skip` (no
-   branch pipeline; merge request pipelines still run where your rules allow
-   them for drafts), and the agent continues. Comments you write on the issue
-   or the MR in the meantime are handed to it before its next step, so you
-   can steer while it works; they need no `/agent` prefix. A `/agent …`
-   command is not handed over: it starts its own run after this one, and the
-   comments after it wait for that run too. At most 25 steps per run; a run
-   that runs out of steps leaves the MR a draft and says so. Each step's
-   commit carries the agent's message and `Refs #42` (see
-   [Commit messages](#commit-messages)). With
-   [`agents.implement.maxStepLines`](reference/agents-and-models.md#roles) (or a
-   profile's) the **step-size gate** keeps steps small on claude: once the
-   uncommitted diff passes that many changed lines, a hook tells the agent
-   to finish the step (get it to build, return it with its commit message),
-   again at most every 5 tool calls, and the steps note asks it to keep a
-   step under the limit. Fix, CI and conflict rounds have no gate.
-4. The **bugbot** and **security** reviewers check the diff in parallel. A
-   reviewer that fails because its engine's service is briefly unavailable
-   (for example cursor-agent's `RetriableError: [unavailable]`, a reset
-   connection, a 502/503/504) is called again after 30 seconds, then after 2
-   minutes (`review.retries`, default 2). Other failures, and usage limits,
-   are not retried; the report says how many attempts a failed reviewer had.
-   If reviewers still fail, `/agent review` asks for a **re-review run**:
-   the reviewers check the pushed head again, the implementer does not run,
-   and nothing is pushed unless blocker or major findings go to the
-   implementer (step 5). The run records whether all failed reviewers failed
-   transiently (`status.run.reviewErrorsTransient`).
-5. Blocker and major findings go back to the implementer (at most
-   `review.maxIterations` times). Remaining findings are listed for you.
-6. **If the review is clean**, the MR is marked **ready** (its `Draft:` prefix
-   is removed) before the push, so the push gets its pipeline even where
-   pipelines skip draft MRs. If the run leaves blocker or major findings, a
-   reviewer failed, or the agent asks questions, the MR goes back to draft.
-   An MR with only the start commit stays a draft, and so does an MR you
-   marked draft yourself after a run left it ready: that is your hold, mark
-   it ready to release it. Without reviewers configured, every
-   run with changes marks it ready; CI fix runs off autopilot are not
-   reviewed and leave the draft state as it is. A clean run that has nothing
-   new to push starts a merge request pipeline for the head it marked ready.
-7. The branch is pushed. If the diff changed since it was last described,
-   the **describe** agent (`agents.describe`) rewrites the **MR
-   description**: Why, What, How, Verification and, when it helps, a mermaid
-   diagram of the change at the bottom. It describes the whole branch, not
-   the run, and only rewrites its own part (between hidden markers): text
-   you add above or below it, and `Closes #42`, stay. With
-   `workflow.conventionalCommits` it also writes the **MR title** (see
-   [Commit messages](#commit-messages)). Then the report is
-   posted on the MR; the first run's report points to the description
-   instead of repeating it, later reports say what that run changed. If the
-   agent has questions, the report lists them with a link to answer them in
-   the Desk, and the operator posts each on the issue as a prompt.
-8. The agent's decisions are posted on the issue (see
-   [Decisions](#decisions)).
-
-If the agent has questions, the issue moves to **`agent::needs-input`**.
-A decision comes with two to four options, the agent's default marked, and
-an open question without. The task keeps them, normalised, in
-`status.run.questions` (at most 5), and the operator makes each a
-**`needsInput` prompt** on the Implement task ("Q<n>", counted with the
-milestone's prompts), posted as one comment on the issue with "Answer in
-the Desk: <link>"; the first mentions the owners (not on autopilot, and only
-with the `needsInput` notification). An open question is one free-text
-prompt.
-
-The milestone's owners (`/agent owner-subjects`) answer on the Task page or
-with the chat command `{"cmd":"answer","prompt":"Q5","option":"B"}` (or
-`"text"`, the answer in their own words) on the Implement task; anyone
-else is told only the owners can, and a second answer is refused naming
-the first. Once no question of the run is open, the run is requested and
-the issue moves to `agent::working`; the agent gets all answers in one turn
-and continues. The issue's comment of each prompt shows the answer and who
-gave it. A new run before that (a comment, a retry) supersedes the open
-ones. A `/agent` comment still works as an answer, as before.
-
-The answers (`spec.source.promptAnswers`) reach the agent's session once,
-as the owner's words ("Answer to your question Q5 (…) from @alice: …",
-several in one turn), with the run of their request or the next chat turn;
-a fresh session gets them all in its first prompt.
-Otherwise it stays in `agent::working` until the MR pipeline has run; failing
-jobs (lint, tests, …) go back to the agent (see [CI feedback](#ci-feedback)),
-and the issue moves to **`agent::review`** once the pipeline is green.
-After a clean run "review" means: reviewed, tests and CI pass, the MR is
-ready, a human can look and merge. A draft in review still has findings the
-run report lists (and, where pipelines skip drafts, no CI). On
-[autopilot](#autopilot-a-milestone-end-to-end) the operator merges it.
-
-So an issue's MR goes: draft MR → code → review → ready → pipeline → CI fixes
-if needed → merge (by you, or by autopilot).
-
-### Commit messages
-
-The agent writes the message of every commit it leaves on the branch (each
-step, each fix, CI or conflict round); the runner adds `Refs #42`, and uses
-the issue title when the agent wrote none. Checkpoints have their own
-`chore(wip): checkpoint …` subject until the next step folds them.
-
-With `workflow.conventionalCommits: true` (see
-[AgentProject reference](reference/agentproject.md#specworkflow)) the messages follow
-[Conventional Commits](https://www.conventionalcommits.org/):
-`type(scope): subject`, a blank line, then the body.
-
-- The implementer's answer schema requires the format for `commitMessage`
-  (a `pattern` built from `workflow.commitTypes`), and its instructions say
-  how to pick the type (`feat` for new behaviour, `fix` for a bug fix, …)
-  and the scope (the package, directory or component the step touches, in
-  lowercase), with an imperative, lowercase subject of at most 72
-  characters. The fix, CI and conflict prompts point to it.
-- The runner checks every message before it commits. One that still does
-  not match (for example `Add thing`) becomes `chore(agent): add thing`,
-  with the body kept. The runner logs it, and the run report says
-  "N commit messages did not follow Conventional Commits and were rewritten
-  as `chore(agent): …`".
-- The branch's start commit is `chore: start work on #42`, and the merge
-  commit of a conflict run is `chore: merge main into agent/42-…`.
-- The **MR title** follows the format too. Squash merges, also the ones you
-  do by hand, land a commit with the MR title on the default branch. The
-  describe agent (step 7) writes a title for the whole change, for example
-  `feat(checkout): add the paypal button`, each time it rewrites the
-  description. The runner reads the MR again and sets the title,
-  `Draft: feat(checkout): …` while the MR is a draft. A title you renamed by
-  hand (neither the issue title nor the title the runner last set) stays,
-  and so does the current title when the describer's title does not match
-  the format; both are logged, and the run goes on. The title changes only
-  with a description rewrite, so after you turn the option on it follows
-  with the next push that changes the diff. A companion MR keeps its title.
-- **Autopilot's merge** passes a `squash_commit_message`: the MR title
-  (without `Draft: `; `chore(agent): …` if it does not match the format), a
-  blank line and `Refs #N`. So the commit on the default branch is
-  conventional even when the MR title was renamed by hand. GitLab ignores the
-  message when the project does not squash.
-
-With the option off (the default), messages, titles, schema and prompts are
-as before.
-
-### Toolchains the agent installs
-
-The agent runs your tests, linters and formatters itself instead of guessing
-their output, so it needs your toolchains. Besides the tools of the
-[agent image](reference/agent-image.md), it installs the ones your
-repository pins at the root of the **default branch**:
-
-| Pin file | Installed with | Example |
-|----------|----------------|---------|
-| `.mise.toml`, `mise.toml`, `.tool-versions` | `mise install` | Node, Go, Python, jq |
-| `rust-toolchain.toml`, `rust-toolchain` | `rustup toolchain install` | Rust with `rustfmt`, `clippy`, targets |
-
-* They come from official sources (mise's registry, `static.rust-lang.org`)
-  into `$HOME/.toolchains` (`mise/`, `rustup/`, `cargo/`) on the task's
-  workspace volume, so later runs of the same issue reuse them. No root, no
-  system packages, no piped install scripts. Nothing installs implicitly
-  (`RUSTUP_AUTO_INSTALL=0`, `MISE_AUTO_INSTALL=false`), and mise tools are
-  not on `PATH`: the agent runs them with `mise exec`.
-* If the agent's branch changes a pin (say it bumps Rust), the runner starts
-  every agent call of the run with `MISE_DATA_DIR`, `RUSTUP_HOME` and
-  `CARGO_HOME` pointing to a temporary directory of that run, so that version
-  never reaches `$HOME/.toolchains`; the next run removes it. The branch is
-  compared with the default branch when the run starts: a pin the agent
-  changes during a run gets its own directory from the next run on.
-* A failed install is reported in the run summary. To make a toolchain
-  available without a download per issue, add it to your own agent image.
-
-### Owners and pings
-
-The operator mentions the **owners** (`cc @alice @bob`) in the comments that
-need a human, so GitLab sends them a mail and a To-Do:
-
-| When | Where |
-|------|-------|
-| a run failed | issue |
-| a run gave up for an outside reason and the issue stays blocked: after 20 usage limit deferrals, or when the automatic retry of an `infra` failure failed too | issue, also on autopilot |
-| the agent asks questions | issue (with the questions) |
-| the agent could not finish alone (e.g. unresolved conflicts) | MR report |
-| CI is still red after the fix rounds (not on autopilot) | issue |
-| the issue reached review (not on autopilot) | MR report, or "Ready for review" on the MR after CI; the owners also become the MR's reviewers if it has none |
-| autopilot paused or is done | tracking issue |
-| planning failed (autopilot) | tracking issue, saying whether a retry follows |
-| the default branch stayed red after a retry | the new `ci::main-red` issue (project owners: `spec.notify.users` or the default) |
-| a default-branch pipeline was canceled twice | the new `ci::main-canceled` issue (project owners) |
-
-Only new comments carry the mention, never the progress comment that is
-edited while a run goes on, and each commit pings for review once. On
-autopilot, failed runs, questions and red CI ping through the pause on the
-tracking issue instead; while paused, a new reason for the active issue (say
-the review is fixed, but CI is red now) is announced, and pinged, again. The owners are, most specific first:
-
-1. a line in the milestone description, for the milestone and its issues:
-
-   ```
-   /agent owners @alice @bob
-   ```
-
-   An `/agent owners` line without names turns the pings off for the
-   milestone. Adding or changing the line does not re-plan the milestone.
-2. `spec.notify.users` of the AgentProject;
-3. the operator's default (Helm value `defaultOwners`).
-
-`spec.notify.events` picks the situations, `spec.notify.requestReview: false`
-keeps the reviewers to you (see
-[AgentProject reference](reference/agentproject.md#specnotify)).
-
-#### Commands from owners only
-
-By default anyone who can comment gives `/agent …` commands. With
-`spec.workflow.commandsFrom: owners` only the owners above count, checked by
-GitLab user ID: on issues and their MRs, on the tracking issue and on closed
-issues (revisits). Anyone else's command starts and changes nothing; each such
-comment gets one reply in its thread ("🤖 Only the owners of this milestone
-can give `/agent` commands here"), up to
-[10 a day per author](reference/commands.md#replies-to-comments-not-acted-on). On a milestone without owners nobody's
-command counts, and the reply says to add an `/agent owners` line. Plain
-comments still reach the agent with its next run. For an issue without a
-milestone the owners are `notify.users`, else the operator's default.
-
-## CI feedback
-
-After every push, the operator follows the pipeline of the pushed commit:
-
-| Pipeline | What happens |
-|----------|--------------|
-| running | the issue stays in `agent::working` |
-| green (also: waiting for manual jobs) | `agent::review` |
-| red, first time | the failed jobs are retried once, to rule out flaky jobs |
-| still red, the same jobs also fail on the default branch | `agent::review` with a comment: not caused by this change; it links the `ci::main-red` issue if there is one |
-| still red | the agent gets the failing jobs and the end of their logs and fixes the cause (a "CI fix" comment on the MR) |
-| still red after 2 fix rounds | `agent::needs-input` with the failing jobs |
-| canceled | `agent::review` with a comment |
-| no pipeline within 10 minutes | `agent::review` (the project has no CI for this commit); a skipped pipeline (a push with `ci.skip`) counts as none |
-
-The fix rounds count from the last push you triggered (`/agent …` or moving
-the issue to ready), so every new instruction gets two fresh rounds. CI fix
-runs skip the reviewer agents (except on [autopilot](#autopilot-a-milestone-end-to-end)).
-Job logs reach the agent as untrusted data.
-
-Whether a job also fails on the default branch comes from
-[main health](#main-health) when it checked the branch within one
-`mainHealth.interval` (`red`, or `retrying` its failed jobs); otherwise, or
-with `mainHealth.disabled`, the operator reads the newest finished pipeline
-of the default branch itself.
-
-If you push to the agent's branch yourself and then comment `/agent …`, a run
-that has nothing to add takes your commits over: your head counts as the
-pushed commit, and CI is followed for it like for the agent's push.
-Configure the loop in `spec.ci` (see [Lifecycle and CI](reference/lifecycle-and-ci.md#specci));
-`ci.disabled: true` restores "review right after the push".
-
-The loop follows the MR's head pipeline if the MR's head is the pushed
-commit, which covers merged-results and merge request pipelines, and
-otherwise the newest pipeline of the commit. The MR is marked ready before a
-clean run pushes, so pipelines that skip draft MRs run too. A push of a run
-that left problems is a draft; if your pipelines skip drafts, it gets no
-pipeline and moves to review after `ci.noPipelineTimeout`. Autopilot never
-merges such an MR without CI: its gate pauses on the findings, and an MR whose
-head had no pipeline is marked ready if needed and gets a pipeline first (see
-[the merge gate](#the-merge-gate)).
-
-While the issue is in `agent::review`, the operator keeps watching the MR's
-head pipeline. GitLab starts no pipeline when a draft is marked ready, but one
-started afterwards (by you, by autopilot, or by a run that marked the MR
-ready without a push) or a canceled pipeline you retry is followed: while it runs or once it is red the issue goes back to
-`agent::working`, and the loop above takes over: retry, CI fix run, review.
-One that is already green when the operator first sees it counts as green
-right away and the issue stays in review. So a job such as "add a changelog
-entry" that only runs for ready MRs gets fixed by the agent too, as far as
-code can fix it: the agent can add the file the job asks for, but it cannot
-set labels on the MR.
-
-## Main health
-
-The operator also watches the default branch: every `mainHealth.interval`
-(5 minutes) it reads the newest finished pipeline of the default branch
-(skipped and canceled ones are passed over), and the jobs only when that
-pipeline is new. Jobs that are allowed to fail don't count. A long failure
-list shows the first 3 jobs and their logs.
-
-| Default branch pipeline | What happens |
-|-------------------------|--------------|
-| green | nothing; an open `ci::main-red` issue gets "✅ green again at `<sha>`" and is closed |
-| red, first time | its failed jobs are retried once |
-| green after the retry | flaky: one issue per job, "🔁 Flaky CI job: `<job>`" (labels `ai-generated`, `ci::flaky`), opened on the first failure, and one occurrence comment per pipeline (the first 3 jobs of a pipeline): the pipeline, the failing tests and the last 40 lines of the **failed attempt's** log, as untrusted data |
-| still red after the retry | an issue "🚑 `main` is red: `<jobs>`" (labels `ai-generated`, `ci::main-red`) with the pipeline, the commit, the failing jobs and the last 40 lines of each job's log; it mentions the project's owners |
-| red again, the same jobs | nothing new |
-| red again, other jobs | a comment on the `ci::main-red` issue, and its title follows |
-| canceled, its commit has no green pipeline of its own | retried once (`mainHealth.retryCanceled`); a newer commit's green pipeline does not cover it, since jobs such as a release ran only for that commit |
-| canceled again after that retry (or the retry refused) | one comment with the pipeline and the commit: on the open `ci::main-red` issue, else on an issue "⏹️ `main`: pipeline canceled twice" (labels `ai-generated`, `ci::main-canceled`), which mentions the owners when it is opened. It does not freeze autopilot and is not handed to the agent; close it by hand |
-
-Canceled pipelines older than the newest one when `retryCanceled` first ran
-(after the upgrade, or switched on again) are left alone.
-
-The operator finds its issues again by a hidden marker, also after the
-AgentProject was recreated; issues a human opens with these labels are left
-alone. Job logs are untrusted: mentions and quick actions in them are made
-inert, and job names in titles keep only letters, digits and ` :._/-`, at
-most 60 characters. Close a flaky issue once the job is fixed; the next
-failure opens a new one.
-
-The retry replaces the failed jobs, so the operator records their IDs when
-it retries (`status.mainHealth.retriedJobIDs`) and reads their logs once the
-retry is green. The failing tests come from the log: nextest's
-`FAIL [2.715s] <binary> <test>`, cargo test's `test <name> ... FAILED` and
-vitest's `FAIL <file> > <test>`, at most 10, made safe for code spans. A
-flaky issue's description stays the marker and its first one-liner; the
-logs live only in the comments, after the untrusted-data marker.
-
-The state is in the AgentProject status:
-
-```bash
-kubectl get agentproject shop -o jsonpath='{.status.mainHealth}'
-```
-
-`state` is `green`, `retrying`, `red` or `flaky`, with the pipeline, commit,
-failing jobs and the open `ci::main-red` issue. Configure it in
-`spec.mainHealth` (see [Lifecycle and CI](reference/lifecycle-and-ci.md#specmainhealth));
-`mainHealth.retryFailedJobs: false` reports a red pipeline right away.
-
-**Fixing it with the agent.** With `mainHealth.autoFix: true` (off by
-default) the main-red issue gets `agent::ready` when it is opened, or when
-`autoFix` is switched on while the branch is red, and runs like any issue,
-also when `milestones.titlePattern` would skip an issue without a milestone.
-Its description tells the agent to make the default branch green: fix the
-cause; a test that fails only sometimes is stabilised or quarantined, never
-deleted. The job logs follow a hidden marker; the agent and the reviewers
-get them as untrusted data between `<untrusted-data>` tags, never as part of
-the task, also in the issue's later comments. The CI loop of its MR does not
-call the main-red jobs "not caused by this change": the change has to fix
-them. One issue is handed over per red episode; a main-red issue opened
-before the operator marked its logs is not. Switch `autoFix` on only where
-that is wanted: whoever can make the default branch's CI fail starts an
-agent run. When the branch turns green
-without it (a flaky job, a fix by hand), the issue is closed as usual and
-the agent's MR is left open for you to merge or close.
-
-**Fixing a flaky test with the agent.** A flaky job's issue goes to the
-agent once: by the pilot's `fixFlaky` (see [Talking to the
-pilot](#talking-to-the-pilot)), after its job was flaky at least twice (two
-occurrence comments) when the pilot runs it on its own or recommends it,
-after one when an owner chooses it in a main health prompt; or by the
-operator itself with `mainHealth.autoFixFlaky: true` (off by default) at
-the second occurrence, also without a pilot. The issue moves into the
-milestone (the pilot's; with `autoFixFlaky` the active autopilot milestone
-with the lowest IID, else none) and runs like any of its issues: on a
-running autopilot it joins the queue (a re-plan keeps it), otherwise it
-gets `agent::ready`. An owner's choice always adds `agent::ready`, also
-on the queue, so its run starts at once. Its
-description gets the operator's fixed task: make the flaky test
-deterministic, find the cause in the code or the test, do not delete or
-skip it, a quarantine needs an owner's `yes`. The failing tests and logs
-stay in the occurrence comments, as untrusted data. Only an open
-`ci::flaky` issue the operator opened, with the title and description it
-wrote, is handed over, and only the operator's occurrence comments of that
-job count; an edited one is refused. The first hand-over wins
-(`status.mainHealth.flakyFixes`, kept while the watcher is off, which also
-exempts the issue from `milestones.titlePattern`; the task in the
-description refuses a second one too); a later occurrence only adds a
-comment. `autoFixFlaky` acts when a retry turns green; switched on while
-the branch is flaky, it waits for the next occurrence.
-Occurrence comments from before this version are not counted. Switch
-`autoFixFlaky` on only where that is wanted: whoever can make a job of the
-default branch fail twice starts an agent run.
-
-**Merge freeze.** While the default branch is `red`, autopilot merges
-nothing (`mainHealth.freezeAutopilot`, on by default). When an active issue
-passed review and CI, the issue gets `agent::blocked` +
-`agent-blocked::main-red` and autopilot pauses: "`main` is red (#N): merging
-waits until it is green". The freeze also holds while a red branch's next
-pipeline is retried; a `flaky` branch does not freeze. Once the branch is
-green, the block is lifted (the issue is back in `agent::review`), autopilot
-continues by itself with "▶️ Autopilot continues: `main` is green again" and
-the gate runs again on the next poll; a pipeline the CI loop did not see
-during the freeze sends the issue back to `agent::working` first. A freeze
-never outlives the watcher: with `mainHealth.disabled`, or a status not
-checked for 3 intervals, the branch counts as not red and the block is
-lifted. `/agent resume` does not end a freeze (it pauses again); to ship
-during a freeze, merge by hand. The freeze holds at the merge gate only: an
-issue already started keeps working until it reaches it.
-
-**The main-red lane.** With the freeze on, the oldest autopilot milestone
-that is not done also drives the `ci::main-red` issue while the branch is
-red, once it is handed to the agent: by `mainHealth.autoFix`, or by an owner
-who adds `agent::ready` with `autoFix` off (also when
-`milestones.titlePattern` would skip it); an issue without a workflow label
-stays yours. Its run is on autopilot (no questions, CI
-fixes are reviewed), and it goes through the same merge gate (run, review,
-CI, a mergeable MR) and is merged. That is the only merge during a freeze:
-the queue stays frozen until the next check sees the branch green, then it
-continues as above. One fix is merged per red episode. The lane does not run
-while you paused autopilot (`/agent pause`), nor once you took the issue
-from the agent (no workflow label). If the fix cannot be merged (its CI is
-still red after the fix rounds and the issue is in `agent::needs-input`, for
-example), autopilot pauses with "the fix of the red default branch (#N)
-cannot be merged: …" and mentions the owners; the lane waits during that
-pause. It ends by itself once a later run passes the gate, or when the
-branch turns green and the issue is closed; a pause over its MR (an
-approval, a push by hand) ends with `resume`, which also lifts an infra
-block of the fix. Without autopilot, the issue follows the normal flow and you merge
-it.
-
-## Merge conflicts
-
-When the default branch moves on and the MR of an issue in `agent::review`
-gets conflicts, the agent resolves them:
-
-1. The operator sees the conflict on its normal poll (GitLab's
-   `has_conflicts` / `detailed_merge_status`) and moves the issue back to
-   `agent::working`.
-2. The run merges the default branch into the agent's branch (a merge commit,
-   no force push, so your checkout of the branch stays valid). Its message is
-   `Merge branch 'main' into agent/42-…`, or `chore: merge main into
-   agent/42-…` with `workflow.conventionalCommits`.
-3. The conflicted files go to the implementer with their conflict markers. It
-   resolves them, keeping the intent of both sides, checks that the change
-   still fits the new code, and records decisions for resolutions that are not
-   obvious. The runner concludes the merge only if no conflict marker is left.
-4. The result is reviewed and pushed, CI runs, and the issue returns to
-   `agent::review`. The MR comment says which files had conflicts.
-
-If the merge has no conflicts after all, the implementer is not run; the
-merge commit is reviewed and pushed. If the agent cannot resolve a conflict
-(markers left, or it asks a question), the merge is undone, nothing is
-pushed, and the issue goes to `agent::needs-input` with the files. The
-operator asks once per MR head: if the new head conflicts again, because the
-default branch moved again, it asks again.
-
-By default the implementer resolves the conflicts in its own session, on its
-own model. Such a round costs much more per token than an implement run: it
-resumes the implementer's long session, usually after a queue wait, so the
-cache is cold and the whole session is written to the cache again on the
-implementer's model (Opus for `strong`). With
-[`agents.implement.conflict`](reference/agents-and-models.md#conflict-role), e.g.
-`{model: claude-sonnet-5-5}`, the conflict call runs on that role instead.
-It starts in a fresh session that gets the issue, the agent notes, the MR's
-diff stat and the conflicting files. The implementer's session is kept for
-the review fixes and the next run. A run that also carries new comments, a
-CI fix or revisits still goes to the implementer. The *By kind and model* table
-of the [Spend tab](ui.md#spend) shows what the conflict calls cost.
-
-Set `workflow.resolveConflicts: false` to leave conflicts to humans.
-
-## 4. Iterate
-
-| You do | Effect |
-|--------|--------|
-| comment `/agent <instructions>` on the issue or the MR | another run; the agent resumes its session and gets your new comments |
-| move the issue back to `agent::ready` | another run (e.g. after answering questions) |
-| discuss normally (no `/agent` prefix) | nothing; no tokens are spent (during a step run on a draft, the agent reads it before its next step) |
-| push to the agent's branch yourself | the next run continues from your commits |
-| change the profile label | the next run uses that profile |
-| comment `/agent use claude opus` (or set `agent-model::claude/opus`) | the next runs use that engine and model; the comment alone starts no run |
-| comment `/agent effort high` (or set `agent-effort::high`) | the next runs think that hard (claude, at most `agents.maxEffort`) |
-| comment `/agent repo my-group/infra/cluster` (or, as an owner, set `agent-repo::my-group/infra/cluster`) | the issue changes that [companion repository](#companion-repository) too; the comment alone starts no run |
-
-`/agent` must be the first word of the comment. `/agents are great` does not
-trigger a run. All commands are listed in [commands.md](reference/commands.md).
-
-### Decisions
-
-Every run records the decisions the agent made that you might want
-differently: data shapes, names users see, libraries, error handling, scope
-cuts. Small mechanical choices are not decisions. They are posted in one
-comment per run on the issue:
-
-> 📌 **Decisions** in run `shop-42#3`. Change one with `/agent revisit <id> <what you want instead>`.
->
-> #### D42-3: How tags are stored
-> **Question:** How are tags normalised?
-> **Chosen:** lowercase
-> **Why:** `store.js` already lowercases slugs, so search stays case-insensitive.
-> **Alternatives:** keep the case as typed; store display and normalised forms
-
-The planning agent posts its decisions for each issue as a comment on that
-issue too, with the question, the choice, why, and the alternatives, and IDs
-like `D42-P1`:
-
-> 📌 **Decisions** of the plan in run `shop-spec-m3#1`. Change one with `/agent revisit <id> <what you want instead>`.
->
-> #### D42-P1: Payment provider API
-> **Question:** Which PayPal API?
-> **Chosen:** Orders v2
-> **Why:** the project already uses the REST client; v1 is deprecated.
-> **Alternatives:** Checkout v1
-
-The issue description keeps only the spec (with a pointer to the comment), so
-all decisions are discussed, answered and revisited in the comments. While an
-issue is a draft, a re-plan updates this comment in place and its IDs are
-renumbered; implementer IDs (`D42-3`) never change. On autopilot the planner
-asks no questions, so this comment is where its defaults show up. Issues
-planned before this change keep their decisions in the description, and
-those still work; a re-plan of such an issue while it is still a draft moves
-them into the comment (and renumbers them). Reviewers get the planner's
-decisions with the issue.
-
-To change a decision, comment on the issue or its MR:
-
-```
-/agent revisit D42-3 keep the case as typed and add a normalised column
-```
-
-This is a normal run request. The agent gets the decision it is asked to
-change together with your instruction, changes the code, and records a new
-decision that supersedes the old one. The old decision is then marked
-*Superseded by D42-5*.
-
-- The comment must start with `/agent revisit <id>`; one revisit per comment.
-  Several revisit comments since the last run are handled in the same run;
-  for the same ID the latest comment wins. A comment like `/agent revisit the
-  currency` (no ID) is a normal comment, and the report shows the right form.
-- An ID that does not exist on the issue is passed on as a plain comment, and
-  the run's report says so. Revisiting a decision that is already superseded
-  is not applied: revisit the decision that replaced it.
-- A revisit counts as handled once the run's decisions are posted. If the run
-  fails before that, the next run applies it again.
-- If the agent does not record a decision that replaces the old one, the old
-  one is not marked, and the report says so.
-
-Decisions are only read from the bot's decision comments (planner decisions
-of older issues also from the description), so a comment by someone else
-cannot add or fake decisions.
-
-#### Revisiting after the merge
-
-Once an issue of a planned milestone is merged and closed, its decisions can
-still be changed. Comment `/agent revisit <id> <instruction>` on the closed
-issue, or on the milestone's [tracking issue](#tracking-issue) on autopilot.
-The operator then creates a **follow-up issue** in the milestone:
-
-- titled `Revisit D42-3: <decision title>`, with the `ai-generated` label and
-  the profile label of the original issue;
-- its description holds the old decision, your instruction, and who asked;
-- its implementer works on top of the merged change and records a decision
-  that supersedes the old one. When that decision is posted, the old decision
-  on the original issue is marked *Superseded by D57-1*, already before the
-  follow-up is merged. If you drop the follow-up, comment on it or open an
-  issue by hand to restore the old behavior.
-
-Without autopilot the follow-up goes straight to `agent::ready`, since you
-asked for it. On autopilot it is created as `agent::draft` and joins the
-queue after the planned issues; it is merged like any other.
-
-**From the Desk**, without a comment: an owner of the milestone (its
-`owner-subjects`) revisits a decision on the milestone's pilot.
-`{"cmd":"revisit","decision":"D42-3","text":"…"}` does what the comment
-`/agent revisit D42-3 …` on the tracking issue does: the follow-up says
-"requested by @you via the Desk", and the operator's answer below is on
-the tracking issue. Without `text` (the decision row's **Revisit** button)
-it opens a `revisit` prompt instead, on the decision's issue: the
-recorded question, choice and why as its context; "Keep <choice>"
-(recommended, changes nothing); one "Switch to <alternative>" per
-alternative the decision recorded (at most three), which revisits it
-asking for that alternative; or "Decide later" when it recorded none; and a
-text box. Your own words in the box run nothing and need no pilot: they
-become the option "From your answer: revisit D42-3 asking for: …", which
-you confirm with one click. A second click while the prompt is open names
-it again. When the decision's text cannot be read, the prompt says so and
-offers "Keep the decision", "Decide later" and the text box. The refusals
-are those of the table below, answered in the chat.
-
-The operator answers every revisit comment it handles:
-
-| Reply | Why |
-|-------|-----|
-| `Created #57 to revisit D42-3 …` | the follow-up was created |
-| `#42 is still open …` | comment on the open issue; its next run changes the decision |
-| `D42-9 was not found on #42` | the ID is wrong |
-| `… already superseded …` | revisit the decision that replaced it |
-| `#57 already revisits D42-3 …` | one follow-up per decision: comment on it |
-| `… not in this milestone` / `… does not exist` | the ID names another issue |
-
-Only comments written after the operator started watching the milestone,
-and after the issue was closed, are handled, each once: a revisit you wrote
-while the issue was open belongs to its runner (if the issue was merged
-before a run picked it up, comment again on the closed issue). On the tracking issue,
-revisits are handled while autopilot is on, also after it is done. A re-plan
-of the milestone leaves follow-ups alone. Milestones without `/agent spec` or
-`/agent autopilot` are not watched: there, open a new issue by hand.
-
-## 5. Finish
-
-Merge the MR, then close the issue (the MR's `Closes #42` does that) or move
-it to `agent::done`. The task, its pod and its workspace are deleted.
 
 ## Autopilot: a milestone end to end
 
@@ -705,13 +17,13 @@ to, `/agent spec`), the milestone runs without you:
 1. The operator creates a tracking issue, **🤖 Autopilot: <milestone>**,
    right away. The spec agent plans the milestone as usual, but asks no
    questions. It takes the default it would propose and records it as a
-   [decision](#decisions), with why and the alternatives, in a comment on
+   [decision](guides/iterate-and-finish.md#decisions-and-revisit), with why and the alternatives, in a comment on
    each issue. Until a plan exists the tracking issue says that the milestone
    waits for its turn ("⏳ waiting for its turn: %7, %9 go first. Comment
    `/agent start` to plan it now (owners)."), is being planned ("📝
    planning") or that planning has not succeeded yet, and nothing starts; `/agent pause` and `/agent resume` already work. A planning
    failure is a comment there that mentions the owners
-   ([details](#1-write-the-milestone-spec)).
+   ([details](guides/write-a-milestone.md)).
 2. Once planned, the operator moves the issues that can start to
    `agent::ready`, up to the milestone's parallel limit
    ([`autopilot.maxParallel`](reference/agentproject.md#specautopilot); `1` runs one
@@ -747,7 +59,7 @@ Each autopilot milestone has its own queue, but all of a project's runs share
 `maxConcurrentRuns`. When a slot frees up, the waiting task that ranks first
 takes it:
 
-1. the fix of a red default branch ([main health](#main-health));
+1. the fix of a red default branch ([main health](guides/while-the-agent-works.md#main-health));
 2. a run that only reviews a head again: it holds a finished change back from
    its merge;
 3. a task without a milestone: an issue somebody labelled by hand;
@@ -816,7 +128,7 @@ An MR is merged only when all of these hold:
   and the run that continues the work moves the head on. Nobody is asked to
   review a checkpoint either, and the pilot's state shows it as
   `checkpoint`;
-- the default branch is not red ([merge freeze](#main-health)). Checked
+- the default branch is not red ([merge freeze](guides/while-the-agent-works.md#main-health)). Checked
   after the run, review and CI, so the CI loop is final when the issue is
   blocked;
 - if no pipeline ran for the commit and the MR is still a draft (projects
@@ -845,7 +157,7 @@ An MR is merged only when all of these hold:
   lines pauses, as do other commits (someone pushed during the rebase), a
   larger interdiff in files the default branch did not change, or a change
   GitLab does not return in full. The 40 lines and the cap of 2 are fixed.
-- If the MR has [merge conflicts](#merge-conflicts), or GitLab cannot rebase
+- If the MR has [merge conflicts](guides/while-the-agent-works.md#merge-conflicts), or GitLab cannot rebase
   it (conflicts during the rebase, a failed rebase, or a change too large to
   check), the agent merges the default branch and resolves the conflicts. That
   run is reviewed and checked by CI like any other, then the gate runs again.
@@ -887,7 +199,7 @@ can start.
 
 Autopilot pauses instead of guessing. It comments on the tracking issue with
 the reason and the **ways out** of that kind of pause, mentioning the
-milestone's [owners](#owners-and-pings): first what ends it by itself, then
+milestone's [owners](guides/owners-and-pings.md): first what ends it by itself, then
 the commands, labels or GitLab actions that end it, with what each does
 (for example `` `/agent review` on #12: the reviewers check the pushed head
 again``). The list is one table in the operator (`PauseExits` in
@@ -908,7 +220,7 @@ land and merge. The tracking issue says `⏸️ #12 is held: <reason>. The other
 issues go on.` with the ways out of its kind below and the owners' mention,
 and lists every hold under its status line (`Held:`). At a limit of 1 the
 same problems pause the milestone, as does every problem of the
-[main-red fix](#main-health). The milestone kinds (`owner`, `budget`,
+[main-red fix](guides/while-the-agent-works.md#main-health). The milestone kinds (`owner`, `budget`,
 `mainRed`, `config`, `cycle`, `emptyPlan`, `release`, `stuck`) always pause
 the milestone: nothing new starts or merges. When every running issue is
 held and nothing else can start, the milestone pauses `stuck`.
@@ -946,10 +258,10 @@ It pauses (or, for a problem of one issue above a limit of 1, holds that issue) 
   change differs from the reviewed one and the rebase was not mechanical
   (see [the merge gate](#the-merge-gate); the interdiff is on the MR);
 - an active issue lost its workflow label while open;
-- the default branch is red ([merge freeze](#main-health)): an active issue
+- the default branch is red ([merge freeze](guides/while-the-agent-works.md#main-health)): an active issue
   is blocked (`agent-blocked::main-red`) until it is green;
 - the fix of the red default branch cannot be merged ([main-red
-  lane](#main-health));
+  lane](guides/while-the-agent-works.md#main-health));
 - no reviewers are configured;
 - the plan has a dependency cycle, or nothing can start because the
   remaining issues wait for skipped issues, for issues outside the queue
@@ -982,7 +294,7 @@ A pause over an active issue (and a hold) ends **by itself** when it no longer a
 - the pause was a merge freeze and the default branch is green again (or its
   health is no longer watched): the block is lifted and the gate runs again;
 - the pause was CI red with jobs that also fail on the default branch, and
-  [main health](#main-health) reports the default branch green at a commit
+  [main health](guides/while-the-agent-works.md#main-health) reports the default branch green at a commit
   the MR is not based on. Nothing would rerun the MR's pipeline, and a retry
   would run on the old base without the fix, so autopilot rebases the MR
   itself (as for `need_rebase`, see [the merge gate](#the-merge-gate)),
@@ -990,7 +302,7 @@ A pause over an active issue (and a hold) ends **by itself** when it no longer a
   at …: rebasing !N"). The rebased head goes through CI like a push; green,
   it is merged, red, it pauses again with the new reason. If the rebase
   conflicts, or the MR was rebased before, the agent merges the default
-  branch instead (see [Merge conflicts](#merge-conflicts)). The same happens
+  branch instead (see [Merge conflicts](guides/while-the-agent-works.md#merge-conflicts)). The same happens
   for such an MR before it paused.
   An owner can ask for the same at any time with `/agent rebase #N` (or
   `/agent mergeBase #N`) on the tracking issue, and the pilot with its
@@ -1256,7 +568,7 @@ pauses](#when-it-pauses)); `/agent resume #N` lifts that hold.
 CI is red with jobs that also fail on the default branch, or the
 [companion's](#companion-repository) pipeline is red (also after the fix
 rounds; the reason names the companion). Ends by itself
-like `needsInput`, and when [main health](#main-health) reports the default
+like `needsInput`, and when [main health](guides/while-the-agent-works.md#main-health) reports the default
 branch green at a commit the MR is not based on: autopilot rebases the MR
 once (the self-heal of a `BaseFailing` MR above) and the new pipeline
 decides.
@@ -1297,10 +609,10 @@ closed.
 
 #### `mainRed`
 
-The default branch is red ([merge freeze](#main-health)), or the fix of the
+The default branch is red ([merge freeze](guides/while-the-agent-works.md#main-health)), or the fix of the
 red default branch cannot be merged. A `ci::main-red` issue handed to the
 agent (by `mainHealth.autoFix` or by an owner's `agent::ready`) is driven
-and merged by the frozen milestone: the [main-red lane](#main-health). Ends
+and merged by the frozen milestone: the [main-red lane](guides/while-the-agent-works.md#main-health). Ends
 by itself when:
 
 - the default branch turns green;
@@ -1729,7 +1041,7 @@ implementer is moved to claude for such a run, see
 [Fallback engine](reference/agents-and-models.md#fallback-engine). The system prompts
 are the same with and without a companion.
 
-**CI.** The [CI loop](#ci-feedback) follows the companion's pipeline of
+**CI.** The [CI loop](guides/while-the-agent-works.md#ci-feedback) follows the companion's pipeline of
 `status.run.companion.pushedSHA` too (the companion merge request's head
 pipeline if its head is that commit, else the newest pipeline of the
 commit), with the same rules: the failed jobs are retried once, a canceled
@@ -1901,7 +1213,7 @@ Pilot tab shows the three events. Decisions outside milestones (AgentProject
 **The planner decides first.** The planning run decides per issue whether to
 release after it (`release` and `releaseWhy` in `status.plan`), and writes
 the decision into the issue's description as a `**Release:**` line (see
-[what an issue holds](#1-write-the-milestone-spec)). On every poll the
+[what an issue holds](guides/write-a-milestone.md)). On every poll the
 operator syncs the plan into the records:
 
 - An issue the plan releases after gets one record `by: planner`,
@@ -2092,7 +1404,7 @@ already `Running` is followed to its end and every other one waits.
   If the change is release-relevant (not empty, not only `docs/**` and
   `*.md`), its oldest commit landed more than
   `spec.workflow.release.maxUnreleasedAge` ago (default 24 h), and
-  [main's health](#main-health) is green (or flaky) on the head, it adds a
+  [main's health](guides/while-the-agent-works.md#main-health) is green (or flaky) on the head, it adds a
   record `by: sweep`, `Waiting` for the head: "3 commits since 2026.11.4 are
   unreleased, the oldest since 2026-11-09 06:00 UTC (more than 24h)". A
   commit lands when it reaches the default branch: the first parents from the
@@ -2178,7 +1490,7 @@ UTF-8: the list is cut at whole lines and ends with "… and N more issues".
 | `/agent rebase #12` | an active issue's MR is rebased onto the default branch; a CI red or merge request pause about it ends (see [When it pauses](#when-it-pauses)) |
 | `/agent mergeBase #12` | the agent merges the default branch into an active issue's MR and resolves conflicts; a pause about it ends |
 | `/agent merge #12 <sha>` | owners only: merge an active issue's head `sha` without a full review (when the reviewers cannot run); CI, MR state and approvals still apply, a new push or a later review voids it (`status.autopilot.mergeOverride`) |
-| `/agent revisit D42-3 …` | change a decision of a merged issue: a [follow-up](#revisiting-after-the-merge) joins the queue |
+| `/agent revisit D42-3 …` | change a decision of a merged issue: a [follow-up](guides/iterate-and-finish.md#change-a-decision-after-the-merge) joins the queue |
 | `/agent endMilestone` | owners only: the milestone ends here; the pending issues are skipped and autopilot is done after the active ones. During a [release pause](#release) the final release is dropped and autopilot is done |
 
 Any other `/agent …` comment on the tracking issue (also a bare `/agent` or a
@@ -2232,8 +1544,8 @@ Desk link in the prompt's GitLab comment open it), an agent's question on
 its task page. The
 question's kind is one of: `assessment` (the pilot looked at something),
 `mainHealth` ([red or flaky `main`](#talking-to-the-pilot)), `proposal`,
-`needsInput` ([the agent's questions](#2-answer-questions-and-hand-the-issue-over)),
-`revisit` ([a decision](#revisiting-after-the-merge)) and `budget`
+`needsInput` ([the agent's questions](guides/answer-and-hand-over.md)),
+`revisit` ([a decision](guides/iterate-and-finish.md#change-a-decision-after-the-merge)) and `budget`
 ([the budget](#budget-prompts)).
 
 - **Q-ids.** A prompt is `Q<n>`, counted up per milestone (an agent's
@@ -2333,7 +1645,7 @@ list out.
   Pilot" issue, `/pilot coordinate` opens a new one. On a milestone whose
   autopilot is done everyone gets "there is no pilot here" (also for `/pilot
   coordinate`).
-- **Owners only.** Only the milestone's [owners](#owners-and-pings) (the
+- **Owners only.** Only the milestone's [owners](guides/owners-and-pings.md) (the
   `/agent owners` line, else `notify.users`, compared by user ID) talk to the
   pilot. Anyone else gets "only the owners of this milestone can instruct
   me" in reply to each comment, up to
@@ -2410,7 +1722,7 @@ list out.
     handed to the agent; a title is never opened twice;
   - `fixFlaky #N`: the flaky issue #N (`ci::flaky`, from a flaky event)
     goes to the agent in this milestone, with the operator's fixed task
-    (see [Main health](#main-health)); only after two occurrences (one
+    (see [Main health](guides/while-the-agent-works.md#main-health)); only after two occurrences (one
     for an option that is not recommended, which only an owner runs), only an
     issue the operator opened with the description it wrote, and once: a
     pilot that comes second is told where it went;
@@ -3022,7 +2334,7 @@ pause, e.g. `findings`, `reviewErrors`, `ciRed`, `mergeRequest`, `owner`),
 `trackingIssueIID` and one item
 per issue with its state, MR, merged commit and decisions (`revisitOf` for a
 follow-up). `status.revisits` tracks the [revisits after the
-merge](#revisiting-after-the-merge): when watching started, the last check
+merge](guides/iterate-and-finish.md#change-a-decision-after-the-merge): when watching started, the last check
 and the last handled comment per issue.
 
 ```sh
@@ -3193,7 +2505,7 @@ taking the pod down. The run fails, and an issue moves to `agent::blocked` +
 
 `/agent retry` starts the run again with a new count. A spec run that gives
 up this way is planned again once too, like any [planning failure for an
-outside reason](#1-write-the-milestone-spec). A
+outside reason](guides/write-a-milestone.md). A
 run that finishes resets the count. Suspending a task (`spec.suspend`)
 mid-run stops its pod too, but does not count: the run starts again when the
 task is resumed.

@@ -198,8 +198,8 @@ Behaviour:
 | `commandsFrom` | Who may give `/agent` commands: `members` (anyone who can comment) or `owners`. | `members` |
 | `inputs` | Where you may give instructions: `gitlab` (comments), `desk`, or both. At least one. | both |
 | `assignBot` | Assign the bot user to an issue it picks up that has no assignee, so GitLab lists it under **Ongoing**. A human assignee is never replaced. | `true` |
-| `resolveConflicts` | Let the agent resolve merge conflicts with the default branch (see [Merge conflicts](../usage.md#merge-conflicts)). With `false` you resolve them; autopilot pauses on them. | `true` |
-| `stepCommits` | While the merge request is a draft, the agent works in steps and pushes each one, so you can follow and steer it (see [The agent works](../usage.md#3-the-agent-works)). `false` makes one commit per run. | `true` |
+| `resolveConflicts` | Let the agent resolve merge conflicts with the default branch (see [Merge conflicts](../guides/while-the-agent-works.md#merge-conflicts)). With `false` you resolve them; autopilot pauses on them. | `true` |
+| `stepCommits` | While the merge request is a draft, the agent works in steps and pushes each one, so you can follow and steer it (see [The agent works](../guides/while-the-agent-works.md#steps-and-steering-while-it-works)). `false` makes one commit per run. | `true` |
 | `conventionalCommits` | Commit messages and merge request titles follow Conventional Commits. | `false` |
 | `commitTypes` | The allowed commit types, 1 to 20, lowercase. `chore` is always added. | `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `build`, `ci`, `chore`, `style`, `revert` |
 
@@ -234,7 +234,7 @@ the run report counts it. A new branch starts with
 `chore: start work on #N`. The merge request title follows the same format
 (with `Draft: ` while it is a draft), unless you renamed it by hand, and an
 autopilot merge sends a matching squash commit message. See
-[Commit messages](../usage.md#commit-messages).
+[Commit messages](../guides/while-the-agent-works.md#commit-messages).
 
 ### `spec.workflow.release`
 
@@ -250,7 +250,7 @@ When the operator starts a release on its own, see
 ## `spec.notify`
 
 Whom the operator mentions (`cc @alice @bob`) when something needs a human,
-and asks for reviews. See [Owners and pings](../usage.md#owners-and-pings).
+and asks for reviews. See [Owners and pings](../guides/owners-and-pings.md).
 
 | Field | Meaning | Default |
 |-------|---------|---------|

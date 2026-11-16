@@ -244,7 +244,9 @@ operator also mirrors each prompt as a GitLab comment. While
 | `yes` / `no` | In the thread of an older proposal "P3": accepts it (runs all its actions, once) or drops it. |
 
 Only owners count, by the GitLab user who was an owner when the prompt was
-posted. Free text is answered in the Desk. On a merge request only the
+posted. Free text is answered in the Desk. A letter answers only a
+milestone's prompts, not the questions an implementer asks on an issue:
+answer those in the Desk or with `/agent <your answer>`. On a merge request only the
 prompt's own thread counts, never review threads.
 
 ## Replies to comments not acted on

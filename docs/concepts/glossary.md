@@ -91,8 +91,8 @@ by CI on that head and merged, in the order they became ready. See
 A line in a milestone description that starts with `/agent` and tells the
 operator what to do with it: `/agent spec`, `/agent autopilot`,
 `/agent owners @you`, `/agent owner-subjects`, `/agent parallel <n>`,
-`/agent budget <usd>` and a few more. See the planned guide
-guides/write-a-milestone.md and
+`/agent budget <usd>` and a few more. See
+[Write a milestone](../guides/write-a-milestone.md#marker-lines) and
 [Commands](../reference/commands.md#in-the-milestone-description).
 
 ### Merge gate
@@ -180,7 +180,8 @@ security for security problems. See [Roles](roles.md#reviewers).
 
 Asking to change a recorded [decision](#decision), in the Desk or with
 `/agent revisit D42-3 <what you want instead>`. Before the merge a new run
-changes the code; after the merge the operator opens a follow-up issue.
+changes the code; after the merge the operator opens a follow-up issue. See
+[Decisions and Revisit](../guides/iterate-and-finish.md#decisions-and-revisit).
 
 ### Run
 
@@ -203,8 +204,8 @@ See [Roles](roles.md#scout-and-writer).
 
 The description of a milestone: the goal, the requirements and the
 decisions, with the [marker lines](#marker-line). The planner turns it into
-issues, and each issue gets a short spec of its own. See the planned guide
-guides/write-a-milestone.md.
+issues, and each issue gets a short spec of its own. See
+[Write a milestone](../guides/write-a-milestone.md).
 
 ### Sub-issue
 

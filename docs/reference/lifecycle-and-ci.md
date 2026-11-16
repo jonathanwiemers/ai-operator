@@ -64,7 +64,7 @@ ls-remote. A timeout fails the step with a clear error, such as
 
 After each push, the operator waits for the pipeline. When it fails, the
 agent gets the failed jobs' logs and fixes them. See
-[CI feedback](../usage.md#ci-feedback).
+[CI feedback](../guides/while-the-agent-works.md#ci-feedback).
 
 | Field | Meaning | Default |
 |-------|---------|---------|
@@ -76,10 +76,10 @@ agent gets the failed jobs' logs and fixes them. See
 The GitLab token needs the `api` scope (Developer role) to read pipelines
 and job logs and to retry jobs.
 
-The operator finds the pipeline by the pushed commit, which covers branch
-and merge request pipelines. *Merged results* pipelines (GitLab Premium)
-run on a merge commit and are not found: the loop ends after
-`noPipelineTimeout` as "no CI". Set `ci.disabled: true` in that case.
+The operator follows the merge request's head pipeline when the merge
+request's head is the pushed commit, which covers merge request and
+*merged results* pipelines (GitLab Premium). Otherwise it takes the newest
+pipeline of the pushed commit, such as a branch pipeline.
 
 A milestone can change `maxFixRounds` and `retryFailedJobs` for its issues
 with a rule, see [`spec.pilot`](agentproject.md#specpilot).
@@ -108,7 +108,7 @@ count the checkpoints.
 ## `spec.mainHealth`
 
 The operator watches the default branch's pipelines. While the branch is
-red, autopilot merges nothing. See [Main health](../usage.md#main-health).
+red, autopilot merges nothing. See [Main health](../guides/while-the-agent-works.md#main-health).
 
 | Field | Meaning | Default |
 |-------|---------|---------|

@@ -146,7 +146,7 @@ commits, and a cut-off call loses less (see
 ### Conflict role
 
 `implement.conflict` is the role that resolves the conflicts of a
-[conflict run](../usage.md#merge-conflicts), for every profile. Unset, the
+[conflict run](../guides/while-the-agent-works.md#merge-conflicts), for every profile. Unset, the
 implementer resolves them in its own session. Set, it handles a conflict
 run that asks nothing else of the implementer (no new comments, CI fix or
 revisit).

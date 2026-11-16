@@ -328,7 +328,7 @@ The app is a **Desk**: a left rail, the stream, and, on project pages, a context
 * **Revisit:** each decision row in the queue has a **Revisit** button. It
   opens a `revisit` prompt on the decision's issue: the agent's choice and
   the alternatives it recorded, as options, and a text box. See
-  [Revisiting after the merge](usage.md#revisiting-after-the-merge).
+  [Revisiting after the merge](guides/iterate-and-finish.md#change-a-decision-after-the-merge).
 * **Prompts in the stream and on the Task page**: a `prompt.posted` event
   is the prompt's compact card (question, the recommended option as a
   button, "more…") while the milestone view still has the prompt; if status

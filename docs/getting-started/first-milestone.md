@@ -4,8 +4,8 @@ This page runs your first [milestone](../concepts/glossary.md#milestone) on
 [autopilot](../concepts/glossary.md#autopilot). You write a short
 [spec](../concepts/glossary.md#spec) in GitLab, watch the
 [planner](../concepts/glossary.md#planner) turn it into issues in the
-[Desk](../concepts/glossary.md#desk), answer a
-[prompt](../concepts/glossary.md#prompt), and see the first merge request.
+[Desk](../concepts/glossary.md#desk), see the first merge request, and
+answer a [prompt](../concepts/glossary.md#prompt).
 
 It builds on [Install](install.md) and [Turn on the Desk](turn-on-the-desk.md):
 the operator watches your project, and you can log in to the Desk.
@@ -87,44 +87,7 @@ If the milestone shows *Waiting for its turn*, an older autopilot milestone
 of the project is still open. Autopilot runs one milestone at a time. To
 plan this one now anyway, comment `/agent start` on its tracking issue.
 
-## 3. Answer a prompt
-
-A prompt is a question to the owners with two to four options, one of them
-recommended. The [pilot](../concepts/glossary.md#pilot), which watches the
-milestone for you, asks one when it needs a decision: for example when CI
-stays red, or a budget runs out. Every open prompt is in your *Inbox* and
-on the milestone's *Pilot* tab.
-
-You do not have to wait for a problem to try it. In the *Queue*, a planned
-issue lists the decisions the planner made for it, as IDs such as
-`D12-P1`, each with a **Revisit** button.
-[Revisit](../concepts/glossary.md#revisit) asks you whether a decision
-should stay:
-
-1. Click **Revisit** next to one of the decisions. The Desk says
-   *Revisit of D12-P1 opened.*, and a link *Go to Q1* appears.
-2. Follow the link. The *Pilot* tab shows the prompt *Revisit D12-P1: …?*
-   with its options: keep the decision (recommended), or switch to one of
-   the alternatives the planner rejected.
-3. Click the option to keep the decision. The card then says
-   *Answered by alice@example.com in the Desk: Keep …*, and nothing
-   changes.
-
-Had you picked an alternative, the operator would have added a follow-up
-issue to the milestone that changes it. Instead of an option you can also
-write what you want in your own words; the pilot then turns it into an
-option for you to confirm.
-
-If you see no **Revisit** button, check that your user name is on the
-`/agent owner-subjects` line and that your access rule has `chat: true`.
-A prompt that only shows *Only the milestone's owners can answer.* has the
-same cause.
-
-The operator also posts each prompt in GitLab, on the issue it is about or
-on the tracking issue, with a link that opens it in the Desk. You can answer
-there with a comment as well.
-
-## 4. See the first merge request
+## 3. See the first merge request
 
 The first issue starts as soon as it is planned. Its
 [implementer](../concepts/glossary.md#implementer) works on a branch and
@@ -139,10 +102,6 @@ is green and the review is clean, the operator merges it: this rule is the
 [merge gate](../concepts/glossary.md#merge-gate), and no model decides to
 merge. The issue moves to *Done*, and the issues that waited for it start.
 
-When the last issue is merged, the milestone is done, and the pilot writes
-a [retrospective](../concepts/glossary.md#retrospective) on the
-*Retrospective* tab.
-
 If nothing happens for a while, check the tasks from the cluster:
 
 ```sh
@@ -150,12 +109,61 @@ kubectl -n agents get agenttasks
 kubectl -n agents describe agentproject shop
 ```
 
+## 4. Answer a prompt
+
+A prompt is a question to the owners with two to four options, one of them
+recommended. The [pilot](../concepts/glossary.md#pilot), which watches the
+milestone for you, asks one when it needs a decision: for example when CI
+stays red, or a budget runs out. Every open prompt is in your *Inbox* and
+on the milestone's *Pilot* tab.
+
+You do not have to wait for a problem to try it. In the *Queue*, each
+issue lists the decisions the planner made for it, as IDs such as
+`D12-P1`, each with a **Revisit** button.
+[Revisit](../concepts/glossary.md#revisit) asks you whether a decision
+should stay. It opens a prompt only for an issue that is merged, so wait
+until the first issue is *Done*:
+
+1. Click **Revisit** next to one of the done issue's decisions. The Desk
+   says *Revisit of D12-P1 opened.*, and a link *Go to Q1* appears.
+2. Follow the link. The *Pilot* tab shows the prompt *Revisit D12-P1: …?*
+   with its options: keep the decision (recommended), or switch to one of
+   the alternatives the planner rejected.
+3. Click the option to keep the decision. The card then says
+   *Answered by alice@example.com in the Desk: Keep …*, and nothing
+   changes.
+
+Had you picked an alternative, the operator would have added a follow-up
+issue to the milestone that changes it. Instead of an option you can also
+write what you want in your own words; the pilot then turns it into an
+option for you to confirm.
+
+On an issue that is still open, Revisit opens no prompt: the Desk replies
+that the issue is still open. Comment `/agent revisit D12-P1 …` on that
+issue instead, and its next run changes the decision.
+
+If you see no **Revisit** button, check that your user name is on the
+`/agent owner-subjects` line and that your access rule has `chat: true`.
+A prompt that only shows *Only the milestone's owners can answer.* has the
+same cause.
+
+The operator also posts each prompt in GitLab, on the issue it is about or
+on the tracking issue, with a link that opens it in the Desk. You can answer
+there with a comment as well.
+
+## 5. When the milestone is done
+
+When the last issue is merged, the milestone is done, and the pilot writes
+a [retrospective](../concepts/glossary.md#retrospective) on the
+*Retrospective* tab.
+
 ## Next
 
 - [Commands](../reference/commands.md): every `/agent` and `/pilot`
   command, and the marker lines.
 - [How it works](../concepts/how-it-works.md): what happens between spec
   and merge.
-- The guides guides/write-a-milestone.md, guides/autopilot.md and
-  guides/steer-from-the-desk.md, written later, go deeper into each step.
-  Until then see [Usage](../usage.md).
+- [Write a milestone](../guides/write-a-milestone.md): what a good spec
+  says, and what the planner makes of it.
+- [Guides](../guides/README.md): answering, iterating and the other tasks.
+  Autopilot and steering from the Desk are still in [Usage](../usage.md).

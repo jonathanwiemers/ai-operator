@@ -18,8 +18,12 @@ get [your first milestone](getting-started/first-milestone.md) planned.
 
 ## Guides
 
-**[guides/](guides/README.md)**: one task per page, from writing a
-milestone to running it on autopilot and steering it from the Desk.
+**[guides/](guides/README.md)**: one task per page.
+[Write a milestone](guides/write-a-milestone.md),
+[answer and hand over](guides/answer-and-hand-over.md), follow it
+[while the agent works](guides/while-the-agent-works.md), name the
+[owners](guides/owners-and-pings.md), and
+[iterate and finish](guides/iterate-and-finish.md).
 
 ## Reference
 
@@ -52,9 +56,9 @@ The old pages, until their sections have moved to the sections above. The
 [docs revamp spec](specs/docs-revamp.spec.md#inventory) lists where each
 section goes.
 
-- **[Usage](usage.md)**: the GitLab workflow. Labels, milestone specs,
-  questions and decisions, CI, autopilot and its pauses, the pilot, owners,
-  budgets and the retrospective.
+- **[Usage](usage.md)**: autopilot and its pauses, budgets, companion
+  repositories, releases, prompts, the pilot and the retrospective, and
+  watching progress.
 - **[Web UI](ui.md)**: the Desk. What it shows
   ([screenshots](ui.md#screenshots)), roles and steering.
 - **[Research](research.md)**: news flashes, scheduled and one-off

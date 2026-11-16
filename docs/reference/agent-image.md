@@ -36,7 +36,7 @@ installed release (see [`spec.agents`](agents-and-models.md#specagents)).
   toolchains your default branch pins in `.mise.toml`, `.tool-versions` or
   `rust-toolchain.toml`. Nothing is installed on its own: the agent runs
   the install when it needs a tool. See
-  [Toolchains the agent installs](../usage.md#toolchains-the-agent-installs).
+  [Toolchains the agent installs](../guides/while-the-agent-works.md#toolchains-the-agent-installs).
 
 Toolchains go to `/workspace/home/.toolchains`, on the workspace, so the
 next run of the same issue finds them. Extend the image for tools without a

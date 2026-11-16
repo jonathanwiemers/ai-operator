@@ -102,19 +102,19 @@ Rows: `usage.md` 38, `ui.md` 57, `configuration.md` 34, `commands.md` 10,
 |----------|---------|--------|----|--------|
 | usage.md | ## One-time setup in GitLab | getting-started/install.md | R3 | done; updated: the label table, state diagram and needs-input/blocked text link reference/labels.md instead of repeating them; labels created with a GitLab API loop, the scripts linked by URL; the board created in GitLab; the bot may merge into the default branch (autopilot); the GitLab-pipeline note on the repository itself dropped (contributing/releasing.md has it) |
 | usage.md | ### Webhooks (optional) | getting-started/install.md | R3 | done; updated: an HTTPRoute example for the receiver; the sync behaviour while deliveries arrive kept once in reference/agentproject.md and the chart README |
-| usage.md | ## 1. Write the milestone spec | guides/write-a-milestone.md | R4 | open |
-| usage.md | ### Dependencies as issue links | guides/write-a-milestone.md | R4 | open |
-| usage.md | ## 2. Answer questions and hand the issue over | guides/answer-and-hand-over.md | R4 | open |
-| usage.md | ## 3. The agent works | guides/while-the-agent-works.md | R4 | open |
-| usage.md | ### Commit messages | guides/while-the-agent-works.md | R4 | open |
-| usage.md | ### Toolchains the agent installs | guides/while-the-agent-works.md | R4 | open |
-| usage.md | ### Owners and pings | guides/while-the-agent-works.md | R4 | open |
-| usage.md | ## CI feedback | guides/while-the-agent-works.md | R4 | open |
-| usage.md | ## Main health | guides/while-the-agent-works.md | R4 | open |
-| usage.md | ## Merge conflicts | guides/while-the-agent-works.md | R4 | open |
-| usage.md | ## 4. Iterate | guides/iterate-and-finish.md | R4 | open |
-| usage.md | ### Decisions | guides/iterate-and-finish.md | R4 | open |
-| usage.md | ## 5. Finish | guides/iterate-and-finish.md | R4 | open |
+| usage.md | ## 1. Write the milestone spec | guides/write-a-milestone.md | R4 | done; updated: Desk first (*Plan milestone*); the operator, not the planner, creates the issues; dependencies are a *Depends on* list; a release without a reason counts as "not after this issue"; besides the pilot, an owner's `parallel N` and an accepted budget raise also write the description; poll interval and `infraRetryAfter` linked to reference/; `status.run.summary` dropped: Kubernetes-side failure details stay with "Watching from Kubernetes" (R7b) |
+| usage.md | ### Dependencies as issue links | guides/write-a-milestone.md | R4 | done |
+| usage.md | ## 2. Answer questions and hand the issue over | guides/answer-and-hand-over.md | R4 | done; updated: Desk first (Inbox, *Questions from the agent*); the needs-input prompt text from "3. The agent works" moved here; owner-subjects alone may answer in the Desk, separate from `/agent owners` (the old text mixed them up); "a `/agent` comment still works as an answer" corrected: it starts a new run that closes the open prompts; planner decisions on an open issue are revisited by comment; the label hand-over is one section; the chat command JSON and `spec.source.promptAnswers` are already in contributing/design.md "Answering prompts" |
+| usage.md | ## 3. The agent works | guides/while-the-agent-works.md | R4 | done; updated: the Desk task page first; a failed run's progress comment keeps a short line, not the reason; CI fix runs on a draft do have steps and the step-size gate; review rounds and retries linked to reference/ instead of stated; `status.run.*` fields, the hook timing and the 3 s edit interval are already in contributing/design.md |
+| usage.md | ### Commit messages | guides/while-the-agent-works.md | R4 | done; updated: an example message; schema and runner internals are already in contributing/design.md "Checkpoints and Conventional Commits" |
+| usage.md | ### Toolchains the agent installs | guides/while-the-agent-works.md | R4 | done; updated: an example `.mise.toml`; env variables and directories are already in contributing/design.md; the failed-install report is the agent's, not the runner's |
+| usage.md | ### Owners and pings | guides/owners-and-pings.md | R4 | done; updated: target changed, see the steering log; `owners` and `owner-subjects` explained side by side; failed-run pings are not sent on autopilot; question pings are in the first question's comment; reply limit linked to reference/commands.md |
+| usage.md | ## CI feedback | guides/while-the-agent-works.md | R4 | done; updated: fix rounds start again with every run that is no CI fix, and runs the pilot starts keep the count; merged-results pipelines are followed (reference/lifecycle-and-ci.md said they are not, fixed there too); numbers linked to `spec.ci` |
+| usage.md | ## Main health | guides/while-the-agent-works.md | R4 | done; updated: a canceled pipeline is left alone once a newer pipeline replaced it; only the first 3 jobs' logs are attached; an owner who accepts any flaky-fix proposal needs one occurrence; `retriedJobIDs` was already in contributing/design.md "Main health"; the status jsonpath, log limits, test-name patterns and title limits moved there |
+| usage.md | ## Merge conflicts | guides/while-the-agent-works.md | R4 | done; updated: GitLab API fields and merge commit details are already in contributing/design.md "Merge conflicts"; the conflict role linked to reference/ |
+| usage.md | ## 4. Iterate | guides/iterate-and-finish.md | R4 | done; updated: Desk first: the task page's *Conversation* box (GitLab comments) and *Chat with the agent* (chat turns between runs, no run started) |
+| usage.md | ### Decisions | guides/iterate-and-finish.md | R4 | done; updated: long decision lists continue in a second comment; follow-ups also copy model and effort labels; the Desk's Revisit button works after the merge only (an open issue gets "still open: comment there"), first-milestone.md corrected too; the chat command JSON dropped: it is the Revisit button's request, in contributing/design.md "Pilot" |
+| usage.md | ## 5. Finish | guides/iterate-and-finish.md | R4 | done; updated: autopilot merges and closes; task, pod and workspace go on the next poll; closing without a merge leaves the merge request open |
 | usage.md | ## Autopilot: a milestone end to end | guides/autopilot.md | R5 | open |
 | usage.md | ### Several milestones at once | guides/autopilot.md | R5 | open |
 | usage.md | ### The merge gate | guides/autopilot.md | R5 | open |
@@ -347,3 +347,13 @@ with the requirement label and the issue or merge request.
   and `contributing/design.md` "Pricing". The planner asks no questions on
   autopilot, so `getting-started/first-milestone.md` answers a revisit
   prompt on a planner decision.
+- R4 (#512): owners and pings moved to their own page,
+  `guides/owners-and-pings.md` (plan decision D512-P1), since main health
+  made `guides/while-the-agent-works.md` long and owners are set once per
+  milestone. The R4 guides still link `usage.md` for autopilot, pauses, the
+  pilot and watching from Kubernetes until R5 and R7b move them.
+  `reference/lifecycle-and-ci.md` said merged-results pipelines are not
+  followed; the code follows them, so it was fixed with the CI feedback
+  row. The Desk's Revisit opens a prompt only once the decision's issue is
+  merged, so `getting-started/first-milestone.md` now shows the first merge
+  request before it answers the revisit prompt.
