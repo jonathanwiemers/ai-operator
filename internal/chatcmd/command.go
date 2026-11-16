@@ -41,7 +41,13 @@ type Command struct {
 	// FollowUps are the retrospective's follow-ups (1..9) a draft is for,
 	// deduplicated and sorted by Parse.
 	FollowUps []int `json:"followUps,omitempty"`
+	// Parallel is the milestone's parallel-issue limit (1..maxParallel),
+	// for parallel.
+	Parallel int32 `json:"parallel,omitempty"`
 }
+
+// maxParallel is the highest limit parallel sets (rules.MaxParallelLine).
+const maxParallel = 10
 
 // maxFollowUp is the highest follow-up number of a retrospective.
 const maxFollowUp = 9
@@ -95,6 +101,9 @@ func Parse(body string) (Command, error) {
 	if c.FollowUps != nil && c.Cmd != "draft" {
 		return Command{}, fmt.Errorf("%s takes no followUps", c.Cmd)
 	}
+	if c.Parallel != 0 && c.Cmd != "parallel" {
+		return Command{}, fmt.Errorf("%s takes no parallel", c.Cmd)
+	}
 	switch c.Cmd {
 	case "retry", "review", "pause", "start", "unstart", "endmilestone", "restart":
 		if err := c.noArgs(); err != nil {
@@ -106,6 +115,12 @@ func Parse(body string) (Command, error) {
 		rest.Issue = 0
 		if c.Issue < 0 || rest.noArgs() != nil {
 			return Command{}, fmt.Errorf("resume takes only an issue > 0, or nothing")
+		}
+	case "parallel":
+		rest := c
+		rest.Parallel = 0
+		if c.Parallel < 1 || c.Parallel > maxParallel || rest.noArgs() != nil {
+			return Command{}, fmt.Errorf("parallel needs only parallel, from 1 to %d", maxParallel)
 		}
 	case "use":
 		if err := c.parseUse(); err != nil {
@@ -266,11 +281,11 @@ func (c Command) ImplementOnly() bool {
 }
 
 // Autopilot reports whether the command is an autopilot verb (pause, resume,
-// skip, merge, start, unstart, endmilestone) for the Spec task of an
-// autopilot milestone.
+// skip, merge, start, unstart, endmilestone, parallel) for the Spec task of
+// an autopilot milestone.
 func (c Command) Autopilot() bool {
 	switch c.Cmd {
-	case "pause", "resume", "skip", "merge", "start", "unstart", "endmilestone":
+	case "pause", "resume", "skip", "merge", "start", "unstart", "endmilestone", "parallel":
 		return true
 	default:
 		return false

@@ -22,6 +22,14 @@ func TestParse(t *testing.T) {
 		{`{"cmd":"resume","issue":2,"engine":"claude"}`, Command{}, "resume takes only an issue > 0, or nothing"},
 		{`{"cmd":"resume","proposal":1}`, Command{}, "resume takes only an issue > 0, or nothing"},
 		{`{"cmd":"resume","issue":2,"sha":"5a0e000"}`, Command{}, "resume takes no sha"},
+		{`{"cmd":"parallel","parallel":2}`, Command{Cmd: "parallel", Parallel: 2}, ""},
+		{`{"cmd":"parallel","parallel":10}`, Command{Cmd: "parallel", Parallel: 10}, ""},
+		{`{"cmd":"parallel"}`, Command{}, "parallel needs only parallel, from 1 to 10"},
+		{`{"cmd":"parallel","parallel":0}`, Command{}, "parallel needs only parallel, from 1 to 10"},
+		{`{"cmd":"parallel","parallel":11}`, Command{}, "parallel needs only parallel, from 1 to 10"},
+		{`{"cmd":"parallel","parallel":2,"issue":3}`, Command{}, "parallel needs only parallel, from 1 to 10"},
+		{`{"cmd":"parallel","parallel":2,"usd":"40"}`, Command{}, "parallel takes no usd"},
+		{`{"cmd":"resume","parallel":2}`, Command{}, "resume takes no parallel"},
 		{`{"cmd":"start"}`, Command{Cmd: "start"}, ""},
 		{`{"cmd":" Unstart "}`, Command{Cmd: "unstart"}, ""},
 		{`{"cmd":"endMilestone"}`, Command{Cmd: "endmilestone"}, ""},
@@ -160,7 +168,7 @@ func TestImplementOnlyAndRouting(t *testing.T) {
 			t.Errorf("%s should not be Autopilot or ProposalOnly", cmd)
 		}
 	}
-	for _, cmd := range []string{"pause", "resume", "skip", "merge", "start", "unstart", "endmilestone"} {
+	for _, cmd := range []string{"pause", "resume", "skip", "merge", "start", "unstart", "endmilestone", "parallel"} {
 		c := Command{Cmd: cmd}
 		if !c.Autopilot() || c.ImplementOnly() || c.ProposalOnly() {
 			t.Errorf("%s should be Autopilot only", cmd)

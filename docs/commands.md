@@ -87,10 +87,10 @@ restart; comments from before the operator watched are not answered.
 
 An `/agent` or `/pilot` comment the operator does not act on gets one
 reply in its thread naming the reason: no `agent::` label (above), the
-commenter is not an owner (`commandsFrom: owners`, `/pilot`, `merge`, `start`, `endMilestone`, `release`, `no-release`), or a
+commenter is not an owner (`commandsFrom: owners`, `/pilot`, `merge`, `start`, `endMilestone`, `release`, `no-release`, `parallel`), or a
 command the tracking issue does not take (the reply lists `start`, or
 `start off` on a marked milestone, unless it is done, then `pause`, `resume [#N]`,
-`skip #N`, `merge #N`, `release [reason]`, `no-release #N [reason]`, `endMilestone` and `revisit <id> …`). Each comment is answered once,
+`skip #N`, `merge #N`, `release [reason]`, `no-release #N [reason]`, `parallel N`, `endMilestone` and `revisit <id> …`). Each comment is answered once,
 also when a poll is repeated. To bound the bot's comments, one author gets
 at most 10 such replies a day (`status.commandReplies.authors` of the
 AgentProject); the operator logs the comments beyond that instead of
@@ -172,6 +172,7 @@ implementer of every following run reads them:
 | `/agent no-release #12 [reason]` | Owners only (also with `commandsFrom: all`): drop the planned release after #12. Its `Planned` and `Waiting` records (not a `Running` one, never the final release) become `Dropped` ("dropped by @you: <reason>"), said on the tracking issue. Example: `/agent no-release #12 nothing users notice yet`. Without such a record it answers with the usage. `norelease` works too. |
 | `/agent revisit D42-3 …` | Change a decision of a merged issue: a follow-up issue joins the queue. |
 | `/agent endMilestone` | Owners only (also with `commandsFrom: all`): the milestone ends here. The pending issues are skipped and autopilot is done after the active one, said on the tracking issue. During a pause for the final release (`pauseKind: release`) that release is dropped ("ended without a release by @you") and autopilot is done; see [the final release](usage.md#the-final-release). |
+| `/agent parallel 2` | Owners only (also with `commandsFrom: all`): up to 2 issues of the milestone run at the same time (1 to 10). Writes the `/agent parallel N` line of the milestone description (replacing the first one, else appended), which the next poll reads; nothing is re-planned. Said on the tracking issue ("🔢 Up to 2 issues run at the same time (by @you)"). The value the line already has is answered and not written again; anything but 1 to 10 gets the usage. Running issues go on when the limit is lowered, new ones start only while fewer run. On the Desk: `{"cmd":"parallel","parallel":2}` (owner subjects only). |
 | anything else | Answered once with this list, a pointer to `/pilot …` and the active issue. Instructions for the agent go on the active issue or its MR, not here. |
 | `create 1 2`, `create 1, 3`, `create all` | As a reply in the thread of the [retrospective](usage.md#the-retrospective), once autopilot is done (the whole comment, no prefix): opens those follow-ups as plain issues (generated label, no milestone, not handed to the agent), each once, and answers in the thread with the links. Only from the owners pinned when the retrospective was posted; anything else is ignored silently. |
 | `create none` | The same place and owners: dismisses the remaining follow-ups, so they no longer hold the milestone open and it closes on the next poll without waiting 7 days (once its issues are closed). Answered once in the thread; follow-ups opened or taken over before stay as they are, and `create 2` afterwards still opens one. |

@@ -2211,13 +2211,13 @@ func (a *autopilot) commands(ctx context.Context) error {
 			body := strings.TrimLeft(rest, ": \t")
 			arg = strings.TrimSpace(strings.TrimPrefix(body, fields[0]))
 		}
-		if word == "merge" || word == "start" || word == "endmilestone" || word == "release" || word == "no-release" {
+		if word == "merge" || word == "start" || word == "endmilestone" || word == "release" || word == "no-release" || word == "parallel" {
 			// Owners only, also where anyone may give commands.
 			if ok, err := a.gate.byOwner(ctx, n, a.st.Spec.Owners); err != nil {
 				return err
 			} else if !ok {
 				reply := map[string]string{"merge": notOwnerMerge, "start": notOwnerStart, "endmilestone": notOwnerEnd,
-					"release": notOwnerRelease, "no-release": notOwnerRelease}[word]
+					"release": notOwnerRelease, "no-release": notOwnerRelease, "parallel": notOwnerParallel}[word]
 				a.r.rejectNote(ctx, a.gl, a.project, a.spec, tn, "🤖 "+reply)
 				a.ap.LastCommandNoteID = n.ID
 				continue
@@ -2321,7 +2321,7 @@ func (a *autopilot) chatCommands(ctx context.Context) error {
 		by := who + " via the Desk"
 		// Owners only, like the tracking issue's words.
 		if refusal := map[string]string{"merge": notOwnerMerge, "start": notOwnerStart, "unstart": notOwnerStart,
-			"endmilestone": notOwnerEnd, "restart": notOwnerRestart}[cmd.Cmd]; refusal != "" && !slices.Contains(a.st.Spec.OwnerSubjects, m.Author) {
+			"endmilestone": notOwnerEnd, "restart": notOwnerRestart, "parallel": notOwnerParallel}[cmd.Cmd]; refusal != "" && !slices.Contains(a.st.Spec.OwnerSubjects, m.Author) {
 			answer(m.ID, refusal)
 			a.log.Info("chat command refused", "id", m.ID, "cmd", cmd.Cmd, "author", m.Author, "reason", "not an owner subject")
 			continue
@@ -2348,6 +2348,8 @@ func (a *autopilot) chatCommands(ctx context.Context) error {
 			}
 		case "merge":
 			arg = fmt.Sprintf("#%d %s", cmd.Issue, cmd.SHA)
+		case "parallel":
+			arg = strconv.Itoa(int(cmd.Parallel))
 		case "unstart":
 			word, arg = "start", "off"
 		case "endmilestone":
@@ -2426,6 +2428,8 @@ func (a *autopilot) command(ctx context.Context, word, arg, by string) (answer s
 		return a.mergeAnyway(ctx, arg, by)
 	case "start":
 		return a.startNow(ctx, arg, by)
+	case "parallel":
+		return a.setParallel(ctx, arg, by)
 	case "release":
 		return a.ownerRelease(ctx, arg, by)
 	case "no-release":
@@ -2552,7 +2556,7 @@ func (a *autopilot) unknownCommand() string {
 	if h, _ := a.startHint(); h != "" {
 		start = "`" + h + "`, "
 	}
-	return fmt.Sprintf("This tracking issue only understands %[4]s`%[1]s pause`, `%[1]s resume [#N]`, `%[1]s skip #N`, `%[1]s unskip #N`, `%[1]s startAnyway #N`, `%[1]s rebase #N`, `%[1]s mergeBase #N`, `%[1]s merge #N`, `%[1]s release [reason]`, `%[1]s no-release #N [reason]`, `%[1]s endMilestone` and `%[1]s revisit <id> …`. "+
+	return fmt.Sprintf("This tracking issue only understands %[4]s`%[1]s pause`, `%[1]s resume [#N]`, `%[1]s skip #N`, `%[1]s unskip #N`, `%[1]s startAnyway #N`, `%[1]s rebase #N`, `%[1]s mergeBase #N`, `%[1]s merge #N`, `%[1]s release [reason]`, `%[1]s no-release #N [reason]`, `%[1]s parallel N` (owners), `%[1]s endMilestone` and `%[1]s revisit <id> …`. "+
 		"Did you mean `%[3]s …`? The milestone's pilot answers here. To instruct the agent, comment `%[1]s …` on %[2]s.", prefix, where, a.spec.Workflow.PilotPrefix, start)
 }
 
@@ -2748,7 +2752,7 @@ func (a *autopilot) renderTracking() string {
 	if h, what := a.startHint(); h != "" {
 		start = fmt.Sprintf("`%s` (owners: %s), ", h, what)
 	}
-	fmt.Fprintf(&b, "Commands, as comments here: %s`%s pause`, `%s resume [#<issue>]`, `%s skip #<issue>`.\n\n### Issues\n\n", start, prefix, prefix, prefix)
+	fmt.Fprintf(&b, "Commands, as comments here: %s`%s pause`, `%s resume [#<issue>]`, `%s skip #<issue>`, `%s parallel <n>` (owners).\n\n### Issues\n\n", start, prefix, prefix, prefix, prefix)
 	if len(a.st.Status.Plan) == 0 && len(a.ap.Items) == 0 {
 		b.WriteString("_Listed once the milestone is planned._\n")
 	}
