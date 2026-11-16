@@ -343,7 +343,7 @@ dispatcher.
 **Status: built** with the Desk prompts milestone (`spec.workflow.inputs`,
 the replies to comments that are not acted on, the fresh-session context).
 See [configuration.md](../configuration.md#specworkflow) and
-[commands.md](../commands.md).
+[commands.md](../reference/commands.md).
 
 `spec.workflow.inputs: [gitlab, desk]` (default both, today's behaviour plus
 the Desk). With only `desk`:

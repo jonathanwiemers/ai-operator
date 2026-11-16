@@ -229,16 +229,16 @@ Rows: `usage.md` 38, `ui.md` 57, `configuration.md` 34, `commands.md` 10,
 | configuration.md | ## Other `spec` fields | reference/agentproject.md | R8b | open |
 | configuration.md | ## Agent image | reference/agentproject.md | R8b | open |
 | configuration.md | ## Network policy | reference/agentproject.md | R8b | open |
-| commands.md | ## How commands work | reference/commands.md | R8a | open |
-| commands.md | ## On an issue or its merge request | reference/commands.md | R8a | open |
-| commands.md | ### Restart a stuck run (Desk chat) | reference/commands.md | R8a | open |
-| commands.md | ### Model and effort | reference/commands.md | R8a | open |
-| commands.md | ## On a closed issue | reference/commands.md | R8a | open |
-| commands.md | ## On the tracking issue (autopilot) | reference/commands.md | R8a | open |
-| commands.md | ## To the pilot | reference/commands.md | R8a | open |
-| commands.md | ## Replies to comments not acted on | reference/commands.md | R8a | open |
-| commands.md | ## In the milestone description | reference/commands.md | R8a | open |
-| commands.md | ## Labels you may set yourself | reference/labels.md | R8a | open |
+| commands.md | ## How commands work | reference/commands.md | R8a | done; updated: first-line-only parsing for routing commands (`review` must be the whole comment), case-insensitive words and optional `#`, Desk first |
+| commands.md | ## On an issue or its merge request | reference/commands.md | R8a | done; updated: `use`, `effort`, `budget`, `repo` grouped as no-run commands |
+| commands.md | ### Restart a stuck run (Desk chat) | reference/commands.md | R8a | done; updated: `/agent restart` stated as no GitLab command, heading now "Restart a stuck run" |
+| commands.md | ### Model and effort | reference/commands.md | R8a | done |
+| commands.md | ## On a closed issue | reference/commands.md | R8a | done |
+| commands.md | ## On the tracking issue (autopilot) | reference/commands.md | R8a | done; updated: heading now "On the tracking issue", `create` replies moved to their own subsection, Desk first, numbers work without `#`, "owners only also with `commandsFrom: all`" fixed to `members` (no `all` value) |
+| commands.md | ## To the pilot | reference/commands.md | R8a | done; updated: on a milestone without owners anyone may ask, prompt-thread answers in their own subsection |
+| commands.md | ## Replies to comments not acted on | reference/commands.md | R8a | done; updated: merged with the subsection of the same name under the issue commands |
+| commands.md | ## In the milestone description | reference/commands.md | R8a | done; updated: rule switch ranges (0 to 5, true or false) added |
+| commands.md | ## Labels you may set yourself | reference/labels.md | R8a | done; updated: `agent::draft`, failed runs split into needs-input and blocked, blocked reasons, operator-set labels (`ai-generated`, `ci::*`, `agent::companion`) added |
 | research.md | ## Concepts | guides/research.md | R7b | open |
 | research.md | ## `AgentResearch` | reference/agentresearch.md | R7b | open |
 | research.md | ## `spec.research` on `AgentProject` | reference/agentresearch.md | R7b | open |
@@ -325,3 +325,7 @@ with the requirement label and the issue or merge request.
 - R9 (#508): the four concept pages are new text; no inventory row is only a
   concept explanation, so none moved. Glossary entries name pages that do
   not exist yet in plain text; the MRs that add them turn those into links.
+- R8a (#509): `reference/labels.md` also describes the `agent::` state labels
+  and their moves, checked against the code. The overview in `usage.md`'s
+  "One-time setup in GitLab" stays until R3 moves that row, which then links
+  `reference/labels.md` instead of repeating it.

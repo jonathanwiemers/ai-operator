@@ -1,6 +1,6 @@
 # Using the ai-operator from GitLab
 
-Every `/agent` command is listed in [commands.md](commands.md).
+Every `/agent` command is listed in [commands.md](reference/commands.md).
 
 Everything happens in GitLab. You write specs, answer questions, move cards
 and review merge requests. The operator turns those actions into agent work.
@@ -500,7 +500,7 @@ GitLab user ID: on issues and their MRs, on the tracking issue and on closed
 issues (revisits). Anyone else's command starts and changes nothing; each such
 comment gets one reply in its thread ("🤖 Only the owners of this milestone
 can give `/agent` commands here"), up to
-[10 a day per author](commands.md#replies-to-comments-not-acted-on). On a milestone without owners nobody's
+[10 a day per author](reference/commands.md#replies-to-comments-not-acted-on). On a milestone without owners nobody's
 command counts, and the reply says to add an `/agent owners` line. Plain
 comments still reach the agent with its next run. For an issue without a
 milestone the owners are `notify.users`, else the operator's default.
@@ -743,7 +743,7 @@ Set `workflow.resolveConflicts: false` to leave conflicts to humans.
 | comment `/agent repo my-group/infra/cluster` (or, as an owner, set `agent-repo::my-group/infra/cluster`) | the issue changes that [companion repository](#companion-repository) too; the comment alone starts no run |
 
 `/agent` must be the first word of the comment. `/agents are great` does not
-trigger a run. All commands are listed in [commands.md](commands.md).
+trigger a run. All commands are listed in [commands.md](reference/commands.md).
 
 ### Decisions
 
@@ -1583,7 +1583,7 @@ by hand or the issue is closed.
   operator deletes the agent pod and the run starts again (counted as an
   interruption); the pause ends once the run moves. Not acted on as a
   GitLab comment, and not a pause-card button (the card shows *Skip*; use
-  the task). See [commands](commands.md#restart-a-stuck-run-desk-chat).
+  the task). See [commands](reference/commands.md#restart-a-stuck-run).
 - `/agent skip #N`: the issue is skipped and autopilot goes on; issues that
   depend on it wait until it is done by hand.
 
@@ -2125,7 +2125,7 @@ same way with "ℹ️". Either way it is handled: the watermark moves past it,
 and the pilot sees the records in its next state.
 
 **Owners decide too**, with two commands on the tracking issue (owners only,
-also with `commandsFrom: all`, see [commands](commands.md#on-the-tracking-issue-autopilot)):
+also with `commandsFrom: members`, see [commands](reference/commands.md#on-the-tracking-issue)):
 `/agent release [reason]` adds a record `by: owner`, `actor: @you`, `Waiting`
 for the newest commit of the default branch (the SHA of its newest pipeline);
 `/agent no-release #N [reason]` drops the `Planned` and `Waiting` records
@@ -2337,7 +2337,7 @@ UTF-8: the list is cut at whole lines and ends with "… and N more issues".
 
 ### Commands on the tracking issue
 
-(All commands: [commands.md](commands.md).)
+(All commands: [commands.md](reference/commands.md).)
 
 | Comment | Effect |
 |---------|--------|
@@ -2439,7 +2439,7 @@ question's kind is one of: `assessment` (the pilot looked at something),
   free text, quoted as untrusted. With `workflow.inputs` containing `gitlab`
   an owner may also answer with the option's letter as a reply in the
   thread, on an issue, the tracking issue or a merge request
-  ([commands](commands.md)). Context, option text and free text are
+  ([commands](reference/commands.md)). Context, option text and free text are
   untrusted: shown as markdown without HTML, and what an option does is
   always checked by the operator, never taken from text.
 - **Pause cards.** A pause that needs no choice keeps its card; `mainRed`
@@ -2511,7 +2511,7 @@ list out.
   `/agent owners` line, else `notify.users`, compared by user ID) talk to the
   pilot. Anyone else gets "only the owners of this milestone can instruct
   me" in reply to each comment, up to
-  [10 a day](commands.md#replies-to-comments-not-acted-on); comments beyond
+  [10 a day](reference/commands.md#replies-to-comments-not-acted-on); comments beyond
   that are logged and cost nothing. A
   milestone without owners (`/agent owners` alone, and no `notify.users`) is
   answered for anyone, but `/pilot coordinate` needs owners.
@@ -2592,7 +2592,7 @@ list out.
     pipeline run again; only the newest red pipeline main health knows
     (`status.mainHealth.pipelineID`), any other is refused;
   - `rebase #N`, `mergeBase #N` (autopilot milestones): the tracking
-    issue's [commands](commands.md#on-the-tracking-issue-autopilot) on the
+    issue's [commands](reference/commands.md#on-the-tracking-issue) on the
     active issue's MR. GitLab rebases it (the review holds if the change
     is the same), or the agent merges the default branch into it; a pause
     about the issue (CI red, merge request) ends, and the new head goes
@@ -2826,7 +2826,7 @@ tasks are deleted. Owners turn leftovers into a follow-up milestone there
 While follow-ups are open, the pilot stays after the retrospective so an
 owner can ask it for a **draft of a follow-up milestone** from some of them:
 the Desk command `{"cmd":"draft","followUps":[1,3]}` on the pilot (owner
-subjects only, see [commands](commands.md#on-the-tracking-issue-autopilot)).
+subjects only, see [commands](reference/commands.md#on-the-tracking-issue)).
 The pilot writes a title and a description in one model call from its
 budget, from the milestone's title, the retrospective and those follow-ups,
 and the milestone view carries it (`retrospective.draft`). It is untrusted

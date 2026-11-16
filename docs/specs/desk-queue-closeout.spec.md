@@ -51,7 +51,7 @@ requirements without an issue go into the [Steering log](#steering-log).
 | Requirement | Implemented in |
 | --- | --- |
 | R1 `StartRequestedAt` and ranking (marks, then age) for `queuedAhead` and the planning hold | `api/v1alpha1` status fields, `internal/milestoneorder`, `internal/controller` (`queuedAhead`, pick hold); [design](../contributing/design.md#autopilot), [usage](../usage.md#several-milestones-at-once) |
-| R2 `/agent start` marks a planned milestone; `start off` clears; passed milestones get the note | `internal/controller/autopilot.go` (`startNow`, `passedBy`); [commands](../commands.md#on-the-tracking-issue-autopilot) |
+| R2 `/agent start` marks a planned milestone; `start off` clears; passed milestones get the note | `internal/controller/autopilot.go` (`startNow`, `passedBy`); [commands](../reference/commands.md#on-the-tracking-issue) |
 | R3 Desk `start`, `unstart`, `endmilestone` with owner check | `internal/chatcmd`, Desk dispatch; [ui](../ui.md#queue-and-finishing) |
 | R4 Queue view from R1's ranking | `internal/ui/queue.go`, project detail; [ui](../ui.md#queue-and-finishing), [API](../ui.md#api) |
 | R5 Finishing view and `POST …/issues/{issue}/close` | `internal/ui/finishing.go`, `close_issue.go`; [ui](../ui.md#queue-and-finishing), [API](../ui.md#api) |

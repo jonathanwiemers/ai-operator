@@ -331,7 +331,7 @@ issue. See [Autopilot](usage.md#autopilot-a-milestone-end-to-end).
 
 A milestone overrides it with the description line `/agent parallel N`
 (1 to 10), which an owner can also set with the `parallel N` command on the
-tracking issue or the Desk's stepper (see [commands.md](commands.md)). A line
+tracking issue or the Desk's stepper (see [commands.md](reference/commands.md)). A line
 with another value is ignored (logged), and the project's value applies. The
 limit in effect is in the spec task's `status.autopilot.maxParallel`.
 
@@ -431,7 +431,7 @@ day per author.
 and `desk`. At least one entry; unset means both. With `gitlab`, owners may
 also answer a prompt with its option's letter as a reply in the thread of its
 comment, on an issue, the tracking issue or a merge request
-([commands](commands.md)). With only `desk`:
+([commands](reference/commands.md)). With only `desk`:
 
 - `/agent` and `/pilot` comments on issues, merge requests, the tracking issue
   and closed issues (revisits) start and change nothing. Each gets one reply
@@ -790,7 +790,7 @@ spec:
 
 On top of its profile, an issue can pick the implementer's engine, model and
 effort with labels, set by `/agent use` / `/agent effort` comments or by hand
-(see [commands.md](commands.md#model-and-effort)). Only the models in
+(see [commands.md](reference/commands.md#model-and-effort)). Only the models in
 `agents.models` (plus those the profiles and `implement` use) are allowed:
 
 ```yaml
@@ -1049,7 +1049,7 @@ further call once its budget is used (`spec.budgetStop`, see
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `perIssueUSD` | – | budget of every open issue of an autopilot milestone, as a decimal string, e.g. `"20"`. Once an issue's calls cost that much, autopilot pauses (`pauseKind: budget`, `pausedFor` the issue). An `/agent budget <usd>` comment on the issue overrides it for that issue ([commands.md](commands.md#on-an-issue-or-its-merge-request)). Unset or `0`: no per-issue budget |
+| `perIssueUSD` | – | budget of every open issue of an autopilot milestone, as a decimal string, e.g. `"20"`. Once an issue's calls cost that much, autopilot pauses (`pauseKind: budget`, `pausedFor` the issue). An `/agent budget <usd>` comment on the issue overrides it for that issue ([commands.md](reference/commands.md#on-an-issue-or-its-merge-request)). Unset or `0`: no per-issue budget |
 | `perIssueAlertUSD` | – | spend of an open issue of an autopilot milestone, as a decimal string, e.g. `"15"`, at which autopilot posts one heads-up on the tracking issue (and a pilot event) with the issue's spend and its top kinds and models, and does **not** pause. Once per issue and value (`status.autopilot.items[].budgetAlertedAt`); another value re-arms it. The same heads-up comes at 80 % of an issue's own budget (`perIssueUSD` or its `/agent budget`). Unset or `0`: no alert ([usage.md](usage.md#spend-heads-up-per-issue)) |
 
 ```yaml

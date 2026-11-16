@@ -22,8 +22,9 @@ milestone to running it on autopilot and steering it from the Desk.
 
 ## Reference
 
-**[reference/](reference/README.md)**: every `/agent` command, the
-`AgentProject` fields, the labels and the Desk API, for looking things up.
+**[reference/](reference/README.md)**: every `/agent` command in
+[commands](reference/commands.md), the [labels](reference/labels.md), the
+`AgentProject` fields and the Desk API, for looking things up.
 
 ## Concepts
 
@@ -52,8 +53,6 @@ section goes.
 - **[Usage](usage.md)**: the GitLab workflow. Labels, milestone specs,
   questions and decisions, CI, autopilot and its pauses, the pilot, owners,
   budgets and the retrospective.
-- **[Commands](commands.md)**: every `/agent` command and the labels behind
-  them.
 - **[Configuration](configuration.md)**: installation with Helm or Flux,
   secrets, the `AgentProject` reference, engines, profiles, models and the
   agent image. Chart values are in the

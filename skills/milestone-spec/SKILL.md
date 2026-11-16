@@ -13,7 +13,7 @@ to say what you want, what you already decided, and what is out of scope.
 
 This skill is the house style. [`template.md`](template.md) is the skeleton
 to copy. The rules for the marker lines are in
-[`docs/commands.md`](../../docs/commands.md#in-the-milestone-description),
+[`docs/reference/commands.md`](../../docs/reference/commands.md#in-the-milestone-description),
 and what the planner and the autopilot do with a spec is in
 [`docs/usage.md`](../../docs/usage.md#1-write-the-milestone-spec). When
 those docs and this skill disagree, the docs win.

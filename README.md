@@ -94,7 +94,7 @@ milestone in work with its progress, cost and tokens, and what needs you.
 ```
 
 In the milestone description: `/agent spec`, `/agent autopilot`,
-`/agent owners @you`. The full list is in **[docs/commands.md](docs/commands.md)**.
+`/agent owners @you`. The full list is in **[Commands](docs/reference/commands.md)**.
 
 ## Quick start
 
@@ -202,7 +202,7 @@ feature.
 | | |
 |-|-|
 | [Usage](docs/usage.md) | the GitLab workflow: labels, milestone specs, decisions, CI, autopilot, owners, lifecycle |
-| [Commands](docs/commands.md) | every `/agent` command and the labels behind them |
+| [Commands](docs/reference/commands.md) and [labels](docs/reference/labels.md) | every `/agent` and `/pilot` command, the marker lines and the labels |
 | [Configuration](docs/configuration.md) | installation (Helm, Flux), secrets, `AgentProject` reference, engines, profiles, models, agent image |
 | [Design](docs/contributing/design.md) | architecture, CRDs, pod topology, token economy, security |
 | [Web UI](docs/ui.md) | the optional read-only UI: OIDC login, roles, HTTPRoute, API |

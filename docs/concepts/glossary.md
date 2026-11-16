@@ -92,7 +92,8 @@ A line in a milestone description that starts with `/agent` and tells the
 operator what to do with it: `/agent spec`, `/agent autopilot`,
 `/agent owners @you`, `/agent owner-subjects`, `/agent parallel <n>`,
 `/agent budget <usd>` and a few more. See the planned guide
-guides/write-a-milestone.md and the planned reference/commands.md.
+guides/write-a-milestone.md and
+[Commands](../reference/commands.md#in-the-milestone-description).
 
 ### Merge gate
 
