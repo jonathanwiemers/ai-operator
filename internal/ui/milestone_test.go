@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -53,7 +54,7 @@ func withAutopilot(t *testing.T, env *testEnv, gl *fakeGitLab) {
 	st.Status.Plan = append(st.Status.Plan, aiv1.PlannedIssue{Key: "b", IID: 43, Title: "Add Klarna"})
 	st.Status.Autopilot = &aiv1.AutopilotStatus{
 		Phase: aiv1.AutopilotPaused, TrackingIssueIID: 77, PausedReason: "job `lint` failed\n/close",
-		PauseKind: aiv1.PauseCIRed, PausedFor: 42,
+		PauseKind: aiv1.PauseCIRed, PausedFor: 42, MaxParallel: 2,
 		Items: []aiv1.AutopilotItem{
 			{IID: 42, State: aiv1.AutopilotItemActive, MergeRequestIID: 5, MergeRequestURL: "https://gitlab.example.com/acme/shop/-/merge_requests/5"},
 			{IID: 43, State: aiv1.AutopilotItemPending},
@@ -128,11 +129,11 @@ func TestMilestoneView(t *testing.T) {
 		t.Errorf("the ways out of the ciRed pause: %+v", a.Exits)
 	}
 	want := []QueueItem{
-		{IID: 42, Title: "Add PayPal", State: aiv1.AutopilotItemActive, MergeRequestIID: 5, MergeRequestURL: "https://gitlab.example.com/acme/shop/-/merge_requests/5", Task: "shop-42-add-paypal"},
-		{IID: 43, Title: "Add Klarna", State: aiv1.AutopilotItemPending},
+		{IID: 42, Title: "Add PayPal", State: aiv1.AutopilotItemActive, MergeRequestIID: 5, MergeRequestURL: "https://gitlab.example.com/acme/shop/-/merge_requests/5", Task: "shop-42-add-paypal", Lane: "running", Wave: 1},
+		{IID: 43, Title: "Add Klarna", State: aiv1.AutopilotItemPending, Lane: "waiting", Wave: 1},
 	}
-	if !slices.Equal(a.Items, want) {
-		t.Errorf("items = %+v", a.Items)
+	if !reflect.DeepEqual(a.Items, want) || a.Running != 1 || a.MaxParallel != 2 {
+		t.Errorf("items = %+v, running %d of %d", a.Items, a.Running, a.MaxParallel)
 	}
 	if m.Tracking == nil || m.Tracking.IID != 77 || m.Tracking.WebURL != gl.srv.URL+"/acme/shop/-/issues/77" {
 		t.Errorf("tracking = %+v", m.Tracking)
@@ -490,8 +491,8 @@ func TestMilestoneMergePermission(t *testing.T) {
 			if code := env.get(t, shopMilestone, &m); code != http.StatusOK || m.Permissions == nil {
 				t.Fatalf("status %d, %+v", code, m.Permissions)
 			}
-			if m.Permissions.Merge != tc.want {
-				t.Errorf("permissions.merge = %v, want %v", m.Permissions.Merge, tc.want)
+			if m.Permissions.Merge != tc.want || m.Permissions.Parallel != tc.want {
+				t.Errorf("permissions.merge = %v, parallel = %v, want %v", m.Permissions.Merge, m.Permissions.Parallel, tc.want)
 			}
 		})
 	}
@@ -515,7 +516,7 @@ func TestMilestoneMergePermissionNeedsTheDeskChat(t *testing.T) {
 	env.login(t, "/")
 
 	var m MilestoneView
-	if code := env.get(t, shopMilestone, &m); code != http.StatusOK || m.Permissions == nil || m.Permissions.Merge {
+	if code := env.get(t, shopMilestone, &m); code != http.StatusOK || m.Permissions == nil || m.Permissions.Merge || m.Permissions.Parallel {
 		t.Errorf("with the Desk chat off an owner may not merge: status %d, %+v", code, m.Permissions)
 	}
 }

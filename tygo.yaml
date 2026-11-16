@@ -123,6 +123,7 @@ packages:
       aiv1.Engine: aiv1.Engine
       aiv1.EngineUsage: aiv1.EngineUsage
       aiv1.IssueRef: aiv1.IssueRef
+      aiv1.ItemHold: aiv1.ItemHold
       aiv1.LandingState: aiv1.LandingState
       aiv1.MergeOverride: aiv1.MergeOverride
       aiv1.MilestoneRef: aiv1.MilestoneRef

@@ -625,6 +625,11 @@ export interface MilestonePermissions {
   draft: boolean;
   followUp: boolean;
   dismiss: boolean;
+  /**
+   * Parallel: may set the milestone's parallel limit ("parallel N"), as
+   * Merge.
+   */
+  parallel: boolean;
 }
 /**
  * MilestoneAutopilot is the autopilot of a milestone and its queue.
@@ -656,6 +661,13 @@ export interface MilestoneAutopilot {
    * Inbox item).
    */
   queuedBehind?: number /* int64 */[];
+  /**
+   * Running counts the items in lane running, out of MaxParallel (the
+   * effective limit); Landing is the item that lands.
+   */
+  running: number /* int */;
+  maxParallel?: number /* int32 */;
+  landing?: number /* int64 */;
 }
 /**
  * QueueItem is an issue in the autopilot's queue, in queue order.
@@ -670,6 +682,17 @@ export interface QueueItem {
    * Task is the issue's implement task, if there is one.
    */
   task?: string;
+  /**
+   * Lane is where the item is (queueLane); Wave its layer in the plan
+   * graph (planWaves), 0 outside the plan. WaitingFor are the unmerged
+   * planned dependencies of a waiting item; empty, it waits for a free
+   * slot or its turn.
+   */
+  lane: 'running' | 'landing' | 'ready' | 'waiting' | 'held' | 'done';
+  wave?: number /* int */;
+  waitingFor?: number /* int64 */[];
+  hold?: aiv1.ItemHold;
+  readyAt?: string;
 }
 /**
  * TrackingIssueRef is the milestone's tracking issue, its chat.

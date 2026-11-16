@@ -269,6 +269,9 @@ type MilestonePermissions struct {
 	Draft      bool `json:"draft"`
 	FollowUp   bool `json:"followUp"`
 	Dismiss    bool `json:"dismiss"`
+	// Parallel: may set the milestone's parallel limit ("parallel N"), as
+	// Merge.
+	Parallel bool `json:"parallel"`
 }
 
 // MilestoneAutopilot is the autopilot of a milestone and its queue.
@@ -293,6 +296,11 @@ type MilestoneAutopilot struct {
 	// while it waits for its turn to be planned (running, not paused: no
 	// Inbox item).
 	QueuedBehind []int64 `json:"queuedBehind,omitempty"`
+	// Running counts the items in lane running, out of MaxParallel (the
+	// effective limit); Landing is the item that lands.
+	Running     int   `json:"running"`
+	MaxParallel int32 `json:"maxParallel,omitempty"`
+	Landing     int64 `json:"landing,omitempty"`
 }
 
 // QueueItem is an issue in the autopilot's queue, in queue order.
@@ -304,6 +312,61 @@ type QueueItem struct {
 	MergeRequestURL string                  `json:"mergeRequestURL,omitempty"`
 	// Task is the issue's implement task, if there is one.
 	Task string `json:"task,omitempty"`
+	// Lane is where the item is (queueLane); Wave its layer in the plan
+	// graph (planWaves), 0 outside the plan. WaitingFor are the unmerged
+	// planned dependencies of a waiting item; empty, it waits for a free
+	// slot or its turn.
+	Lane       string         `json:"lane" tstype:"'running' | 'landing' | 'ready' | 'waiting' | 'held' | 'done'"`
+	Wave       int            `json:"wave,omitempty"`
+	WaitingFor []int64        `json:"waitingFor,omitempty"`
+	Hold       *aiv1.ItemHold `json:"hold,omitempty"`
+	ReadyAt    *metav1.Time   `json:"readyAt,omitempty"`
+}
+
+// queueLane is the lane of the item it of the autopilot ap.
+func queueLane(ap *aiv1.AutopilotStatus, it *aiv1.AutopilotItem) string {
+	switch {
+	case it.State == aiv1.AutopilotItemMerged || it.State == aiv1.AutopilotItemSkipped:
+		return "done"
+	case it.State != aiv1.AutopilotItemActive:
+		return "waiting"
+	case it.Hold != nil:
+		return "held"
+	case it.IID == ap.Landing:
+		return "landing"
+	case it.ReadyAt != nil:
+		return "ready"
+	}
+	return "running"
+}
+
+// planWaves is the layer of every planned issue in the plan graph: 1
+// without planned dependencies, else 1 + the highest wave of its
+// dependencies. A dependency that closes a cycle counts as 0.
+func planWaves(plan []aiv1.PlannedIssue) map[int64]int {
+	deps, waves := map[int64][]int64{}, map[int64]int{}
+	for _, pi := range plan {
+		deps[pi.IID] = pi.DependsOn
+	}
+	var wave func(iid int64) int
+	wave = func(iid int64) int {
+		if w, ok := waves[iid]; ok {
+			return w
+		}
+		waves[iid] = 0 // in progress: a cycle back here counts 0
+		w := 1
+		for _, d := range deps[iid] {
+			if _, planned := deps[d]; planned {
+				w = max(w, wave(d)+1)
+			}
+		}
+		waves[iid] = w
+		return w
+	}
+	for _, pi := range plan {
+		wave(pi.IID)
+	}
+	return waves
 }
 
 // TrackingIssueRef is the milestone's tracking issue, its chat.
@@ -449,20 +512,37 @@ func milestoneView(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st, coord *aiv1
 	v.Companions = milestoneCompanions(p, tasks, ms.IID)
 	v.Cost = tasksCost(cost)
 	if ap := st.Status.Autopilot; ap != nil {
-		titles := map[int64]string{}
+		titles, deps, items := map[int64]string{}, map[int64][]int64{}, map[int64]*aiv1.AutopilotItem{}
 		for _, pi := range st.Status.Plan {
-			titles[pi.IID] = pi.Title
+			titles[pi.IID], deps[pi.IID] = pi.Title, pi.DependsOn
 		}
+		for i := range ap.Items {
+			items[ap.Items[i].IID] = &ap.Items[i]
+		}
+		waves := planWaves(st.Status.Plan)
 		a := &MilestoneAutopilot{Phase: ap.Phase, PausedReason: ap.PausedReason, WaitingFor: waitingFor(ap, tasks), PauseKind: ap.PauseKind,
-			PausedFor: ap.PausedFor, MergeOverride: ap.MergeOverride, Items: []QueueItem{}}
+			PausedFor: ap.PausedFor, MergeOverride: ap.MergeOverride, Items: []QueueItem{}, MaxParallel: ap.MaxParallel, Landing: ap.Landing}
 		for i := range tasks {
 			if t := &tasks[i]; ap.Phase == aiv1.AutopilotPaused && ap.PausedFor != 0 && t.Spec.Issue != nil && t.Spec.Issue.IID == ap.PausedFor {
 				a.Head, a.ReviewErrors = t.Status.Run.PushedSHA, t.Status.Run.ReviewErrorKinds
 			}
 		}
 		a.QueuedBehind = queuedBehind(st)
-		for _, it := range ap.Items {
-			a.Items = append(a.Items, QueueItem{IID: it.IID, Title: titles[it.IID], State: it.State, MergeRequestIID: it.MergeRequestIID, MergeRequestURL: it.MergeRequestURL, Task: byIssue[it.IID]})
+		for i := range ap.Items {
+			it := &ap.Items[i]
+			q := QueueItem{IID: it.IID, Title: titles[it.IID], State: it.State, MergeRequestIID: it.MergeRequestIID, MergeRequestURL: it.MergeRequestURL, Task: byIssue[it.IID],
+				Lane: queueLane(ap, it), Wave: waves[it.IID], Hold: it.Hold, ReadyAt: it.ReadyAt}
+			for _, d := range deps[it.IID] {
+				// Met as in the controller's startable: merged, not in the
+				// queue, or skipped for an item an owner let start anyway.
+				if dep := items[d]; q.Lane == "waiting" && dep != nil && dep.State != aiv1.AutopilotItemMerged && (dep.State != aiv1.AutopilotItemSkipped || !it.StartAnyway) {
+					q.WaitingFor = append(q.WaitingFor, d)
+				}
+			}
+			if q.Lane == "running" {
+				a.Running++
+			}
+			a.Items = append(a.Items, q)
 		}
 		v.Autopilot = a
 	}
@@ -543,6 +623,7 @@ func (s *Server) milestone(w http.ResponseWriter, r *http.Request) {
 		Chat:       chat,
 		Transcript: s.logs != nil && s.authz.CanSeeTranscript(p, ap.Namespace, ap.Name),
 		Merge:      chat && slices.Contains(st.Spec.OwnerSubjects, p.Username)}
+	v.Permissions.Parallel = v.Permissions.Merge
 	v.Permissions.Draft = v.Permissions.Merge && coord != nil && openFollowUps(v.Retrospective)
 	v.Permissions.FollowUp = v.Permissions.Steer && slices.Contains(st.Spec.OwnerSubjects, p.Username) && openFollowUps(v.Retrospective)
 	v.Permissions.Dismiss = v.Permissions.Steer && slices.Contains(st.Spec.OwnerSubjects, p.Username) && dismissable(st)
