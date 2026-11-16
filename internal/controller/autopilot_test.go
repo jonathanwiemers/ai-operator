@@ -503,7 +503,7 @@ func TestAutopilotPauseListsTheWaysOut(t *testing.T) {
 // A pause over no issue (stuck) names the label to set and #N for skip.
 func TestPauseExitLinesWithoutAnIssue(t *testing.T) {
 	a := &autopilot{spec: aiv1.AgentProjectSpec{Workflow: aiv1.WorkflowSpec{CommandPrefix: "/bot", PilotPrefix: "/copilot", DoneLabel: "wf::done"}}}
-	got := a.exitLines(aiv1.PauseStuck, 0)
+	got := a.exitLines(aiv1.PauseStuck, 0, false)
 	for _, want := range []string{
 		"- By itself, once an issue can start (a skipped dependency closed as done, a link removed, an unskip or a startAnyway): ",
 		"- Label the issue `wf::done` and close it (or merge it by hand): the skipped issue counts as merged",

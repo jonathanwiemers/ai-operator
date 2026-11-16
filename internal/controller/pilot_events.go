@@ -140,7 +140,7 @@ func stalledEvent(spec aiv1.AgentProjectSpec, ap *aiv1.AutopilotStatus, tasks ma
 		return aiv1.PilotEvent{}, false
 	}
 	d := strings.TrimSuffix(now.Sub(ap.PausedAt.Time).Round(time.Minute).String(), "0s")
-	exits := (&autopilot{spec: spec, tasks: tasks}).exitLines(ap.PauseKind, ap.PausedFor)
+	exits := (&autopilot{spec: spec, tasks: tasks}).exitLines(ap.PauseKind, ap.PausedFor, false)
 	return aiv1.PilotEvent{Key: fmt.Sprintf("%s%d", aiv1.StalledEventPrefix, ap.PausedAt.Unix()), IssueIID: ap.PausedFor,
 		Text: fmt.Sprintf("Autopilot has been paused for %s and nothing changed: %s\n\nWays out:\n%s", d, ap.PausedReason, exits)}, true
 }

@@ -37,7 +37,7 @@ func TestAutopilotResumeLiftsEveryHold(t *testing.T) {
 	tracking := e.autopilot().TrackingIssueIID
 	body := e.gl.Issues[tracking].Description
 	for _, want := range []string{
-		"▶️ running.\n\nHeld:\n- #1 API: CI of !1 is red (`/agent resume`)\n- #2 UI: CI of !2 is red (`/agent resume`)\n",
+		"▶️ running.\n\nHeld:\n- #1 API: CI of !1 is red (`/agent resume #1`)\n- #2 UI: CI of !2 is red (`/agent resume #2`)\n",
 		"- [ ] #1 API: **held** (ciRed)", "- [ ] #2 UI: **held** (ciRed)", "- [ ] #4 Docs: **in progress**",
 		"up to 3 at a time (`/agent parallel <n>` in the milestone description changes it)", "one after another",
 	} {
@@ -111,7 +111,7 @@ func TestTrackingLanes(t *testing.T) {
 	for _, want := range []string{
 		"- [ ] #1 A: **landing** (queued)", "- [ ] #2 B: ready to land (queued)", "- [ ] #3 C: **held** (findings) (queued)",
 		"- [ ] #4 D: **in progress** (queued)", "- [ ] #5 E: pending, after #6, waits for a free slot",
-		"Held:\n- #3 C: !3 has findings (`/agent resume`)\n", "up to 2 at a time",
+		"Held:\n- #3 C: !3 has findings (`/agent resume #3`)\n", "up to 2 at a time",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("tracking issue misses %q:\n%s", want, body)

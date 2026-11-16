@@ -1903,7 +1903,7 @@ func (a *autopilot) pause(ctx context.Context, kind aiv1.PauseKind, iid int64, r
 	// Comment first: if it fails, the pause is tried again on the next poll.
 	// Defuse the reason (it can quote job names and titles); the owners'
 	// mention is appended after, so it stays a real ping.
-	if err := a.comment(ctx, fmt.Sprintf("⏸️ Autopilot paused: %s.\n\nWays out:\n%s", notify.Defuse(reason), a.exitLines(kind, iid))+a.mention(aiv1.NotifyAutopilotPaused)); err != nil {
+	if err := a.comment(ctx, fmt.Sprintf("⏸️ Autopilot paused: %s.\n\nWays out:\n%s", notify.Defuse(reason), a.exitLines(kind, iid, false))+a.mention(aiv1.NotifyAutopilotPaused)); err != nil {
 		return err
 	}
 	a.startPause(kind, iid)
@@ -1925,7 +1925,7 @@ func (a *autopilot) hold(ctx context.Context, it *aiv1.AutopilotItem, kind aiv1.
 		return nil
 	}
 	a.log.Info("autopilot holds an issue", "issue", it.IID, "reason", reason)
-	if err := a.comment(ctx, fmt.Sprintf("⏸️ #%d is held: %s. The other issues go on.\n\nWays out:\n%s", it.IID, notify.Defuse(reason), a.exitLines(kind, it.IID))+a.mention(aiv1.NotifyAutopilotPaused)); err != nil {
+	if err := a.comment(ctx, fmt.Sprintf("⏸️ #%d is held: %s. The other issues go on.\n\nWays out:\n%s", it.IID, notify.Defuse(reason), a.exitLines(kind, it.IID, true))+a.mention(aiv1.NotifyAutopilotPaused)); err != nil {
 		return err
 	}
 	h := aiv1.ItemHold{Kind: kind, Reason: reason, Since: metav1.Time{Time: a.r.now()}}
@@ -1960,7 +1960,8 @@ func (a *autopilot) unhold(ctx context.Context, it *aiv1.AutopilotItem, res resu
 // exitLines renders the ways out of a pause of kind over issue iid
 // (aiv1.PauseExits) as a list, with the project's command prefix and labels.
 // A command after a label or a GitLab action goes on the tracking issue.
-func (a *autopilot) exitLines(kind aiv1.PauseKind, iid int64) string {
+// For a hold of iid (held), `resume` names the issue: it lifts that hold.
+func (a *autopilot) exitLines(kind aiv1.PauseKind, iid int64, held bool) string {
 	wf := a.spec.Workflow
 	issue, ref, head := "the issue", "#N", "<sha>"
 	if iid != 0 {
@@ -1970,6 +1971,9 @@ func (a *autopilot) exitLines(kind aiv1.PauseKind, iid int64) string {
 		}
 	}
 	args := map[string]string{"skip": " " + ref, "unskip": " " + ref, "startAnyway": " " + ref, "rebase": " " + ref, "mergeBase": " " + ref, "merge": " " + ref + " " + head}
+	if held && iid != 0 {
+		args["resume"] = " " + ref
+	}
 	cmd := func(word string, target aiv1.ExitTarget) string {
 		where := "here"
 		if target == aiv1.ExitTargetImplement {
@@ -2258,7 +2262,11 @@ func (a *autopilot) commands(ctx context.Context) error {
 					return err
 				}
 			} else if c.Action.Tool != "revisit" {
-				reply, applied, err := a.command(ctx, c.Action.Tool, fmt.Sprintf("#%d", c.Action.IssueIID), by)
+				arg := fmt.Sprintf("#%d", c.Action.IssueIID)
+				if c.Action.Tool == "resume" {
+					arg = "" // the pilot's resume is the milestone's, as before
+				}
+				reply, applied, err := a.command(ctx, c.Action.Tool, arg, by)
 				if err != nil {
 					return err
 				}
@@ -2334,6 +2342,10 @@ func (a *autopilot) chatCommands(ctx context.Context) error {
 		switch word {
 		case "skip":
 			arg = fmt.Sprintf("#%d", cmd.Issue)
+		case "resume":
+			if cmd.Issue != 0 {
+				arg = fmt.Sprintf("#%d", cmd.Issue)
+			}
 		case "merge":
 			arg = fmt.Sprintf("#%d %s", cmd.Issue, cmd.SHA)
 		case "unstart":
@@ -2374,6 +2386,18 @@ func (a *autopilot) command(ctx context.Context, word, arg, by string) (answer s
 		}
 		return "Autopilot paused.", true, nil
 	case "resume":
+		// `resume #N` lifts N's hold only; over a pause for N (a limit of
+		// 1) it is a plain `resume`.
+		if iid, err := strconv.ParseInt(strings.TrimPrefix(arg, "#"), 10, 64); err == nil && (a.ap.Phase != aiv1.AutopilotPaused || a.ap.PausedFor != iid || iid == 0) {
+			it := heldItem(a.ap, iid)
+			if it == nil {
+				return fmt.Sprintf("`resume #N` needs a held issue, e.g. `%s resume #12`.", a.spec.Workflow.CommandPrefix), false, nil
+			}
+			if err := a.unhold(ctx, it, byCommand(by), "resumed"); err != nil {
+				return "", false, err
+			}
+			return fmt.Sprintf("#%d goes on.", iid), true, nil
+		}
 		if err := a.resumeAll(ctx, by); err != nil {
 			return "", false, err
 		}
@@ -2528,7 +2552,7 @@ func (a *autopilot) unknownCommand() string {
 	if h, _ := a.startHint(); h != "" {
 		start = "`" + h + "`, "
 	}
-	return fmt.Sprintf("This tracking issue only understands %[4]s`%[1]s pause`, `%[1]s resume`, `%[1]s skip #N`, `%[1]s unskip #N`, `%[1]s startAnyway #N`, `%[1]s rebase #N`, `%[1]s mergeBase #N`, `%[1]s merge #N`, `%[1]s release [reason]`, `%[1]s no-release #N [reason]`, `%[1]s endMilestone` and `%[1]s revisit <id> …`. "+
+	return fmt.Sprintf("This tracking issue only understands %[4]s`%[1]s pause`, `%[1]s resume [#N]`, `%[1]s skip #N`, `%[1]s unskip #N`, `%[1]s startAnyway #N`, `%[1]s rebase #N`, `%[1]s mergeBase #N`, `%[1]s merge #N`, `%[1]s release [reason]`, `%[1]s no-release #N [reason]`, `%[1]s endMilestone` and `%[1]s revisit <id> …`. "+
 		"Did you mean `%[3]s …`? The milestone's pilot answers here. To instruct the agent, comment `%[1]s …` on %[2]s.", prefix, where, a.spec.Workflow.PilotPrefix, start)
 }
 
@@ -2701,7 +2725,7 @@ func (a *autopilot) renderTracking() string {
 	var held []string
 	for _, it := range a.ap.Items {
 		if it.State == aiv1.AutopilotItemActive && it.Hold != nil {
-			held = append(held, fmt.Sprintf("- #%d %s: %s (`%s resume`)\n", it.IID, a.issues[it.IID].Title, notify.Defuse(it.Hold.Reason), prefix))
+			held = append(held, fmt.Sprintf("- #%d %s: %s (`%s resume #%d`)\n", it.IID, a.issues[it.IID].Title, notify.Defuse(it.Hold.Reason), prefix, it.IID))
 		}
 	}
 	if len(held) > 0 {
@@ -2724,7 +2748,7 @@ func (a *autopilot) renderTracking() string {
 	if h, what := a.startHint(); h != "" {
 		start = fmt.Sprintf("`%s` (owners: %s), ", h, what)
 	}
-	fmt.Fprintf(&b, "Commands, as comments here: %s`%s pause`, `%s resume`, `%s skip #<issue>`.\n\n### Issues\n\n", start, prefix, prefix, prefix)
+	fmt.Fprintf(&b, "Commands, as comments here: %s`%s pause`, `%s resume [#<issue>]`, `%s skip #<issue>`.\n\n### Issues\n\n", start, prefix, prefix, prefix)
 	if len(a.st.Status.Plan) == 0 && len(a.ap.Items) == 0 {
 		b.WriteString("_Listed once the milestone is planned._\n")
 	}

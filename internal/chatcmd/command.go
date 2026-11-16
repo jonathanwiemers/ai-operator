@@ -96,9 +96,16 @@ func Parse(body string) (Command, error) {
 		return Command{}, fmt.Errorf("%s takes no followUps", c.Cmd)
 	}
 	switch c.Cmd {
-	case "retry", "review", "pause", "resume", "start", "unstart", "endmilestone", "restart":
+	case "retry", "review", "pause", "start", "unstart", "endmilestone", "restart":
 		if err := c.noArgs(); err != nil {
 			return Command{}, err
+		}
+	case "resume":
+		// An issue lifts its hold only; none, the pause and every hold.
+		rest := c
+		rest.Issue = 0
+		if c.Issue < 0 || rest.noArgs() != nil {
+			return Command{}, fmt.Errorf("resume takes only an issue > 0, or nothing")
 		}
 	case "use":
 		if err := c.parseUse(); err != nil {

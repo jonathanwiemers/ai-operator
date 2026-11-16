@@ -27,7 +27,7 @@ var reviewPauses = []aiv1.PauseKind{aiv1.PauseFindings, aiv1.PauseReviewErrors, 
 // mergeAnyway records an owner's decision to merge the active issue's head
 // without a full review ("#N sha", the head they looked at): the merge gate
 // skips its review checks for that head, CI, the MR state and approvals
-// still apply. A pause over its review ends, so the gate runs again on the
+// still apply. A pause or hold over its review ends, so the gate runs again on the
 // next poll. Applying it again changes nothing, so a retried poll is safe.
 func (a *autopilot) mergeAnyway(ctx context.Context, arg, by string) (string, bool, error) {
 	prefix := a.spec.Workflow.CommandPrefix
@@ -63,6 +63,11 @@ func (a *autopilot) mergeAnyway(ctx context.Context, arg, by string) (string, bo
 			return "", false, err
 		}
 		a.lift(resolverOf(by), aiv1.ResumedViaCommand)
+	}
+	if it.Hold != nil && slices.Contains(reviewPauses, it.Hold.Kind) {
+		if err := a.unhold(ctx, it, byCommand(by), "it may merge without a full review"); err != nil {
+			return "", false, err
+		}
 	}
 	return fmt.Sprintf("!%d at %s may merge without a full review.", it.MergeRequestIID, short(head)), true, nil
 }
