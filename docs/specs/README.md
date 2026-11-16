@@ -3,57 +3,66 @@
 Every non-trivial change starts as a spec: the problem, the goals and
 non-goals, the decisions the maintainer approved, and the plan of merge
 requests. A spec that ran as an autopilot milestone keeps a steering log of
-what changed on the way. The user-facing result is in the
-[docs](../README.md); read a spec to learn why it works that way.
+what changed on the way. Specs record the problem and the decisions of their
+time; when a spec and the [docs](../README.md) disagree, the docs win. Read a
+spec to learn why it works that way.
 
-New specs go here as `<title>.spec.md`. Each group below is in the order the
-specs were written, so later ones build on earlier ones.
+New specs go here as `<title>.spec.md` and are added to this index. Each group
+below is in the order the specs were written, so later ones build on earlier
+ones. Each entry names the milestone the spec came from when the file or its
+git history does; otherwise "no milestone".
 
 ## Workflow in GitLab
 
-1. [Choosing engine, model and effort per issue](issue-model-and-effort.spec.md)
-2. [Owner pings and agent-written MR descriptions](owner-pings-and-mr-descriptions.spec.md)
-3. [GitLab home, webhooks, hardening and the pilot's next steps](gitlab-home-and-hardening.spec.md)
-4. [Engine usage readings and engine fallback](engine-usage-and-fallback.spec.md)
-5. [No lost work: checkpoints, smaller steps and conventional commits](checkpoints-and-conventional-commits.spec.md)
-6. [Read gate and writer subagent](read-gate-and-writer.spec.md)
-7. [Cross-repo changes: companion repositories](cross-repo-changes.spec.md)
+1. [Choosing engine, model and effort per issue](issue-model-and-effort.spec.md) — Per-issue engine, model and effort via labels and commands. Milestone: no milestone.
+2. [Owner pings and agent-written MR descriptions](owner-pings-and-mr-descriptions.spec.md) — Ping owners when a human is needed; agents write MR descriptions. Milestone: no milestone.
+3. [GitLab home, webhooks, hardening and the pilot's next steps](gitlab-home-and-hardening.spec.md) — Webhooks, hardening and the pilot's next steps on GitLab. Milestone: no milestone.
+4. [Engine usage readings and engine fallback](engine-usage-and-fallback.spec.md) — Read engine usage and fall back when a limit hits. Milestone: no milestone.
+5. [No lost work: checkpoints, smaller steps and conventional commits](checkpoints-and-conventional-commits.spec.md) — Checkpoint unpushed work, keep steps small, conventional commits. Milestone: ai-operator: no lost work, smaller steps, conventional commits.
+6. [Read gate and writer subagent](read-gate-and-writer.spec.md) — Enforce read-only tools and a writer subagent for edits. Milestone: ai-operator: read gate and writer subagent.
+7. [Cross-repo changes: companion repositories](cross-repo-changes.spec.md) — Change a companion repository in the same run and land it by rule. Milestone: Cross-repo changes: companion repositories.
+8. [Merge request size budget per project](mr-size-budget.spec.md) — Per-project MR size budget and house rules for the planner. Milestone: no milestone.
+9. [Projects: the operator works in every project of a GitLab group](group-projects.spec.md) — One AgentProjectSet watches a group; projects appear only while they have work. Milestone: Projects: the operator works in every project of a GitLab group, except the ones you exclude.
 
 ## Autopilot and the pilot
 
-1. [Pipeline health, infra retries and the blocked state](pipeline-health-and-blocked-state.spec.md)
-2. [Milestone coordinator (`/pilot`)](milestone-coordinator.spec.md)
-3. [Autopilot closes its milestone](autopilot-close-milestone.spec.md)
-4. [Autopilot finds its own way out of a pause](autopilot-way-out-of-a-pause.spec.md)
-5. [Pauses say why, spend adds up, planning waits for the milestone's start](honest-reporting.spec.md)
-6. [Oldest milestone first: an order for the run queue](milestone-queue-order.spec.md)
-7. [Autopilot milestones one after another](strict-milestone-order.spec.md)
-8. [Desk: run milestones in the order I choose, and close finished ones](desk-queue-closeout.spec.md)
-9. [Runs that hang get noticed and restarted](run-watchdog.spec.md)
-10. [Autopilot works on several issues of a milestone at once](parallel-issues.spec.md)
+1. [Pipeline health, infra retries and the blocked state](pipeline-health-and-blocked-state.spec.md) — Detect bad pipelines, retry infra and surface a blocked state. Milestone: no milestone.
+2. [Milestone coordinator (`/pilot`)](milestone-coordinator.spec.md) — A `/pilot` coordinator for the milestone. Milestone: no milestone.
+3. [Autopilot closes its milestone](autopilot-close-milestone.spec.md) — Close a done autopilot milestone after the retrospective. Milestone: no milestone.
+4. [Autopilot finds its own way out of a pause](autopilot-way-out-of-a-pause.spec.md) — Every pause has a way out for the operator, pilot or owner. Milestone: ai-operator: autopilot finds its own way out of a pause.
+5. [Pauses say why, spend adds up, planning waits for the milestone's start](honest-reporting.spec.md) — Honest pause reasons, spend totals and delayed planning. Milestone: ai-operator: pauses say why, spend adds up, planning waits for the milestone's start.
+6. [Oldest milestone first: an order for the run queue](milestone-queue-order.spec.md) — Run queue prefers the oldest open milestone. Milestone: no milestone.
+7. [Autopilot milestones one after another](strict-milestone-order.spec.md) — At most one milestone starts new issues at a time. Milestone: no milestone.
+8. [Desk: run milestones in the order I choose, and close finished ones](desk-queue-closeout.spec.md) — Choose queue order from the Desk and close finished milestones. Milestone: Desk: run milestones in the order I choose, and close finished ones.
+9. [Runs that hang get noticed and restarted](run-watchdog.spec.md) — Notice hung runs, restart them and escalate when that fails. Milestone: %23 Runs that hang get noticed and restarted.
+10. [Autopilot works on several issues of a milestone at once](parallel-issues.spec.md) — Independent issues of one milestone run in parallel up to a limit. Milestone: Autopilot works on several issues of a milestone at once.
 
 ## Web UI (the Desk)
 
-1. [Live agent output, prompts and steering](ui-live-transcript-and-steering.spec.md)
-2. [The Desk: chat-first streams with history](desk-chat-first-ui.spec.md)
-3. [Render GitLab-flavoured notes in the Desk](desk-markdown-notes.spec.md)
-4. [Live chat with the agents](desk-live-agent-chat.spec.md)
-5. [Ask the pilot](desk-ask-the-pilot.spec.md)
-6. [Pause card and actions](desk-pause-card.spec.md)
-7. [Spend you can see, fewer tokens, cleaner Desk](spend-tokens-desk.spec.md)
-8. [Dashboard, milestone pages, pilot and retrospective tabs](desk-dashboard.spec.md)
-9. [Works on a phone, markdown everywhere, one UI kit](desk-mobile-cleanup.spec.md)
-10. [One Costs page across all projects, with charts](costs-page.spec.md)
-11. [Stay logged in while you use it (OIDC refresh tokens)](desk-session-refresh.spec.md)
-12. [Desk polish: version, phone Costs tab, ⌘K search](desk-polish.spec.md)
+1. [Live agent output, prompts and steering](ui-live-transcript-and-steering.spec.md) — Live transcript of a task's pod, with prompts on request. Milestone: no milestone.
+2. [The Desk: chat-first streams with history](desk-chat-first-ui.spec.md) — Chat-first project streams with history in Postgres. Milestone: no milestone.
+3. [Render GitLab-flavoured notes in the Desk](desk-markdown-notes.spec.md) — Render GitLab-flavoured Markdown notes in the Desk. Milestone: no milestone.
+4. [Live chat with the agents](desk-live-agent-chat.spec.md) — Chat with the agent of a running task. Milestone: no milestone.
+5. [Ask the pilot](desk-ask-the-pilot.spec.md) — Ask the milestone's pilot without waiting for a run slot. Milestone: no milestone.
+6. [Pause card and actions](desk-pause-card.spec.md) — Structured pause card with the fixes that pause allows. Milestone: no milestone.
+7. [Spend you can see, fewer tokens, cleaner Desk](spend-tokens-desk.spec.md) — Spend drill-down, budgets and a cleaner Desk navigation. Milestone: no milestone.
+8. [Dashboard, milestone pages, pilot and retrospective tabs](desk-dashboard.spec.md) — Dashboard, milestone pages, pilot and retrospective tabs. Milestone: Desk: dashboard, milestone pages, pilot and retrospective tabs.
+9. [Works on a phone, markdown everywhere, one UI kit](desk-mobile-cleanup.spec.md) — Phone layout, shared Markdown and one UI kit. Milestone: %17 Desk: works on a phone, markdown everywhere, one UI kit, one definition per type.
+10. [One Costs page across all projects, with charts](costs-page.spec.md) — One `/costs` page across projects, with charts and drill-down. Milestone: Desk: one Costs page across all projects, with charts.
+11. [Stay logged in while you use it (OIDC refresh tokens)](desk-session-refresh.spec.md) — OIDC refresh tokens keep the Desk session alive. Milestone: Desk: stay logged in while you use it (OIDC refresh tokens).
+12. [Desk polish: version, phone Costs tab, ⌘K search](desk-polish.spec.md) — Version footer, phone Costs tab, drop the milestone strip, ⌘K search. Milestone: Desk polish: version, phone Costs tab, no milestone strip, ⌘K search.
 
 ## Research
 
-1. [Research platform: news flash, scheduled and long research](research-platform.spec.md)
-2. [Research feed sources](research-feed-sources.spec.md)
+1. [Research platform: news flash, scheduled and long research](research-platform.spec.md) — News flash, scheduled and long research with an agent-shaped UI. Milestone: no milestone.
+2. [Research feed sources](research-feed-sources.spec.md) — Feed sources the research runner reads. Milestone: no milestone.
 
 ## Releases
 
-1. [GitLab release pipeline](gitlab-release-pipeline.spec.md)
-2. [Operator-created releases](operator-created-releases.spec.md)
-3. [Open-source release](open-source-release.spec.md)
+1. [GitLab release pipeline](gitlab-release-pipeline.spec.md) — GitLab job that builds images, the chart and the release. Milestone: no milestone.
+2. [Operator-created releases](operator-created-releases.spec.md) — The operator creates releases through the GitLab API. Milestone: no milestone.
+3. [Open-source release](open-source-release.spec.md) — Prepare the repository for the public open-source release. Milestone: no milestone.
+
+## Docs
+
+1. [Docs: a clear path from install to autopilot, in plain language](docs-revamp.spec.md) — Four user sections, contributing, specs index and a docs check. Milestone: %25 Docs: a clear path from install to autopilot, in plain language.
