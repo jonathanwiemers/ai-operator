@@ -115,7 +115,7 @@ Every role and profile has these fields:
 | `reviewers` | Which reviewers run: `bugbot`, `security`. | both |
 | `maxIterations` | Review and fix rounds per push. | `2` |
 | `retries` | How often a reviewer that failed for a passing reason (an engine outage) is called again. `0` turns it off. | `2` |
-| `retryAfter` | How long [autopilot](../usage.md#when-it-pauses) waits before it asks for one more review of a head whose reviewers all failed that way. | `15m` |
+| `retryAfter` | How long [autopilot](../guides/pauses.md#when-it-pauses) waits before it asks for one more review of a head whose reviewers all failed that way. | `15m` |
 | `reviewerSettings` | Per reviewer, by `name`: `maxInlineDiff`, the largest diff in characters pasted into its prompt. A larger diff is only referenced and read through git. `0` never pastes it. | `150000` |
 
 A lower `maxInlineDiff` saves input tokens on big changes, but the reviewer

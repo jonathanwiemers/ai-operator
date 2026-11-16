@@ -7,13 +7,13 @@ import (
 	"testing"
 )
 
-// pauseDocs splits the "When it pauses" section of docs/usage.md into its
-// "#### `kind`" subsections, by kind.
+// pauseDocs splits the "When it pauses" section of docs/guides/pauses.md
+// into its "#### `kind`" subsections, by kind.
 func pauseDocs(t *testing.T, doc string) map[string]string {
 	t.Helper()
 	start := strings.Index(doc, "\n### When it pauses\n")
 	if start < 0 {
-		t.Fatal(`docs/usage.md has no "### When it pauses" section`)
+		t.Fatal(`docs/guides/pauses.md has no "### When it pauses" section`)
 	}
 	section := doc[start+1:]
 	if end := strings.Index(section[len("### "):], "\n### "); end >= 0 {
@@ -32,10 +32,10 @@ func pauseDocs(t *testing.T, doc string) map[string]string {
 	return subs
 }
 
-// docs/usage.md has a subsection per PauseKind under "When it pauses", and
-// it names the /agent command of every remedy in PauseExits.
+// docs/guides/pauses.md has a subsection per PauseKind under "When it
+// pauses", and it names the /agent command of every remedy in PauseExits.
 func TestPauseKindsDocumented(t *testing.T) {
-	data, err := os.ReadFile("../../docs/usage.md")
+	data, err := os.ReadFile("../../docs/guides/pauses.md")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestPauseKindsDocumented(t *testing.T) {
 		known[string(kind)] = true
 		body, ok := subs[string(kind)]
 		if !ok {
-			t.Errorf("docs/usage.md: no \"#### `%s`\" subsection under \"When it pauses\"", kind)
+			t.Errorf("docs/guides/pauses.md: no \"#### `%s`\" subsection under \"When it pauses\"", kind)
 			continue
 		}
 		for _, e := range PauseExits(kind) {
@@ -53,13 +53,13 @@ func TestPauseKindsDocumented(t *testing.T) {
 				continue
 			}
 			if !regexp.MustCompile("/agent " + regexp.QuoteMeta(e.Command) + `\b`).MatchString(body) {
-				t.Errorf("docs/usage.md, `%s`: exit %s needs `/agent %s`", kind, e.ID, e.Command)
+				t.Errorf("docs/guides/pauses.md, `%s`: exit %s needs `/agent %s`", kind, e.ID, e.Command)
 			}
 		}
 	}
 	for kind := range subs {
 		if !known[kind] {
-			t.Errorf("docs/usage.md: subsection `%s` is no PauseKind", kind)
+			t.Errorf("docs/guides/pauses.md: subsection `%s` is no PauseKind", kind)
 		}
 	}
 }

@@ -204,7 +204,8 @@ feature.
 
 | | |
 |-|-|
-| [Usage](docs/usage.md) | the GitLab workflow: labels, milestone specs, decisions, CI, autopilot, owners, lifecycle |
+| [Guides](docs/guides/README.md) | write a milestone, answer the agent, run it on autopilot, pauses, the pilot, when runs go wrong |
+| [Usage](docs/usage.md) | budgets, companion repositories, releases, prompts, watching progress (moving to the guides) |
 | [Commands](docs/reference/commands.md) and [labels](docs/reference/labels.md) | every `/agent` and `/pilot` command, the marker lines and the labels |
 | [Getting started](docs/getting-started/README.md) | install (Helm, Flux), secrets, turn on the Desk, your first milestone |
 | [AgentProject](docs/reference/agentproject.md) and [Desk API](docs/reference/desk-api.md) | every `AgentProject` field with its default, engines, profiles, models, the agent image; the Desk's endpoints |

@@ -22,8 +22,8 @@ which tokens, which models, how many runs at a time. Its fields are in the
 A milestone with `/agent autopilot` in its description runs end to end:
 planned, implemented, reviewed and merged issue by issue, with the
 [pilot](#pilot) handling what goes wrong. See
-[How it works](how-it-works.md#from-spec-to-merged-work) and the planned
-guide guides/autopilot.md.
+[How it works](how-it-works.md#from-spec-to-merged-work) and
+[Run a milestone on autopilot](../guides/autopilot.md).
 
 ### Budget
 
@@ -71,8 +71,8 @@ issue (red CI, a failed run, blocking findings) holds only that issue, even
 if it is the only one running, and the issues that can still start go on.
 If every running issue is held and nothing else can start, the milestone
 [pauses](#pause) as `stuck`. A hold ends by itself once the cause is gone,
-or with `/agent resume #N`; see [How it works](how-it-works.md#when-something-goes-wrong)
-and the planned guide guides/pauses.md.
+or with `/agent resume #N`; see
+[When autopilot pauses](../guides/pauses.md#pause-or-hold).
 
 ### Implementer
 
@@ -84,7 +84,7 @@ request. See [Roles](roles.md#implementer).
 On an autopilot milestone, merge requests that passed the
 [merge gate](#merge-gate) land one at a time: rebased when needed, checked
 by CI on that head and merged, in the order they became ready. See
-[How it works](how-it-works.md#from-spec-to-merged-work).
+[Several issues at once](../guides/autopilot.md#several-issues-at-once).
 
 ### Marker line
 
@@ -100,7 +100,7 @@ operator what to do with it: `/agent spec`, `/agent autopilot`,
 The rule autopilot merges by: CI green, the review clean, the last run
 succeeded, and the merge request's head is the one that was checked. A
 model never decides to merge. See
-[How it works](how-it-works.md#from-spec-to-merged-work).
+[The merge gate](../guides/autopilot.md#the-merge-gate).
 
 ### Milestone
 
@@ -124,15 +124,15 @@ pause card. Some kinds always pause the milestone, for example `budget`,
 `mainRed` or `stuck`; problems of one issue, such as `ciRed` or `stalled`,
 only [hold](#hold) that issue when the milestone's parallel limit is above
 1, and pause the milestone when the limit is 1. See
-[How it works](how-it-works.md#when-something-goes-wrong) and the planned
-guide guides/pauses.md.
+[When autopilot pauses](../guides/pauses.md), with every kind and its ways
+out.
 
 ### Pilot
 
 The agent that watches a milestone for you: it answers your questions,
 fixes what it may on its own, asks the [owners](#owner) when it needs a
 decision, and writes the [retrospective](#retrospective). See
-[Roles](roles.md#pilot).
+[Roles](roles.md#pilot) and [The pilot](../guides/pilot.md).
 
 ### Planner
 
@@ -169,7 +169,8 @@ guides/releases.md.
 
 The pilot's last comment on a finished autopilot milestone: what was
 merged, the decisions and pauses, cost and time, and numbered follow-ups you
-can open as new issues. See [Roles](roles.md#pilot).
+can open as new issues. See
+[The retrospective](../guides/pilot.md#the-retrospective).
 
 ### Reviewer
 
@@ -224,7 +225,7 @@ has its own pod and volume; see [How it works](how-it-works.md#pods-per-issue).
 The issue the operator opens for an autopilot milestone (or for a pilot
 started with `/pilot coordinate`). It shows the queue and its state, takes
 commands such as `/agent pause`, and is where the pilot posts. See
-[How it works](how-it-works.md#from-spec-to-merged-work).
+[The tracking issue](../guides/autopilot.md#the-tracking-issue).
 
 ### Watchdog
 
@@ -232,7 +233,8 @@ The operator's check for runs that hang: no output from the pod for a long
 time, or a pod that cannot start. The pilot can then restart the run, and an
 owner can with *Restart run* in the Desk. There is no `/agent` command for
 it, but the restart leaves a note on the issue; see
-[How it works](how-it-works.md#when-something-goes-wrong).
+[How it works](how-it-works.md#when-something-goes-wrong) and the
+[`stalled` pause](../guides/pauses.md#stalled).
 
 ### Wave
 

@@ -224,6 +224,9 @@ tracking issue with release notes.
 - [Roles](roles.md): the planner, implementer, reviewers, pilot and the
   helpers, and what you see of each.
 - [Security](security.md): what the model can and cannot reach.
+- [Run a milestone on autopilot](../guides/autopilot.md),
+  [When autopilot pauses](../guides/pauses.md) and
+  [The pilot](../guides/pilot.md): the main path, step by step.
 - [Glossary](glossary.md): every term on this page in one or two sentences.
 - [Getting started](../getting-started/README.md): install the operator
   and plan your first milestone.

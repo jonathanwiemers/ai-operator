@@ -107,7 +107,7 @@ an owner reviews the issues. An autopilot milestone is planned when its
 turn comes: when no older autopilot milestone of the project is still open,
 or when an owner comments `/agent start`. Until then it only has a
 [tracking issue](../concepts/glossary.md#tracking-issue). See
-[Autopilot](../usage.md#autopilot-a-milestone-end-to-end).
+[Autopilot](../guides/autopilot.md#a-milestone-end-to-end).
 
 ## `spec.autopilot`
 
@@ -119,7 +119,7 @@ An issue starts once every issue it depends on is merged and fewer than
 `maxParallel` issues are running. Held issues do not count, and above 1 the
 issue that is landing does not count either. With `1`, one issue runs at a
 time, and every problem of an issue pauses the milestone instead of holding
-only that issue (see [When it pauses](../usage.md#when-it-pauses)).
+only that issue (see [When it pauses](../guides/pauses.md#when-it-pauses)).
 
 A milestone sets its own limit with the line `/agent parallel N` (1 to 10).
 An owner can also change it with `parallel N` on the tracking issue or with
@@ -128,7 +128,7 @@ Any other value is ignored, and the project's value applies.
 
 Merges stay one at a time, whatever the limit: the issues that are ready
 wait in the order they became ready, and one of them is landing (rebase,
-CI, merge). See [The merge gate](../usage.md#the-merge-gate).
+CI, merge). See [The merge gate](../guides/autopilot.md#the-merge-gate).
 
 Every running issue needs an agent run, and runs count against the
 project's [`maxConcurrentRuns`](#other-spec-fields), as do chat, review and
@@ -266,7 +266,7 @@ there is no project-wide fallback for it.
 ## `spec.pilot`
 
 The [pilot](../concepts/glossary.md#pilot) watches each milestone and
-answers its owners, see [Talking to the pilot](../usage.md#talking-to-the-pilot).
+answers its owners, see [The pilot](../guides/pilot.md).
 Its model is `agents.pilot` (see [Roles](agents-and-models.md#roles)).
 
 | Field | Meaning | Default |

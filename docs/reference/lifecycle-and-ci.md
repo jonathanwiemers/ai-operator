@@ -92,7 +92,7 @@ checkpoint commit on the work branch, `chore(wip): checkpoint #<issue> step
 <n> (<reason>)`, and pushes it without starting CI and never forced. A
 merge request that was ready is set to draft first. The next run starts
 from the checkpoint. See
-[When a run is cut off](../usage.md#when-a-run-is-cut-off).
+[When a run is cut off](../guides/when-runs-go-wrong.md#when-a-run-is-cut-off).
 
 The same happens when the agent container restarts, and in the new pod
 after a lost pod or an out-of-memory kill. A clean work tree saves nothing,

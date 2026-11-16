@@ -165,5 +165,8 @@ a [retrospective](../concepts/glossary.md#retrospective) on the
   and merge.
 - [Write a milestone](../guides/write-a-milestone.md): what a good spec
   says, and what the planner makes of it.
+- [Run a milestone on autopilot](../guides/autopilot.md): what happens
+  from plan to last merge, and [the pilot](../guides/pilot.md) that
+  handles what goes wrong.
 - [Guides](../guides/README.md): answering, iterating and the other tasks.
-  Autopilot and steering from the Desk are still in [Usage](../usage.md).
+  Steering from the Desk is still in [Usage](../usage.md).

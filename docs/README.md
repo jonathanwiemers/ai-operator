@@ -22,8 +22,11 @@ get [your first milestone](getting-started/first-milestone.md) planned.
 [Write a milestone](guides/write-a-milestone.md),
 [answer and hand over](guides/answer-and-hand-over.md), follow it
 [while the agent works](guides/while-the-agent-works.md), name the
-[owners](guides/owners-and-pings.md), and
-[iterate and finish](guides/iterate-and-finish.md).
+[owners](guides/owners-and-pings.md),
+[iterate and finish](guides/iterate-and-finish.md), run it
+[on autopilot](guides/autopilot.md), handle
+[pauses](guides/pauses.md), work with [the pilot](guides/pilot.md), and
+know what happens [when runs go wrong](guides/when-runs-go-wrong.md).
 
 ## Reference
 
@@ -56,9 +59,8 @@ The old pages, until their sections have moved to the sections above. The
 [docs revamp spec](specs/docs-revamp.spec.md#inventory) lists where each
 section goes.
 
-- **[Usage](usage.md)**: autopilot and its pauses, budgets, companion
-  repositories, releases, prompts, the pilot and the retrospective, and
-  watching progress.
+- **[Usage](usage.md)**: budgets, companion repositories, releases,
+  prompts, and watching progress from the Desk and from Kubernetes.
 - **[Web UI](ui.md)**: the Desk. What it shows
   ([screenshots](ui.md#screenshots)), roles and steering.
 - **[Research](research.md)**: news flashes, scheduled and one-off

@@ -20,6 +20,15 @@ In the order you need them for a milestone:
    agent needs a human, and who may give commands.
 5. [Iterate and finish](iterate-and-finish.md): ask for changes, revisit
    decisions, also after the merge, and finish an issue.
+6. [Run a milestone on autopilot](autopilot.md): from plan to last merge,
+   several issues and milestones at once, the merge gate and the tracking
+   issue.
+7. [When autopilot pauses](pauses.md): pauses and holds, how they end, and
+   each kind with its ways out.
+8. [The pilot](pilot.md): ask it, let it act within limits, change the
+   spec through it, and the retrospective.
+9. [When runs go wrong](when-runs-go-wrong.md): cut-off runs, usage limits,
+   a slow GitLab, and issues that wait.
 
 The other guides are being written from the old pages, see the
 [docs map](../README.md#pages-being-moved).

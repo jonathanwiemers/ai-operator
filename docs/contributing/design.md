@@ -583,8 +583,10 @@ nothing is lost.
   deadline (the poll interval, at least 2 minutes) that also ends the
   retries, and an edit of the live progress comment gives up after 10
   seconds. A poll that still fails with such an error is logged without a
-  stack trace and simply repeated on the next poll; every poll logs its
-  request count at debug. Job logs are streamed: `JobTrace` keeps only the
+  stack trace ("GitLab sync failed, trying again on the next poll") and
+  simply repeated on the next poll, with the reason in the project's
+  `Synced` condition; every poll logs its request count at debug ("GitLab
+  poll done"), and a poll that needed retries at the default level. Job logs are streamed: `JobTrace` keeps only the
   last 4 MiB while reading (`readTail`), so a huge log costs no more memory
   than that.
 * **Webhooks save polls.** While a project's webhook deliveries arrive,
@@ -1353,9 +1355,11 @@ left alone.
 
 ## Checkpoints and Conventional Commits
 
-Usage: [When a run is cut off](../usage.md#when-a-run-is-cut-off). The
+Usage: [When a run is cut off](../guides/when-runs-go-wrong.md#when-a-run-is-cut-off). The
 implementation notes are under Token economy ("Checkpoints", "Folding
-checkpoints").
+checkpoints"). Files over `checkpoint.maxFileBytes` and new files named like
+secrets (`checkpointSecrets`, `isSecretName` in `internal/runner/workspace.go`)
+stay out of the commit.
 
 * **Where.** The checkpoint is made in the agent container, in the
   workspace, where the files are (`Workspace.Checkpoint`). The runner pushes
@@ -1685,6 +1689,48 @@ stateDiagram-v2
   issue's review ends. A new push, or a run that finishes on the head after
   it (a re-review), voids the override; a rebase that keeps the change
   carries it like the review. Applying it again changes nothing.
+* **Ways out.** The ways out of each kind are one table, `PauseExits` in
+  `api/v1alpha1/pause.go` (`ItemPauseKinds` are the kinds that hold an
+  issue). The pause comment renders it, the pilot gets it in its state
+  (`pauseExits`) and the Desk in the milestone view (`exits`), so all three
+  name the same ways out. `TestPauseKindsDocumented` keeps
+  [When autopilot pauses](../guides/pauses.md#when-it-pauses) in step: one
+  `` #### `kind` `` per kind, naming the `/agent` command of every exit. The
+  `needsInput` reason is built from `status.run.needsInputCause`; it holds
+  no relative times or counters, so a pause comments once while its cause
+  stays the same, and a label from before the cause was recorded lists all
+  three causes.
+* **Pause records.** Each pause and its end are history events
+  (`autopilot.paused`, `autopilot.resumed`, with kind, reason and issue;
+  holds are not recorded yet). The end has `resolvedBy` and `pausedSec`:
+  `operator` for an end by itself (the cause went away, a budget raise, a
+  stuck pause that can move, a merge by hand), `laterRun` when a later run
+  made the issue pass the gate, `selfHealed` for the rebase onto a green
+  default branch, `owner` for a command or an answered prompt (also
+  `merge`, `endMilestone` or removing the marker), `pilot` for a `rebase`
+  or `mergeBase` the pilot ran on its own. A new reason of the same kind is
+  the same pause; another kind ends the old one (as `operator`) and starts
+  a new one. `status.autopilot.resumedBy` keeps the last resolver until the
+  next pause, and `resumedVia` how it ended:
+
+  | `via` | How the pause ended |
+  |---|---|
+  | `reReview` | a review-only run autopilot asked for (after a rebase, a reviewer outage) passed on the head it was asked for |
+  | `takeover` | a run an owner's `/agent …` comment on the issue, or a pilot action, started |
+  | `push` | a later run passed on a head nobody asked a run for |
+  | `mergedByHand` | the merge request was merged by hand |
+  | `closedByHand` | the issue was closed by hand |
+  | `command` | `resume` or another owner or pilot command (`merge`, `rebase`, `mergeBase`, `endMilestone`, removing the marker) |
+  | `causeGone` | another end by itself (a green default branch, a budget raise, a companion that can go on, a pause replaced by another kind) |
+  | `selfHealed` | the rebase onto a green default branch |
+
+  Events from before `via` was recorded have none. To tell `reReview`,
+  `takeover` and `push` apart, the operator records who asked for a run of
+  the paused issue while it is paused (`status.autopilot.pauseRunBy`:
+  `autopilot`, `@alice` or the pilot) and that run's head (`pauseRunHead`);
+  both are cleared when the pause ends. A run started from the Desk chat is
+  not recorded, so a pause it ends counts as `push`. The tracking issue's
+  "▶️ Autopilot continues: … (ended by …)" line says the same in words.
 * **Tracking issue.** Created on the first poll, before the first plan (so a
   planning failure has a place to be reported); until a plan exists only the
   tracking issue and its commands are handled, nothing is picked and the
@@ -1818,6 +1864,32 @@ counted interventions; more tools are later steps of
   A milestone gets one; those done before this existed get none.
   It is not bound by
   `maxRunsPerTask`, only by its budget.
+  The facts are at most about 60 000 bytes of JSON: the cost (from the
+  history's agent calls when connected, else the live tasks' sum; with the
+  tokens, the cost drivers, `unmeteredCalls`, `calls`, `oldBasisCalls` and
+  `tokenBasis` `current`, `old` or `mixed`), start, end and duration, the
+  autopilot's comments with their times (every pause, resume, skip and end
+  comment plus the newest others, 60 in all unless more are pauses,
+  resumes, skips and ends), each queue issue (title, state, merge request,
+  revisit and decision IDs, at most 20 apart from superseded ones, its cost
+  and last run summary) and the companions. A long milestone is shortened,
+  not cut, in this order: run summaries (to 200 characters, then left out),
+  the spec (to 4000, then left out), every comment (to 300), comments other
+  than pauses, resumes, skips and ends (oldest first), issue titles (to 80),
+  the companions' reasons and links. `trimmed` names what was shortened; the
+  cost, the times, those comments and the queue entries are always there.
+* **What the pilot sees and says.** Besides its own milestone, its state
+  lists up to 20 issues of other open milestones that reference this
+  milestone's issues ("replaces #X", "%N #X" in their descriptions, and
+  GitLab's "mentioned in" notes on pending and skipped issues), from the 10
+  most recently updated other milestones; a GitLab error leaves the list
+  out. Draft issues are not read. An assessment classifies the event as
+  `infra`, `flaky`, `regression`, `env`, `decision` or `unknown`. An owner's
+  free-text answer to an action prompt becomes one more option ("From your
+  answer: …", replacing one from an earlier answer, the recommendation
+  kept); five such answers can wait for the pilot at a time. Proposals
+  "P<n>" from before prompts stay answerable with `yes`/`no`,
+  `/pilot yes P3` or Accept until they expire.
 * **Follow-up draft** (`internal/controller/pilot_draft.go`,
   `internal/runner/pilot_draft.go`, R14). An owner subject's Desk command
   `{"cmd":"draft","followUps":[1,3]}` on the kept pilot of a done

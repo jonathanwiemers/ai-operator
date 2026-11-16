@@ -278,7 +278,7 @@ The app is a **Desk**: a left rail, the stream, and, on project pages, a context
   history** (`pauses`, from the `autopilot.paused`/`autopilot.resumed`
   events within the history retention: the newest 20 pauses with kind,
   reason, start, end, who resolved each and how (`via`, see
-  [usage.md](usage.md#autopilot-a-milestone-end-to-end)), an open one counting up to now, plus
+  [Autopilot](guides/autopilot.md#a-milestone-end-to-end)), an open one counting up to now, plus
   totals of all: time paused, per kind, mean time to resume, per resolver
   and per way it ended); it is absent without the history database. Below the
   questions, the **Pauses** card shows it: the totals line (*paused 3h 10m
@@ -1162,7 +1162,7 @@ Against an operator that sends no exits, the actions depend on the kind:
 | `budget` | none: raise the budget above the spend (the milestone's `/agent budget` line, or for a `pausedFor` issue an `/agent budget <usd>` comment on it), and it continues by itself |
 | `emptyPlan` | none: change the milestone description, which plans it again; it continues by itself once the plan has issues |
 | `release` | Open pipeline (the failed release pipeline), Resume (runs the final release once more); it continues by itself once a tag contains the milestone's last merge |
-| `stalled` | Skip (Desk chat button); restart is not a pause-card button — open the paused issue's task and use *Restart run* on the health line, or send `{"cmd":"restart"}` in that task's Desk chat (owners, chat grant). The Way out may still list `/agent restart` as text; that GitLab form is unimplemented. It continues by itself once the run logs again or ends. The pause reason holds the step and stall evidence without the container logs (those stay in the Desk *Logs* tab). See [usage](usage.md#stalled) |
+| `stalled` | Skip (Desk chat button); restart is not a pause-card button — open the paused issue's task and use *Restart run* on the health line, or send `{"cmd":"restart"}` in that task's Desk chat (owners, chat grant). The Way out may still list `/agent restart` as text; that GitLab form is unimplemented. It continues by itself once the run logs again or ends. The pause reason holds the step and stall evidence without the container logs (those stay in the Desk *Logs* tab). See [When autopilot pauses](guides/pauses.md#stalled) |
 
 Retry and Review again go to the paused issue's Implement task; Resume,
 Skip and Merge anyway to the milestone's Spec task, as Desk chat commands

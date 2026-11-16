@@ -101,7 +101,7 @@ to find.
 
 - **`/agent spec`** plans the milestone.
 - **`/agent autopilot`** plans it and runs it end to end. This is the main
-  way to run a milestone; see [Autopilot](../usage.md#autopilot-a-milestone-end-to-end).
+  way to run a milestone; see [Autopilot](autopilot.md#a-milestone-end-to-end).
 - **`/agent owners @alice`** names the [owners](../concepts/glossary.md#owner)
   the operator mentions in GitLab (see
   [Owners and pings](owners-and-pings.md)).
@@ -154,7 +154,7 @@ not plan again. The spec text and `repo` lines do.
 
 The operator never rewrites your spec on its own. It writes into the
 description only when an owner asked for it: the pilot's
-[spec changes and rules](../usage.md#spec-changes-through-the-pilot) after
+[spec changes and rules](pilot.md#spec-changes-through-the-pilot) after
 an owner's `yes`, a `parallel N` command, or a budget raise an owner picked
 in a prompt.
 

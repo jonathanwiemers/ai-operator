@@ -58,7 +58,7 @@ Only new comments carry the mention, never the progress comment that is
 updated while a run goes on. On autopilot, failed runs, questions and red
 CI ping through the pause on the tracking issue instead, and the pilot
 asks the owners in the Desk (see
-[When it pauses](../usage.md#when-it-pauses)).
+[When it pauses](pauses.md#when-it-pauses)).
 
 To pick the situations, set `spec.notify.events`. To keep the reviewers of
 merge requests to yourself, set `spec.notify.requestReview: false`. Both

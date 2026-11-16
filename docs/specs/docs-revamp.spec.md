@@ -115,24 +115,24 @@ Rows: `usage.md` 38, `ui.md` 57, `configuration.md` 34, `commands.md` 10,
 | usage.md | ## 4. Iterate | guides/iterate-and-finish.md | R4 | done; updated: Desk first: the task page's *Conversation* box (GitLab comments) and *Chat with the agent* (chat turns between runs, no run started) |
 | usage.md | ### Decisions | guides/iterate-and-finish.md | R4 | done; updated: long decision lists continue in a second comment; follow-ups also copy model and effort labels; the Desk's Revisit button works after the merge only (an open issue gets "still open: comment there"), first-milestone.md corrected too; the chat command JSON dropped: it is the Revisit button's request, in contributing/design.md "Pilot" |
 | usage.md | ## 5. Finish | guides/iterate-and-finish.md | R4 | done; updated: autopilot merges and closes; task, pod and workspace go on the next poll; closing without a merge leaves the merge request open |
-| usage.md | ## Autopilot: a milestone end to end | guides/autopilot.md | R5 | open |
-| usage.md | ### Several milestones at once | guides/autopilot.md | R5 | open |
-| usage.md | ### The merge gate | guides/autopilot.md | R5 | open |
-| usage.md | ### When it pauses | guides/pauses.md | R5 | open |
+| usage.md | ## Autopilot: a milestone end to end | guides/autopilot.md | R5 | done; updated: Desk first (*Plan milestone* adds the markers, the milestone page, *Run next* and *Clear mark*, the parallel stepper); a checklist with an example to turn it on; waves are a Desk view of the plan only; the landing lane and holds told here as "Several issues at once"; the end names the retrospective and the closing of the milestone |
+| usage.md | ### Several milestones at once | guides/autopilot.md | R5 | done; updated: the Desk buttons *Run next* and *Clear mark*; `maxConcurrentRuns` linked to reference/; `startRequestedAt`, `spec.runRequest` and `queuedBehind` are already in contributing/design.md |
+| usage.md | ### The merge gate | guides/autopilot.md | R5 | done; updated: condensed; the merge `sha`, the mechanical-rebase rules, `autoReReviews` and `mergeOverride` are already in contributing/design.md "Autopilot"; companion details stay with "Companion repository" (R7a) |
+| usage.md | ### When it pauses | guides/pauses.md | R5 | done; updated: Desk first (pause and hold cards and their buttons); each kind says what the pilot tries; `stalled` names the watchdog and the Desk restart, `/agent restart` is no GitLab command; defaults linked to reference/; the ways-out table, the pause records (`resolvedBy`, `via`, `pauseRunBy`) and the needs-input reason rules moved to contributing/design.md "Autopilot"; rejected status writes kept short, their internals already in contributing/design.md "Pilot" |
 | usage.md | ### Budget | guides/budgets-and-spend.md | R7a | open |
 | usage.md | ### Companion repository | guides/cross-repo-changes.md | R7a | open |
 | usage.md | ### Releases | guides/releases.md | R7a | open |
-| usage.md | ### Commands on the tracking issue | guides/autopilot.md | R5 | open |
-| usage.md | ### Tracking issue | guides/autopilot.md | R5 | open |
-| usage.md | ### Switching it off | guides/autopilot.md | R5 | open |
+| usage.md | ### Commands on the tracking issue | guides/autopilot.md | R5 | done; updated: a short table, every command and its limits linked to reference/commands.md; `/agent release` and `/agent no-release` added (the old table lacked them); status fields dropped (in contributing/design.md) |
+| usage.md | ### Tracking issue | guides/autopilot.md | R5 | done; updated: the description lists the holds |
+| usage.md | ### Switching it off | guides/autopilot.md | R5 | done; updated: changing the plan is its own section |
 | usage.md | ## Prompts | guides/steer-from-the-desk.md | R6 | open |
-| usage.md | ## Talking to the pilot | guides/pilot.md | R5 | open |
-| usage.md | ### Spec changes through the pilot | guides/pilot.md | R5 | open |
-| usage.md | ### The retrospective | guides/pilot.md | R5 | open |
-| usage.md | ## When a run is cut off | guides/autopilot.md | R5 | open |
-| usage.md | ## Usage and rate limits | guides/autopilot.md | R5 | open |
-| usage.md | ## Issues that stay open | guides/autopilot.md | R5 | open |
-| usage.md | ### Agent notes | guides/autopilot.md | R5 | open |
+| usage.md | ## Talking to the pilot | guides/pilot.md | R5 | done; updated: Desk first (*Pilot* tab, *Ask the pilot*, answers in your own words); `pilot.autonomy` is `managed` when unset on autopilot; defaults linked to reference/; the actions in plain words, the command forms linked to reference/commands.md; what its state lists, the classification values, five waiting answers and the legacy "P<n>" proposals moved to contributing/design.md "Pilot" |
+| usage.md | ### Spec changes through the pilot | guides/pilot.md | R5 | done |
+| usage.md | ### The retrospective | guides/pilot.md | R5 | done; updated: the Desk steps first; the facts, their size and trimming order moved to contributing/design.md "Pilot"; the draft command and the Desk endpoints are already there and in "Desk API" |
+| usage.md | ## When a run is cut off | guides/when-runs-go-wrong.md | R5 | done; updated: target changed, see the steering log; the trailer, the push without CI and the fold are already in contributing/design.md, the secret-name rule added there |
+| usage.md | ## Usage and rate limits | guides/when-runs-go-wrong.md | R5 | done; updated: target changed; split into "Usage limits" and "When GitLab is slow"; the checkpoint text is not repeated; the poll deadline, `Synced` and the log lines are in contributing/design.md "Token economy"; engine usage internals already in "Engines, profiles and subscriptions" |
+| usage.md | ## Issues that stay open | guides/when-runs-go-wrong.md | R5 | done; updated: target changed; the workspace goes after `retentionPeriod` without activity, not after the last run; the times linked to reference/lifecycle-and-ci.md |
+| usage.md | ### Agent notes | guides/when-runs-go-wrong.md | R5 | done; updated: target changed |
 | usage.md | ## Watching progress | guides/desk.md | R6 | open |
 | usage.md | ## Watching from Kubernetes | guides/watch-from-kubernetes.md | R7b | open |
 | usage.md | ### Run logs | guides/watch-from-kubernetes.md | R7b | open |
@@ -357,3 +357,15 @@ with the requirement label and the issue or merge request.
   row. The Desk's Revisit opens a prompt only once the decision's issue is
   merged, so `getting-started/first-milestone.md` now shows the first merge
   request before it answers the revisit prompt.
+- R5 (#513): the autopilot area became four guides. Talking to the pilot
+  went to its own `guides/pilot.md` (plan decision D513-P1), and cut-off
+  runs, usage limits, issues that stay open and agent notes went to
+  `guides/when-runs-go-wrong.md` (D513-P2), so `guides/autopilot.md` keeps
+  the normal path. `TestPauseKindsDocumented` reads `guides/pauses.md`.
+  `usage.md` keeps budgets, companions and releases (R7a) under a new
+  heading, "Budgets, companions and releases", until they move. The old
+  tracking-issue table lacked `/agent release` and `/agent no-release`; the
+  guide's table has them and links `reference/commands.md` for the rest.
+  The pause records (`resolvedBy`, `via`), the retrospective's facts and
+  what the pilot's state lists were not in `contributing/design.md` yet,
+  so they moved there.
