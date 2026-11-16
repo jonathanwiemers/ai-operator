@@ -264,6 +264,7 @@ export const paymentsMilestone: MilestoneView = {
   autopilot: {
     phase: 'Paused',
     running: 1,
+    holds: [],
     pausedReason,
     pauseKind: 'needsInput',
     pausedFor: 281,
@@ -445,6 +446,7 @@ export const checkoutMilestone: MilestoneView = {
   autopilot: {
     phase: 'Running',
     running: 1,
+    holds: [],
     items: [
       { iid: 275, title: 'Guest checkout: session without account', state: 'Merged', lane: 'done' },
       { iid: 276, title: 'Guest checkout: address form', state: 'Merged', lane: 'done' },

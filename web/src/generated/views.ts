@@ -654,6 +654,11 @@ export interface MilestoneAutopilot {
    * which knows the viewer).
    */
   exits?: ExitView[];
+  /**
+   * Holds are the Active items with a hold, in queue order, each with its
+   * ways out (set by the handler, as Exits).
+   */
+  holds: HoldView[];
   items: QueueItem[];
   /**
    * QueuedBehind are the older autopilot milestones it waits for, ascending,
@@ -668,6 +673,21 @@ export interface MilestoneAutopilot {
   running: number /* int */;
   maxParallel?: number /* int32 */;
   landing?: number /* int64 */;
+}
+/**
+ * HoldView is an issue the autopilot holds (aiv1.ItemHold): Head is its
+ * pushed head and ReviewErrors why its reviewers failed, as for the paused
+ * issue; Exits are the ways out of the hold.
+ */
+export interface HoldView {
+  iid: number /* int64 */;
+  title: string;
+  kind: aiv1.PauseKind;
+  reason: string;
+  since: string;
+  head?: string;
+  reviewErrors?: aiv1.ReviewError[];
+  exits?: ExitView[];
 }
 /**
  * QueueItem is an issue in the autopilot's queue, in queue order.
@@ -1484,6 +1504,11 @@ export interface InboxItem {
    * status.autopilot.pausedAt; unset when the operator did not record it.
    */
   pausedSince?: string;
+  /**
+   * Hold: the pause item is the hold of one issue (IssueIID) while the
+   * milestone may run on, lifted by "resume #IssueIID".
+   */
+  hold?: boolean;
 }
 /**
  * InboxResponse is GET /api/v1/inbox.

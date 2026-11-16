@@ -530,6 +530,9 @@ type InboxItem struct {
 	// PausedSince is when the pause started (kind pause), from
 	// status.autopilot.pausedAt; unset when the operator did not record it.
 	PausedSince *time.Time `json:"pausedSince,omitempty"`
+	// Hold: the pause item is the hold of one issue (IssueIID) while the
+	// milestone may run on, lifted by "resume #IssueIID".
+	Hold bool `json:"hold,omitempty"`
 }
 
 // InboxResponse is GET /api/v1/inbox.
@@ -634,15 +637,31 @@ func inboxOf(projects map[string]*aiv1.AgentProject, tasks []aiv1.AgentTask, now
 			it.At = &at
 			items = append(items, it)
 		}
-		if a := t.Status.Autopilot; a != nil && a.Phase == aiv1.AutopilotPaused && t.Spec.Milestone != nil {
-			it := base
-			it.Kind, it.IssueIID, it.Title, it.Reason, it.PauseKind = "pause", a.PausedFor, t.Spec.Milestone.Title, a.PausedReason, a.PauseKind
-			if a.PausedAt != nil {
-				since := a.PausedAt.Time
-				it.PausedSince, it.At = &since, &since
+		if a := t.Status.Autopilot; a != nil && t.Spec.Milestone != nil && (a.Phase == aiv1.AutopilotPaused || a.Phase == aiv1.AutopilotRunning) {
+			paused := a.Phase == aiv1.AutopilotPaused
+			if paused {
+				it := base
+				it.Kind, it.IssueIID, it.Title, it.Reason, it.PauseKind = "pause", a.PausedFor, t.Spec.Milestone.Title, a.PausedReason, a.PauseKind
+				if a.PausedAt != nil {
+					since := a.PausedAt.Time
+					it.PausedSince, it.At = &since, &since
+				}
+				items = append(items, it)
 			}
-			items = append(items, it)
-			continue
+			for _, ai := range a.Items {
+				if h := ai.Hold; h != nil && ai.State == aiv1.AutopilotItemActive {
+					it := base
+					it.Kind, it.IssueIID, it.Title, it.Reason, it.PauseKind, it.Hold = "pause", ai.IID, t.Spec.Milestone.Title, h.Reason, h.Kind, true
+					if !h.Since.IsZero() {
+						since := h.Since.Time
+						it.PausedSince, it.At = &since, &since
+					}
+					items = append(items, it)
+				}
+			}
+			if paused {
+				continue
+			}
 		}
 		switch stage := StageOf(t, ciWindow(ap), now); stage {
 		case StageNeedsInput, StageFailed, StageBlocked:

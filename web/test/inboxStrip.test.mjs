@@ -24,6 +24,15 @@ test('pausedStrip: a pause without pausedSince counts but is not the longest', (
   assert.equal(pausedStrip([pause(1)], now).longestMs, 0)
 })
 
+test('pausedStrip: holds of one issue are no paused autopilot', () => {
+  const hold = (iid, issueIID) => ({ ...pause(iid, '2026-11-06T08:00:00Z'), issueIID, hold: true })
+  const s = pausedStrip([hold(1, 11), hold(1, 12), pause(2, '2026-11-06T11:00:00Z'), hold(2, 21)], now)
+  assert.equal(s.count, 1)
+  assert.equal(s.longestMs, 3600_000)
+  assert.deepEqual(s.milestones.map((m) => m.milestoneIID), [2])
+  assert.deepEqual(pausedStrip([hold(3, 31)], now), { count: 0, longestMs: 0, milestones: [] })
+})
+
 test('pausedStrip: nothing paused', () => {
   assert.deepEqual(pausedStrip([], now), { count: 0, longestMs: 0, milestones: [] })
 })

@@ -17,6 +17,8 @@ export function inboxKey(item: InboxItem): string {
       break
     case 'pause':
       parts.push(item.milestoneIID, item.issueIID, item.pauseKind)
+      // A hold of one issue is not the milestone's pause over it.
+      if (item.hold) parts.push('hold')
       break
     case 'pilotError':
       parts.push(item.task, item.title, item.reason)
@@ -72,6 +74,13 @@ export function notificationText(item: InboxItem): NotificationText {
   switch (item.kind) {
     case 'pause': {
       const cause = item.pauseKind ? pauseTitle(item.pauseKind) : ''
+      // A hold stops one issue; the milestone may run on.
+      if (item.hold) {
+        return {
+          title: `Issue${item.issueIID ? ` #${item.issueIID}` : ''} held · ${item.title || item.project}`,
+          body: [cause, item.reason].filter(Boolean).join('\n'),
+        }
+      }
       const issue = item.issueIID ? `#${item.issueIID}` : ''
       const head = [cause, issue].filter(Boolean).join(' · ')
       return {

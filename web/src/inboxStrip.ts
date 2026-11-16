@@ -18,11 +18,12 @@ export interface PausedStrip {
 }
 
 // pausedStrip summarizes the paused autopilots in the Inbox, longest first.
-// Pauses without a start time count but never set the longest.
+// Pauses without a start time count but never set the longest. Holds of one
+// issue (hold: true) do not pause the milestone and do not count.
 export function pausedStrip(items: InboxItem[], now: number): PausedStrip {
   const milestones: PausedMilestone[] = []
   for (const it of items) {
-    if (it.kind !== 'pause') continue
+    if (it.kind !== 'pause' || it.hold) continue
     const t = it.pausedSince ? Date.parse(it.pausedSince) : NaN
     milestones.push({
       namespace: it.namespace,

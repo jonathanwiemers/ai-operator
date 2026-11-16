@@ -39,19 +39,25 @@ type ExitView struct {
 // whether they need the merge grant rather than chat.
 var deskCommands = map[string]bool{"resume": false, "skip": false, "retry": false, "review": false, "merge": true, "restart": true}
 
-// exitViews lists the ways out of ap's pause with their live state, nil
-// while it is not paused.
+// exitViews lists the ways out of ap's milestone pause with their live
+// state, nil while it is not paused.
 func exitViews(ap *aiv1.AutopilotStatus, tasks []aiv1.AgentTask, project *aiv1.AgentProject, perms MilestonePermissions) []ExitView {
 	if ap == nil || ap.Phase != aiv1.AutopilotPaused {
 		return nil
 	}
-	exits := aiv1.PauseExits(ap.PauseKind)
+	return pauseExitViews(ap.PauseKind, ap.PausedFor, ap, tasks, project, perms)
+}
+
+// pauseExitViews lists the ways out of a pause or hold of kind over the
+// issue iid (0 for none) of ap with their live state.
+func pauseExitViews(kind aiv1.PauseKind, iid int64, ap *aiv1.AutopilotStatus, tasks []aiv1.AgentTask, project *aiv1.AgentProject, perms MilestonePermissions) []ExitView {
+	exits := aiv1.PauseExits(kind)
 	views := make([]ExitView, 0, len(exits))
 	for _, e := range exits {
 		v := ExitView{PauseExit: e}
 		switch {
 		case e.Auto:
-			v.Status, v.Detail = exitStatus(e.ID, ap, tasks, project)
+			v.Status, v.Detail = exitStatus(e.ID, iid, ap, tasks, project)
 		case e.Command != "" && e.Label == "" && !e.GitLab && !e.Prompt:
 			if merge, ok := deskCommands[e.Command]; ok {
 				v.Allowed = perms.Chat && (!merge || perms.Merge)
@@ -62,11 +68,12 @@ func exitViews(ap *aiv1.AutopilotStatus, tasks []aiv1.AgentTask, project *aiv1.A
 	return views
 }
 
-// exitStatus is the live state of the automatic exit id.
-func exitStatus(id string, ap *aiv1.AutopilotStatus, tasks []aiv1.AgentTask, project *aiv1.AgentProject) (ExitStatus, string) {
+// exitStatus is the live state of the automatic exit id of a pause or hold
+// over the issue iid (0 for none).
+func exitStatus(id string, iid int64, ap *aiv1.AutopilotStatus, tasks []aiv1.AgentTask, project *aiv1.AgentProject) (ExitStatus, string) {
 	var item *aiv1.AutopilotItem
 	for i := range ap.Items {
-		if ap.PausedFor != 0 && ap.Items[i].IID == ap.PausedFor {
+		if iid != 0 && ap.Items[i].IID == iid {
 			item = &ap.Items[i]
 		}
 	}
@@ -76,11 +83,11 @@ func exitStatus(id string, ap *aiv1.AutopilotStatus, tasks []aiv1.AgentTask, pro
 	}
 	switch id {
 	case "laterRunPasses":
-		if ap.PausedFor == 0 {
+		if iid == 0 {
 			return ExitStatusUnknown, ""
 		}
-		if t := issueTask(tasks, ap.PausedFor); t != nil && t.RunPending() {
-			return ExitStatusInProgress, fmt.Sprintf("run of #%d pending", ap.PausedFor)
+		if t := issueTask(tasks, iid); t != nil && t.RunPending() {
+			return ExitStatusInProgress, fmt.Sprintf("run of #%d pending", iid)
 		}
 		return ExitStatusWaiting, ""
 	case "mainGreen":
@@ -92,7 +99,7 @@ func exitStatus(id string, ap *aiv1.AutopilotStatus, tasks []aiv1.AgentTask, pro
 		}
 		return ExitStatusWaiting, fmt.Sprintf("main is %s%s", mh.State, at(mh.SHA))
 	case "mainGreenRebase":
-		return mainGreenRebase(item, issueTask(tasks, ap.PausedFor), mh)
+		return mainGreenRebase(item, issueTask(tasks, iid), mh)
 	case "budgetRaised":
 		return budgetRaised(ap, item)
 	// replanned: a pending re-plan lifts the pause on the next poll, so

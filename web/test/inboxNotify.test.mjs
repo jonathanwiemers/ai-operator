@@ -117,6 +117,14 @@ test('newNotifications: a key listed twice notifies once', () => {
   assert.equal(newNotifications(new Set(), [pause(), pause({ reason: 'dup' })]).length, 1)
 })
 
+test('a hold of one issue notifies as held, not as a paused autopilot', () => {
+  const hold = pause({ hold: true, reason: 'job `lint` failed' })
+  assert.equal(notifiable(hold), true)
+  assert.deepEqual(notificationText(hold), { title: 'Issue #12 held · Checkout', body: 'CI is red\njob `lint` failed' })
+  assert.notEqual(inboxKey(hold), inboxKey(pause()))
+  assert.equal(inboxKey(pause()), inboxKey(pause({ hold: false })))
+})
+
 test('notificationText: pause, kind-less pause, proposal and needs-input', () => {
   assert.deepEqual(notificationText(pause()), {
     title: 'Autopilot paused · Checkout',

@@ -290,7 +290,10 @@ type MilestoneAutopilot struct {
 	// Exits are the ways out of the pause (aiv1.PauseExits) with their
 	// live state and the viewer's buttons, while paused (set by the handler,
 	// which knows the viewer).
-	Exits []ExitView  `json:"exits,omitempty"`
+	Exits []ExitView `json:"exits,omitempty"`
+	// Holds are the Active items with a hold, in queue order, each with its
+	// ways out (set by the handler, as Exits).
+	Holds []HoldView  `json:"holds"`
 	Items []QueueItem `json:"items"`
 	// QueuedBehind are the older autopilot milestones it waits for, ascending,
 	// while it waits for its turn to be planned (running, not paused: no
@@ -301,6 +304,20 @@ type MilestoneAutopilot struct {
 	Running     int   `json:"running"`
 	MaxParallel int32 `json:"maxParallel,omitempty"`
 	Landing     int64 `json:"landing,omitempty"`
+}
+
+// HoldView is an issue the autopilot holds (aiv1.ItemHold): Head is its
+// pushed head and ReviewErrors why its reviewers failed, as for the paused
+// issue; Exits are the ways out of the hold.
+type HoldView struct {
+	IID          int64              `json:"iid"`
+	Title        string             `json:"title"`
+	Kind         aiv1.PauseKind     `json:"kind"`
+	Reason       string             `json:"reason"`
+	Since        metav1.Time        `json:"since"`
+	Head         string             `json:"head,omitempty"`
+	ReviewErrors []aiv1.ReviewError `json:"reviewErrors,omitempty"`
+	Exits        []ExitView         `json:"exits,omitempty"`
 }
 
 // QueueItem is an issue in the autopilot's queue, in queue order.
@@ -521,7 +538,7 @@ func milestoneView(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st, coord *aiv1
 		}
 		waves := planWaves(st.Status.Plan)
 		a := &MilestoneAutopilot{Phase: ap.Phase, PausedReason: ap.PausedReason, WaitingFor: waitingFor(ap, tasks), PauseKind: ap.PauseKind,
-			PausedFor: ap.PausedFor, MergeOverride: ap.MergeOverride, Items: []QueueItem{}, MaxParallel: ap.MaxParallel, Landing: ap.Landing}
+			PausedFor: ap.PausedFor, MergeOverride: ap.MergeOverride, Holds: []HoldView{}, Items: []QueueItem{}, MaxParallel: ap.MaxParallel, Landing: ap.Landing}
 		for i := range tasks {
 			if t := &tasks[i]; ap.Phase == aiv1.AutopilotPaused && ap.PausedFor != 0 && t.Spec.Issue != nil && t.Spec.Issue.IID == ap.PausedFor {
 				a.Head, a.ReviewErrors = t.Status.Run.PushedSHA, t.Status.Run.ReviewErrorKinds
@@ -541,6 +558,13 @@ func milestoneView(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st, coord *aiv1
 			}
 			if q.Lane == "running" {
 				a.Running++
+			}
+			if h := it.Hold; h != nil && it.State == aiv1.AutopilotItemActive {
+				hv := HoldView{IID: it.IID, Title: titles[it.IID], Kind: h.Kind, Reason: h.Reason, Since: h.Since}
+				if t := issueTask(tasks, it.IID); t != nil {
+					hv.Head, hv.ReviewErrors = t.Status.Run.PushedSHA, t.Status.Run.ReviewErrorKinds
+				}
+				a.Holds = append(a.Holds, hv)
 			}
 			a.Items = append(a.Items, q)
 		}
@@ -629,6 +653,10 @@ func (s *Server) milestone(w http.ResponseWriter, r *http.Request) {
 	v.Permissions.Dismiss = v.Permissions.Steer && slices.Contains(st.Spec.OwnerSubjects, p.Username) && dismissable(st)
 	if v.Autopilot != nil {
 		v.Autopilot.Exits = exitViews(st.Status.Autopilot, tasks, ap, *v.Permissions)
+		for i := range v.Autopilot.Holds {
+			h := &v.Autopilot.Holds[i]
+			h.Exits = pauseExitViews(h.Kind, h.IID, st.Status.Autopilot, tasks, ap, *v.Permissions)
+		}
 	}
 	var target string
 	if coord != nil {
