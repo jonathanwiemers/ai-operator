@@ -69,7 +69,7 @@ Decisions taken while planning and implementing:
 | R4 milestone strip removed | `web/src/views/Stream.vue`; [Navigation](../ui.md#navigation) |
 | R5 Costs in the phone bottom bar | `web/src/App.vue`; [Navigation](../ui.md#navigation) |
 | R6 `GET /api/v1/search` | `internal/ui/search.go`; [API](../ui.md#api) |
-| R7 palette, shortcut, buttons | `web/src/components/SearchPalette.vue`, `searchItems.ts`, `searchPalette.ts`, `App.vue`; [Search palette](../ui.md#search-palette) |
+| R7 palette, shortcut, buttons | `web/src/components/SearchPalette.vue`, `searchItems.ts`, `searchPalette.ts`, `App.vue`; [Search palette](../contributing/web-ui.md#search-palette) |
 | R8 docs | `docs/ui.md`, chart README, this file |
 
 ## Steering log

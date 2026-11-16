@@ -11,7 +11,7 @@ import NotFound from './NotFound.vue'
 import type { ResearchRun } from '../types'
 
 // One stored run of a research: status, warnings, facts and its result.
-// Utilities only (docs/ui.md, "Research page"): the facts wrap rather than
+// Utilities only (docs/contributing/web-ui.md, "Research page"): the facts wrap rather than
 // clip, two to a row on phones.
 const props = defineProps<{ namespace: string; name: string; id: string }>()
 // The props are read outside the closure, so another run loads again.

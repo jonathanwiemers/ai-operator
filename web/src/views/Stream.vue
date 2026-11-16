@@ -696,7 +696,7 @@ function showDay(i: number): string | null {
     />
 
     <!-- Below 1180 px: the context panel as a sheet from the right
-         (docs/ui.md, "Sheets"), on project and milestone pages. -->
+         (docs/contributing/web-ui.md, "Sheets"), on project and milestone pages. -->
     <USlideover
       v-if="hasContext && narrow"
       v-model:open="contextOpen"

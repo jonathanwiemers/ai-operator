@@ -1,4 +1,4 @@
-// Browser checks of the Desk (docs/ui.md, "Checks"): every route at a
+// Browser checks of the Desk (docs/contributing/web-ui.md, "Checks"): every route at a
 // phone, a tablet and a desktop width, served by e2e/serve.mjs with the
 // server's CSP and the API answered from e2e/fixtures.
 import { join } from 'node:path'
@@ -575,7 +575,7 @@ test('stream-milestone RouteTabs scroll inside the strip@375', async ({ page, ba
   expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
 })
 
-// The stream header (Stream.vue, docs/ui.md "Stream header"): on a phone the
+// The stream header (Stream.vue, docs/contributing/web-ui.md "Stream header"): on a phone the
 // title, the tab strip and the search each take a full-width row, in that
 // order, and the search is 16 px; from 760 px they share the first row.
 for (const { width, height, phone } of [
@@ -1180,7 +1180,7 @@ test('overview buttons keep their desktop height@1280', async ({ page, baseURL }
   expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
 })
 
-// The rail sheet on a phone (App.vue, src/ui/useBackClose.ts, docs/ui.md
+// The rail sheet on a phone (App.vue, src/ui/useBackClose.ts, docs/contributing/web-ui.md
 // "Sheets"): the menu opens the rail as a USlideover; scrim, close button,
 // Escape and back each close it. Closing leaves the URL and the route as
 // they were and no history entry behind, and the page does not load its data
@@ -1333,7 +1333,7 @@ test.describe('rail sheet', () => {
   }
 })
 
-// The context sheet below 1180 px (Stream.vue, docs/ui.md "Sheets"): the
+// The context sheet below 1180 px (Stream.vue, docs/contributing/web-ui.md "Sheets"): the
 // Context button in the header carries the Needs-you count and opens the
 // context panel from the right, on project and milestone pages. The sheet
 // shows Needs you, the milestone's queue, its companions and the last 30

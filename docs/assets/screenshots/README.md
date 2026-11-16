@@ -3,7 +3,7 @@
 Screenshots of the Desk, all on invented data (a shop on
 `gitlab.example.com`, user `sam`). Do not edit them by hand: `make
 docs-screenshots` renders them again, see
-[Docs screenshots](../../ui.md#docs-screenshots). All of them are shown in
+[Docs screenshots](../../contributing/web-ui.md#docs-screenshots). All of them are shown in
 [ui.md](../../ui.md#screenshots).
 
 | File | Page | Used in |

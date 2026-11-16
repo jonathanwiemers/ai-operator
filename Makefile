@@ -45,7 +45,7 @@ test-db: ## Start a Postgres for the research store tests (docker, 127.0.0.1:554
 	@echo 'export AI_TEST_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:55432/ai_operator_test?sslmode=disable'
 
 .PHONY: research-seed
-research-seed: ## Migrate and seed a research database on the test-db Postgres for make run-ui (see docs/ui.md "Development").
+research-seed: ## Migrate and seed a research database on the test-db Postgres for make run-ui (see docs/contributing/web-ui.md "Development").
 	go run ./hack/research-migrate -seed hack/research-seed.sql
 
 .PHONY: test-db-stop
@@ -72,11 +72,11 @@ ui: ## Test, type-check and build the web UI into web/dist/app (embedded by go b
 .PHONY: ui-e2e
 # The browser's system libraries come with `npx playwright install-deps
 # chromium` (root), as in the CI ui-e2e job.
-ui-e2e: ui ## Check the built web UI in Chromium at phone, tablet and desktop width (docs/ui.md "Checks").
+ui-e2e: ui ## Check the built web UI in Chromium at phone, tablet and desktop width (docs/contributing/web-ui.md "Checks").
 	cd web && npx playwright install chromium && npm run e2e
 
 .PHONY: docs-screenshots
-docs-screenshots: ui ## Render the Desk screenshots of the docs from the browser checks' fake data into docs/assets/screenshots (needs cwebp; docs/ui.md "Docs screenshots").
+docs-screenshots: ui ## Render the Desk screenshots of the docs from the browser checks' fake data into docs/assets/screenshots (needs cwebp; docs/contributing/web-ui.md "Docs screenshots").
 	cd web && npx playwright install chromium && npx playwright test -c playwright.docs.config.ts
 	mkdir -p docs/assets/screenshots
 	for f in web/e2e-results/docs/*.png; do \

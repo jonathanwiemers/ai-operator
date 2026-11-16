@@ -21,7 +21,7 @@ import Badge from './Badge.vue'
 import Markdown from './Markdown.vue'
 import RelTime from './RelTime.vue'
 
-// PromptCard is one question to the owners (docs/ui.md, "Prompt card").
+// PromptCard is one question to the owners (docs/contributing/web-ui.md, "Prompt card").
 //
 // In full (the task page, the Pilot tab, pause cards): the question, its
 // context, the options (recommended first, a detail line each), a text box

@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test'
 
-// The Desk screenshots of the docs (docs/ui.md, "Docs screenshots"):
+// The Desk screenshots of the docs (docs/contributing/web-ui.md, "Docs screenshots"):
 // e2e/docs.shots.ts opens a few pages of the built Desk on the browser
 // checks' fake data and saves PNGs to e2e-results/docs; `make
 // docs-screenshots` turns them into docs/assets/screenshots/*.webp. Not part

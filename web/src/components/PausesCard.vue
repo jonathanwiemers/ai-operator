@@ -12,7 +12,7 @@ import RelTime from './RelTime.vue'
 // the kinds by time paused, who resolved them and how, and the newest
 // pauses. An open pause counts on up to now.
 //
-// Utilities only (docs/ui.md, "Pause cards"): a pause's reason is untrusted
+// Utilities only (docs/contributing/web-ui.md, "Pause cards"): a pause's reason is untrusted
 // text, inline markdown on one line that opens in full on tap (Truncated),
 // never a title. On phones a row's figures wrap below its kind and
 // *Earlier pauses* is 44 px high.

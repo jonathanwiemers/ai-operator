@@ -9,7 +9,7 @@ import RelTime from '../components/RelTime.vue'
 import type { ResearchPhase, ResearchSummary } from '../types'
 
 // The researches as cards, one per row at every width; the name's link covers
-// the card. Utilities only (docs/ui.md, "Research list and form"): lines wrap
+// the card. Utilities only (docs/contributing/web-ui.md, "Research list and form"): lines wrap
 // on phones, where *New research* and the cards are 44 px high or more.
 const { data: researches, error, loading } = useResource(() => getResearches, ['research'])
 const now = useNow()

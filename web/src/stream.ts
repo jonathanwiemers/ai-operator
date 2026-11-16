@@ -240,7 +240,7 @@ export function heatLevel(events: number, max: number): 0 | 1 | 2 | 3 {
   return 3
 }
 
-// Stream notes (the Composer's note mode, docs/ui.md "Composer"): a comment
+// Stream notes (the Composer's note mode, docs/contributing/web-ui.md "Composer"): a comment
 // on a milestone's tracking issue as /pilot …, or on a task's issue.
 export type NoteTarget =
   | { type: 'pilot'; milestoneIID: number; title: string; trackingIssueIID?: number }

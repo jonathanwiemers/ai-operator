@@ -9,7 +9,7 @@ import { useRouter } from 'vue-router'
 import { ApiError, createResearch, getResearchForm } from '../client'
 import { useResource } from '../live'
 
-// The one-off research form. Nuxt UI fields (docs/ui.md, "Research list and
+// The one-off research form. Nuxt UI fields (docs/contributing/web-ui.md, "Research list and
 // form"): inputs are 16 px and controls 44 px high on phones, the fields
 // stack there; a server error about a field shows on that field.
 

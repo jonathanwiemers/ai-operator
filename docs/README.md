@@ -58,8 +58,8 @@ section goes.
   agent image. Chart values are in the
   [Helm chart README](../charts/ai-operator/README.md).
 - **[Web UI](ui.md)**: the Desk. What it shows
-  ([screenshots](ui.md#screenshots)), OIDC login, roles, steering, the API
-  and how to develop and check it.
+  ([screenshots](ui.md#screenshots)), OIDC login, roles, steering and the
+  API.
 - **[Research](research.md)**: news flashes, scheduled and one-off
   researches next to the projects, with their own database.
 

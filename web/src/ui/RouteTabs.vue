@@ -1,5 +1,5 @@
 <script setup lang="ts" generic="T extends string">
-// A tab strip of links (docs/ui.md, "RouteTabs"): each tab is a RouterLink,
+// A tab strip of links (docs/contributing/web-ui.md, "RouteTabs"): each tab is a RouterLink,
 // so the tab lives in the URL (?tab=, streamTabs.ts) and can be shared,
 // reloaded and opened in a new tab. Nuxt UI's UTabs switches local state
 // with buttons. The strip never widens the page: it scrolls sideways inside

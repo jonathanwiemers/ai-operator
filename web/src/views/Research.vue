@@ -12,7 +12,7 @@ import ResearchResult from '../components/ResearchResult.vue'
 import NotFound from './NotFound.vue'
 
 // A research: its header (name, view, schedule, agent, feeds, actions), the
-// run in progress and the last result. Utilities only (docs/ui.md, "Research
+// run in progress and the last result. Utilities only (docs/contributing/web-ui.md, "Research
 // page"): header rows stack on phones, where links and buttons are 44 px high.
 const props = defineProps<{ namespace: string; name: string }>()
 // The props are read outside the closure, so another research loads again.

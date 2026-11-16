@@ -150,7 +150,7 @@ ui:
   script:
     - make ui
 
-# Browser checks of the built Desk (docs/ui.md "Checks"): every route at
+# Browser checks of the built Desk (docs/contributing/web-ui.md "Checks"): every route at
 # 375, 768 and 1280 px with the server's CSP and a mocked API. The
 # Playwright image is on mcr.microsoft.com, which the Dependency Proxy does
 # not serve, so the node image installs Chromium and its libraries.

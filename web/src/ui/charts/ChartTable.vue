@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// A chart's table view (docs/ui.md, "Charts"): a row per bucket, a column per
+// A chart's table view (docs/contributing/web-ui.md, "Charts"): a row per bucket, a column per
 // series, the total and the calls of unknown cost. The "Table" toggle shows
 // it; hidden, it is visually hidden only, so screen readers always reach the
 // values a canvas cannot give them. Without sum (a line chart's cumulative

@@ -1,4 +1,4 @@
-// Bundle budget (docs/ui.md "Bundle budget"): the initial JS plus CSS of the
+// Bundle budget (docs/contributing/web-ui.md "Bundle budget"): the initial JS plus CSS of the
 // built Desk, gzipped at level 9, must stay within bundle-budget.json's capKB.
 // Initial is what a cold load fetches before the first route renders: the
 // entry module script, its modulepreloads and the stylesheets linked from
@@ -96,7 +96,7 @@ function main() {
     const total = jsKB + cssKB
     console.log(`${name}: ${total.toFixed(1)} kB (JS ${jsKB.toFixed(1)}, CSS ${cssKB.toFixed(1)}), cap: ${capKB} kB`)
     if (total > capKB) {
-      console.error(`${name} over its budget by ${(total - capKB).toFixed(1)} kB (web/bundle-budget.json, docs/ui.md "Bundle budget")`)
+      console.error(`${name} over its budget by ${(total - capKB).toFixed(1)} kB (web/bundle-budget.json, docs/contributing/web-ui.md "Bundle budget")`)
       failed = true
     }
   }

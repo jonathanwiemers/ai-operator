@@ -165,36 +165,36 @@ Rows: `usage.md` 38, `ui.md` 57, `configuration.md` 34, `commands.md` 10,
 | ui.md | ## Without login | getting-started/turn-on-the-desk.md | R3 | open |
 | ui.md | ## Security | guides/desk.md | R6 | open |
 | ui.md | ## API | reference/desk-api.md | R8b | open |
-| ui.md | ## Development | contributing/web-ui.md | R10b | open |
-| ui.md | ## Checks | contributing/web-ui.md | R10b | open |
-| ui.md | ### Docs screenshots | contributing/web-ui.md | R10b | open |
-| ui.md | ## Bundle budget | contributing/web-ui.md | R10b | open |
-| ui.md | ## UI kit | contributing/web-ui.md | R10b | open |
-| ui.md | ### Charts | contributing/web-ui.md | R10b | open |
-| ui.md | ### DataList | contributing/web-ui.md | R10b | open |
-| ui.md | ### RouteTabs | contributing/web-ui.md | R10b | open |
-| ui.md | ### Truncated | contributing/web-ui.md | R10b | open |
-| ui.md | ### Search palette | contributing/web-ui.md | R10b | open |
-| ui.md | ### Sheets | contributing/web-ui.md | R10b | open |
-| ui.md | ### Composer | contributing/web-ui.md | R10b | open |
-| ui.md | ### Prompt card | contributing/web-ui.md | R10b | open |
-| ui.md | ### Note thread | contributing/web-ui.md | R10b | open |
-| ui.md | ### Milestone rows | contributing/web-ui.md | R10b | open |
-| ui.md | ### Stream header | contributing/web-ui.md | R10b | open |
-| ui.md | ### Inbox | contributing/web-ui.md | R10b | open |
-| ui.md | ### Dashboard | contributing/web-ui.md | R10b | open |
-| ui.md | ### Project Queue and Finishing | contributing/web-ui.md | R10b | open |
-| ui.md | ### Plans | contributing/web-ui.md | R10b | open |
-| ui.md | ### Milestone Issues | contributing/web-ui.md | R10b | open |
-| ui.md | ### Milestone Pilot | contributing/web-ui.md | R10b | open |
-| ui.md | ### Pause cards | contributing/web-ui.md | R10b | open |
-| ui.md | ### Board | contributing/web-ui.md | R10b | open |
-| ui.md | ### Milestone Retrospective | contributing/web-ui.md | R10b | open |
-| ui.md | ### Spend tab | contributing/web-ui.md | R10b | open |
-| ui.md | ### Research page | contributing/web-ui.md | R10b | open |
-| ui.md | ### Research list and form | contributing/web-ui.md | R10b | open |
-| ui.md | ## Roadmap | contributing/web-ui.md | R10b | open |
-| ui.md | ### Conventions check | contributing/web-ui.md | R10b | open |
+| ui.md | ## Development | contributing/web-ui.md | R10b | done |
+| ui.md | ## Checks | contributing/web-ui.md | R10b | done |
+| ui.md | ### Docs screenshots | contributing/web-ui.md | R10b | done |
+| ui.md | ## Bundle budget | contributing/web-ui.md | R10b | done |
+| ui.md | ## UI kit | contributing/web-ui.md | R10b | done |
+| ui.md | ### Charts | contributing/web-ui.md | R10b | done |
+| ui.md | ### DataList | contributing/web-ui.md | R10b | done |
+| ui.md | ### RouteTabs | contributing/web-ui.md | R10b | done |
+| ui.md | ### Truncated | contributing/web-ui.md | R10b | done |
+| ui.md | ### Search palette | contributing/web-ui.md | R10b | done |
+| ui.md | ### Sheets | contributing/web-ui.md | R10b | done |
+| ui.md | ### Composer | contributing/web-ui.md | R10b | done |
+| ui.md | ### Prompt card | contributing/web-ui.md | R10b | done |
+| ui.md | ### Note thread | contributing/web-ui.md | R10b | done |
+| ui.md | ### Milestone rows | contributing/web-ui.md | R10b | done |
+| ui.md | ### Stream header | contributing/web-ui.md | R10b | done |
+| ui.md | ### Inbox | contributing/web-ui.md | R10b | done |
+| ui.md | ### Dashboard | contributing/web-ui.md | R10b | done |
+| ui.md | ### Project Queue and Finishing | contributing/web-ui.md | R10b | done |
+| ui.md | ### Plans | contributing/web-ui.md | R10b | done |
+| ui.md | ### Milestone Issues | contributing/web-ui.md | R10b | done |
+| ui.md | ### Milestone Pilot | contributing/web-ui.md | R10b | done |
+| ui.md | ### Pause cards | contributing/web-ui.md | R10b | done |
+| ui.md | ### Board | contributing/web-ui.md | R10b | done |
+| ui.md | ### Milestone Retrospective | contributing/web-ui.md | R10b | done |
+| ui.md | ### Spend tab | contributing/web-ui.md | R10b | done |
+| ui.md | ### Research page | contributing/web-ui.md | R10b | done |
+| ui.md | ### Research list and form | contributing/web-ui.md | R10b | done |
+| ui.md | ## Roadmap | contributing/web-ui.md | R10b | done; updated: removed the shipped *Restart run* from the Actions item and "GitLab stays the place where the work is steered" |
+| ui.md | ### Conventions check | contributing/web-ui.md | R10b | done |
 | configuration.md | ## Installation | getting-started/install.md | R3 | open |
 | configuration.md | ### Install with Flux | getting-started/install.md | R3 | open |
 | configuration.md | ### Web UI | getting-started/turn-on-the-desk.md | R3 | open |

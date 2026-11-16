@@ -12,7 +12,7 @@ followColorScheme(document.documentElement.classList, window.matchMedia(darkQuer
 
 // Views load with their route, each as its own chunk. Only App.vue (the shell,
 // with SignIn.vue) is in the initial bundle, which scripts/bundle-budget.mjs
-// keeps within bundle-budget.json (docs/ui.md "Bundle budget").
+// keeps within bundle-budget.json (docs/contributing/web-ui.md "Bundle budget").
 const Dashboard = () => import('./views/Dashboard.vue')
 const Stream = () => import('./views/Stream.vue')
 const Inbox = () => import('./views/Inbox.vue')
@@ -87,5 +87,5 @@ router.beforeEach(async (to) => {
 // Of Nuxt UI's Vue plugin (@nuxt/ui/vue-plugin) only the icons: the whole
 // plugin would add the colour plugin, whose <style> the CSP refuses
 // (style.css holds the colours instead), and an unhead instance nothing here
-// uses (docs/ui.md, "UI kit"). Links need no plugin, they use vue-router.
+// uses (docs/contributing/web-ui.md, "UI kit"). Links need no plugin, they use vue-router.
 createApp(App).use(router).use(uiIcons).mount('#app')

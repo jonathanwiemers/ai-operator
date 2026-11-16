@@ -16,11 +16,11 @@ import SignIn from './views/SignIn.vue'
 import Breadcrumbs from './components/Breadcrumbs.vue'
 import { isPaletteKey, paletteHint, paletteOpen } from './searchPalette'
 // Rail and ⌘K palette load after the shell: keeps the initial bundle under
-// budget when Plan entry points join the rail (docs/ui.md, "Bundle budget").
+// budget when Plan entry points join the rail (docs/contributing/web-ui.md, "Bundle budget").
 const RailNav = defineAsyncComponent(() => import('./components/RailNav.vue'))
 const SearchPalette = defineAsyncComponent(() => import('./components/SearchPalette.vue'))
 // The sheet is loaded on phones only: the dialog behind it would add about
-// 30 kB gzipped to the initial bundle (docs/ui.md, "Bundle budget").
+// 30 kB gzipped to the initial bundle (docs/contributing/web-ui.md, "Bundle budget").
 const USlideover = defineAsyncComponent(() => import('@nuxt/ui/components/Slideover.vue'))
 import type { InboxItem, ProjectSummary, ResearchSummary } from './types'
 
@@ -49,7 +49,7 @@ async function loadAbout(): Promise<void> {
 let aboutTimer: number | undefined
 
 const router = useRouter()
-// The rail sheet on phones (docs/ui.md, "Sheets"): back closes it, and a
+// The rail sheet on phones (docs/contributing/web-ui.md, "Sheets"): back closes it, and a
 // link inside it closes it before it navigates.
 const railOpen = ref(false)
 useBackClose(railOpen)
@@ -278,7 +278,7 @@ watch(notifyActive, (on) => {
         <RailNav :projects="projects" :researches="researches" :inbox-count="inboxCount" />
       </aside>
 
-      <!-- Phones: the rail as a sheet from the left (docs/ui.md, "Sheets").
+      <!-- Phones: the rail as a sheet from the left (docs/contributing/web-ui.md, "Sheets").
            Its links navigate and close it; useBackClose leaves no entry. -->
       <USlideover
         v-if="isPhone"

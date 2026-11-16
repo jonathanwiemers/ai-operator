@@ -1,6 +1,6 @@
 -- Development data for the research pages: make research-seed applies it as
 -- the owner to the research database of make test-db, after migrating it
--- (see docs/ui.md "Development"). It matches hack/research-dev.yaml:
+-- (see docs/contributing/web-ui.md "Development"). It matches hack/research-dev.yaml:
 --
 --   research-dev/morning-news  two news flash runs that share two URLs, so
 --                              the latest one has new and seen items

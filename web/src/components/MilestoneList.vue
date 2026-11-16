@@ -6,7 +6,7 @@ import type { MilestoneRow } from '../types'
 // A list of milestone rows (decision 5), the dashboard's and the project
 // page's. showProject: the rows span projects, so each names its own.
 //
-// The list owns the one column grid (docs/ui.md, "Milestone rows"): from
+// The list owns the one column grid (docs/contributing/web-ui.md, "Milestone rows"): from
 // tablet width the column heads and every MilestoneRow are subgrids of it.
 // The edge tracks are 14 px wider than their content, because a subgrid's
 // padding (px-3.5) is taken from its edge tracks. On phones the heads are

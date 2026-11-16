@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// A chart's legend (docs/ui.md, "Charts"): swatch, label and range total per
+// A chart's legend (docs/contributing/web-ui.md, "Charts"): swatch, label and range total per
 // series, as HTML below the chart, so it wraps on phones and screen readers
 // read it. Colour is never alone: the label names the series. A dashed
 // series' swatch is a dashed line; a total of null (only calls of unknown

@@ -241,7 +241,7 @@ export function planChatBlocked(phase?: AgentPlanPhase, spendUSD?: string, budge
 
 // The chat composer's draft (TaskChat): the typed body, the retry key and
 // the kind stay in sessionStorage until a 2xx, so a retry or a reload sends
-// the same clientKey (docs/ui.md, "Composer").
+// the same clientKey (docs/contributing/web-ui.md, "Composer").
 export interface ChatDraft {
   body: string
   clientKey: string

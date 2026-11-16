@@ -9,7 +9,7 @@ const backend = process.env.UI_BACKEND ?? 'http://127.0.0.1:9080'
 export default defineConfig({
   plugins: [
     vue(),
-    // Nuxt UI without the Nuxt framework (docs/ui.md, "UI kit").
+    // Nuxt UI without the Nuxt framework (docs/contributing/web-ui.md, "UI kit").
     ui({
       // Explicit imports only: `npm run build` runs vue-tsc before Vite, so
       // the .d.ts files the auto-imports would generate do not exist yet.
@@ -37,7 +37,7 @@ export default defineConfig({
     emptyOutDir: true,
     assetsInlineLimit: 0,
     // dist/app/.vite/manifest.json: the chunk graph npm run budget follows
-    // for each route's chunk (docs/ui.md, "Bundle budget").
+    // for each route's chunk (docs/contributing/web-ui.md, "Bundle budget").
     manifest: true,
   },
   server: {

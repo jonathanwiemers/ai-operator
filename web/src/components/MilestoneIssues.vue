@@ -30,7 +30,7 @@ import type { MilestoneIssueRow, MilestoneView } from '../types'
 // title. Titles, a release's why and reason are untrusted text and render
 // as text.
 //
-// The table is one grid (docs/ui.md, "Milestone Issues"): from desktop width
+// The table is one grid (docs/contributing/web-ui.md, "Milestone Issues"): from desktop width
 // the column heads and every row are subgrids of it, and a release row spans
 // all columns. Below it (the rail leaves too little room for eight columns on
 // a tablet) the heads are hidden; an issue row shows its number

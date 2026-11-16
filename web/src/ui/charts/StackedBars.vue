@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Stacked bars (docs/ui.md, "Charts"): one bar per bucket, a segment per
+// Stacked bars (docs/contributing/web-ui.md, "Charts"): one bar per bucket, a segment per
 // series. The Chart.js options of every stacked bar chart live here; the
 // view passes the shaped data (chartData.ts's stackedChart). The canvas is
 // role="img" with the summary as its aria-label (vue-chartjs); the legend

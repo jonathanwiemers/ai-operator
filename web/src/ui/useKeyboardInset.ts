@@ -1,6 +1,6 @@
 // useKeyboardInset keeps --keyboard-inset on <html> at the height the
 // on-screen keyboard covers at the bottom of the layout viewport, so a
-// composer that is sticky at the bottom stays above it (docs/ui.md,
+// composer that is sticky at the bottom stays above it (docs/contributing/web-ui.md,
 // "Composer"). iOS Safari does not resize the layout viewport for the
 // keyboard, only the visual one; Chrome on Android does
 // (interactive-widget=resizes-content in index.html), so there the inset

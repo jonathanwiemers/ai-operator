@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// A line with a dashed comparison line (docs/ui.md, "Charts"): series 0 is
+// A line with a dashed comparison line (docs/contributing/web-ui.md, "Charts"): series 0 is
 // solid, series 1 the comparison, dashed and in its muted token. The
 // Chart.js options of every such chart live here; the view passes the shaped
 // data (chartData.ts's cumulativeMonth). Same options policy as

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Text clamped to `lines` lines that opens on tap (docs/ui.md, "Truncated").
+// Text clamped to `lines` lines that opens on tap (docs/contributing/web-ui.md, "Truncated").
 // Only text that is really clipped becomes a button: it toggles the clamp in
 // place, with aria-expanded. There is no `title`: it cannot be read on touch.
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'

@@ -5,7 +5,7 @@ import type { Stage, Task } from '../types'
 
 // The issues of a milestone in columns like the GitLab board.
 //
-// Utilities only (docs/ui.md, "Board"): four columns on desktop, two on a
+// Utilities only (docs/contributing/web-ui.md, "Board"): four columns on desktop, two on a
 // tablet, stacked on a phone. Every column keeps its heading and count; on
 // a phone an empty one is only its heading.
 const props = defineProps<{ tasks: Task[] }>()

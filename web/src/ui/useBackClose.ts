@@ -1,4 +1,4 @@
-// useBackClose lets the browser's back button close a sheet (docs/ui.md,
+// useBackClose lets the browser's back button close a sheet (docs/contributing/web-ui.md,
 // "Sheets"). Opening the sheet pushes a history entry for the same URL;
 // back pops it and closes the sheet, and the route stays as it was.
 // Closing by scrim, button or Escape pops the entry again, and a navigation

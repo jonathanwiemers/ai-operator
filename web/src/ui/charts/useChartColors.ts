@@ -1,7 +1,7 @@
 import { onBeforeUnmount, onMounted, shallowRef, type ShallowRef } from 'vue'
 import { readChartColors, type ChartColors } from '../../chartData'
 
-// The chart colours (docs/ui.md, "Charts"): style.css's --chart-* and text
+// The chart colours (docs/contributing/web-ui.md, "Charts"): style.css's --chart-* and text
 // and grid tokens, read from <html> at runtime, since a canvas takes colours,
 // not var(). colorScheme.ts toggles `dark` on <html> when the system scheme
 // changes; a MutationObserver on its class re-reads them, so a drawn chart

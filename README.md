@@ -206,6 +206,7 @@ feature.
 | [Configuration](docs/configuration.md) | installation (Helm, Flux), secrets, `AgentProject` reference, engines, profiles, models, agent image |
 | [Design](docs/contributing/design.md) | architecture, CRDs, pod topology, token economy, security |
 | [Web UI](docs/ui.md) | the optional read-only UI: OIDC login, roles, HTTPRoute, API |
+| [Web UI development](docs/contributing/web-ui.md) | run, check and build the Desk: dev setup, browser checks, bundle budget, UI kit |
 | [Research](docs/research.md) | news flashes, scheduled and one-off researches |
 | [Helm chart](charts/ai-operator/README.md) | chart values |
 | [Releasing](docs/contributing/releasing.md) | calendar versions, release workflow, published images and chart |
@@ -231,6 +232,9 @@ Postgres: export the `AI_TEST_DATABASE_URL` that `make test-db` prints before
 `make test`. Without it they are skipped; CI sets
 `AI_TEST_REQUIRE_DATABASE=1`, so there they fail instead. Each test works in
 a schema and with login roles of its own, dropped afterwards.
+
+For the web UI (local setup, browser checks, bundle budget, UI kit), see
+[Web UI development](docs/contributing/web-ui.md).
 
 A merge to `main` does not release by itself: a release is a decision (the
 operator's or a human's) and gets a calendar version (`2026.10.1`,

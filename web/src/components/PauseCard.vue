@@ -38,7 +38,7 @@ import RelTime from './RelTime.vue'
 // The pause reason is untrusted text: block markdown (markdown.ts, no HTML);
 // issue titles are plain text.
 //
-// Utilities only (docs/ui.md, "Pause cards"): the actions are UButtons, at
+// Utilities only (docs/contributing/web-ui.md, "Pause cards"): the actions are UButtons, at
 // least 44 px high on phones, where the action row and the Way out's rows
 // stack into columns and the skip select is 16 px.
 //

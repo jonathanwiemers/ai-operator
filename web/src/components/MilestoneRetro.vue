@@ -37,7 +37,7 @@ const UModal = defineAsyncComponent(() => import('@nuxt/ui/components/Modal.vue'
 // titles, bodies and drafts are untrusted markdown: markdown.ts renders them
 // to VNodes and the editor is a plain textarea, so HTML shows as text.
 //
-// Utilities only (docs/ui.md, "Milestone Retrospective"): the cost drivers
+// Utilities only (docs/contributing/web-ui.md, "Milestone Retrospective"): the cost drivers
 // are a DataList, stacked on phones; the actions are UButtons, 44 px high
 // on phones, where action rows and the editor's panes stack; the inputs are
 // 16 px there. Dismissing asks in a UModal, closed by back too.
@@ -405,7 +405,7 @@ const descriptionUI = { root: 'w-full', base: 'min-h-[220px] resize-y font-mono 
       </div>
     </template>
 
-    <!-- The dismiss confirmation (docs/ui.md, "Sheets"): closes by its
+    <!-- The dismiss confirmation (docs/contributing/web-ui.md, "Sheets"): closes by its
          scrim, button, Escape and back, but not while the reply is sent. -->
     <UModal
       v-if="mayDismiss"

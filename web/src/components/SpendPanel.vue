@@ -60,7 +60,7 @@ import type { Spend, SpendBreakdown, SpendChild, SubagentBreakdown } from '../ty
 // its calls by kind, role and model, and the tuning tables: review cost
 // per round, implementer steps fresh vs resumed, with vs without subagents.
 //
-// Utilities only (docs/ui.md, "Spend tab"): the totals stack on phones, the
+// Utilities only (docs/contributing/web-ui.md, "Spend tab"): the totals stack on phones, the
 // tables are comparisons and keep their columns at every width, scrolling
 // inside their own container (DataList with scroll), never the page.
 const props = defineProps<{

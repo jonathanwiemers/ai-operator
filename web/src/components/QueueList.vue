@@ -33,7 +33,7 @@ import ExtLink from './ExtLink.vue'
 // issue waits for and why a held one is held. Titles, decision titles and
 // hold reasons are untrusted text: rendered as text only.
 //
-// Utilities only (docs/ui.md, "Milestone Pilot"): an item's position and
+// Utilities only (docs/contributing/web-ui.md, "Milestone Pilot"): an item's position and
 // number (never wrapped), its title (two lines, the rest on tap) and its
 // state wrap onto lines of their own where the column is narrow; a planned
 // item shows its wave chip (W1, W2, …) after its number. Links, Revisit,

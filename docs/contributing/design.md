@@ -2850,7 +2850,7 @@ Logout revokes the refresh token (RFC 7009). The requirements are in
 ## Desk styles
 
 The Desk's global styles are `web/src/style.css`. It imports Tailwind's
-theme and utilities and Nuxt UI's styles ([ui.md](../ui.md#ui-kit)); views on
+theme and utilities and Nuxt UI's styles ([web-ui.md](web-ui.md#ui-kit)); views on
 the kit use utilities, the others add scoped CSS on top.
 
 **Tokens.** CSS custom properties hold the palette and the shared sizes:
@@ -2862,7 +2862,7 @@ danger), `--radius`, `--radius-sm`, `--shadow`, `--shadow-hover`, `--font`
 and `--mono`. The light values are on `:root`, the dark ones on `.dark`, with
 the same names; a token missing from `.dark` is the same in both schemes.
 Colours outside `style.css` are flagged by the conventions check
-([ui.md](../ui.md#conventions-check)).
+([web-ui.md](web-ui.md#conventions-check)).
 
 **Light and dark.** The Desk follows the system, there is no toggle.
 `web/src/colorScheme.ts`, called first in `main.ts`, sets the `dark` class
@@ -2889,7 +2889,7 @@ empty state the global `.empty`, an error or reason line utilities
 global class lacks (`EventCard`'s `.card` padding). There is no global
 `.btn` any more. The shell (`App.vue`, `RailNav.vue`, `SignIn.vue`) is in the
 initial bundle, so its controls are plain elements with utilities: a Nuxt UI
-component there costs the bundle budget ([ui.md](../ui.md#bundle-budget)).
+component there costs the bundle budget ([web-ui.md](web-ui.md#bundle-budget)).
 Text cut to fit is `Truncated` (opens on tap); a `title` only repeats what
 can also be read elsewhere, since touch cannot show it.
 
@@ -2914,7 +2914,7 @@ Tailwind's `sm` to `2xl`, and defines `--breakpoint-tablet: 760px` and
 `--breakpoint-desktop: 1180px`. A `max-width` ends a hundredth of a pixel
 below a `min-width` breakpoint, so at exactly 760 or 1180 px a scoped rule and
 a `tablet:` or `desktop:` utility never both apply. The conventions check
-([ui.md](../ui.md#conventions-check)) fails on any other `@media` width. What
+([web-ui.md](web-ui.md#conventions-check)) fails on any other `@media` width. What
 each component does at a width is its own choice: the board shows four
 columns on a desktop, two below it and one on a phone; the stream's context
 panel is hidden below desktop.
@@ -2924,7 +2924,7 @@ viewport meta of `web/index.html` is `width=device-width, initial-scale=1,
 viewport-fit=cover, interactive-widget=resizes-content`: the page draws
 under notches and rounded corners, and Chrome on Android shrinks the layout
 viewport when the keyboard opens (iOS ignores the key; the composer handles
-it there, with `--keyboard-inset`, see [ui.md](../ui.md#composer)).
+it there, with `--keyboard-inset`, see [web-ui.md](web-ui.md#composer)).
 
 - *Viewport height.* Full-height rules use `dvh`, after a `vh` line for
   browsers without it (`height: 100vh; height: 100dvh`), so they follow the
@@ -3056,7 +3056,7 @@ own `--tone-*-bg` and `--tone-*-fg` tokens, so the look is as before. The
 | `internal/controller/companion_gate.go`, `companions.go`, `companions_merge.go`, `companions_queue.go` | the companion in the home merge gate, landing by rule, who merges, the queue rule |
 | `internal/e2e` | end-to-end tests over the exported operator, runner and UI APIs: fake Kubernetes, `gitlabfake.Projects` with local bare git remotes, a scripted engine and a fake clock, stepped poll by poll (a companion milestone with and without `merge`, a path violation) |
 | `internal/ui` | web UI server: OIDC login, CEL claim mapping, access rules, session cookies, JSON API, change events |
-| `cmd/ui`, `web/` | web UI binary; the Vue app (`web/src`), embedded from `web/dist/app`. `web/src/client.ts` is the only API caller, `web/src/ui` holds the kit's own components, `components/Markdown.vue` is the one markdown wrapper, `web/e2e` the Playwright checks and `web/test` the unit and conventions checks (see [ui.md](../ui.md#ui-kit)) |
+| `cmd/ui`, `web/` | web UI binary; the Vue app (`web/src`), embedded from `web/dist/app`. `web/src/client.ts` is the only API caller, `web/src/ui` holds the kit's own components, `components/Markdown.vue` is the one markdown wrapper, `web/e2e` the Playwright checks and `web/test` the unit and conventions checks (see [web-ui.md](web-ui.md#ui-kit)) |
 | `charts/ai-operator` | Helm chart (CRDs and operator RBAC are copied in by `make manifests`) |
 | `.gitlab-ci.yml`, `.mise.toml` | the GitLab pipeline (MRs and `main`); the Go and Node pins the agent installs |
 | `.github/workflows` | CI on the GitHub mirror and calendar-versioned releases (`YEAR.MONTH.N`), see [releasing.md](releasing.md) |
@@ -3074,7 +3074,7 @@ research with scheduled news flashes and one-off reports in Postgres
 Next:
 
 1. **Web UI:** a few actions and an MCP endpoint on the same host and
-   access rules (see [ui.md](../ui.md#roadmap)).
+   access rules (see [web-ui.md](web-ui.md#roadmap)).
 
 Later:
 

@@ -49,7 +49,7 @@ const note = useStreamNote(() => ({
   shown: active.value && !showChat.value && !!perms.value?.steer,
 }))
 
-// Utilities only (docs/ui.md, "Milestone Pilot"). On phones the links and
+// Utilities only (docs/contributing/web-ui.md, "Milestone Pilot"). On phones the links and
 // the Earlier questions fold are 44 px high; the prompt cards, the composer
 // and the chat bring their own touch sizes.
 const sectionHead =

@@ -1,5 +1,5 @@
 <script setup lang="ts" generic="T extends object">
-// One table that stacks on phones (docs/ui.md, "DataList"): below 760 px each
+// One table that stacks on phones (docs/contributing/web-ui.md, "DataList"): below 760 px each
 // row is a card and each cell a label and value pair; from the tablet width up
 // it is a table. With `scroll` it stays a table at every width and scrolls
 // inside its own container, never the page.

@@ -7,7 +7,7 @@ import RelTime from './RelTime.vue'
 import { ciLabel, ciTone, cost, deferringEngine } from '../format'
 import type { Task } from '../types'
 
-// A task on the board (Board.vue). Utilities only (docs/ui.md, "Board"):
+// A task on the board (Board.vue). Utilities only (docs/contributing/web-ui.md, "Board"):
 // the title wraps, the badges wrap onto further lines, and the whole card
 // is the link, well above 44 px high.
 const props = defineProps<{ task: Task }>()

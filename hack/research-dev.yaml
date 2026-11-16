@@ -1,5 +1,5 @@
 # AgentResearches matching hack/research-seed.sql, for the research pages of
-# make run-ui (see docs/ui.md "Development"). Apply them to a development
+# make run-ui (see docs/contributing/web-ui.md "Development"). Apply them to a development
 # cluster with the CRDs (make install) and without the operator: it would
 # try to run them. Their status stays empty, the pages show the seeded
 # results.

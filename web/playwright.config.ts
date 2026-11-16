@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test'
 
-// Browser checks of the built Desk (docs/ui.md, "Checks"): e2e/serve.mjs
+// Browser checks of the built Desk (docs/contributing/web-ui.md, "Checks"): e2e/serve.mjs
 // serves dist/app with the server's security headers, the specs answer the
 // API from e2e/fixtures. Run `npm run build` first, or `make ui-e2e`.
 const port = 4173

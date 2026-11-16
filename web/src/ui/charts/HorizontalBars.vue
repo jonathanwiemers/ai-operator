@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Horizontal bars (docs/ui.md, "Charts"): one bar per row, its known cost in
+// Horizontal bars (docs/contributing/web-ui.md, "Charts"): one bar per row, its known cost in
 // USD. The Chart.js options of every such chart live here; the view passes
 // the shaped rows (chartData.ts's breakdownRows). A click on a bar with a
 // link emits `select` with its index; the view navigates. Same options

@@ -17,7 +17,7 @@ function apTone(phase: string | undefined) {
   return phase === 'Paused' ? 'warning' : phase === 'Running' ? 'progress' : phase === 'Done' ? 'success' : 'muted'
 }
 
-// Utilities only (docs/ui.md, "Board"). A milestone's heading wraps; on
+// Utilities only (docs/contributing/web-ui.md, "Board"). A milestone's heading wraps; on
 // phones its links are 44 px high. The columns are Board.vue's.
 const tap = 'inline-flex min-h-11 items-center tablet:min-h-0'
 const head = 'row mb-3'

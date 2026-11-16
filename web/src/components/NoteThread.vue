@@ -6,7 +6,7 @@ import { foldNotes, noteInitials, noteWho, type ThreadNote } from '../noteThread
 import ExtLink from './ExtLink.vue'
 import Markdown from './Markdown.vue'
 
-// NoteThread is the one renderer of a GitLab comment thread (docs/ui.md,
+// NoteThread is the one renderer of a GitLab comment thread (docs/contributing/web-ui.md,
 // "Note thread"): each note's author, time and block markdown body, the
 // user's and the pilot's notes marked by colour.
 //
