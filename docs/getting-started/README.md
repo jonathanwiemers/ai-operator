@@ -8,6 +8,17 @@ any of it.
 
 ## Pages
 
-None yet. Install, turning on the Desk and your first milestone are being
-written. Until then, see the pages being moved in the
-[docs map](../README.md#pages-being-moved).
+1. **[Install](install.md)**: what you need, the GitLab setup (bot user,
+   labels, board, webhook), the operator with Helm or Flux, the Secrets, your
+   first `AgentProject` and the database.
+2. **[Turn on the Desk](turn-on-the-desk.md)**: the OIDC client, the
+   Secret and the chart values, then log in.
+3. **[Your first milestone](first-milestone.md)**: write a short spec on
+   autopilot, watch it get planned in the Desk, answer a prompt and see the
+   first merge request.
+
+## Next
+
+- [How it works](../concepts/how-it-works.md): the big picture.
+- [Reference](../reference/README.md): commands, labels and every
+  `AgentProject` field.

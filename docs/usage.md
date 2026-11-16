@@ -5,182 +5,8 @@ Every `/agent` command is listed in [commands.md](reference/commands.md).
 Everything happens in GitLab. You write specs, answer questions, move cards
 and review merge requests. The operator turns those actions into agent work.
 
-## One-time setup in GitLab
-
-Create these labels. Scoped labels (`::`) make sure an issue only ever has one
-of each kind.
-
-| Label | Set by | Meaning |
-|-------|--------|---------|
-| `agent::draft` | spec agent | sub-issue planned, waiting for you |
-| `agent::ready` | you | hand the issue to the implementing agent |
-| `agent::working` | operator | an agent run is requested or running |
-| `agent::needs-input` | agent | the agent has questions, or the run failed (not for an outside reason) |
-| `agent::review` | agent | merge request is ready for your review |
-| `agent::blocked` | operator | the issue cannot go on for an outside reason; nothing to answer |
-| `agent-blocked::<reason>` | operator | why it is blocked: `infra`, `main-red`, `quota` or `dependency` |
-| `agent::done` | you | finished; pod and workspace are deleted |
-| `agent-profile::<name>` | spec agent / you | which agent profile implements the issue (e.g. `agent-profile::fast`, `agent-profile::strong`) |
-| `ai-generated` | spec agent / operator | issue was created by the spec agent or the operator |
-| `ci::main-red` | operator | the issue that reports a red default branch, see [main health](#main-health) |
-| `ci::flaky` | operator | the issue that collects the failures of one flaky CI job |
-| `ci::main-canceled` | operator | the issue that reports a default-branch pipeline canceled twice, see [main health](#main-health) |
-
-Put `agent::draft`, `agent::ready`, `agent::working`, `agent::needs-input`,
-`agent::review`, `agent::blocked` and `agent::done` on an issue board as
-columns. An issue moves
-through them like this:
-
-```mermaid
-stateDiagram-v2
-    state "agent::draft" as draft
-    state "agent::ready" as ready
-    state "agent::working" as working
-    state "agent::needs-input" as needs
-    state "agent::review" as review
-    state "agent::blocked" as blocked
-    state "agent::done" as done
-
-    [*] --> draft: spec agent plans the issue
-    [*] --> ready: you hand over your own issue
-    draft --> ready: you, after answering the questions
-    ready --> working: operator starts a run
-    working --> review: MR pushed, CI green
-    working --> needs: questions or CI red
-    needs --> working: /agent or ready
-    review --> working: /agent comment
-    review --> done: you merge and close
-    working --> blocked: outside reason
-    review --> blocked: outside reason
-    blocked --> review: reason gone
-    blocked --> working: /agent or ready
-    done --> [*]: task, pod and workspace deleted
-```
-
-You act on `draft`, `needs-input` and `review`. Everything in between,
-including fixing a red pipeline, happens without you.
-
-**`needs-input` or `blocked`?** `agent::needs-input` means a human has to
-answer or decide something. `agent::blocked` means the issue waits for
-something outside it, such as an engine outage or a red default branch.
-For example, a run that waits for a usage limit blocks its issue with
-`agent-blocked::quota` (see [Usage and rate limits](#usage-and-rate-limits)),
-a run that failed because its pod or agent container was lost blocks it
-with `agent-blocked::infra` (see
-[When the whole pod is lost](#when-the-whole-pod-is-lost)), and autopilot
-blocks an issue with `agent-blocked::infra` when its reviewers failed in an
-outage twice on the same head (see [When it pauses](#when-it-pauses)). A run
-that failed for any other reason (the agent's error, a failed git command,
-a bad configuration) still goes to `agent::needs-input`.
-The `agent-blocked::<reason>` label says what it waits for. The operator sets
-both labels and remembers the label they replaced. When the reason is gone,
-that label comes back. You can also lift a block yourself: move the card to
-`agent::ready` or comment `/agent …`, and the issue gets a run as usual.
-
-`hack/gitlab-board.sh` creates that board, named **Agents**, with one list per
-label in this order. Moving a card between columns changes its label, so
-dragging a card from draft to ready hands the issue to the agent. A group
-board shows the issues of every project in the group on one page:
-
-```sh
-# group labels (one set for every project in the group), then the group board
-GITLAB_GROUP=my-group GITLAB_TOKEN=glpat-… hack/sandbox/gitlab-setup.sh
-GITLAB_GROUP=my-group GITLAB_TOKEN=glpat-… hack/gitlab-board.sh
-
-# or a board for a single project
-GITLAB_PROJECT=my-group/shop GITLAB_TOKEN=glpat-… hack/gitlab-board.sh
-```
-
-Run both with your own token (`api` scope, *Maintainer* on the group or
-project): creating group labels and boards needs more than the bot's
-*Developer* role. `GITLAB_GROUP` must be a group, not your personal
-namespace. The board script stops if a label is missing. It never removes,
-renames or reorders boards and lists: missing lists are added at the end, and
-where a second board is not allowed (group boards on GitLab Free) it adds
-them to the existing board. Running it again changes nothing.
-
-If projects in the group already have the `agent::*` labels as project
-labels, promote them to group labels first (project > Manage > Labels >
-Promote, which merges the same-named labels of all projects in the group).
-Otherwise each name exists twice and the group board does not show those
-projects' issues. `gitlab-setup.sh` with `GITLAB_GROUP` stops when it finds
-such labels, and `gitlab-board.sh` warns about them.
-
-Create a **project access token** with role *Developer* and the scopes `api` and
-`write_repository`. Protect your default branch. The agent only pushes
-`agent/*` branches and opens draft merge requests.
-
-The ai-operator itself is developed in a GitLab project and runs its checks
-and releases in a GitLab pipeline; GitHub is a push mirror that builds every
-GitLab release again for `ghcr.io` (see [releasing.md](contributing/releasing.md)).
-
-### Webhooks (optional)
-
-Without webhooks the operator notices a comment, a label move or a pipeline
-within a poll (`pollInterval`). With a GitLab **project webhook** (GitLab
-Free has them; group webhooks need Premium) it syncs the project within
-seconds, and polls less while deliveries arrive, which saves the bot's API
-budget (100 requests per minute on GitLab Free). Polling stays the
-fallback: whatever a lost delivery missed, a later poll picks up.
-
-1. **Create the secret token** in the AgentProject's namespace:
-
-   ```sh
-   kubectl -n agents create secret generic gitlab-webhook \
-     --from-literal=token="$(openssl rand -hex 32)"
-   ```
-
-2. **Expose the receiver.** The operator (the leader only) serves
-   `POST /hooks/gitlab` on port 8082 behind the Service `<release>-webhook`
-   (chart values `webhook.*`, see the
-   [chart README](../charts/ai-operator/README.md#gitlab-webhooks)). The
-   chart renders no route: add an HTTPRoute or Ingress that makes
-   `https://<host>/hooks/gitlab` reachable from GitLab. For the ai-operator's
-   own deployment that is done by hand in `example/infra`.
-3. **Turn it on per project** in the AgentProject:
-
-   ```yaml
-   spec:
-     webhook:
-       secretRef: {name: gitlab-webhook, key: token}
-       enabled: true                       # the operator registers the hook
-       url: https://ai-operator.example.com/hooks/gitlab
-   ```
-
-   With `enabled` and `url` the operator creates the project hook itself
-   (issues, comments, merge requests, pipelines and pushes, SSL
-   verification, the secret token), keeps it up to date and deletes it when
-   `enabled` is switched off. That needs the bot's **Maintainer** role.
-   Without it, leave `enabled` out and add the hook by hand under
-   *Settings > Webhooks*: the same URL and secret token, the triggers push,
-   issues, comments, merge requests and pipelines.
-4. **Check it** on the AgentProject's conditions:
-
-   ```sh
-   kubectl -n agents get agentproject shop \
-     -o jsonpath='{range .status.conditions[*]}{.type}={.status} {.reason}: {.message}{"\n"}{end}'
-   ```
-
-   `WebhookRegistered` is `Registered`, or says why not: `Forbidden` (the bot
-   is no Maintainer), `Invalid` (no `url` or `secretRef`, the secret or its
-   key is missing) or `Failed` (tried again on the next poll). A failed
-   registration never stops the sync. `WebhookDeliveries` is `Receiving`
-   after a delivery, and `Silent` after `webhook.silenceThreshold` (30m)
-   without one. The hook's *Recent events* in GitLab show the answers: `202`
-   taken, `401` a wrong or missing token or a project the operator does not
-   know, `413` a body over 1 MiB.
-
-A delivery is only a wake-up call: it names the project, and the operator
-syncs that project from the API as on a poll; nothing else in the payload is
-used. Deliveries within 5 seconds lead to one sync (and one more at the end
-of the 5 seconds). While deliveries arrive, the project is fully synced on
-every delivery and every `webhook.fallbackInterval` (10m); in between, each
-poll only lists the milestones, since milestone changes send no delivery.
-Steps that only time moves on (infra retries, autopilot's auto-resume, the
-main health interval) run on the full syncs, so they can be
-up to `fallbackInterval` late. After `silenceThreshold` without a delivery,
-or after an operator restart, every poll is a full sync again. Details:
-[AgentProject reference](reference/agentproject.md#specwebhook).
+Setting up GitLab (the bot user, labels, board and webhooks) is part of
+[Install](getting-started/install.md#set-up-gitlab).
 
 ## 1. Write the milestone spec
 
@@ -1607,7 +1433,7 @@ limit: the steps it pushed stay on the branch, its workspace and session
 are kept, and the run request stays pending without a pod. Once the pause
 ends the flag is cleared and the run continues from where it stopped. Desk
 chat turns still run. Calls without a known cost (cursor without
-`pricing`, see [configuration.md](configuration.md#pricing)) count $0
+`pricing`, see the [chart README](../charts/ai-operator/README.md#pricing)) count $0
 towards it.
 
 To go on, raise the line, e.g. to `/agent budget 50`: once the budget is
@@ -1663,7 +1489,7 @@ numbers: one row per agent call in `agent_calls`.
   call counts the increase since the previous call of its session; other
   currencies and credits are ignored). Otherwise a call with tokens (from
   the ACP prompt response) is estimated from the
-  [`pricing:` table](configuration.md#pricing), and without tokens or a
+  [`pricing:` table](../charts/ai-operator/README.md#pricing), and without tokens or a
   price its cost is n/a, never $0. The context size a `usage_update`
   reports becomes the call's context series, never its tokens. Calls
   recorded before a price was configured, or before this release, are not
@@ -2841,7 +2667,7 @@ such line counts). Like the owners line, it is no part of the spec:
 adding, changing or removing it does not re-plan. The operator reads it on
 every poll and marks the named follow-ups as taken by this milestone, for
 an open milestone %12 and a closed one alike (a closed one needs the
-[research database](configuration.md#research-database), which keeps its follow-ups after its
+[research database](getting-started/install.md#add-the-database), which keeps its follow-ups after its
 tasks are gone). The Retrospective tab of %12 then shows them as
 *taken by %N*, `create` no longer opens them, and an open %12 can close
 without waiting the 7 days for them. A follow-up is taken once: the first
@@ -3160,7 +2986,7 @@ that already exist keep no milestone.
 
 More pages: [ui.md](ui.md#screenshots).
 
-With the [research database](configuration.md#research-database), done
+With the [research database](getting-started/install.md#add-the-database), done
 milestones stay on the Desk after their tasks are deleted, with their
 issues, figures, retrospective and streams; the operator fills in those
 closed before the Desk kept them, once, from GitLab. Without it the Desk

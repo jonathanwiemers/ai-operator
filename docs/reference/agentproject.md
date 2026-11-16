@@ -81,7 +81,7 @@ spec:
 
 The GitLab token and the agent credentials are Secrets in the same
 namespace. How to create them is part of the installation, see
-[Secrets](../configuration.md#secrets).
+[Secrets](../getting-started/install.md#create-the-secrets).
 
 ## `spec.gitlab`
 
@@ -311,7 +311,7 @@ milestone's budget in all is its description line `/agent budget <usd>`.
 ## `spec.webhook`
 
 GitLab webhooks wake the operator within seconds instead of at the next
-poll. See [Webhooks](../usage.md#webhooks-optional) for the setup. Without
+poll. See [Webhook](../getting-started/install.md#webhook-optional) for the setup. Without
 `secretRef` every delivery is refused and the project is polled as before.
 
 | Field | Meaning | Default |

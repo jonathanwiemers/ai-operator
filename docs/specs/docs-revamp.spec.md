@@ -100,8 +100,8 @@ Rows: `usage.md` 38, `ui.md` 57, `configuration.md` 34, `commands.md` 10,
 
 | Old page | Heading | Target | MR | Status |
 |----------|---------|--------|----|--------|
-| usage.md | ## One-time setup in GitLab | getting-started/install.md | R3 | open |
-| usage.md | ### Webhooks (optional) | getting-started/install.md | R3 | open |
+| usage.md | ## One-time setup in GitLab | getting-started/install.md | R3 | done; updated: the label table, state diagram and needs-input/blocked text link reference/labels.md instead of repeating them; labels created with a GitLab API loop, the scripts linked by URL; the board created in GitLab; the bot may merge into the default branch (autopilot); the GitLab-pipeline note on the repository itself dropped (contributing/releasing.md has it) |
+| usage.md | ### Webhooks (optional) | getting-started/install.md | R3 | done; updated: an HTTPRoute example for the receiver; the sync behaviour while deliveries arrive kept once in reference/agentproject.md and the chart README |
 | usage.md | ## 1. Write the milestone spec | guides/write-a-milestone.md | R4 | open |
 | usage.md | ### Dependencies as issue links | guides/write-a-milestone.md | R4 | open |
 | usage.md | ## 2. Answer questions and hand the issue over | guides/answer-and-hand-over.md | R4 | open |
@@ -149,11 +149,11 @@ Rows: `usage.md` 38, `ui.md` 57, `configuration.md` 34, `commands.md` 10,
 | ui.md | ### Notifications | guides/desk.md | R6 | open |
 | ui.md | ## Platform | guides/desk.md | R6 | open |
 | ui.md | ## What it shows | guides/desk.md | R6 | open |
-| ui.md | ## Enable it | getting-started/turn-on-the-desk.md | R3 | open |
-| ui.md | ### 1. Create the OIDC client | getting-started/turn-on-the-desk.md | R3 | open |
-| ui.md | ### 2. Create the Secret | getting-started/turn-on-the-desk.md | R3 | open |
-| ui.md | ### 3. Set the chart values | getting-started/turn-on-the-desk.md | R3 | open |
-| ui.md | ### 4. Staying logged in | getting-started/turn-on-the-desk.md | R3 | open |
+| ui.md | ## Enable it | getting-started/turn-on-the-desk.md | R3 | done |
+| ui.md | ### 1. Create the OIDC client | getting-started/turn-on-the-desk.md | R3 | done; updated: the Refresh Token grant type named in the Zitadel steps; the username left at its default (email) |
+| ui.md | ### 2. Create the Secret | getting-started/turn-on-the-desk.md | R3 | done |
+| ui.md | ### 3. Set the chart values | getting-started/turn-on-the-desk.md | R3 | done; updated: the rule grants `chat` and the chat writer login is set, which answering prompts needs, and `spec.agents.chat` is turned on in the project |
+| ui.md | ### 4. Staying logged in | getting-started/turn-on-the-desk.md | R3 | done; updated: defaults left to the chart README; renewal internals are in contributing/design.md "Desk session model" |
 | ui.md | ## Access rules | guides/desk.md | R6 | open |
 | ui.md | ### Research rules | guides/desk.md | R6 | open |
 | ui.md | ### Claim mapping | guides/desk.md | R6 | open |
@@ -162,7 +162,7 @@ Rows: `usage.md` 38, `ui.md` 57, `configuration.md` 34, `commands.md` 10,
 | ui.md | ### Set it up | guides/steer-from-the-desk.md | R6 | open |
 | ui.md | ### One user, a fixed token | guides/steer-from-the-desk.md | R6 | open |
 | ui.md | ### How it works | guides/steer-from-the-desk.md | R6 | open |
-| ui.md | ## Without login | getting-started/turn-on-the-desk.md | R3 | open |
+| ui.md | ## Without login | getting-started/turn-on-the-desk.md | R3 | done; updated: the user name is `anonymous`; the DNS rebinding detail stays in ui.md "Security" (R6) |
 | ui.md | ## Security | guides/desk.md | R6 | open |
 | ui.md | ## API | reference/desk-api.md | R8b | done; updated: endpoints grouped, each with its purpose and the grant it needs, checked against the router (48 routes); the answer shapes, parameters and error codes moved to contributing/design.md "Desk API" |
 | ui.md | ## Development | contributing/web-ui.md | R10b | done |
@@ -195,13 +195,13 @@ Rows: `usage.md` 38, `ui.md` 57, `configuration.md` 34, `commands.md` 10,
 | ui.md | ### Research list and form | contributing/web-ui.md | R10b | done |
 | ui.md | ## Roadmap | contributing/web-ui.md | R10b | done; updated: removed the shipped *Restart run* from the Actions item and "GitLab stays the place where the work is steered" |
 | ui.md | ### Conventions check | contributing/web-ui.md | R10b | done |
-| configuration.md | ## Installation | getting-started/install.md | R3 | open |
-| configuration.md | ### Install with Flux | getting-started/install.md | R3 | open |
-| configuration.md | ### Web UI | getting-started/turn-on-the-desk.md | R3 | open |
-| configuration.md | ### Research | guides/research.md | R7b | open |
-| configuration.md | ### Plan | getting-started/turn-on-the-desk.md | R3 | open |
-| configuration.md | ### Pricing | guides/budgets-and-spend.md | R7a | open |
-| configuration.md | ## Secrets | getting-started/install.md | R3 | open |
+| configuration.md | ## Installation | getting-started/install.md | R3 | done; updated: `helm upgrade --install` with a values file; "Without Helm" (`make deploy`, the agent service account) moved to the chart README "Without Helm" |
+| configuration.md | ### Install with Flux | getting-started/install.md | R3 | done; updated: `ref.semver` in the example so it works as is |
+| configuration.md | ### Web UI | getting-started/turn-on-the-desk.md | R3 | done; updated: "read-only" dropped; the reader login, env variables, retries and RBAC moved to research.md "Database" (R7b takes it to contributing/research.md) and the chart README |
+| configuration.md | ### Research | getting-started/install.md | R3 | done; updated: target changed, see the steering log; setup in install.md "Add the database" with the chat writer login, operator flags, grants, backfill and the network policy in research.md "Database" |
+| configuration.md | ### Plan | charts/ai-operator/README.md | R3 | done; updated: target changed, see the steering log; the table was already in the chart README "Plan", which now says how invalid values fail |
+| configuration.md | ### Pricing | charts/ai-operator/README.md | R3 | done; updated: target changed, see the steering log; the values and the cost table were already in the chart README "Pricing", the cost sources and the lookup moved to contributing/design.md "Pricing" |
+| configuration.md | ## Secrets | getting-started/install.md | R3 | done |
 | configuration.md | ## `spec.gitlab` | reference/agentproject.md | R8b | done; updated: `project` and `tokenSecretRef` marked required |
 | configuration.md | ## `spec.milestones` | reference/agentproject.md | R8b | done |
 | configuration.md | ## `spec.autopilot` | reference/agentproject.md | R8b | done; updated: the warning text and `status.autopilot` fields moved to contributing/design.md "Autopilot" |
@@ -337,3 +337,13 @@ with the requirement label and the issue or merge request.
   image, network policy). Internals of these sections and the Desk API's
   answer shapes moved to `contributing/design.md`. The CRD requires
   `spec.agents.credentialsSecretName`; the old tables did not say so.
+- R3 (#511): `docs/configuration.md` is deleted, so its Research, Plan and
+  Pricing rows moved here instead of with R7a and R7b. Research setup is the
+  "Add the database" section of `getting-started/install.md`; it is not
+  optional on the getting-started path, since answering a prompt in the
+  Desk needs the database and the chat writer login. Plan and Pricing were
+  already in the chart README, the Helm values reference, so they stay
+  there once; the internals went to `research.md` "Database" (moved by R7b)
+  and `contributing/design.md` "Pricing". The planner asks no questions on
+  autopilot, so `getting-started/first-milestone.md` answers a revisit
+  prompt on a planner decision.

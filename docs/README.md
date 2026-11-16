@@ -12,8 +12,9 @@ it is listed under [Pages being moved](#pages-being-moved).
 
 ## Getting started
 
-**[getting-started/](getting-started/README.md)**: install the operator,
-turn on the Desk and get your first milestone planned.
+**[getting-started/](getting-started/README.md)**: [install](getting-started/install.md)
+the operator, [turn on the Desk](getting-started/turn-on-the-desk.md) and
+get [your first milestone](getting-started/first-milestone.md) planned.
 
 ## Guides
 
@@ -54,11 +55,8 @@ section goes.
 - **[Usage](usage.md)**: the GitLab workflow. Labels, milestone specs,
   questions and decisions, CI, autopilot and its pauses, the pilot, owners,
   budgets and the retrospective.
-- **[Configuration](configuration.md)**: installation with Helm or Flux, the
-  Desk, research, plans, pricing and the secrets. Chart values are in the
-  [Helm chart README](../charts/ai-operator/README.md).
 - **[Web UI](ui.md)**: the Desk. What it shows
-  ([screenshots](ui.md#screenshots)), OIDC login, roles and steering.
+  ([screenshots](ui.md#screenshots)), roles and steering.
 - **[Research](research.md)**: news flashes, scheduled and one-off
   researches next to the projects, with their own database.
 

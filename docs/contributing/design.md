@@ -5,7 +5,7 @@ running in Kubernetes pods. A milestone runs on autopilot; the pilot handles
 what goes wrong, and you steer from the Desk. For the user-facing workflow
 see [usage.md](../usage.md), for all settings the
 [AgentProject reference](../reference/agentproject.md) and
-[configuration.md](../configuration.md) for installation.
+[Install](../getting-started/install.md) for installation.
 
 **Status:** v1alpha1, first version. Unit and end-to-end tests (fake GitLab,
 fake agent, real git) pass. It has not yet run against a real cluster, a real
@@ -802,7 +802,7 @@ was introduced keep `usage` and are not rewritten. A call without a split
 `cost_source` is `unknown`, so "n/a" never reads as $0. Claude's cost is
 `reported`; for calls that report tokens but no cost (cursor), the operator
 estimates it from `--pricing-file` when it writes the row (`estimated`,
-see [configuration.md](../configuration.md#pricing)). Three jsonb columns
+see [Pricing](#pricing)). Three jsonb columns
 hold the detail: `models` (per model tokens and `costUSD`, subagent models
 included), `context_series` (context size of each main-thread turn, at most
 500 points) and `subagent_turns` (indexes into it after which a subagent
@@ -880,6 +880,40 @@ call: no cost, no tokens, not in `Calls`. `SpendTotals.Checkpoints` counts
 the calls with a checkpoint plus these events at every scope and child.
 `ByCheckpoint` groups both by reason, with the number in `Count`; its
 totals stay the calls'.
+
+### Pricing
+
+How a call's `cost_usd` and `cost_source` are set; the chart value
+`pricing` is described in the
+[chart README](../../charts/ai-operator/README.md#pricing).
+
+- **claude** reports `total_cost_usd` (the notional API price on a
+  subscription): `cost_source = reported`. A `pricing` entry for the model
+  does not change it.
+- **cursor** reports a USD cost only when an ACP `usage_update` carries one
+  (`cost_source = reported`, the increase of the session's running total
+  during the call; other currencies are ignored). The cursor-agent in the
+  agent image sends none yet. Without one, when it reports tokens (ACP's
+  prompt response) and `pricing` has a price for the model, the operator
+  estimates the cost from them when it writes the row:
+  `cost_source = estimated`.
+- Otherwise (no tokens, or no price) the cost is NULL and
+  `cost_source = unknown`: the call counts with its duration, and the Desk
+  shows "n/a", never $0. A call with neither a cost nor tokens (cursor with
+  model `auto`: ACP reports no usage) is counted as *not metered* besides
+  that (`unmeteredCalls`); it does not change whether the cost is known.
+  Calls recorded before the token basis was stored (`token_basis` 0) are
+  counted as `oldBasisCalls` next to `calls`: their tokens are not
+  comparable with newer calls'.
+
+The operator looks a model up as `<engine>/<model>`, then the bare model,
+then `<engine>/*`; missing prices are 0, and estimates are rounded to 4
+decimals like reported costs. A non-empty value is rendered into the
+ConfigMap `<release>-pricing`, mounted into the operator and passed as
+`--pricing-file`; the pod restarts when the prices change. The file is
+parsed strictly: unknown keys, negative prices or an unreadable file stop
+the operator at start. Prices apply to calls written from then on; stored
+rows keep their cost.
 
 ### Research store migrations
 

@@ -119,7 +119,7 @@ store their results in Postgres. The feature is off while
 either way. With a host the operator connects as the owner, applies the
 migrations and grants at start (retrying while the database is unreachable)
 and deletes expired results hourly; see
-[docs/configuration.md](../../docs/configuration.md#research-database). It
+[docs/research.md](../../docs/research.md#database). It
 also runs the research controller: one pod per run, whose runner logs in
 with the project's `spec.research.writerSecret`. The agent Role gets
 `get` on `agentresearches` and `get`/`patch` on their status. The operator
@@ -174,7 +174,9 @@ research:
 Milestone plans (`AgentPlan`): idle stop, retention delete, and spend cap.
 The operator gets `idleTimeout`, `retention` and `maxBudgetUSD` as flags; the
 UI config gets `maxBudgetUSD` and `maxBudgetUSDLimit`. The chart fails when
-`maxBudgetUSDLimit` is below `maxBudgetUSD`.
+`maxBudgetUSDLimit` is below `maxBudgetUSD`, and invalid values stop the
+operator at start or the UI from loading its config. Plans are started and
+followed in the [Desk](../../docs/getting-started/turn-on-the-desk.md).
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -248,11 +250,18 @@ for `maxStepLines`, the step-size gate of draft runs (claude only too), and
 
 ### Web UI
 
-The optional read-only web UI, see [docs/ui.md](../../docs/ui.md). It runs as
-its own Deployment (`<release>-ui`) with a service account that can only read
+The optional web UI, the Desk, where you steer the agents: answer prompts,
+ask the pilot, chat with an agent and watch runs, CI and costs.
+[Turn on the Desk](../../docs/getting-started/turn-on-the-desk.md) shows the
+setup, [docs/ui.md](../../docs/ui.md) what it shows. It runs as its own
+Deployment (`<release>-ui`) with a service account that can only read
 AgentProjects and AgentTasks (and AgentResearches with
-`research.database.host`). The one exception is `ui.research.allowCreate`:
-`create`/`delete` on AgentResearches in `ui.research.namespace` only.
+`research.database.host`). The exceptions are the milestone plans with
+`research.database.host` (see [Research](#research)) and
+`ui.research.allowCreate`: `create`/`delete` on AgentResearches in
+`ui.research.namespace` only. Your answers and chat messages do not go
+through the Kubernetes API: the UI writes them with its chat login into
+the database, and the operator acts on them.
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -291,4 +300,16 @@ AgentProjects and AgentTasks (and AgentResearches with
 
 ## Without Helm
 
-`make deploy` applies the same resources with kustomize from `config/`.
+`make deploy` applies the same resources with kustomize from `config/`
+(CRDs, RBAC, the operator in `ai-operator-system`). Agent pods run in the
+namespace of their `AgentProject`, and every such namespace needs the
+`ai-operator-agent` service account bound to the agent ClusterRole (read
+tasks and projects, patch `agenttasks/status`); the chart creates both for
+every namespace in `agent.namespaces`. Without the chart, create them
+yourself:
+
+```sh
+make deploy
+kubectl create namespace agents
+kubectl apply -f config/samples/agent_serviceaccount.yaml
+```

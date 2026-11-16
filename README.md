@@ -98,6 +98,9 @@ In the milestone description: `/agent spec`, `/agent autopilot`,
 
 ## Quick start
 
+The full path, from an empty cluster to a planned milestone with the Desk,
+is in **[Getting started](docs/getting-started/README.md)**.
+
 **You need** a Kubernetes cluster with a default StorageClass, `helm` (or
 Flux), a GitLab project with a **project access token** (role *Developer*,
 scopes `api` and `write_repository`), and agent credentials:
@@ -116,7 +119,7 @@ This installs the CRDs and the operator, and prepares the `agents` namespace
 for agent pods. Pin `--version` from the
 [releases](https://github.com/jonathanwiemers/ai-operator/releases) for
 production. Using Flux? See
-[Install with Flux](docs/configuration.md#install-with-flux).
+[Install with Flux](docs/getting-started/install.md#install-with-flux).
 
 **2. Add the credentials**
 
@@ -203,10 +206,10 @@ feature.
 |-|-|
 | [Usage](docs/usage.md) | the GitLab workflow: labels, milestone specs, decisions, CI, autopilot, owners, lifecycle |
 | [Commands](docs/reference/commands.md) and [labels](docs/reference/labels.md) | every `/agent` and `/pilot` command, the marker lines and the labels |
-| [Configuration](docs/configuration.md) | installation (Helm, Flux), secrets |
+| [Getting started](docs/getting-started/README.md) | install (Helm, Flux), secrets, turn on the Desk, your first milestone |
 | [AgentProject](docs/reference/agentproject.md) and [Desk API](docs/reference/desk-api.md) | every `AgentProject` field with its default, engines, profiles, models, the agent image; the Desk's endpoints |
 | [Design](docs/contributing/design.md) | architecture, CRDs, pod topology, token economy, security |
-| [Web UI](docs/ui.md) | the optional read-only UI: OIDC login, roles, HTTPRoute |
+| [Web UI](docs/ui.md) | the Desk: what it shows, access rules, steering |
 | [Web UI development](docs/contributing/web-ui.md) | run, check and build the Desk: dev setup, browser checks, bundle budget, UI kit |
 | [Research](docs/research.md) | news flashes, scheduled and one-off researches |
 | [Helm chart](charts/ai-operator/README.md) | chart values |

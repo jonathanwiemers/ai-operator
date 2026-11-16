@@ -514,8 +514,50 @@ blocks cluster CIDRs, so set `research.database.networkPolicyPeer`
 (`namespace` and `podLabels` of the database pods): the chart then adds a
 NetworkPolicy `<agent role>-research-db` per agent namespace, which lets only
 pods with the label `ai.wiemers.me/research` reach those pods on TCP
-`port`. Task pods stay blocked. Details and the operator flags in
-[configuration.md](configuration.md#research-database).
+`port`. Task pods stay blocked. NetworkPolicies are additive: task pods are
+not selected by the second policy and keep the agent policy as it is. The
+peer's pods are all pods of `networkPolicyPeer.namespace` when `podLabels`
+is empty.
+
+**Operator.** Research is on exactly when `research.database.host` is set;
+without it the operator opens no connection. The operator gets the
+connection as flags (`--research-db-host`, `--research-db-port`,
+`--research-db-name`, `--research-db-sslmode`), the roles as
+`--research-reader-role`, `--research-writer-roles` and
+`--research-chat-writer-role`, the candidates as
+`--research-candidates-quick` and `--research-candidates-deep`
+(`engine/model[@effort]` lists) and `--research-max-usage-percent`; invalid
+values stop it at start. The owner login comes from `ownerSecret` as the
+environment variables `AI_RESEARCH_DB_USER` and `AI_RESEARCH_DB_PASSWORD`,
+never as arguments. A host without a name, user or password stops the
+operator at start; the chart refuses to render a host without `name` or
+`ownerSecret.name`. If the database is unreachable or a migration fails,
+the operator keeps running the factory and retries with backoff (5 s up to
+5 min). Once ready, it deletes expired runs with their results and items at
+once and then every hour, and with `--history-retention` also expired
+history events, agent calls, chat messages and milestone snapshots.
+
+**Backfill.** With the database ready, the operator also fills the Desk's
+milestone snapshot once from GitLab with the closed milestones it planned
+before the snapshot existed (see
+[design.md](contributing/design.md#desk-snapshot)): one milestone per poll,
+at most 4 GitLab requests a step and 16 a minute. It has no setting: it
+stops by itself once every closed milestone is in, and lists them again once
+a day.
+
+**UI.** The chart puts `host`, `port`, `name` and `sslMode` (plus
+`ui.research.namespace` and `allowCreate`) into the UI's config file and the
+login from `readerSecret` into `AI_OPERATOR_UI_RESEARCH_DB_USER` and
+`AI_OPERATOR_UI_RESEARCH_DB_PASSWORD`; it refuses to render without
+`readerSecret.name`. The chat writer login from `ui.chat.writerSecret`
+becomes `AI_OPERATOR_UI_CHAT_DB_USER` and `AI_OPERATOR_UI_CHAT_DB_PASSWORD`.
+The UI only reads with the reader (the operator migrates) and starts
+without the database: it connects in the background and retries with
+backoff (5 s up to 5 min), the research endpoints answer 503 until then,
+and the factory pages work as before. `sslMode: disable` is refused unless
+the host is a loopback address (local development). The UI's RBAC for
+`agentresearches` and `agentplans` is listed in the
+[chart README](../charts/ai-operator/README.md#research).
 
 ### Example: my-cluster
 

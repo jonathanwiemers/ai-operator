@@ -348,7 +348,7 @@ with its issues and their figures, and the *Issues* tab says *From history:
 the tasks of this milestone are gone*. Such a milestone has no *Board* tab and
 no message box. Milestones closed before the snapshot existed are filled in
 once by the operator's backfill (see
-[configuration](configuration.md#research-database)): their issues with
+[research.md](research.md#database)): their issues with
 states and merge requests and the retrospective's text, but no leftovers
 and only the spend `agent_calls` still holds, so the oldest show a dash,
 never $0. Without the research database the dashboard, the lists and the
@@ -469,7 +469,7 @@ With Desk chat on (`ui.chat.writerSecret` and the `plans` feature from
 `GET /api/v1/features`), an owner drafts a new milestone with an agent that
 reads the project's default branch, its milestones and its issues, then
 creates it on GitLab. Plans are `AgentPlan` resources; see
-[configuration.md](configuration.md#plan).
+[chart README](../charts/ai-operator/README.md#plan).
 
 **Who may plan.** Creating, chatting, editing the draft, raising the budget,
 creating the milestone and deleting need the `steer` grant and the caller
@@ -523,7 +523,7 @@ same plan is refused (`POST …/milestone`).
 message the pod ends (phase *Idle*); the workspace stays, so the next
 message starts a new pod that resumes the engine session. Plans are deleted
 `plan.retention` (default 30d / `720h`) after their last message or
-creation. Chart values: [configuration.md](configuration.md#plan).
+creation. Chart values: [chart README](../charts/ai-operator/README.md#plan).
 
 Unstarted Queue milestones (`waiting` / `holding` with no spend) are the
 ones `needsEstimate` selects for `GET …/estimate?milestone=`; the *Create
@@ -883,7 +883,7 @@ the site settings); a browser without the Notification API shows no button.
 
 **History.** The operator appends the factory's events to the research
 database (configured with `research.database`, see
-[configuration](configuration.md#research-database)): changes of the tasks'
+[Add the database](getting-started/install.md#add-the-database)): changes of the tasks'
 status (a run started or finished with its result, spend and duration, a
 push, a final CI result or a fix round, a review with its blocking findings,
 a question, failure or block, a merge, autopilot phase changes, the pilot's
@@ -903,7 +903,7 @@ without it a comment shows as who commented on which issue, with its link.
 
 The UI is a platform with sections, which the app takes from
 `GET /api/v1/features`: **Factory** (projects, milestones and tasks, at `/`
-and `/projects/…`) and, with a [research database](configuration.md#research-database)
+and `/projects/…`) and, with a [research database](getting-started/install.md#add-the-database)
 and a [research rule](#research-rules), **Research** (at `/research`). With
 more than one section the top bar shows them as tabs, the active one
 following the page; with the factory alone the bar has no tabs and the UI
@@ -1182,153 +1182,8 @@ stays in *CI* until the operator has followed that commit's pipeline, for at
 most `spec.ci.noPipelineTimeout` plus one poll interval (unless the project
 has `spec.ci.disabled`).
 
-## Enable it
-
-You need a host name for the UI, a Gateway (Gateway API) that serves it with
-TLS, and an OIDC client.
-
-### 1. Create the OIDC client
-
-Redirect URI: `https://<host>/oauth2/callback`. Post-logout redirect URI:
-`https://<host>/`. The UI uses the authorization code flow with PKCE, so a
-public client (no secret) works; a confidential client works too.
-
-#### Zitadel
-
-1. Create a project, e.g. `ai-operator`, and add its **roles**, e.g.
-   `ai-operator-admin` and `shop-devs`.
-2. In the project's settings, turn on **Assert Roles on Authentication**. The
-   roles then come with the login (the UI also reads the userinfo endpoint,
-   which is where Zitadel puts them unless the application has *User roles
-   inside ID Token* set). Optionally turn on **Check authorization on
-   Authentication**, so users without a role in the project cannot log in at
-   all.
-3. Add an application of type **Web**, authentication method **PKCE** (or
-   **Code** with a client secret), with the redirect URIs above.
-4. Grant the roles to users (*Authorizations*).
-
-Zitadel puts the roles into the claim `urn:zitadel:iam:org:project:roles`, a
-map from role to the organizations that granted it. The UI takes a map's keys
-as the roles:
-
-```yaml
-ui:
-  oidc:
-    claims:
-      username: claims.preferred_username
-      roles: 'claims["urn:zitadel:iam:org:project:roles"]'
-```
-
-#### Other providers
-
-| Provider | `roles` expression |
-|----------|--------------------|
-| Dex, Authentik, most others | `has(claims.groups) ? claims.groups : []` (the default) |
-| Keycloak, realm roles | `has(claims.realm_access) ? claims.realm_access.roles : []` |
-| Keycloak, client roles | `claims.resource_access["ai-operator"].roles` |
-| Entra ID, app roles | `has(claims.roles) ? claims.roles : []` |
-
-Add the scope that makes your provider send the claim (e.g. `groups` for Dex)
-to `ui.oidc.scopes`.
-
-### 2. Create the Secret
-
-```sh
-kubectl -n ai-operator-system create secret generic ai-operator-ui \
-  --from-literal=session-key="$(openssl rand -hex 32)" \
-  --from-literal=client-secret=…        # confidential clients only
-```
-
-The session key encrypts the login cookies. Changing it logs everyone out.
-
-### 3. Set the chart values
-
-```yaml
-ui:
-  enabled: true
-  externalURL: https://ai.example.com
-  oidc:
-    issuerURL: https://acme.zitadel.cloud
-    clientID: "291833245810002@ai-operator"
-    existingSecret: ai-operator-ui
-    claims:
-      username: claims.preferred_username
-      roles: 'claims["urn:zitadel:iam:org:project:roles"]'
-  authorization:
-    rules:
-      - roles: [ai-operator-admin]          # every project
-      - roles: [shop-devs]
-        projects: ["agents/shop"]           # namespace/name of the AgentProject
-      - roles: [team-b]
-        projects: ["team-b/*"]
-  httpRoute:
-    enabled: true
-    parentRefs:
-      - name: public
-        namespace: gateway-system
-        sectionName: https
-  networkPolicy:
-    enabled: true
-    from:
-      - namespaceSelector:
-          matchLabels:
-            kubernetes.io/metadata.name: gateway-system
-```
-
-The HTTPRoute takes its host name from `externalURL` (or
-`ui.httpRoute.hostnames`) and forwards the whole host to the UI: the UI is
-served at the root of its own host name, not under a path. All values are
-listed in the [chart README](../charts/ai-operator/README.md#web-ui).
-
-The UI pod needs to reach the OIDC provider (discovery, keys, token,
-userinfo and revocation endpoints) and the Kubernetes API.
-
-### 4. Staying logged in
-
-A login lasts as long as it is used. With a refresh token the session cookie
-is short and is renewed in the background; without one the login is fixed.
-
-| Value | Default | Meaning |
-|-------|---------|---------|
-| `ui.oidc.scopes` | `[openid, profile, email, offline_access]` | `offline_access` makes the provider return a refresh token. When `scopes` is set without it, the UI logs a warning at startup, and once per login that it got no refresh token |
-| `ui.auth.renewAfter` | `15m` | how long the session cookie is valid; the next request after it renews it with the refresh token, and the roles are mapped again |
-| `ui.auth.idleTimeout` | `168h` | a login that was not renewed for this long ends; every renewal slides the deadline. Must be longer than `renewAfter` |
-| `ui.auth.maxLifetime` | `0s` | caps a login from its start; `0s` leaves it to the provider. The deadline is fixed at login, so a change applies to new logins only |
-| `ui.auth.sessionTTL` | `12h` | applies only when the provider returns no refresh token: the login lasts this long and is not renewed |
-
-On **Zitadel** nothing else is needed than `offline_access` in the scopes
-and the *Refresh Token* grant type on the application. The provider's own
-lifetimes (idle and absolute; refresh tokens rotate on use) end a login
-too. Providers that need extra authorization parameters for a refresh token
-(Google's `access_type=offline`) are not covered.
-
-How it behaves:
-
-- **Renewal on use.** A request with an expired session and a live refresh
-  cookie is renewed in place (refresh grant, ID token checked against the
-  login's subject, userinfo merged, claims mapped again, both cookies
-  written) before it is answered, so no request fails for a renewal.
-  Parallel requests share one renewal per refresh token in the UI process.
-- **Roles follow the provider.** A role removed at the provider is gone
-  within `renewAfter`; a user whose claims no longer map to a login is
-  signed out.
-- **A provider outage keeps the session.** A renewal that fails for a
-  passing reason (network, 5xx, 10 s timeout) keeps the session for another
-  `renewAfter`, at most until the idle deadline, and logs it. Only a
-  refusal (`invalid_grant`, `unauthorized_client`, a different subject or
-  nonce, claim mapping failure) ends the login.
-- **Logout revokes** the refresh token at the provider's
-  `revocation_endpoint` (RFC 7009) when it has one, best effort with a 5 s
-  timeout, then clears both cookies.
-- **Signing in again, drafts and streams** are described under
-  [Security](#security): on a 401 the Desk signs in again by itself (once per
-  60 s) and keeps unsent text; the event and transcript streams end at the
-  session's expiry and reconnect quietly.
-- **Account menu.** It shows *Signed in until <date> unless you are away
-  longer* (renewed logins) or *Signed in until <time>* (fixed logins), from
-  `renewing` and `idleUntil` in `GET /api/v1/me`.
-- **One replica.** With `ui.replicaCount` above 1, a parallel renewal on
-  another pod can lose the rotation race and end the login.
+How to turn the Desk on and log in is in
+[Turn on the Desk](getting-started/turn-on-the-desk.md).
 
 ## Access rules
 
@@ -1375,7 +1230,7 @@ ui:
 
 ### Research rules
 
-With a [research database](configuration.md#research-database) the UI also
+With a [research database](getting-started/install.md#add-the-database) the UI also
 has a Research section. A rule with `research` set is a **research rule**:
 `research: read` lets its roles see the researches and their results,
 `research: write` also start one-off researches and delete them (only with
@@ -1603,30 +1458,6 @@ as an error, not as a reconnect.
   exist in the Secret, or the UI pod does not start.
 - Projects on another GitLab host than `ui.gitlab.url` get no thread and no
   box.
-
-## Without login
-
-For a quick look, or a cluster without an OIDC provider:
-
-```yaml
-ui:
-  enabled: true
-  auth:
-    mode: none
-```
-
-```sh
-kubectl -n ai-operator-system port-forward deploy/ai-operator-ui 9080
-# open http://127.0.0.1:9080
-```
-
-The UI then listens on `127.0.0.1` inside its pod only, so only
-`kubectl port-forward` reaches it, and everyone who can port-forward to it sees
-every project. The chart creates no Service in this mode and refuses to
-combine it with `ui.httpRoute`; the binary itself refuses `none` on any
-address but a loopback one, and answers only requests for `localhost`,
-`127.0.0.1` or `[::1]`, so a web page cannot reach it through a DNS name that
-points to 127.0.0.1 (DNS rebinding).
 
 ## Security
 

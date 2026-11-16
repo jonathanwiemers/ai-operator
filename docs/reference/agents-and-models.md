@@ -60,7 +60,7 @@ The pod and the settings that apply to every role:
 |-------|---------|---------|
 | `image` | The agent image, see [Agent image](agent-image.md). | the agent image of the installed release |
 | `imagePullPolicy` | Pull policy of the agent image. | `IfNotPresent` |
-| `credentialsSecretName` | A Secret whose keys become environment variables of the agents, e.g. `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `CURSOR_API_KEY` (see [Secrets](../configuration.md#secrets)). Required. | – |
+| `credentialsSecretName` | A Secret whose keys become environment variables of the agents, e.g. `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `CURSOR_API_KEY` (see [Secrets](../getting-started/install.md#create-the-secrets)). Required. | – |
 | `serviceAccountName` | Service account of the agent pods. | `ai-operator-agent` |
 | `resources` | Resources of the agent container, where the CLIs, builds and tests run. Size the memory for your build and tests plus about 1Gi for the CLI. Requests as high as the limits avoid kills when the node runs short. | – |
 | `maxMemory` | Cap for raising the memory limit after an out-of-memory kill: each kill raises the task's limit by half and starts the run again, at most 3 times per run. Set it to the limit to turn raising off. Without a memory limit nothing is raised. | twice `resources.limits.memory` |

@@ -181,9 +181,9 @@ pricing: {}
 #    "cursor/auto": {input: 1.25, output: 10, cacheRead: 0.125, cacheWrite: 1.25}
 #    "cursor/*": {input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75}
 
-# Read-only web UI (see docs/ui.md). Off by default. It runs as its own
-# Deployment with a service account that can only read AgentProjects and
-# AgentTasks; it never sees the GitLab tokens.
+# The web UI, the Desk, where you steer the agents (see
+# docs/getting-started/turn-on-the-desk.md). Off by default. It runs as its
+# own Deployment with its own service account; it never sees the GitLab tokens.
 ui:
   enabled: false
   replicaCount: 1
