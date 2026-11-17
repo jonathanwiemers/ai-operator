@@ -92,6 +92,13 @@ export interface AgentPlanStatus {
    */
   message?: string;
   /**
+   * Title is the plan's title from the agent, then the created
+   * milestone's title.
+   * +optional
+   * +kubebuilder:validation:MaxLength=255
+   */
+  title?: string;
+  /**
    * Draft is the milestone description in markdown.
    * +optional
    * +kubebuilder:validation:MaxLength=65536

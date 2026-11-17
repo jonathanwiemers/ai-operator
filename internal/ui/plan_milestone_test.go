@@ -89,7 +89,8 @@ func TestPlanMilestone(t *testing.T) {
 			}
 			st := env.getPlan(t, "shop-plan-new").Status
 			if st.Phase != aiv1.AgentPlanCreated || st.CreatedMilestoneIID != 1 || st.CreatedMilestoneURL != url ||
-				st.Draft != "## Goal\n\nRefunds.\n/agent owners @mallory" || st.DraftRevision != 1 || st.DraftBy != "owner" {
+				st.Draft != "## Goal\n\nRefunds.\n/agent owners @mallory" || st.DraftRevision != 1 || st.DraftBy != "owner" ||
+				st.Title != "Refunds" {
 				t.Errorf("status: %+v", st)
 			}
 			logMu.Lock()
@@ -192,6 +193,11 @@ func TestPlanMilestoneClaimConflict(t *testing.T) {
 
 func TestPlanMilestoneGitLabRefuses(t *testing.T) {
 	env, fake := planSteerer(t)
+	agentTitled := env.getPlan(t, "shop-plan-new")
+	agentTitled.Status.Title = "Refunds by the agent"
+	if err := env.reader.Status().Update(context.Background(), agentTitled); err != nil {
+		t.Fatal(err)
+	}
 	for _, c := range []struct{ gitlab, want int }{
 		{http.StatusForbidden, http.StatusForbidden},
 		{http.StatusUnprocessableEntity, http.StatusConflict},
@@ -207,7 +213,8 @@ func TestPlanMilestoneGitLabRefuses(t *testing.T) {
 			t.Errorf("a rejected token asks to connect again: %v", out)
 		}
 		// The plan stays usable.
-		if st := env.getPlan(t, "shop-plan-new").Status; st.Phase != aiv1.AgentPlanIdle || st.CreatedMilestoneIID != 0 || st.DraftRevision != 0 {
+		if st := env.getPlan(t, "shop-plan-new").Status; st.Phase != aiv1.AgentPlanIdle || st.CreatedMilestoneIID != 0 || st.DraftRevision != 0 ||
+			st.Title != "Refunds by the agent" {
 			t.Errorf("GitLab %d: status %+v", c.gitlab, st)
 		}
 	}
@@ -216,5 +223,8 @@ func TestPlanMilestoneGitLabRefuses(t *testing.T) {
 	env.connectGitLab(t, "good-code")
 	if code, out := env.postJSON(t, newPlanMilestone, planMilestoneBody(true, true)); code != http.StatusCreated {
 		t.Errorf("after the failures: %d %v", code, out)
+	}
+	if st := env.getPlan(t, "shop-plan-new").Status; st.Title != "Refunds" {
+		t.Errorf("the milestone's title settles the agent's: %q", st.Title)
 	}
 }

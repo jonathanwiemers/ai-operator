@@ -1639,7 +1639,13 @@ draft; it is now: …". Calls are kind `plan`. Raising the cap is `POST
 estimate of `GET …/estimate?plan=` (*not enough history* below three
 finished milestones) and `POST …/milestone` with the owner's GitLab token;
 the plan records the IID, its pod stops, and creating again is refused;
-audit line `plan.milestone`. After `plan.idleTimeout` the pod ends (phase
+audit line `plan.milestone`. The plan's title is `status.title`, else
+`spec.title`. The plan pod may only patch the status, so the agent's title
+goes there: while both are empty, each turn's prompt has a `## Title`
+section and the turn schema's `title` (first line, trimmed, at most 255
+runes) is written once; an interrupted turn writes none. *Create milestone*
+then sets `status.title` to the milestone's title in the patch that records
+the IID; a GitLab failure leaves it. After `plan.idleTimeout` the pod ends (phase
 *Idle*); the workspace stays and the next message resumes the engine
 session. Values: [chart README](../../charts/ai-operator/README.md#plan).
 

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"cmp"
 	"crypto/rand"
 	"encoding/json"
 	"errors"
@@ -59,7 +60,7 @@ func (s *Server) planItem(pl *aiv1.AgentPlan, steer bool) PlanListItem {
 	if c := pl.Status.Chat; c != nil && c.LastTurnTime != nil && c.LastTurnTime.After(last) {
 		last = c.LastTurnTime.Time
 	}
-	return PlanListItem{Name: pl.Name, Title: pl.Spec.Title, Phase: pl.Status.Phase, CreatedBy: pl.Spec.CreatedBy,
+	return PlanListItem{Name: pl.Name, Title: cmp.Or(pl.Status.Title, pl.Spec.Title), Phase: pl.Status.Phase, CreatedBy: pl.Spec.CreatedBy,
 		CreatedAt: pl.CreationTimestamp.Time, LastActivityAt: last, SpendUSD: pl.Status.SpendUSD, Tokens: pl.Status.Tokens,
 		BudgetUSD: pl.BudgetUSD(s.cfg.Plan.MaxBudgetUSD), BudgetLimitUSD: s.cfg.Plan.MaxBudgetUSDLimit,
 		CreatedMilestoneIID: pl.Status.CreatedMilestoneIID, CreatedMilestoneURL: pl.Status.CreatedMilestoneURL,

@@ -47,6 +47,11 @@ type AgentPlanStatus struct {
 	Phase AgentPlanPhase `json:"phase,omitempty"`
 	// +optional
 	Message string `json:"message,omitempty"`
+	// Title is the plan's title from the agent, then the created
+	// milestone's title.
+	// +optional
+	// +kubebuilder:validation:MaxLength=255
+	Title string `json:"title,omitempty"`
 	// Draft is the milestone description in markdown.
 	// +optional
 	// +kubebuilder:validation:MaxLength=65536

@@ -271,3 +271,20 @@ func TestPlanWriteWithoutWriter(t *testing.T) {
 		t.Errorf("delete: %d", code)
 	}
 }
+
+// The plan's title: status.title (the agent's, then the milestone's), else
+// spec.title, else empty for the web's fallback (Decision 4).
+func TestPlanItemTitle(t *testing.T) {
+	s := &Server{cfg: &Config{}}
+	for _, c := range []struct{ spec, status, want string }{
+		{"Mine", "Desk: version in the rail", "Desk: version in the rail"},
+		{"Mine", "", "Mine"},
+		{"", "Agent's", "Agent's"},
+		{"", "", ""},
+	} {
+		pl := &aiv1.AgentPlan{Spec: aiv1.AgentPlanSpec{Title: c.spec}, Status: aiv1.AgentPlanStatus{Title: c.status}}
+		if got := s.planItem(pl, false).Title; got != c.want {
+			t.Errorf("spec %q, status %q: title %q, want %q", c.spec, c.status, got, c.want)
+		}
+	}
+}

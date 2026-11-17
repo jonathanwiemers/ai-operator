@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"cmp"
 	"context"
 	"net/http"
 	"slices"
@@ -67,7 +68,7 @@ func (s *Server) createPlanMilestone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	url := milestoneURL(ap, m)
-	pl.Status.CreatedMilestoneIID, pl.Status.CreatedMilestoneURL = m.IID, url
+	pl.Status.CreatedMilestoneIID, pl.Status.CreatedMilestoneURL, pl.Status.Title = m.IID, url, cmp.Or(m.Title, req.Title)
 	pl.Status.Draft, pl.Status.DraftRevision, pl.Status.DraftBy = req.Description, pl.Status.DraftRevision+1, "owner"
 	if err := s.writer.Status().Patch(ctx, pl, client.MergeFrom(claimed)); err != nil {
 		s.log.Error(err, "cannot record the plan's milestone", "namespace", pl.Namespace, "name", pl.Name, "milestone", m.IID)

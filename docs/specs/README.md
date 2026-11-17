@@ -54,6 +54,7 @@ git history does; otherwise "no milestone".
 11. [Stay logged in while you use it (OIDC refresh tokens)](desk-session-refresh.spec.md) — OIDC refresh tokens keep the Desk session alive. Milestone: Desk: stay logged in while you use it (OIDC refresh tokens).
 12. [Desk polish: version, phone Costs tab, ⌘K search](desk-polish.spec.md) — Version footer, phone Costs tab, drop the milestone strip, ⌘K search. Milestone: Desk polish: version, phone Costs tab, no milestone strip, ⌘K search.
 13. [One Needs you tab per milestone](desk-needs-you.spec.md) — What was asked, who handled it and what was tried, per milestone and in the Inbox. Milestone: Desk: one Needs you tab per milestone that shows what was asked, who handled it and what was tried.
+14. [Plans name themselves, show their milestone's progress, one plan list](plans-overview.spec.md) — Agent-given plan titles, a `/plans` page and a Plans tab per project with milestone state. Milestone: Desk: plans name themselves, show their milestone's progress, and one plan list for all projects and each project.
 
 ## Research
 

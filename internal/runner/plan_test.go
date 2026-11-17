@@ -238,3 +238,105 @@ func TestResultDecodeNullStructured(t *testing.T) {
 		t.Fatal("no error for a text without JSON")
 	}
 }
+
+func planTitled(session, reply, title string) func(Invocation) (*Result, error) {
+	return func(Invocation) (*Result, error) {
+		b, _ := json.Marshal(PlanTurn{Reply: reply, Title: title})
+		return &Result{SessionID: session, CostUSD: 0.1, Structured: b}, nil
+	}
+}
+
+// untitled clears the plan's spec.title, as the Desk's Plan milestone does.
+func (e *planEnv) untitled(t *testing.T) *planEnv {
+	t.Helper()
+	p := e.plan(t)
+	p.Spec.Title = ""
+	if err := e.k8s.Update(context.Background(), p); err != nil {
+		t.Fatal(err)
+	}
+	return e
+}
+
+// The agent names an untitled plan once: the first title stays (R3).
+func TestPlanTurnTitlesOnce(t *testing.T) {
+	e := newPlanEnv(t, planTitled("s", "Which rail?", "Desk: version in the rail"),
+		planTitled("s", "Ok.", "Something else")).untitled(t)
+	if p := e.turn(t, 10, "add a version line to the rail"); p.Status.Title != "Desk: version in the rail" {
+		t.Fatalf("first turn: title %q", p.Status.Title)
+	}
+	if p := e.turn(t, 11, "the left rail"); p.Status.Title != "Desk: version in the rail" {
+		t.Fatalf("second turn: title %q", p.Status.Title)
+	}
+	const ask = "## Title\n\nThe plan has no title yet: give one in title."
+	if !strings.Contains(e.engine.calls[0].Prompt, ask) || strings.Contains(e.engine.calls[1].Prompt, ask) {
+		t.Fatalf("the title is asked for while the plan has none only:\n%s\n---\n%s", e.engine.calls[0].Prompt, e.engine.calls[1].Prompt)
+	}
+}
+
+// A plan the owner titled keeps it: no ask, and the answer's title is ignored.
+func TestPlanTurnKeepsSpecTitle(t *testing.T) {
+	e := newPlanEnv(t, planTitled("s", "Which rail?", "Desk: version in the rail"))
+	if p := e.turn(t, 10, "add a version line"); p.Status.Title != "" {
+		t.Fatalf("title %q on a plan with spec.title", p.Status.Title)
+	}
+	if strings.Contains(e.engine.calls[0].Prompt, "## Title") {
+		t.Fatalf("prompt asks for a title:\n%s", e.engine.calls[0].Prompt)
+	}
+}
+
+// An untitled plan keeps asking after an empty title.
+func TestPlanTurnEmptyTitleAsksAgain(t *testing.T) {
+	e := newPlanEnv(t, planTitled("s", "What for?", " \n "), planTitled("s", "Ok.", "Version in the rail")).untitled(t)
+	if p := e.turn(t, 10, "hm"); p.Status.Title != "" {
+		t.Fatalf("blank title written: %q", p.Status.Title)
+	}
+	if p := e.turn(t, 11, "a version line"); p.Status.Title != "Version in the rail" {
+		t.Fatalf("second turn: title %q", p.Status.Title)
+	}
+}
+
+func TestPlanTurnMultiLineTitle(t *testing.T) {
+	e := newPlanEnv(t, planTitled("s", "Ok.", "  Version in the rail  \nand more\n")).untitled(t)
+	if p := e.turn(t, 10, "go"); p.Status.Title != "Version in the rail" {
+		t.Fatalf("title %q", p.Status.Title)
+	}
+}
+
+func TestPlanTitleFrom(t *testing.T) {
+	long := strings.Repeat("é", 300)
+	for in, want := range map[string]string{
+		"":                      "",
+		"  A title \n second":   "A title",
+		"\n\n  After blanks\nx": "After blanks",
+		long:                    strings.Repeat("é", maxPlanTitle),
+		"Desk: version in rail": "Desk: version in rail",
+	} {
+		if got := planTitleFrom(in); got != want {
+			t.Errorf("planTitleFrom(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// An interrupted turn writes no title, even when the engine still answered.
+func TestPlanInterruptedTurnWritesNoTitle(t *testing.T) {
+	e := newPlanEnv(t, nil).untitled(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	e.run.wake = e.run.watchObject(ctx, &aiv1.AgentPlanList{}, "shop-plan-1")
+	e.engine.answers[0] = func(inv Invocation) (*Result, error) {
+		e.engine.mu.Lock()
+		turnCtx := e.engine.ctxs[len(e.engine.ctxs)-1]
+		e.engine.mu.Unlock()
+		e.post(t, chatMsg(11, "interrupt", "stop", "alice"))
+		<-turnCtx.Done()
+		return planTitled("s", "Here.", "Version in the rail")(inv)
+	}
+	e.post(t, chatMsg(10, "message", "draft it", "alice"))
+	if _, err := e.run.tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	p := e.plan(t)
+	if rep, _ := replyFor(p, 10); rep.Error != "interrupted" || p.Status.Title != "" {
+		t.Fatalf("reply %+v, title %q", rep, p.Status.Title)
+	}
+}

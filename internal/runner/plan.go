@@ -35,7 +35,20 @@ const (
 	planDraftKept  = "(Your saved edit was kept; this turn's draft was not applied.)"
 	planDraftLarge = "(This turn's draft is over 64 KiB and was not applied.)"
 	maxPlanDraft   = 64 << 10
+	// maxPlanTitle mirrors the CRD's MaxLength of status.title, in runes.
+	maxPlanTitle = 255
 )
+
+// planTitleFrom cleans the agent's title: its first line, trimmed, cut to
+// maxPlanTitle runes.
+func planTitleFrom(s string) string {
+	s, _, _ = strings.Cut(strings.TrimSpace(s), "\n")
+	s = strings.TrimSpace(s)
+	if r := []rune(s); len(r) > maxPlanTitle {
+		s = strings.TrimSpace(string(r[:maxPlanTitle]))
+	}
+	return s
+}
 
 // turn answers msg with the spec role's engine session and writes the reply
 // and the agent's draft to the plan's status. The draft is only written while
@@ -85,11 +98,11 @@ func (p *PlanRun) turn(ctx context.Context, plan *aiv1.AgentPlan, project *aiv1.
 	var also []aiv1.ChatReply
 	at := metav1.Time{Time: p.now()}
 	if guard.finish() {
-		out.Draft, errStr, also = "", "interrupted", []aiv1.ChatReply{{MessageID: <-by, At: at}}
+		out.Draft, out.Title, errStr, also = "", "", "interrupted", []aiv1.ChatReply{{MessageID: <-by, At: at}}
 	} else if ctx.Err() != nil {
 		return ctx.Err() // the pod stops: still in flight
 	}
-	base, draft := plan.Status.DraftRevision, strings.TrimSpace(out.Draft)
+	base, draft, title := plan.Status.DraftRevision, strings.TrimSpace(out.Draft), planTitleFrom(out.Title)
 	return p.answer(ctx, &st, func(s *aiv1.AgentPlanStatus) []aiv1.ChatReply {
 		text := textutil.Truncate(prose(out.Reply), maxChatReplyBytes-128)
 		switch {
@@ -100,6 +113,9 @@ func (p *PlanRun) turn(ctx context.Context, plan *aiv1.AgentPlan, project *aiv1.
 			text += "\n\n" + planDraftLarge
 		default:
 			s.Draft, s.DraftRevision, s.DraftBy, s.DraftSHA = draft, base+1, "agent", sha
+		}
+		if title != "" && s.Title == "" && plan.Spec.Title == "" {
+			s.Title = title // the agent names the plan once
 		}
 		if call != nil {
 			addPlanCall(s, *call)
@@ -222,6 +238,7 @@ func (p *PlanRun) ask(ctx context.Context, st *state, plan *aiv1.AgentPlan, spec
 	inv.Role, inv.Kind, inv.Resume, inv.LogPrompt = "plan", aiv1.CallKindPlan, st.session("plan", role.Engine), spec.Agents.LogPrompts
 	inv.Prompt = buildPlanPrompt(planTurnInput{Message: msg.Text, Branch: proj.DefaultBranch, SHA: sha, GitLab: gl,
 		FirstTurn: inv.Resume == "", Title: plan.Spec.Title, Draft: plan.Status.Draft,
+		Untitled:   plan.Spec.Title == "" && plan.Status.Title == "",
 		Edited:     plan.Status.DraftBy == "owner" && rev > st.PlanSeenRevision,
 		MaxMRLines: spec.MaxMRLines(), Constraints: spec.HouseConstraints()})
 	if st.ChatInFlight != nil && st.ChatInFlight.Resent {

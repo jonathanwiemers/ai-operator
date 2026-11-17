@@ -439,6 +439,12 @@ spec:
                 description: SpendUSD is the plan's model spend as a decimal string
                   (4 decimals).
                 type: string
+              title:
+                description: |-
+                  Title is the plan's title from the agent, then the created
+                  milestone's title.
+                maxLength: 255
+                type: string
               tokens:
                 format: int64
                 type: integer

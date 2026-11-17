@@ -39,7 +39,8 @@ func TestAgentPlanSchema(t *testing.T) {
 		ok := map[string]any{
 			"spec": map[string]any{"projectRef": "shop", "createdBy": "jo", "maxBudgetUSD": "7.5",
 				"chatMessages": []any{map[string]any{"id": 1, "kind": "message", "text": "hi", "author": "jo", "at": "2026-11-14T10:00:00Z"}}},
-			"status": map[string]any{"phase": "Working", "draft": "# Goal", "draftRevision": 2, "draftBy": "owner", "createdMilestoneIID": 22},
+			"status": map[string]any{"phase": "Working", "draft": "# Goal", "draftRevision": 2, "draftBy": "owner", "createdMilestoneIID": 22,
+				"title": "Desk: version in the rail"},
 		}
 		if _, errs := crd.admit(ok); len(errs) > 0 {
 			t.Errorf("%s: valid plan rejected: %v", path, errs)
@@ -55,6 +56,7 @@ func TestAgentPlanSchema(t *testing.T) {
 			"phase":        {map[string]any{"projectRef": "shop", "createdBy": "jo"}, map[string]any{"phase": "Done"}, "status.phase"},
 			"draft by":     {map[string]any{"projectRef": "shop", "createdBy": "jo"}, map[string]any{"draftBy": "pilot"}, "status.draftBy"},
 			"long draft":   {map[string]any{"projectRef": "shop", "createdBy": "jo"}, map[string]any{"draft": strings.Repeat("x", 65537)}, "status.draft"},
+			"long title":   {map[string]any{"projectRef": "shop", "createdBy": "jo"}, map[string]any{"title": strings.Repeat("x", 256)}, "status.title"},
 			"unknown spec": {map[string]any{"projectRef": "shop", "createdBy": "jo", "owner": "jo"}, nil, "spec.owner"},
 		} {
 			obj := map[string]any{"spec": tc.spec}
