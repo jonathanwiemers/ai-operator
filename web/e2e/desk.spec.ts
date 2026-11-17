@@ -29,6 +29,8 @@ interface Route {
   // colorScheme is the system's scheme the page sees, light when unset
   // (playwright.config.ts).
   colorScheme?: 'light' | 'dark'
+  // features answers GET /api/v1/features instead of the fixture's.
+  features?: Feature[]
   // ready waits until the page shows its data.
   ready: (page: Page) => Promise<void>
 }
@@ -146,6 +148,17 @@ const routes: Route[] = [
       ready: (page) => expect(page.locator('main').getByText(taskReady[t.id]).first()).toBeVisible(),
     })),
   ),
+  // The project's plan list (PlanList.vue): Drafting and Milestones created.
+  // Only this route has the plans feature, so the other pages keep theirs.
+  {
+    name: 'plans',
+    path: '/projects/team-a/shop/plans',
+    features: [...features.features, { name: 'plans' }],
+    ready: async (page) => {
+      await expect(page.locator('main').getByText('Not planned')).toBeVisible()
+      await expect(page.locator('main').getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50')
+    },
+  },
   {
     name: 'researches',
     path: '/research',
@@ -269,6 +282,8 @@ for (const route of routes) {
       if (route.signedOut) await freshSignInMarker(page)
       await watch(page, origin, problems)
       await mockAPI(page, route, problems)
+      // Registered last, so it answers before the fixtures.
+      if (route.features) await page.route('**/api/v1/features', (r) => r.fulfill({ status: 200, json: { features: route.features } }))
 
       await page.goto(route.path)
       // The screenshot is taken even when the page never gets ready.

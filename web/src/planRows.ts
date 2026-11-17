@@ -1,5 +1,7 @@
-// Pure helpers for the plans list (title fallback, phase badge tone).
+// Pure helpers for the plans list (title fallback, phase badge tone,
+// milestone link, sections, request path).
 import type { AgentPlanPhase } from './generated/api'
+import type { PlanListItem } from './generated/views'
 import { cost, type Tone } from './format.ts'
 
 // planTitle is the plan's title, or "Untitled plan · <date>" when empty
@@ -51,6 +53,37 @@ export function planMilestoneTitle(title: string, draft: string): string {
   const t = title.trim() || (/^#{1,6}[ \t]+(.+)$/m.exec(draft)?.[1] ?? '').replace(/[ \t#]+$/, '').trim()
   return [...t].slice(0, 255).join('')
 }
+
+// PlanMilestoneLink is where a plan row's %N goes: the Desk milestone page
+// while the Desk has a row for it, else the milestone on GitLab, "Not
+// planned" (decision 7).
+export type PlanMilestoneLink =
+  | { label: string; to: { name: 'stream-milestone'; params: { namespace: string; name: string; iid: string } } }
+  | { label: string; href: string; note: string }
+
+export function planMilestoneLink(
+  item: Pick<PlanListItem, 'namespace' | 'project' | 'createdMilestoneIID' | 'createdMilestoneURL' | 'milestone'>,
+): PlanMilestoneLink | null {
+  const iid = item.createdMilestoneIID
+  if (!iid) return null
+  const label = `%${iid}`
+  if (item.milestone) {
+    return { label, to: { name: 'stream-milestone', params: { namespace: item.namespace, name: item.project, iid: String(iid) } } }
+  }
+  return { label, href: item.createdMilestoneURL ?? '', note: 'Not planned' }
+}
+
+// planSections splits a plan list (decision 9): created holds phase Created,
+// drafting every other phase, Failed included. Each is last active first.
+export function planSections<T extends Pick<PlanListItem, 'phase' | 'lastActivityAt'>>(items: T[]): { drafting: T[]; created: T[] } {
+  const at = (p: T) => Date.parse(p.lastActivityAt) || 0
+  const sorted = [...items].sort((a, b) => at(b) - at(a))
+  return { drafting: sorted.filter((p) => p.phase !== 'Created'), created: sorted.filter((p) => p.phase === 'Created') }
+}
+
+// plansPath lives in its own module: client.ts is in the initial chunk and
+// would pull in this whole file.
+export { plansPath } from './plansPath.ts'
 
 // planHeaderLines previews the lines the server appends (default markers).
 export function planHeaderLines(spec: boolean, autopilot: boolean): string[] {

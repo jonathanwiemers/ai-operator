@@ -260,3 +260,9 @@ follow-up issue), and requirements without an issue and why.
   the Planner section of `docs/contributing/web-ui.md` and the plans rows of
   the API table in `docs/contributing/design.md`. R15 should target those
   pages.
+- 2026-11-17 #536 (R8–R10): R11 (*Plan milestone* in `PlanList.vue`,
+  `planStart.ts`) moves to the navigation MR with R12–R14 (D536-P3).
+  `PlanList.vue` is mounted in the existing per-project list page until the
+  Plans tab replaces it. `plansPath` lives in `web/src/plansPath.ts`,
+  re-exported by `planRows.ts`: importing `planRows.ts` from `client.ts`
+  pulled the whole module into the initial chunk (+0.7 kB).

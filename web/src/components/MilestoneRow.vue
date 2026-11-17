@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import Badge from './Badge.vue'
+import ProgressBar from './ProgressBar.vue'
 import { costTooltip } from '../format'
-import { leftoversLabel, progressPct, rowCost, rowTokens, stateTone } from '../milestoneRows'
+import { leftoversLabel, rowCost, rowTokens, stateTone } from '../milestoneRows'
 import type { MilestoneRow } from '../types'
 
 // One milestone row (decision 5): project, title, state, progress, merged
@@ -11,7 +12,6 @@ import type { MilestoneRow } from '../types'
 // MilestoneList's.
 const props = defineProps<{ row: MilestoneRow; showProject?: boolean }>()
 
-const pct = computed(() => progressPct(props.row))
 const leftovers = computed(() => leftoversLabel(props.row))
 const to = computed(() => ({
   name: 'stream-milestone' as const,
@@ -44,19 +44,7 @@ const num = 'text-right whitespace-nowrap text-(--text-2) tabular-nums'
       <span v-if="row.needsYou" class="text-xs whitespace-nowrap text-(--tone-warning-fg)">needs you</span>
     </span>
     <span class="flex basis-full flex-wrap items-center gap-x-3 gap-y-1.5 tablet:contents">
-      <span class="flex flex-[1_1_10rem] items-center gap-2" :title="`${pct}% merged`">
-        <span
-          class="h-1.5 flex-1 overflow-hidden rounded-full bg-(--surface-3)"
-          role="progressbar"
-          :aria-valuenow="pct"
-          aria-valuemin="0"
-          aria-valuemax="100"
-          :aria-label="`${row.title || row.iid}: ${pct}% merged`"
-        >
-          <span class="block h-full bg-(--tone-success-fg)" :style="{ width: `${pct}%` }" />
-        </span>
-        <span :class="num" class="min-w-9">{{ row.progress.merged }}/{{ row.progress.total }}</span>
-      </span>
+      <ProgressBar :merged="row.progress.merged" :total="row.progress.total" :label="String(row.title || row.iid)" />
       <span :class="num" :title="`${row.progress.open} open issues`">
         <span class="text-(--text-3) tablet:hidden">open </span>{{ row.progress.open }}
       </span>

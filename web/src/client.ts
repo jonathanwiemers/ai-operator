@@ -25,6 +25,7 @@ import type {
   NoteView,
   OverviewView,
   PlanListItem,
+  PlanOverview,
   PlanView,
   ProjectDetail,
   ProjectSummary,
@@ -42,6 +43,7 @@ import type {
 } from './generated/views'
 import type { ResearchAgent, ResearchDepth, ResearchView } from './generated/api'
 import { draftConflictFrom, DraftConflict } from './planDraft'
+import { plansPath } from './plansPath'
 import type { ChatKind } from './types'
 
 export { DraftConflict }
@@ -304,6 +306,11 @@ function planPath(namespace: string, name: string, plan?: string): string {
 
 export function listPlans(namespace: string, name: string): Promise<PlanListItem[]> {
   return get(planPath(namespace, name))
+}
+// getPlans: GET /plans[?project=ns/name], the plans and projects of the
+// plan lists. plansPath is the full path (tested in node); get adds /api/v1.
+export function getPlans(project?: { namespace: string; name: string }): Promise<PlanOverview> {
+  return get(plansPath(project).slice('/api/v1'.length))
 }
 export function getPlan(namespace: string, name: string, plan: string): Promise<PlanView> {
   return get(planPath(namespace, name, plan))

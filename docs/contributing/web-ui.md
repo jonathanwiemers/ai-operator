@@ -891,12 +891,20 @@ and Nuxt UI, without scoped CSS; light and dark, readable at 375 px.
 
 The plans list (`web/src/views/Plans.vue`) and plan page
 (`web/src/views/Plan.vue`) are Tailwind utilities and Nuxt UI, without
-scoped CSS. Entry points: *Plan milestone* / *Plans* on the project Stream
+scoped CSS. The list is `PlanList.vue`: it loads `GET /api/v1/plans`
+(`?project=` when given a project) on mount and on a project change, not
+live, and shows *Drafting* (every phase but Created) and *Milestones
+created*, each last active first and hidden when empty. Each plan is a
+`PlanRow.vue` (project only across projects, title, phase, spend, last
+activity, and the milestone's `%N` with its state and `ProgressBar.vue`,
+or *Not planned* with the GitLab link). `ProgressBar.vue` is shared with
+`MilestoneRow.vue`. Entry points: *Plan milestone* / *Plans* on the project Stream
 (`Stream.vue`), *Plan* in `RailNav.vue`, and *Plan milestone* in the ⌘K
 Pages group (`searchItems.ts`). Chat is `PlanChat.vue` (Desk chat parts);
 the draft is `PlanDraft.vue` with Edit / Preview, Save, the newer-draft
 diff (`planDraft.ts`) and `PlanCreateDialog.vue` (Spec / Autopilot, estimate
-from `estimate.ts`). List helpers live in `planRows.ts`. See
+from `estimate.ts`). List helpers live in `planRows.ts` (`plansPath` in
+its own `plansPath.ts`, so `client.ts` keeps the initial chunk small). See
 [Planner](#planner).
 
 ### Milestone Issues

@@ -4,6 +4,7 @@
 // Fixtures live in one module per API area, typed with the generated views.
 import { costs, costsMetrics, costsTop } from './costs'
 import { doneMilestones, openMilestones, overview } from './overview'
+import { shopPlanOverview } from './plans'
 import { inbox, projects, researches } from './rail'
 import { researchAPI } from './research'
 import { about, features, me } from './session'
@@ -35,6 +36,7 @@ export const api: Record<string, Fixture> = {
   '/costs/metrics': costsMetrics,
   '/gitlab': gitlabStatus,
   '/search': answerSearch,
+  '/plans': shopPlanOverview,
   [shopPath]: shopDetail,
   [`${shopPath}/history`]: shopHistory,
   ...Object.fromEntries(Object.entries(milestones).map(([iid, m]) => [`${shopPath}/milestones/${iid}`, m])),

@@ -1,7 +1,51 @@
 // Tests of src/planRows.ts: npm test (node --test, no extra dependencies).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { planHeaderLines, planMilestoneTitle, planPhaseTone, planSpendLabel, planTitle, raiseBudgetError } from '../src/planRows.ts'
+import {
+  planHeaderLines,
+  planMilestoneLink,
+  planMilestoneTitle,
+  planPhaseTone,
+  planSections,
+  planSpendLabel,
+  plansPath,
+  planTitle,
+  raiseBudgetError,
+} from '../src/planRows.ts'
+
+test('planMilestoneLink: the Desk page with a row, GitLab with Not planned, else null', () => {
+  const base = { namespace: 'team', project: 'shop', createdMilestoneIID: 7, createdMilestoneURL: 'https://gitlab.example/m/7' }
+  const milestone = { state: 'running', progress: { merged: 2, total: 4, open: 2 }, stored: false }
+  assert.deepEqual(planMilestoneLink({ ...base, milestone }), {
+    label: '%7',
+    to: { name: 'stream-milestone', params: { namespace: 'team', name: 'shop', iid: '7' } },
+  })
+  assert.deepEqual(planMilestoneLink(base), { label: '%7', href: 'https://gitlab.example/m/7', note: 'Not planned' })
+  assert.deepEqual(planMilestoneLink({ ...base, createdMilestoneURL: undefined }), { label: '%7', href: '', note: 'Not planned' })
+  assert.equal(planMilestoneLink({ namespace: 'team', project: 'shop' }), null)
+  assert.equal(planMilestoneLink({ namespace: 'team', project: 'shop', createdMilestoneIID: 0, milestone }), null)
+})
+
+test('planSections: Created apart, every other phase drafting, newest first', () => {
+  const p = (name, phase, lastActivityAt) => ({ name, phase, lastActivityAt })
+  const { drafting, created } = planSections([
+    p('old', 'Idle', '2026-11-01T00:00:00Z'),
+    p('failed', 'Failed', '2026-11-03T00:00:00Z'),
+    p('done-old', 'Created', '2026-11-02T00:00:00Z'),
+    p('working', 'Working', '2026-11-05T00:00:00Z'),
+    p('done-new', 'Created', '2026-11-04T00:00:00Z'),
+    p('new', '', '2026-11-06T00:00:00Z'),
+  ])
+  assert.deepEqual(drafting.map((x) => x.name), ['new', 'working', 'failed', 'old'])
+  assert.deepEqual(created.map((x) => x.name), ['done-new', 'done-old'])
+  assert.deepEqual(planSections([]), { drafting: [], created: [] })
+})
+
+test('plansPath: all plans, or one project encoded', () => {
+  assert.equal(plansPath(), '/api/v1/plans')
+  assert.equal(plansPath({ namespace: 'team', name: 'shop' }), '/api/v1/plans?project=team%2Fshop')
+  assert.equal(plansPath({ namespace: 'a b', name: 'c&d' }), '/api/v1/plans?project=a%20b%2Fc%26d')
+})
 
 test('planTitle: trimmed title, else Untitled plan with the creation date', () => {
   assert.equal(planTitle('Refunds', '2026-11-01T00:00:00Z'), 'Refunds')
