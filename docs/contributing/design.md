@@ -2761,6 +2761,17 @@ newer one with the same kind and key supersedes. Prompts `boundPrompts`
 drops leave the status without them; prompts closed before the fields
 existed keep them empty.
 
+The pilot's own actions are logged in `status.pilot.acted` of the Coordinate
+task: the newest 30 (`MaxPilotActed`), each one proposal that `runAccepted`
+ran without a prompt (`pilotActed` in `pilot_actions.go`). An entry has `at`,
+`by` (empty for the pilot on its own, else the owner who accepted), `summary`
+(≤ 300 bytes), `why` (≤ 1000), `lines` (the per-action result lines, at most
+8 of ≤ 300 bytes), `issues` (the intervention keys it counted against, 0 for
+the milestone) and `ran` (false when none of its actions ran). All text is
+untrusted and cut to those bounds. The entries are written through
+`patchProposals`. A proposal that came from a prompt is not logged: its
+outcome is in the prompt's answer. The audit comment stays as it was.
+
 Every prompt (`Q<n>`, in `status.prompts` of the spec task or of an
 Implement task) is mirrored as one bot comment on its source: its merge
 request, else its issue, else the milestone's tracking issue

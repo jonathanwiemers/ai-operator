@@ -43,7 +43,7 @@ description lists every hold under its status line.
 
 ![Pause card on the milestone's Needs you tab: why it paused, the ways out and the pilot's question](../assets/screenshots/milestone-pilot.webp)
 
-The milestone's *Pilot* tab shows a pause as a card: the cause, the paused
+The milestone's [*Needs you* tab](desk.md#needs-you) shows a pause as a card: the cause, the paused
 issue and its merge request, what ends the pause by itself, and buttons for
 the ways out: *Retry*, *Review again*, *Resume*, *Skip*, links to the
 issue's chat, the pipeline, the merge request or the plan, and for an owner
@@ -53,7 +53,9 @@ issue's chat, the pipeline, the merge request or the plan, and for an owner
 The buttons send the same commands as the comments below, and the card shows
 the operator's answer. A `mainRed` or `budget` pause shows its
 [prompt](../concepts/glossary.md#prompt) instead of a bare *Resume*. The
-pilot's prompts about the pause are on the same tab.
+pilot's prompts about the pause are on the same tab. Once a pause has
+ended, it stays under *Handled* on that tab, with who ended it and how,
+next to the issue's questions and the pilot's actions.
 
 ## While it is paused
 

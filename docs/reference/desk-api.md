@@ -93,6 +93,19 @@ and leave out the cookie:
 | `POST /api/v1/projects/{namespace}/{name}/milestones/{iid}/issues/{issue}/close` | Close an issue that keeps a done autopilot milestone open. | `steer`, owner subject, GitLab connected |
 | `GET /api/v1/projects/{namespace}/{name}/estimate` | Estimated cost of `?plan=` or `?milestone=`, from the project's last finished milestones. | see, research database; Desk chat with `?plan=` |
 
+## Prompts and the pilot's actions
+
+The milestone and task views carry the questions (prompts) and what the
+pilot did. A closed prompt has `closedReason` (`answered`, `expired`,
+`stateChanged`, `mainHealthy`, `agentRanAgain`, `budgetResolved`,
+`pauseOver`, `issueDone` or `replaced`), `closedBy` (`owner`, `pilot`,
+`operator`, `selfHealed` or `laterRun`) and, for `replaced`, `replacedBy`,
+the newer prompt's ID. Prompts closed before these fields existed have none
+of them. A milestone's `pilot.acted` lists the newest 30 actions the pilot
+ran without a prompt, newest first. `pilot.interventions` gives per issue
+(`issueIID`, 0 for the milestone) the actions `used` of `max` on the
+current head.
+
 ## Tasks
 
 A task is one issue's work (or a milestone's planning, or its pilot), see
@@ -132,7 +145,7 @@ of the project's milestones, when any of them names owner subjects.
 
 | Method and path | Purpose | Needs |
 |-----------------|---------|-------|
-| `GET /api/v1/inbox` | What needs you now: questions, prompts, proposals, pauses, failed runs, budget warnings. | see |
+| `GET /api/v1/inbox` | What needs you now: questions, prompts, proposals, pauses, failed runs, budget warnings. `handled` lists what closed in the last 7 days, at most 50 rows, newest first: closed prompts and the pilot's actions, with `kind` (`prompt` or `acted`), `closedReason`, `closedBy`, `by` and `at`. | see |
 | `GET /api/v1/events` | Server-sent events that say *what* changed (a project, a task, a research), without content. | login |
 | `GET /api/v1/stream` | The activity stream: comments, runs, pushes, CI, reviews, prompts, chat. `?project=`, `?milestone=`, `?issue=`, `?kinds=`, `?q=`. Comment bodies only with `conversation`. | see, research database |
 | `GET /api/v1/projects/{namespace}/{name}/history` | Activity per day: runs, merges, cost. `?days=` (1 to 90), `?tz=`. | see, research database |

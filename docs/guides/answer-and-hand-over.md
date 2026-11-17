@@ -43,6 +43,33 @@ A new run that starts before you answer, for example from a comment or a
 retry, closes the open questions. The agent then reads your comments
 instead.
 
+### Answer on Needs you
+
+The pilot's and the operator's questions about a milestone wait on the
+milestone's [*Needs you* tab](desk.md#needs-you), under *Open*. Click an
+option or write your answer, then send it. The buttons and the text box
+go at once and the card shows "✓ your answer · sending…". If the Desk
+refuses the answer, they come back with the error.
+
+Once the question is closed, the card shows only what was chosen, what that
+did and the outcome. The other options fold under *Other options (n)*. A
+question nobody answered folds all its options under *Options (n)*.
+
+### How a question closes
+
+Every closed question says who closed it and why:
+
+| Label | Meaning |
+|-------|---------|
+| *Answered by @login* | An owner answered, with the choice. |
+| *Handled by the pilot* | The pilot closed it, with the cause. |
+| *Resolved on its own: <cause>* | The cause went away: main is green again, the issue was merged or closed, the agent ran again without the answer, the budget is no longer short, the pause ended or the milestone moved on. |
+| *Replaced by Q14* | A newer question of the same kind and subject took its place. The label links to it. |
+| *Expired: nobody answered in time* | The proposal ran out of time. |
+
+The question's GitLab comment shows the same words. Questions that closed
+before the Desk recorded the reason keep their older text.
+
 ## Answer in GitLab
 
 The operator also posts each question on the issue, as a comment with a

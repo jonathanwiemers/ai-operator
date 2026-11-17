@@ -110,7 +110,17 @@ Each action counts against its issue and that issue's head, up to
 [`pilot.maxInterventionsPerIssue`](../reference/agentproject.md#specpilot).
 Each time it acts, the tracking issue gets an audit comment, "🧭 The pilot
 acted on its own", with what it did, why, and how many actions are left. The
-audit pings nobody. A run the pilot starts keeps the issue's count of CI fix
+audit pings nobody.
+
+The Desk shows the same actions. On the milestone's
+[*Needs you* tab](desk.md#needs-you), *Handled* lists them under the issue
+they were for, with what the pilot did, why and the result, marked "Pilot"
+or with the owner who accepted it. The newest 30 are kept. The
+[Inbox](desk.md#inbox) shows those of the last 7 days under *Handled*. The
+audit comment stays. An action that came from a question is not listed
+twice: its outcome is in the question's answer. Each problem also reads
+"Pilot attempts: 2 of 2 on the current head": the actions used against the
+limit. A new push to the issue counts from 0 again. A run the pilot starts keeps the issue's count of CI fix
 rounds, so it does not start a new set of them.
 
 Of an assessment, it runs the recommended option only, and only if all of

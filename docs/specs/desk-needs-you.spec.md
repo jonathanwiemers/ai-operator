@@ -392,3 +392,21 @@ R1, R2 → R3, R4, R6, R7 → R5, R8, R10, R13 → R9, R11, R12 → R14, R15 →
   pause an owner ended (`closedBy: owner` without an answer): the GitLab
   state line says "Handled by an owner: the pause ended". R10 should use the
   same words.
+- 2026-11-17 #533 (R16): the spec names `docs/ui.md`, `docs/usage.md` and
+  `docs/design.md`, which the docs cutover removed. Their content went to
+  `guides/desk.md` (tab list, *Needs you*, the Inbox switch),
+  `guides/answer-and-hand-over.md` (answering, the close labels),
+  `guides/pilot.md` (where the pilot's actions show), `guides/pauses.md`,
+  `reference/desk-api.md`, `concepts/glossary.md`, `contributing/web-ui.md`
+  and `contributing/design.md` (D533-P1).
+- The spec's `postPrompt` is `addPrompt` in the code (R3): it records
+  `replaced`, `operator` and `replacedBy`.
+- `pauseOver` takes `status.autopilot.resumedBy` only for milestone pauses
+  (see #526 above); holds record no resolver and stay `operator`.
+- The older proposals (🧭 P-n) moved from the pilot chat to *Needs you*,
+  under *Open*, with *Accept* and *Reject*. Nothing is kept once they close,
+  as Decision 1 says.
+- Pause cards and the pause history moved from the Pilot tab to *Needs you*;
+  the Pilot tab keeps the pilot line, the composer and *Pilot events*.
+- No requirement was narrowed in the merged slices (#526, #527, #531,
+  #532) beyond the entries above; no follow-up issue was opened.

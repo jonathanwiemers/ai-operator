@@ -932,7 +932,9 @@ without scoped CSS.
 
 - The Pilot tab keeps its order: the pilot line (autonomy, cost, *Pilot
   task*), the message box (*Ask the pilot* is `TaskChat` with the merged
-  `Composer`, so its input is 16 px on phones) and pilot events. On phones
+  `Composer`, so its input is 16 px on phones) and pilot events (a
+  question is one line there). The questions and the pause history are on
+  the Needs you tab. On phones
   the *Pilot task* link is 44 px high.
 
 - A queue item shows its position, its number (never wrapped), its title

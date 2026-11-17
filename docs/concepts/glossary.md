@@ -116,6 +116,12 @@ Only owners answer [prompts](#prompt): in the Desk the owner-subjects, in
 GitLab the owners. With `workflow.commandsFrom: owners` only the owners give
 commands. See [Security](security.md#who-may-command).
 
+### Needs you
+
+A milestone's tab in the [Desk](#desk) for what waits for its owners: the
+open pause cards, questions and proposals, and below them what was handled,
+per issue. See [The Desk](../guides/desk.md#needs-you).
+
 ### Pause
 
 Autopilot stops the whole milestone: nothing new starts until the pause
