@@ -10,7 +10,13 @@
 - Go 1.26. After changing types or kubebuilder markers in `api/` or
   `internal/controller/`, run `make generate manifests`. CI fails if the
   generated files (deepcopy, CRDs, RBAC, the chart's `files/`) are out of date.
-- Before pushing: `gofmt`, `go vet ./...`, `make test`, `make helm-lint`.
+- Before pushing: `gofmt`, `go vet ./...`, `make helm-lint`, and the tests of
+  the packages you changed only: `go test ./internal/<pkg>/...`, narrowed with
+  `-run` in big packages such as `internal/runner`, without `-race`. Do not
+  run `make test` (the whole suite with `-race`) locally: on the shared agent
+  node it takes up to an hour, and CI runs it on every push. After changing
+  Markdown or a `docs/….md` ref, also run `go test ./internal/docscheck/`
+  (links, anchors, page caps); a change to docs only needs no other tests.
   After changing the web UI (`web/`): `make ui` (type-check and build).
 - New research-store migrations (`internal/research/store/migrations/`) are
   named by the UTC time they were created,
