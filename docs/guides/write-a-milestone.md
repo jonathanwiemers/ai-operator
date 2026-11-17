@@ -170,7 +170,7 @@ spec to plan again. On autopilot every planning failure is a comment on the
 milestone's [tracking issue](../concepts/glossary.md#tracking-issue) with
 the error and whether a retry follows, and it mentions the owners. Without
 autopilot, the task's status and the spec pod's log have it (see
-[Watching from Kubernetes](../usage.md#watching-from-kubernetes)).
+[Watch from Kubernetes](watch-from-kubernetes.md)).
 
 ## Dependencies
 

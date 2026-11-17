@@ -15,5 +15,8 @@ In reading order:
    the bundle budget, the UI kit and its conventions, and the roadmap.
 3. **[Releasing](releasing.md)**: calendar versions, who decides a release,
    the release pipelines, published images and chart.
-4. **[Sandbox test plan](sandbox-test-plan.md)**: an end-to-end run with a
+4. **[Research internals](research.md)**: research runs in the operator and
+   the pod, results and new items, the block schema, and the database with
+   its logins and grants.
+5. **[Sandbox test plan](sandbox-test-plan.md)**: an end-to-end run with a
    real GitLab project and the real agent CLIs.

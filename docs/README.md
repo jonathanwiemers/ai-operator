@@ -7,9 +7,6 @@ specs behind each feature. New here? Start with Getting started.
 
 ![Desk overview with running, paused and done milestones](assets/screenshots/dashboard.webp)
 
-The docs are being reorganised into these sections. Until a page has moved,
-it is listed under [Pages being moved](#pages-being-moved).
-
 ## Getting started
 
 **[getting-started/](getting-started/README.md)**: [install](getting-started/install.md)
@@ -29,14 +26,17 @@ get [your first milestone](getting-started/first-milestone.md) planned.
 know what happens [when runs go wrong](guides/when-runs-go-wrong.md), use
 [the Desk](guides/desk.md) and [steer from it](guides/steer-from-the-desk.md),
 watch [budgets and spend](guides/budgets-and-spend.md), ship
-[releases](guides/releases.md) and make
-[cross-repo changes](guides/cross-repo-changes.md).
+[releases](guides/releases.md), make
+[cross-repo changes](guides/cross-repo-changes.md),
+[watch from Kubernetes](guides/watch-from-kubernetes.md) and run
+[research](guides/research.md).
 
 ## Reference
 
 **[reference/](reference/README.md)**: every `/agent` command in
 [commands](reference/commands.md), the [labels](reference/labels.md), the
-[`AgentProject` fields](reference/agentproject.md) and the
+[`AgentProject` fields](reference/agentproject.md), the
+[`AgentResearch` fields](reference/agentresearch.md) and the
 [Desk API](reference/desk-api.md), for looking things up.
 
 ## Concepts
@@ -48,24 +48,14 @@ the [roles](concepts/roles.md) of the agents,
 ## Contributing
 
 **[contributing/](contributing/README.md)**: the design, web UI
-development, releasing and the sandbox test plan, for people who work on
-ai-operator itself.
+development, research internals, releasing and the sandbox test plan, for
+people who work on ai-operator itself.
 
 ## Specs
 
 **[specs/](specs/README.md)**: the specs behind each feature, with the
 problem, the decisions and how it was split into merge requests. Read one
 to learn why something works the way it does.
-
-## Pages being moved
-
-The old pages, until their sections have moved to the sections above. The
-[docs revamp spec](specs/docs-revamp.spec.md#inventory) lists where each
-section goes.
-
-- **[Usage](usage.md)**: watching from Kubernetes.
-- **[Research](research.md)**: news flashes, scheduled and one-off
-  researches next to the projects, with their own database.
 
 ## Assets
 

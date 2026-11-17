@@ -83,7 +83,7 @@ run only the factory.
   AgentTasks from the Kubernetes API and never uses the operator's GitLab
   token; with a user's GitLab account connected it reads threads and posts
   comments (also the milestone chat to the pilot) with that user's token.
-* The optional **research controller** ([research.md](../research.md)) runs
+* The optional **research controller** ([Research internals](research.md)) runs
   each `AgentResearch` once or on its cron schedule: it chooses the agent
   from the usage left, starts one pod per run without git, and records the
   outcome. The runner of that pod asks the agent, validates the answer
@@ -264,7 +264,7 @@ planner's summary is kept in the spec task's status (`kubectl get agenttask
 |------|---------------|---------|
 | `AgentProject` | you | GitLab connection, label workflow, agent image, engines/models per role, lifecycle and limits |
 | `AgentTask` | operator | one per planned milestone (`Spec`), per handed-over issue (`Implement`) and per milestone with a pilot (`Coordinate`); owns the pod and the workspace PVC |
-| `AgentResearch` | you, or the UI for one-offs | a research question run once or on a schedule against a project's engines; owns the pod of its current run. Its results live in Postgres, not in etcd. See [research.md](../research.md#agentresearch) |
+| `AgentResearch` | you, or the UI for one-offs | a research question run once or on a schedule against a project's engines; owns the pod of its current run. Its results live in Postgres, not in etcd. See [AgentResearch](../reference/agentresearch.md) |
 
 An `AgentResearch` follows the same split: the operator writes the top-level
 status, the runner only `status.run` (outcome, cost, usage readings), and the
@@ -343,7 +343,7 @@ Each pod has two containers, see [Security](#security):
   uses: it deletes the agent pod on purpose (see
   [Stall detection](#stall-detection)).
 
-**Research runs** (`AgentResearch`, see [research.md](../research.md#runs)) get
+**Research runs** (`AgentResearch`, see [Runs in detail](research.md#runs-in-detail)) get
 one short-lived pod per run, `<research>-<run ID prefix>`, with the label
 `ai.wiemers.me/research` and the same two containers, without git:
 
@@ -3002,7 +3002,7 @@ Things to keep in mind with subscriptions:
   `research.maxUsagePercent` (default 70) runs. With none, a one-off waits
   and a scheduled run is skipped until the earliest reset, so the factory
   keeps the rest of every window. See
-  [research.md](../research.md#choosing-agents).
+  [Choosing agents in detail](research.md#choosing-agents-in-detail).
 * The plans are meant for your own use. Check the terms of your plan before
   running agents for a team on a personal subscription; use API keys for that.
 * With a subscription the reported cost is the notional API price. It is
@@ -3681,9 +3681,9 @@ The research endpoints exist only with a research database. They answer 404
 without a matching research rule, for a research you may not read and for
 one that does not exist (no matter whether it has stored runs), and 503 until
 the UI is connected to the database. A result has `runID`, `title`,
-`summary`, `blocks` (the [block schema](../research.md#the-agents-answer), items with
+`summary`, `blocks` (the [block schema](research.md#block-schema-v1), items with
 `"new": true` when this run is the first of the research to report
-their URL, see [new items](../research.md#runs-results-and-new-items)), `createdAt`, `expiresAt` and `warnings`. The UI runs
+their URL, see [new items](research.md#runs-results-and-new-items)), `createdAt`, `expiresAt` and `warnings`. The UI runs
 every stored result through the block validator again before it sends it: one
 that fails (changed in the database, or by an older validator) is replaced by
 the title "Result withheld", no blocks and a warning, and logged; a search hit
@@ -3918,7 +3918,7 @@ Engines, profiles and subscriptions); CI feedback loop (see CI feedback);
 GitLab webhooks with polling as the fallback (see GitLab webhooks); the
 web UI's live transcripts, steering and milestone chat ([Steer from the Desk](../guides/steer-from-the-desk.md));
 research with scheduled news flashes and one-off reports in Postgres
-([research.md](../research.md)).
+([Research internals](research.md)).
 
 Next:
 

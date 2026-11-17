@@ -87,7 +87,7 @@ spec:
   # budget:
   #   perIssueUSD: "20"
   # Research runs of AgentResearches that reference this project (see
-  # docs/research.md). writerSecret is the database login their runner
+  # docs/guides/research.md). writerSecret is the database login their runner
   # writes results with, a Secret in this namespace with the keys username
   # and password, here the one the Zalando postgres-operator creates.
   # research:

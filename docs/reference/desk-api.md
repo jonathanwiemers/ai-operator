@@ -143,7 +143,7 @@ of the project's milestones, when any of them names owner subjects.
 ## Research
 
 These endpoints exist only with a research database, and only for research
-rules. See [Research](../research.md).
+rules. See [Research](../guides/research.md).
 
 | Method and path | Purpose | Needs |
 |-----------------|---------|-------|

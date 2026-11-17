@@ -56,7 +56,7 @@ type AgentProjectSpec struct {
 	Webhook WebhookSpec `json:"webhook,omitempty"`
 
 	// Research configures the AgentResearch runs that reference this
-	// project (see docs/research.md).
+	// project (see docs/guides/research.md).
 	// +optional
 	Research *ProjectResearch `json:"research,omitempty"`
 

@@ -178,6 +178,12 @@ can open as new issues. See
 An agent that reads each change of the implementer: bugbot for bugs,
 security for security problems. See [Roles](roles.md#reviewers).
 
+### Research
+
+A question an agent answers on the web, once or on a schedule, as an
+`AgentResearch` next to your projects. The Desk shows the result as a news
+flash or a report. See [Research](../guides/research.md).
+
 ### Revisit
 
 Asking to change a recorded [decision](#decision), in the Desk or with

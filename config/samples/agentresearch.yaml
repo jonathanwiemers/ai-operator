@@ -1,6 +1,6 @@
 # A morning news flash: every day at 07:00 Berlin time an agent collects the
 # latest news on the topics below; the UI shows it grouped by topic, with the
-# items that are new since the previous flash marked. See docs/research.md.
+# items that are new since the previous flash marked. See docs/guides/research.md.
 apiVersion: ai.wiemers.me/v1alpha1
 kind: AgentResearch
 metadata:

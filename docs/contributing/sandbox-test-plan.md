@@ -471,7 +471,7 @@ commits nothing special happens.
 says *Autopilot paused* with the reason. Fix the job by hand, move the issue
 to review and comment `/agent resume` on the tracking issue: the MR is merged
 and the queue continues. `/agent pause` and `/agent skip #<iid>` work as
-described in usage.md.
+described in [Commands](../reference/commands.md).
 
 4. On the tracking issue, comment `/agent revisit D<iid>-1 <a different
    choice>` with an ID from the decision index of a merged issue.

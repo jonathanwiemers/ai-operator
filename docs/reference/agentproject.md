@@ -378,7 +378,7 @@ see the [chart values](../../charts/ai-operator/README.md#values).
 | `pollInterval` | How often GitLab is polled. While webhooks arrive, most polls only list the milestones, see [`spec.webhook`](#specwebhook). | `1m` |
 | `maxConcurrentRuns` | Runs in flight per project, at least 1. More runs queue: the main-red fix first, then review-only runs, then issues without a milestone, then the oldest milestone. Pilots do not count. Keep it low on subscriptions, and above `autopilot.maxParallel`. | `3` |
 | `suspend` | Stop polling and starting runs. | `false` |
-| `research` | Settings for research runs of this project: `writerSecret` (the database login) and `candidates`, see [Research](../research.md#specresearch-on-agentproject). | – |
+| `research` | Settings for research runs of this project: `writerSecret` (the database login) and `candidates`, see [`spec.research`](agentresearch.md#specresearch-on-agentproject). | – |
 
 ## Next
 

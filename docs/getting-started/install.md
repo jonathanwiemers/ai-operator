@@ -312,9 +312,8 @@ TLS. The operator grants each role its rights when it starts.
 The next page connects the Desk to the reader and the chat writer. All
 database values, with their defaults, are in the
 [chart README](../../charts/ai-operator/README.md#research). Research runs
-need a fourth login for the agents; the research guide
-guides/research.md, written later, explains them. Until then see
-[Research](../research.md).
+need a fourth login, the writer; [Research](../guides/research.md#turn-it-on)
+explains it.
 
 ## Webhook (optional)
 

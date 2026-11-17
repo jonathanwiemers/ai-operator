@@ -134,10 +134,10 @@ Rows: `usage.md` 38, `ui.md` 57, `configuration.md` 34, `commands.md` 10,
 | usage.md | ## Issues that stay open | guides/when-runs-go-wrong.md | R5 | done; updated: target changed; the workspace goes after `retentionPeriod` without activity, not after the last run; the times linked to reference/lifecycle-and-ci.md |
 | usage.md | ### Agent notes | guides/when-runs-go-wrong.md | R5 | done; updated: target changed |
 | usage.md | ## Watching progress | guides/desk.md | R6 | done; updated: the Desk steps went into the views; the GitLab columns table reduced to a sentence with `workflow.assignBot` linked (decision D514-P2) |
-| usage.md | ## Watching from Kubernetes | guides/watch-from-kubernetes.md | R7b | open |
-| usage.md | ### Run logs | guides/watch-from-kubernetes.md | R7b | open |
-| usage.md | ### When the agent container dies | guides/watch-from-kubernetes.md | R7b | open |
-| usage.md | ### When the whole pod is lost | guides/watch-from-kubernetes.md | R7b | open |
+| usage.md | ## Watching from Kubernetes | guides/watch-from-kubernetes.md | R7b | done; updated: `Waiting` also covers out-of-memory retries and budget waits; AgentProject and AgentTask columns (the CI column and the resume time were missing, `-o wide` adds the resume time and the merge request), the task phases explained (Idle, Hibernated and Archived follow the pod and workspace lifecycle), `interruptions` listed with `status.run`, `spec.suspend` with `kubectl patch` examples |
+| usage.md | ### Run logs | guides/watch-from-kubernetes.md | R7b | done; updated: *open merge request* runs before the agent (only without a merge request), not after the push; *request review* added; steps of issues worked in steps and of checkpoints mentioned; `logLevel: error` drops the step lines too; the Desk's Live tab named |
+| usage.md | ### When the agent container dies | guides/watch-from-kubernetes.md | R7b | done; updated: the unschedulable pod shows in `status.message` (`kubectl describe`), not in `-o wide`; the `maxMemory` default is linked in reference/ instead of repeated |
+| usage.md | ### When the whole pod is lost | guides/watch-from-kubernetes.md | R7b | done; updated: the runner, not the operator, gives up after 3 restarts; the infra retry time links reference/ for its default |
 | ui.md | ## Screenshots | guides/desk.md | R6 | done; updated: each screenshot sits with its view in guides/desk.md, the Costs page in guides/steer-from-the-desk.md |
 | ui.md | ## Desk and history | guides/desk.md | R6 | done; updated: one section per view; the URLs, `?tab=` rules, event kinds per tab, stored milestones, cost chip tooltip, context panel and pause history API moved to contributing/web-ui.md "Desk behaviour in detail"; engine usage is in the rail, the *Working now* cards and the Costs page, not on the Board tab; the stream chips start with *All*; Revisit is on the queue's decisions (Issues tab and context panel) for owners with the `chat` grant |
 | ui.md | ### Navigation | guides/desk.md | R6 | done; updated: rail, breadcrumbs, search and live updates in "Find your way", the bottom bar in steer-from-the-desk.md "On a phone"; search finds projects, milestones, issues and merge requests and pages; crumb, bar and about-line details moved to contributing/web-ui.md "Navigation" |
@@ -239,21 +239,21 @@ Rows: `usage.md` 38, `ui.md` 57, `configuration.md` 34, `commands.md` 10,
 | commands.md | ## Replies to comments not acted on | reference/commands.md | R8a | done; updated: merged with the subsection of the same name under the issue commands |
 | commands.md | ## In the milestone description | reference/commands.md | R8a | done; updated: rule switch ranges (0 to 5, true or false) added |
 | commands.md | ## Labels you may set yourself | reference/labels.md | R8a | done; updated: `agent::draft`, failed runs split into needs-input and blocked, blocked reasons, operator-set labels (`ai-generated`, `ci::*`, `agent::companion`) added |
-| research.md | ## Concepts | guides/research.md | R7b | open |
-| research.md | ## `AgentResearch` | reference/agentresearch.md | R7b | open |
-| research.md | ## `spec.research` on `AgentProject` | reference/agentresearch.md | R7b | open |
-| research.md | ## Examples | guides/research.md | R7b | open |
-| research.md | ## Feed sources | guides/research.md | R7b | open |
-| research.md | ## Choosing agents | guides/research.md | R7b | open |
-| research.md | ## Runs | guides/research.md | R7b | open |
-| research.md | ## The agent's answer | guides/research.md | R7b | open |
-| research.md | ## In the pod | contributing/research.md | R7b | open |
-| research.md | ## Runs, results and new items | contributing/research.md | R7b | open |
-| research.md | ## Block schema v1 | contributing/research.md | R7b | open |
-| research.md | ## Retention | guides/research.md | R7b | open |
-| research.md | ## Database | contributing/research.md | R7b | open |
-| research.md | ### Example: my-cluster | contributing/research.md | R7b | open |
-| research.md | ## Troubleshooting | guides/research.md | R7b | open |
+| research.md | ## Concepts | guides/research.md | R7b | done; updated: Desk first ("Read results in the Desk", with the fields of *New research*); setup is the complete "Turn it on" example with the writer role; the agent choice and usage sharing are under "Choose agents" |
+| research.md | ## `AgentResearch` | reference/agentresearch.md | R7b | done; updated: `lastRun` is the start of the last run, not its end; the `Running` condition added; `Valid` is checked again every minute, for any reason, while it is `False` |
+| research.md | ## `spec.research` on `AgentProject` | reference/agentresearch.md | R7b | done; updated: "checked again whenever the project changes" dropped, the writer Secret is not watched |
+| research.md | ## Examples | guides/research.md | R7b | done; updated: the sample file names dropped (source refs); the candidates override shows only `spec.research` |
+| research.md | ## Feed sources | guides/research.md | R7b | done; the address list, user agent and code names went to contributing/research.md "Feeds in detail" |
+| research.md | ## Choosing agents | guides/research.md | R7b | done; the default candidates are in reference/agentresearch.md "Candidates", the window and reset rules in contributing/research.md "Choosing agents in detail" |
+| research.md | ## Runs | guides/research.md | R7b | done; the pod name, start and end details and requeues went to contributing/research.md "Runs in detail"; updated: deleting a research removes its pod by owner reference (garbage collection), not by the controller |
+| research.md | ## The agent's answer | guides/research.md | R7b | done; the user part (web only, one repair round, outcomes) is in the guide, the prompt and tool details in contributing/research.md |
+| research.md | ## In the pod | contributing/research.md | R7b | done |
+| research.md | ## Runs, results and new items | contributing/research.md | R7b | done; updated: retention deletes in batches of 1000 |
+| research.md | ## Block schema v1 | contributing/research.md | R7b | done |
+| research.md | ## Retention | guides/research.md | R7b | done; the internals are with "Runs, results and new items" in contributing/research.md |
+| research.md | ## Database | contributing/research.md | R7b | done; updated: the chat writer row names `ui.chat.writerSecret`; the logins table is "Logins" (four, not three) |
+| research.md | ### Example: my-cluster | contributing/research.md | R7b | done; updated: notes that the Desk chat also needs the chat writer login |
+| research.md | ## Troubleshooting | guides/research.md | R7b | done; updated: `Valid` is checked again every minute only while it is `False` |
 | design.md | ## Architecture | contributing/design.md | R10a | done; updated: opening describes autopilot, pilot and Desk |
 | design.md | ## Flow | contributing/design.md | R10a | done |
 | design.md | ## Custom resources | contributing/design.md | R10a | done |
@@ -392,3 +392,16 @@ with the requirement label and the issue or merge request.
   "Companions in detail" (only what "Cross-repo" lacked), and the Spend tab
   and Costs page internals are in `contributing/web-ui.md`. `usage.md`
   keeps only watching from Kubernetes (R7b).
+- R7b (#516): `guides/watch-from-kubernetes.md`, `guides/research.md`,
+  `reference/agentresearch.md` and `contributing/research.md` (plan
+  decision D516-P1) replace the rest of `usage.md` and all of
+  `research.md`; both are deleted, so no old top-level page is left and
+  `docs/README.md` lost its "Pages being moved" section. The research
+  internals that were spread over the old sections (pod name, run end,
+  requeues, the agent choice's window rules, the feed fetch guard, the
+  prompt and tools) are grouped under "… in detail" headings in
+  `contributing/research.md`. The code comment on `spec.research` now
+  names `docs/guides/research.md`, so the CRD descriptions and
+  `web/src/generated/` changed here too, like in R7a. The glossary gained
+  a "Research" entry. The old run step list put *open merge request* after
+  the push; the runner opens the draft before the agent starts.

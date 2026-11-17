@@ -146,7 +146,7 @@ Nothing is lost while an issue waits:
   request's pipeline runs, no pod is needed: the operator follows the
   pipeline itself.
 - **After a failed run** the pod stays for an hour, so you can read its logs
-  (see [Run logs](../usage.md#run-logs)).
+  (see [Run logs](watch-from-kubernetes.md#run-logs)).
 - **After a while without activity** the workspace is deleted too.
 - Any new `/agent` comment or move to `agent::ready` brings the issue back.
   After the workspace was deleted, the next run clones the repository again

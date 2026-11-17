@@ -204,15 +204,14 @@ feature.
 
 | | |
 |-|-|
-| [Guides](docs/guides/README.md) | write a milestone, answer the agent, run it on autopilot, pauses, the pilot, when runs go wrong, budgets and spend, releases, cross-repo changes |
-| [Usage](docs/usage.md) | watching from Kubernetes (moving to the guides) |
+| [Guides](docs/guides/README.md) | write a milestone, answer the agent, run it on autopilot, pauses, the pilot, when runs go wrong, budgets and spend, releases, cross-repo changes, watch from Kubernetes |
 | [Commands](docs/reference/commands.md) and [labels](docs/reference/labels.md) | every `/agent` and `/pilot` command, the marker lines and the labels |
 | [Getting started](docs/getting-started/README.md) | install (Helm, Flux), secrets, turn on the Desk, your first milestone |
 | [AgentProject](docs/reference/agentproject.md) and [Desk API](docs/reference/desk-api.md) | every `AgentProject` field with its default, engines, profiles, models, the agent image; the Desk's endpoints |
 | [Design](docs/contributing/design.md) | architecture, CRDs, pod topology, token economy, security |
 | [The Desk](docs/guides/desk.md), [Steer from the Desk](docs/guides/steer-from-the-desk.md) | what the Desk shows, who sees what, and how you steer from it |
 | [Web UI development](docs/contributing/web-ui.md) | run, check and build the Desk: dev setup, browser checks, bundle budget, UI kit |
-| [Research](docs/research.md) | news flashes, scheduled and one-off researches |
+| [Research](docs/guides/research.md) and [AgentResearch](docs/reference/agentresearch.md) | news flashes, scheduled and one-off researches, and their fields |
 | [Helm chart](charts/ai-operator/README.md) | chart values |
 | [Releasing](docs/contributing/releasing.md) | calendar versions, release workflow, published images and chart |
 | [Sandbox test plan](docs/contributing/sandbox-test-plan.md) | end-to-end test with a real GitLab project and the real agent CLIs |

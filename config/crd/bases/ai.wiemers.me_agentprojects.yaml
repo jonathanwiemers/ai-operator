@@ -2166,7 +2166,7 @@ spec:
               research:
                 description: |-
                   Research configures the AgentResearch runs that reference this
-                  project (see docs/research.md).
+                  project (see docs/guides/research.md).
                 properties:
                   candidates:
                     description: Candidates override the chart's research.candidates

@@ -113,19 +113,19 @@ that reaches a non-leader pod fails and GitLab's own retry covers it.
 
 ### Research
 
-Research runs (`AgentResearch`, see [docs/research.md](../../docs/research.md))
+Research runs (`AgentResearch`, see [Research](../../docs/guides/research.md))
 store their results in Postgres. The feature is off while
 `research.database.host` is empty. The chart installs the `AgentResearch` CRD
 either way. With a host the operator connects as the owner, applies the
 migrations and grants at start (retrying while the database is unreachable)
 and deletes expired results hourly; see
-[docs/research.md](../../docs/research.md#database). It
+[Research internals](../../docs/contributing/research.md#database). It
 also runs the research controller: one pod per run, whose runner logs in
 with the project's `spec.research.writerSecret`. The agent Role gets
 `get` on `agentresearches` and `get`/`patch` on their status. The operator
 chooses each run's agent from `research.candidates` and leaves an engine to
 the factory once it is limited or at `research.maxUsagePercent`; see
-[Choosing agents](../../docs/research.md#choosing-agents). With `ui.enabled`
+[Choosing agents](../../docs/guides/research.md#choose-agents). With `ui.enabled`
 the UI logs in with `readerSecret` and its ClusterRole gets
 `get`/`list`/`watch` on `agentresearches` for its Research section and on
 `agentplans` (milestone plans), plus a Role `…-plan-write` in each
@@ -153,7 +153,7 @@ on `agentplans` and `patch` on `agentplans/status` (see
 
 With the database of the Zalando postgres-operator on my-cluster (the
 AgentProject's writer login and the UI part are in
-[docs/research.md](../../docs/research.md#example-my-cluster)):
+[Research internals](../../docs/contributing/research.md#example-my-cluster)):
 
 ```yaml
 research:

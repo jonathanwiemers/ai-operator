@@ -24,3 +24,5 @@ here once, and the guides link to them. The Helm chart values are in the
    it, and the network policy.
 7. **[Desk API](desk-api.md)**: every endpoint of the Desk with what it is
    for and the grant it needs.
+8. **[AgentResearch](agentresearch.md)**: the fields and status of a
+   research, `spec.research` on a project, and the default candidates.

@@ -324,7 +324,7 @@ A research's page shows its prompt, feeds and
 the latest result: a news flash groups items by topic, important and new
 ones first; a report shows its blocks in order. *Run history* lists the
 stored runs with their cost. With `research: write`, *New research* starts a
-one-off research. More in [research.md](../research.md).
+one-off research. More in [Research](research.md).
 
 ## Watch progress in GitLab
 

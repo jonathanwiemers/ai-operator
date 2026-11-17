@@ -1444,7 +1444,7 @@ describe in plain words. The endpoints are in [design.md](design.md#desk-api).
   tasks are gone answers from the snapshot (`stored`): no *Board* tab, no
   message box, the *Pilot* tab shows only events and pauses. Milestones
   closed before the snapshot existed are filled in once by the operator's
-  backfill (see [research.md](../research.md#database)): issues with states
+  backfill (see [Research internals](research.md#database)): issues with states
   and merge requests and the retrospective's text, but no leftovers and only
   the spend `agent_calls` still holds.
 

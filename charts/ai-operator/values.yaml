@@ -99,7 +99,7 @@ agent:
         matchLabels:
           k8s-app: kube-dns
 
-# Research (AgentResearch, see docs/research.md): agents answer research
+# Research (AgentResearch, see docs/guides/research.md): agents answer research
 # questions once or on a schedule, the results are kept in Postgres. Off
 # while database.host is empty. The operator uses database.* (except
 # readerSecret), candidates and maxUsagePercent; the UI (ui.enabled) logs in

@@ -39,9 +39,11 @@ In the order you need them for a milestone:
     the final release, the sweep and the version format.
 14. [Cross-repo changes](cross-repo-changes.md): a change that spans a
     companion repository, and how its merge request lands.
-
-The other guides are being written from the old pages, see the
-[docs map](../README.md#pages-being-moved).
+15. [Watch from Kubernetes](watch-from-kubernetes.md): `kubectl` views of
+    projects and tasks, run logs, and what happens when an agent container
+    or a pod is lost.
+16. [Research](research.md): news flashes and one-off reports, turning
+    research on, choosing agents, retention and troubleshooting.
 
 ## Next
 
