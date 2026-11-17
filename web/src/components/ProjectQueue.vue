@@ -11,7 +11,7 @@ import Badge from './Badge.vue'
 import CostChip from './CostChip.vue'
 
 // ProjectQueue: a project's open autopilot milestones in run order with
-// Run next / Clear mark and Pause / Resume (docs/ui.md). Titles are text.
+// Run next / Clear mark and Pause / Resume (docs/contributing/web-ui.md, "Queue and Finishing"). Titles are text.
 // Stream reloads the project on live updates; the answer loads here.
 const props = defineProps<{ namespace: string; name: string; queue: QueueEntry[]; commands: boolean }>()
 

@@ -70,7 +70,7 @@ The pod and the settings that apply to every role:
 | `cacheClaimName` | An existing volume claim, ideally ReadWriteMany, mounted at `/cache` for shared Go, npm, pip and yarn caches. | – |
 | `env`, `nodeSelector`, `tolerations` | Passed to the pod. | – |
 | `logLevel` | `debug`, `info` or `error` for the pod's logs. `info` logs every step, `debug` adds git commands. A pod picks it up when it next starts. | the chart's `agent.logLevel`, else `info` |
-| `logPrompts` | Log every prompt (cut at 64 KiB) for the Desk's [live transcript](../ui.md#live-transcript). Prompts hold issue text, comments, diffs and CI logs. | `false` |
+| `logPrompts` | Log every prompt (cut at 64 KiB) for the Desk's [live transcript](../guides/desk.md#live-transcript). Prompts hold issue text, comments, diffs and CI logs. | `false` |
 | `chat` | Turn on Desk chat for this project's tasks. Needs the research database. | `false` |
 | `models` | The models an issue may switch to, see [Per-issue model and effort](#per-issue-model-and-effort). | opus, sonnet and haiku |
 | `maxEffort` | The highest effort an issue may ask for; higher values are lowered. A role's own `effort` is not capped. | `high` |

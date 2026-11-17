@@ -50,7 +50,7 @@ planner's questions and move an issue to `agent::ready`; an implementer pod
 opens a draft merge request, fixes red CI and moves the issue to
 `agent::review`. `/agent <change>` sends it back, a merge removes the pod.
 
-The optional [Desk](docs/ui.md) shows it as it happens: what runs now, every
+The optional [Desk](docs/guides/desk.md) shows it as it happens: what runs now, every
 milestone in work with its progress, cost and tokens, and what needs you.
 
 <p align="center">
@@ -76,7 +76,7 @@ milestone in work with its progress, cost and tokens, and what needs you.
 | ⚖️ **Right model for the job** | Profiles route each issue to a cheap or a strong model, Claude or Cursor. `/agent use claude opus high` overrides per issue, within the models you allow. |
 | 🔒 **Isolated by design** | The model never sees the GitLab token or cluster credentials: a trusted runner and the agent container exchange commits only as git bundles ([security](docs/contributing/design.md#security)). |
 | 🪙 **Easy on tokens** | Runs with your Claude or Cursor subscription. Sessions are resumed, pipelines are watched for free, pods stop right after each run, and usage limits pause runs instead of failing them. |
-| 🧭 **The Desk** | Optional web UI where you steer: ask a milestone's pilot, chat with a task's agent, answer prompts, revisit decisions, and watch runs, CI and costs. OIDC login and per-project roles ([Desk](docs/ui.md), [screenshots](docs/ui.md#screenshots)). |
+| 🧭 **The Desk** | Optional web UI where you steer: ask a milestone's pilot, chat with a task's agent, answer prompts, revisit decisions, and watch runs, CI and costs. OIDC login and per-project roles ([Desk](docs/guides/desk.md), [steering](docs/guides/steer-from-the-desk.md)). |
 
 > **Status:** `v1alpha1`. Unit and end-to-end tests pass (fake GitLab, real
 > git); real-world runs are tracked in the
@@ -210,7 +210,7 @@ feature.
 | [Getting started](docs/getting-started/README.md) | install (Helm, Flux), secrets, turn on the Desk, your first milestone |
 | [AgentProject](docs/reference/agentproject.md) and [Desk API](docs/reference/desk-api.md) | every `AgentProject` field with its default, engines, profiles, models, the agent image; the Desk's endpoints |
 | [Design](docs/contributing/design.md) | architecture, CRDs, pod topology, token economy, security |
-| [Web UI](docs/ui.md) | the Desk: what it shows, access rules, steering |
+| [The Desk](docs/guides/desk.md), [Steer from the Desk](docs/guides/steer-from-the-desk.md) | what the Desk shows, who sees what, and how you steer from it |
 | [Web UI development](docs/contributing/web-ui.md) | run, check and build the Desk: dev setup, browser checks, bundle budget, UI kit |
 | [Research](docs/research.md) | news flashes, scheduled and one-off researches |
 | [Helm chart](charts/ai-operator/README.md) | chart values |

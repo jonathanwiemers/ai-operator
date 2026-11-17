@@ -16,7 +16,7 @@ merge, and how an issue ends.
   comment without `/agent` reaches a running agent before its next step,
   and otherwise waits for the next run. The buttons above the box start a
   comment with the common commands. It needs your GitLab account connected
-  once (see [Steering](../ui.md#steering)).
+  once (see [Steering](steer-from-the-desk.md#gitlab-comments-from-the-desk)).
 - **Chat with the agent** talks to the agent between runs. It answers in a
   chat turn and can change and push the branch. A chat message starts no
   run. The chat also takes short commands, such as *retry*, *review*, a

@@ -4,9 +4,10 @@ Every `/agent` command is listed in [commands.md](reference/commands.md).
 
 Writing a milestone, answering the agent, following its work and iterating
 are in the [guides](guides/README.md), and so are autopilot, its pauses and
-the pilot. This page keeps budgets, companions, releases, prompts and
-watching progress
-until those sections move too.
+the pilot, and the Desk in [The Desk](guides/desk.md) and
+[Steer from the Desk](guides/steer-from-the-desk.md). This page keeps
+budgets, companions, releases and watching from Kubernetes until those
+sections move too.
 
 Setting up GitLab (the bot user, labels, board and webhooks) is part of
 [Install](getting-started/install.md#set-up-gitlab).
@@ -764,112 +765,6 @@ before `/`), the characters of links, images, HTML and code
 `[x](http://evil)` or `<img>` render as plain text. The reason is labelled
 as the planner's or the pilot's. The notes are at most 4000 bytes, valid
 UTF-8: the list is cut at whole lines and ends with "… and N more issues".
-
-## Prompts
-
-Every question the operator, the pilot or an agent puts to the owners is a
-**prompt**: a question, two to four options (exactly one recommended, and a
-"do nothing" one on every prompt with actions), and a text box where free
-text is allowed. Owners answer in the Desk
-(see [ui.md](ui.md#desk-and-history)) with one click or one sentence: a
-milestone's prompts on its *Pilot* tab (`…/milestones/<iid>?tab=pilot`,
-with the pause card and the message box to the pilot; the Inbox and the
-Desk link in the prompt's GitLab comment open it), an agent's question on
-its task page. The
-question's kind is one of: `assessment` (the pilot looked at something),
-`mainHealth` ([red or flaky `main`](guides/pilot.md)), `proposal`,
-`needsInput` ([the agent's questions](guides/answer-and-hand-over.md)),
-`revisit` ([a decision](guides/iterate-and-finish.md#change-a-decision-after-the-merge)) and `budget`
-([the budget](#budget-prompts)).
-
-- **Q-ids.** A prompt is `Q<n>`, counted up per milestone (an agent's
-  question on an issue outside a milestone: per task). An answer always
-  names the prompt and the option (`{"cmd":"answer","prompt":"Q5","option":"B"}`),
-  never "yes". Only the milestone's owners (`/agent owner-subjects`) can
-  answer, once: a second answer is refused naming the first.
-- **Lifecycle.** A prompt is **open**, then **answered** (who, which option
-  or words, when, via the Desk or GitLab), **superseded** when its source
-  resolves (main green again, the issue merged or closed, the run went on,
-  a newer prompt on the same source), or **expired** (proposal prompts only,
-  24 h after posting). There is no fixed time-to-live for the others. The
-  CRD status keeps the newest 20 prompts; every prompt and answer is also
-  recorded as a history event (`prompt.posted`, `prompt.answered`,
-  `prompt.closed`), so the Desk shows answered ones after status dropped them.
-- **Free text** on an action prompt never runs anything: the pilot turns it
-  into one more option, "From your answer: …", that you confirm, or asks one
-  follow-up question. On an agent's question the text *is* the answer and
-  goes to the agent's session.
-- **GitLab mirror.** The operator posts each prompt as one comment on its
-  source (the tracking issue, the issue or the merge request): the
-  question, the options as a list and "Answer in the Desk: <link>" (the link
-  needs `--desk-url`, chart `ui.externalURL`). The comment has no command
-  syntax to copy. When an option from your answer is added to an open
-  prompt, the operator edits the comment to list it, without mentioning
-  anyone again. When the prompt is answered, superseded or expired the
-  operator edits it ("✅ Answered by `@owner` in the Desk: <option>", "⏹️
-  Superseded: …", "⌛ Expired …") and replies with the chosen option and the
-  free text, quoted as untrusted. With `workflow.inputs` containing `gitlab`
-  an owner may also answer with the option's letter as a reply in the
-  thread, on an issue, the tracking issue or a merge request
-  ([commands](reference/commands.md)). Context, option text and free text are
-  untrusted: shown as markdown without HTML, and what an option does is
-  always checked by the operator, never taken from text.
-- **Pause cards.** A pause that needs no choice keeps its card; `mainRed`
-  and `budget` pauses show their prompt instead of a bare Resume.
-- **Legacy.** A proposal "P<n>" posted before prompts stays answerable
-  (`yes` / `no`, `/pilot yes P3`, Accept in the Desk) until it expires; new
-  ones are prompts.
-
-## Watching progress
-
-The workflow labels are the state the operator works with. GitLab's milestone
-page does not show labels as columns, it groups issues by its own rules:
-
-| Column | GitLab's rule | Agent issues in it |
-|--------|---------------|--------------------|
-| Unstarted | open, nobody assigned | `agent::draft`, and `agent::ready` until the next poll |
-| Ongoing | open, someone assigned | `agent::working`, `agent::needs-input`, `agent::review` |
-| Completed | closed | merged and closed |
-
-So that an issue the agent works on shows as **Ongoing**, the operator assigns
-the bot user (the user of the GitLab token) when it picks the issue up and
-nobody is assigned yet. The assignee is only a mirror for GitLab's views, the
-operator never reads it. It never replaces an assignee: if you assign yourself
-to take an issue over, the bot is not added back. Turn this off with
-`spec.workflow.assignBot: false`.
-
-The draft merge requests the agent opens carry the issue's milestone, so they
-show up in the milestone's **Merge requests** tab. Issues without a milestone
-get merge requests without one. Issues the operator picked up before this
-behaviour existed get the assignee on their next run request; merge requests
-that already exist keep no milestone.
-
-**On the Desk** ([ui.md](ui.md#desk-and-history)), step by step:
-
-1. `/` (*Overview*) shows what runs now per project (*Working now*), every
-   milestone in work across your projects (*In progress*: those that need
-   you first, then running, then waiting) and the newest done ones
-   (*Recently done*), each with its progress, open issues, cost and tokens.
-   The *Stream* tab next to it is every event of your projects.
-2. A milestone opens on its *Issues* tab: one row per issue with its state,
-   merge request, wall, agent and paused time, cost and tokens. *Pilot* holds
-   the pause card, the prompts and the chat with the pilot; *Retrospective*
-   the retrospective and its leftovers (see [The
-   retrospective](guides/pilot.md#the-retrospective)); *Stream* the runs, pushes, CI,
-   reviews and merges.
-3. An issue's row opens its issue page: the same figures, the live task
-   while one works on it, then the issue's events.
-4. The breadcrumbs at the top lead back up, one click per level.
-
-![Milestone Issues tab: the pause banner, one row per issue with merge request, time, cost and tokens, and release rows](assets/screenshots/milestone-issues.webp)
-
-More pages: [ui.md](ui.md#screenshots).
-
-With the [research database](getting-started/install.md#add-the-database), done
-milestones stay on the Desk after their tasks are deleted, with their
-issues, figures, retrospective and streams; the operator fills in those
-closed before the Desk kept them, once, from GitLab. Without it the Desk
-shows only milestones with live tasks, with the cost of those tasks.
 
 ## Watching from Kubernetes
 

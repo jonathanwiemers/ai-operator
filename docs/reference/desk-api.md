@@ -38,7 +38,7 @@ and leave out the cookie:
 ## How it works
 
 - **Who may do what.** The Desk's access rules decide it, see
-  [Access rules](../ui.md#access-rules). A rule that matches you lets you
+  [Access rules](../guides/desk.md#who-sees-what). A rule that matches you lets you
   *see* its projects. The grants `steer`, `chat`, `transcript` and
   `conversation` add more, and research rules (`research: read` or `write`)
   open the research endpoints. The table below names what each endpoint

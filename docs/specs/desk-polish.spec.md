@@ -65,9 +65,9 @@ Decisions taken while planning and implementing:
 | --- | --- |
 | R1 UI built with the version, `--self-project` for the UI | `Dockerfile`, `cmd/ui/main.go`, chart `ui-deployment.yaml` |
 | R2 `GET /api/v1/about` | `internal/ui/about.go`, `web/src/generated/views.ts`; [API](../reference/desk-api.md) |
-| R3 about line and update notes | `web/src/about.ts`, `RailNav.vue`, `App.vue`; [Navigation](../ui.md#navigation) |
-| R4 milestone strip removed | `web/src/views/Stream.vue`; [Navigation](../ui.md#navigation) |
-| R5 Costs in the phone bottom bar | `web/src/App.vue`; [Navigation](../ui.md#navigation) |
+| R3 about line and update notes | `web/src/about.ts`, `RailNav.vue`, `App.vue`; [Navigation](../contributing/web-ui.md#navigation) |
+| R4 milestone strip removed | `web/src/views/Stream.vue`; [Navigation](../contributing/web-ui.md#navigation) |
+| R5 Costs in the phone bottom bar | `web/src/App.vue`; [Navigation](../contributing/web-ui.md#navigation) |
 | R6 `GET /api/v1/search` | `internal/ui/search.go`; [API](../reference/desk-api.md) |
 | R7 palette, shortcut, buttons | `web/src/components/SearchPalette.vue`, `searchItems.ts`, `searchPalette.ts`, `App.vue`; [Search palette](../contributing/web-ui.md#search-palette) |
 | R8 docs | `docs/ui.md`, chart README, this file |

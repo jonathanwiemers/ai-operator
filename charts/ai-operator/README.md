@@ -131,7 +131,7 @@ the UI logs in with `readerSecret` and its ClusterRole gets
 `agentplans` (milestone plans), plus a Role `…-plan-write` in each
 `agent.namespaces` entry with `create`/`delete`/`get`/`list`/`watch`/`patch`
 on `agentplans` and `patch` on `agentplans/status` (see
-[docs/ui.md](../../docs/ui.md#platform)); `ui.research.*` is under
+[Plan a milestone](../../docs/guides/steer-from-the-desk.md#plan-a-milestone)); `ui.research.*` is under
 [Web UI](#web-ui).
 
 | Key | Default | Description |
@@ -253,7 +253,7 @@ for `maxStepLines`, the step-size gate of draft runs (claude only too), and
 The optional web UI, the Desk, where you steer the agents: answer prompts,
 ask the pilot, chat with an agent and watch runs, CI and costs.
 [Turn on the Desk](../../docs/getting-started/turn-on-the-desk.md) shows the
-setup, [docs/ui.md](../../docs/ui.md) what it shows. It runs as its own
+setup, [The Desk](../../docs/guides/desk.md) what it shows. It runs as its own
 Deployment (`<release>-ui`) with a service account that can only read
 AgentProjects and AgentTasks (and AgentResearches with
 `research.database.host`). The exceptions are the milestone plans with
@@ -278,11 +278,11 @@ the database, and the operator acts on them.
 | `ui.oidc.scopes` | `[openid, profile, email, offline_access]` | without `offline_access` the provider returns no refresh token: logins last `ui.auth.sessionTTL` and are not renewed |
 | `ui.oidc.claims.username` | `has(claims.email) ? claims.email : claims.sub` | CEL expression giving the user name |
 | `ui.oidc.claims.roles` | `has(claims.groups) ? claims.groups : []` | CEL expression giving the roles: a list, a string or a map whose keys are the roles (Zitadel: `claims["urn:zitadel:iam:org:project:roles"]`) |
-| `ui.authorization.rules` | `[]` | `{roles: [...], projects: ["namespace/name", ...], transcript, steer, conversation, chat}`; a user with any of the roles sees the matching projects (all if `projects` is empty, globs allowed); `transcript: true` adds live transcripts and prompts, `steer: true` writing comments, the milestone chat included, `conversation: true` the bodies of the comments and Desk chat in the streams, `chat: true` posting Desk chat (needs `ui.chat.writerSecret`). `"*"` matches every user. Nobody sees anything without a rule. A research rule `{roles, research: read\|write, researches: ["namespace/name", ...]}` grants researches instead (no projects, no `transcript`, `steer`, `conversation` or `chat`), see [Access rules](../../docs/ui.md#access-rules) |
-| `ui.research.allowCreate` | `false` | let users with the research write grant start one-off researches and delete their own (needs `research.database.host`); renders a Role and RoleBinding with `create`/`delete`/`get` on `agentresearches` in `ui.research.namespace` only, see [One-off researches](../../docs/ui.md#one-off-researches) |
+| `ui.authorization.rules` | `[]` | `{roles: [...], projects: ["namespace/name", ...], transcript, steer, conversation, chat}`; a user with any of the roles sees the matching projects (all if `projects` is empty, globs allowed); `transcript: true` adds live transcripts and prompts, `steer: true` writing comments, the milestone chat included, `conversation: true` the bodies of the comments and Desk chat in the streams, `chat: true` posting Desk chat (needs `ui.chat.writerSecret`). `"*"` matches every user. Nobody sees anything without a rule. A research rule `{roles, research: read\|write, researches: ["namespace/name", ...]}` grants researches instead (no projects, no `transcript`, `steer`, `conversation` or `chat`), see [Access rules](../../docs/guides/desk.md#who-sees-what) |
+| `ui.research.allowCreate` | `false` | let users with the research write grant start one-off researches and delete their own (needs `research.database.host`); renders a Role and RoleBinding with `create`/`delete`/`get` on `agentresearches` in `ui.research.namespace` only, see [Research rules](../../docs/guides/desk.md#research-rules) |
 | `ui.research.namespace` | `""` | namespace the UI creates one-off researches in; required with `allowCreate` (the chart fails without it). One-offs run with an AgentProject there that has `spec.research.writerSecret` |
 | `ui.chat.writerSecret` | `{name: "", usernameKey: username, passwordKey: password}` | Desk chat writer login, a Secret in the release's namespace; empty `name` turns chat off. Passed as `AI_OPERATOR_UI_CHAT_DB_USER`/`AI_OPERATOR_UI_CHAT_DB_PASSWORD`; needs `research.database.host` and `research.database.chatWriterRole` |
-| `ui.gitlab.url`, `ui.gitlab.clientID` | | GitLab and its OAuth application (confidential, scope `api`, redirect URI `<externalURL>/oauth2/gitlab/callback`) for [steering](../../docs/ui.md#steering): users connect their account, see the comments and post in their own name |
+| `ui.gitlab.url`, `ui.gitlab.clientID` | | GitLab and its OAuth application (confidential, scope `api`, redirect URI `<externalURL>/oauth2/gitlab/callback`) for [steering](../../docs/guides/steer-from-the-desk.md#gitlab-comments-from-the-desk): users connect their account, see the comments and post in their own name |
 | `ui.gitlab.tokenUser` | | instead of OAuth, for one user: the UI user name whose fixed GitLab token (key `gitlab-token`) the UI uses for them |
 | `ui.gitlab.existingSecret` | `ui.oidc.existingSecret` | Secret with `gitlab-client-secret` (OAuth) and/or `gitlab-token` (`tokenUser`) |
 | `ui.httpRoute.enabled` | `false` | Gateway API HTTPRoute for the UI's host |

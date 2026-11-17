@@ -137,7 +137,7 @@ function onWidth() {
   if (!phone.matches) railOpen.value = false
 }
 
-// The phone's bottom bar (docs/ui.md, "Navigation") marks the section of the
+// The phone's bottom bar (docs/contributing/web-ui.md, "Navigation") marks the section of the
 // current page with aria-current.
 const route = useRoute()
 const section = computed(() => {

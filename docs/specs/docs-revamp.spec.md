@@ -125,7 +125,7 @@ Rows: `usage.md` 38, `ui.md` 57, `configuration.md` 34, `commands.md` 10,
 | usage.md | ### Commands on the tracking issue | guides/autopilot.md | R5 | done; updated: a short table, every command and its limits linked to reference/commands.md; `/agent release` and `/agent no-release` added (the old table lacked them); status fields dropped (in contributing/design.md) |
 | usage.md | ### Tracking issue | guides/autopilot.md | R5 | done; updated: the description lists the holds |
 | usage.md | ### Switching it off | guides/autopilot.md | R5 | done; updated: changing the plan is its own section |
-| usage.md | ## Prompts | guides/steer-from-the-desk.md | R6 | open |
+| usage.md | ## Prompts | guides/steer-from-the-desk.md | R6 | done; updated: Desk first (where prompts appear, one click or your own words, the GitLab comment second); the kinds, Q-ids, the newest 20 in status, the history events and legacy P<n> moved to contributing/design.md "Prompts in GitLab" |
 | usage.md | ## Talking to the pilot | guides/pilot.md | R5 | done; updated: Desk first (*Pilot* tab, *Ask the pilot*, answers in your own words); `pilot.autonomy` is `managed` when unset on autopilot; defaults linked to reference/; the actions in plain words, the command forms linked to reference/commands.md; what its state lists, the classification values, five waiting answers and the legacy "P<n>" proposals moved to contributing/design.md "Pilot" |
 | usage.md | ### Spec changes through the pilot | guides/pilot.md | R5 | done |
 | usage.md | ### The retrospective | guides/pilot.md | R5 | done; updated: the Desk steps first; the facts, their size and trimming order moved to contributing/design.md "Pilot"; the draft command and the Desk endpoints are already there and in "Desk API" |
@@ -133,37 +133,37 @@ Rows: `usage.md` 38, `ui.md` 57, `configuration.md` 34, `commands.md` 10,
 | usage.md | ## Usage and rate limits | guides/when-runs-go-wrong.md | R5 | done; updated: target changed; split into "Usage limits" and "When GitLab is slow"; the checkpoint text is not repeated; the poll deadline, `Synced` and the log lines are in contributing/design.md "Token economy"; engine usage internals already in "Engines, profiles and subscriptions" |
 | usage.md | ## Issues that stay open | guides/when-runs-go-wrong.md | R5 | done; updated: target changed; the workspace goes after `retentionPeriod` without activity, not after the last run; the times linked to reference/lifecycle-and-ci.md |
 | usage.md | ### Agent notes | guides/when-runs-go-wrong.md | R5 | done; updated: target changed |
-| usage.md | ## Watching progress | guides/desk.md | R6 | open |
+| usage.md | ## Watching progress | guides/desk.md | R6 | done; updated: the Desk steps went into the views; the GitLab columns table reduced to a sentence with `workflow.assignBot` linked (decision D514-P2) |
 | usage.md | ## Watching from Kubernetes | guides/watch-from-kubernetes.md | R7b | open |
 | usage.md | ### Run logs | guides/watch-from-kubernetes.md | R7b | open |
 | usage.md | ### When the agent container dies | guides/watch-from-kubernetes.md | R7b | open |
 | usage.md | ### When the whole pod is lost | guides/watch-from-kubernetes.md | R7b | open |
-| ui.md | ## Screenshots | guides/desk.md | R6 | open |
-| ui.md | ## Desk and history | guides/desk.md | R6 | open |
-| ui.md | ### Navigation | guides/desk.md | R6 | open |
-| ui.md | ### Queue and Finishing | guides/desk.md | R6 | open |
-| ui.md | ### Planner | guides/desk.md | R6 | open |
+| ui.md | ## Screenshots | guides/desk.md | R6 | done; updated: each screenshot sits with its view in guides/desk.md, the Costs page in guides/steer-from-the-desk.md |
+| ui.md | ## Desk and history | guides/desk.md | R6 | done; updated: one section per view; the URLs, `?tab=` rules, event kinds per tab, stored milestones, cost chip tooltip, context panel and pause history API moved to contributing/web-ui.md "Desk behaviour in detail"; engine usage is in the rail, the *Working now* cards and the Costs page, not on the Board tab; the stream chips start with *All*; Revisit is on the queue's decisions (Issues tab and context panel) for owners with the `chat` grant |
+| ui.md | ### Navigation | guides/desk.md | R6 | done; updated: rail, breadcrumbs, search and live updates in "Find your way", the bottom bar in steer-from-the-desk.md "On a phone"; search finds projects, milestones, issues and merge requests and pages; crumb, bar and about-line details moved to contributing/web-ui.md "Navigation" |
+| ui.md | ### Queue and Finishing | guides/steer-from-the-desk.md | R6 | done; target changed to guides/steer-from-the-desk.md (it is an action); the API fields and command bodies moved to contributing/web-ui.md "Queue and Finishing" |
+| ui.md | ### Planner | guides/steer-from-the-desk.md | R6 | done; target changed to guides/steer-from-the-desk.md "Plan a milestone", the steps stay in guides/write-a-milestone.md; defaults checked against the chart values; endpoints and storage moved to contributing/web-ui.md "Planner" |
 | ui.md | ### Spend | guides/budgets-and-spend.md | R7a | open |
 | ui.md | ### Costs page | guides/budgets-and-spend.md | R7a | open |
-| ui.md | ### Agent calls on the Task page | guides/desk.md | R6 | open |
-| ui.md | ### Notifications | guides/desk.md | R6 | open |
-| ui.md | ## Platform | guides/desk.md | R6 | open |
-| ui.md | ## What it shows | guides/desk.md | R6 | open |
+| ui.md | ### Agent calls on the Task page | guides/desk.md | R6 | done; updated: a bullet of the *Calls* tab; the line counting, gate counts, checkpoint reasons and chart details moved to contributing/web-ui.md "Agent calls" |
+| ui.md | ### Notifications | guides/desk.md | R6 | done; updated: the dedup rules moved to contributing/web-ui.md "Notifications"; the History part to its "History", the `conversation` grant to "Who sees what" |
+| ui.md | ## Platform | guides/desk.md | R6 | done; updated: a short "Research" section; the block renderer and markdown subset moved to contributing/web-ui.md "Research results and markdown" |
+| ui.md | ## What it shows | guides/desk.md | R6 | done; updated: the task page as a list of its tabs; *Live* also needs a pod log source, *Logs* owners with `steer`, *Restart run* owners with `chat`; chat, prompts and pause cards went to guides/steer-from-the-desk.md; the command routing, prompt command table and fallback pause actions moved to contributing/web-ui.md "Chat commands" and "Pause card actions"; the pilot's *Accept*/*Reject* are per open proposal |
 | ui.md | ## Enable it | getting-started/turn-on-the-desk.md | R3 | done |
 | ui.md | ### 1. Create the OIDC client | getting-started/turn-on-the-desk.md | R3 | done; updated: the Refresh Token grant type named in the Zitadel steps; the username left at its default (email) |
 | ui.md | ### 2. Create the Secret | getting-started/turn-on-the-desk.md | R3 | done |
 | ui.md | ### 3. Set the chart values | getting-started/turn-on-the-desk.md | R3 | done; updated: the rule grants `chat` and the chat writer login is set, which answering prompts needs, and `spec.agents.chat` is turned on in the project |
 | ui.md | ### 4. Staying logged in | getting-started/turn-on-the-desk.md | R3 | done; updated: defaults left to the chart README; renewal internals are in contributing/design.md "Desk session model" |
-| ui.md | ## Access rules | guides/desk.md | R6 | open |
-| ui.md | ### Research rules | guides/desk.md | R6 | open |
-| ui.md | ### Claim mapping | guides/desk.md | R6 | open |
-| ui.md | ## Live transcript | guides/steer-from-the-desk.md | R6 | open |
-| ui.md | ## Steering | guides/steer-from-the-desk.md | R6 | open |
-| ui.md | ### Set it up | guides/steer-from-the-desk.md | R6 | open |
-| ui.md | ### One user, a fixed token | guides/steer-from-the-desk.md | R6 | open |
-| ui.md | ### How it works | guides/steer-from-the-desk.md | R6 | open |
-| ui.md | ## Without login | getting-started/turn-on-the-desk.md | R3 | done; updated: the user name is `anonymous`; the DNS rebinding detail stays in ui.md "Security" (R6) |
-| ui.md | ## Security | guides/desk.md | R6 | open |
+| ui.md | ## Access rules | guides/desk.md | R6 | done; updated: "Who sees what", with what each grant unlocks (`steer` also plans, logs and follow-ups for owners) and the `owner-subjects` line |
+| ui.md | ### Research rules | guides/desk.md | R6 | done; updated: the one-off research rules (namespace, names, creator, limits, audit) moved to contributing/web-ui.md "One-off researches" |
+| ui.md | ### Claim mapping | guides/desk.md | R6 | done; updated: links the provider expressions in getting-started/turn-on-the-desk.md |
+| ui.md | ## Live transcript | guides/desk.md | R6 | done; target changed to guides/desk.md (a view, not an action); how the logs are read moved to contributing/web-ui.md "Live transcript" |
+| ui.md | ## Steering | guides/steer-from-the-desk.md | R6 | done; updated: "GitLab comments from the Desk", Desk chat first in "Chat with an agent" |
+| ui.md | ### Set it up | guides/steer-from-the-desk.md | R6 | done |
+| ui.md | ### One user, a fixed token | guides/steer-from-the-desk.md | R6 | done; updated: the Planner or Reporter role for creating milestones moved here from "How it works" |
+| ui.md | ### How it works | guides/steer-from-the-desk.md | R6 | done; updated: limits in plain words; thread polling, the pilot prefix, follow-up text rules, token cookie and target checks moved to contributing/web-ui.md "GitLab steering"; the follow-up and plan creation are in guides/pilot.md and "Plan a milestone" |
+| ui.md | ## Without login | getting-started/turn-on-the-desk.md | R3 | done; updated: the user name is `anonymous`; the DNS rebinding detail moved to contributing/web-ui.md "Security" (R6) |
+| ui.md | ## Security | guides/desk.md | R6 | done; updated: what the login protects in guides/desk.md; the mechanics (cookies, redirects, signing in again, CSP, the localhost-only check against DNS rebinding) moved to contributing/web-ui.md "Security" (decision D514-P1) |
 | ui.md | ## API | reference/desk-api.md | R8b | done; updated: endpoints grouped, each with its purpose and the grant it needs, checked against the router (48 routes); the answer shapes, parameters and error codes moved to contributing/design.md "Desk API" |
 | ui.md | ## Development | contributing/web-ui.md | R10b | done |
 | ui.md | ## Checks | contributing/web-ui.md | R10b | done |
@@ -369,3 +369,15 @@ with the requirement label and the issue or merge request.
   The pause records (`resolvedBy`, `via`), the retrospective's facts and
   what the pilot's state lists were not in `contributing/design.md` yet,
   so they moved there.
+- R6 (#514): the user parts of `ui.md` and `usage.md`'s Prompts and
+  Watching progress became `guides/desk.md` (what you see) and
+  `guides/steer-from-the-desk.md` (what you do). Queue and Finishing and
+  the Planner went to the steering guide, the Live transcript to the Desk
+  guide. Their internals (URLs, event kinds, command bodies, fallback pause
+  actions, limits, the security mechanics) moved to
+  `contributing/web-ui.md` "Desk behaviour in detail" (plan decision
+  D514-P1 for Security), the prompt kinds and lifecycle internals to
+  `contributing/design.md` "Prompts in GitLab". `ui.md` keeps only Spend
+  and the Costs page for R7a; "Costs at a glance" links them until the
+  budgets guide exists. The old text placed engine usage on the Board tab;
+  it is in the rail, the *Working now* cards and the Costs page.

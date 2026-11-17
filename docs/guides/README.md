@@ -29,6 +29,10 @@ In the order you need them for a milestone:
    spec through it, and the retrospective.
 9. [When runs go wrong](when-runs-go-wrong.md): cut-off runs, usage limits,
    a slow GitLab, and issues that wait.
+10. [The Desk](desk.md): log in, who sees what, and what each view shows.
+11. [Steer from the Desk](steer-from-the-desk.md): chat with an agent, ask
+    the pilot, answer prompts, revisit decisions, pause cards, the queue,
+    the planner, costs and the Desk on a phone.
 
 The other guides are being written from the old pages, see the
 [docs map](../README.md#pages-being-moved).

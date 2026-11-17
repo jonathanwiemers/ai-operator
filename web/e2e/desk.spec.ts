@@ -1453,7 +1453,7 @@ test.describe('context sheet', () => {
   }
 })
 
-// The bottom bar on a phone (App.vue, docs/ui.md "Navigation"): Inbox with
+// The bottom bar on a phone (App.vue, docs/contributing/web-ui.md "Navigation"): Inbox with
 // its count, Overview, Projects (the rail sheet) and Research with the
 // feature on; aria-current on the section shown. It hides while a text field
 // has the focus, and the pane's end stays above it. Tablet and desktop have

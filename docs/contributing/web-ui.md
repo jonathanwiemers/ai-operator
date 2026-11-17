@@ -4,7 +4,9 @@ For people who work on the Desk itself: how to run the web UI locally, the
 checks `make ui` and CI run, the bundle budget, the UI kit and the
 conventions its components follow, and what is planned next. The design
 behind it (the API, access rules, styles) is in [design.md](design.md). For
-using the Desk, see [ui.md](../ui.md).
+using the Desk, see [The Desk](../guides/desk.md) and
+[Steer from the Desk](../guides/steer-from-the-desk.md); what each view
+does under the hood is in [Desk behaviour in detail](#desk-behaviour-in-detail).
 
 ## Development
 
@@ -222,7 +224,7 @@ How it works:
   `button`, `[role=button]` or `input` is under 44 px high
   (exceptions in the check's `hitAllowlist`, with a reason), and at
   1280 px a plain `button` stays under 44 px. The `bottom bar …` cases check the
-  [bottom bar](../ui.md#navigation): the count, each item's 44 px, that each link
+  [bottom bar](#navigation): the count, each item's 44 px, that each link
   navigates and gets `aria-current` and *Projects* opens the sheet; no
   *Research* with a features answer without it; that the issue page's end
   is above the bar once scrolled down; and that the bar hides while the
@@ -369,7 +371,7 @@ They are bundled at build time (`icon.clientBundle`): the plugin scans
 would be fetched from the Iconify API, which the CSP blocks; the browser
 checks fail on that as a CSP violation and a request to another origin.
 
-**CSP.** The kit runs under the unchanged policy (see [Security](../ui.md#security)):
+**CSP.** The kit runs under the unchanged policy (see [Security](#security)):
 no inline style, script or other origin. Nuxt UI's colour plugin sets its
 colours through an inline `<style>` (`useHead`), so it is left out:
 `main.ts` installs only Nuxt UI's icons plugin, not the whole
@@ -577,7 +579,7 @@ Groups, built by `src/searchItems.ts`:
   opens the task page.
 * **Pages**: Inbox, Overview, Costs (feature `history`), Research (feature
   `research`), and *Plan milestone* (feature `plans`, when a project is
-  open) to that project's [plans list](../ui.md#planner).
+  open) to that project's [plans list](#planner).
 
 Keyboard: ⌘K / Ctrl+K opens, arrows move, Enter opens the item and closes
 the palette, Escape closes it. The palette joins the browser history like a
@@ -852,11 +854,11 @@ and 1280 px check the columns and the Inbox chip's height
 On a project's *Stream* tab (`web/src/views/Stream.vue`), above
 `MilestoneSections`, `ProjectQueue.vue` and `ProjectFinishing.vue` read
 `project.queue` / `queueCommands` and `project.finishing` (see
-[Queue and Finishing](../ui.md#queue-and-finishing)). Labels and button commands
+[Queue and Finishing](#queue-and-finishing)). Labels and button commands
 live in `projectQueue.ts` and `finishing.ts`; *Close issue* calls
 `closeHoldingIssue`. `needsEstimate` in `projectQueue.ts` marks
 `waiting`/`holding` rows with no spend for
-`GET …/estimate?milestone=` (see [Planner](../ui.md#planner)). Tailwind utilities
+`GET …/estimate?milestone=` (see [Planner](#planner)). Tailwind utilities
 and Nuxt UI, without scoped CSS; light and dark, readable at 375 px.
 
 ### Plans
@@ -869,7 +871,7 @@ Pages group (`searchItems.ts`). Chat is `PlanChat.vue` (Desk chat parts);
 the draft is `PlanDraft.vue` with Edit / Preview, Save, the newer-draft
 diff (`planDraft.ts`) and `PlanCreateDialog.vue` (Spec / Autopilot, estimate
 from `estimate.ts`). List helpers live in `planRows.ts`. See
-[Planner](../ui.md#planner).
+[Planner](#planner).
 
 ### Milestone Issues
 
@@ -1126,6 +1128,376 @@ view, topics, agent and effort) and opens the new research, and that a 400
 `research-new-error@<width>.png`). Both pages are also among the hit-area
 routes (the Depth radios are allowlisted: their labels are the hit area),
 and the form's known overflow at 375 px is gone.
+
+## Desk behaviour in detail
+
+What the Desk does under the hood, for each view the user guides
+[The Desk](../guides/desk.md) and [Steer from the Desk](../guides/steer-from-the-desk.md)
+describe in plain words. The endpoints are in [design.md](design.md#desk-api).
+
+### Routes and tabs
+
+- **Dashboard** (`/`): *Overview* (default) and *Stream* (`/?tab=stream`).
+  The summary strip's spend is the UTC day and the last 7 days. *Recently
+  done* shows the newest 10, *Show all* loads up to 200. A milestone row's
+  cost is a dash when unknown, never $0. A user with research alone starts
+  at `/research`.
+- **Project** (`/projects/<namespace>/<name>`) and **milestone**
+  (`…/milestones/<iid>`): the view tab is kept in `?tab=`; the default
+  (*Stream* on a project, *Issues* on a milestone) is left out. Old
+  `…/milestones/3?tab=stream` links still open the stream; a milestone link
+  with a `#prompt-Q<n>` hash and no `?tab=` opens *Pilot*. The view tabs are
+  a [RouteTabs](#routetabs) strip. Scope tabs keep a chosen view tab where
+  the target has it and open its default otherwise.
+- **Issue page** (`…/milestones/<iid>/issues/<issue>`): the *Task* section
+  holds the task page's tabs by `?tab=`; its stream is `GET /api/v1/stream`
+  with `issue=`. It reads the snapshot and history, so a closed milestone's
+  issue opens after its tasks are gone.
+- **Task page**: an old `#live-transcript` link without `?tab=` opens
+  *Live*. Only the open tab is loaded.
+- The Desk has no projects list or separate board and milestone pages; the
+  old paths show Not found. Task and research pages keep their URLs.
+- **Stored milestones.** With the research database a closed milestone whose
+  tasks are gone answers from the snapshot (`stored`): no *Board* tab, no
+  message box, the *Pilot* tab shows only events and pauses. Milestones
+  closed before the snapshot existed are filled in once by the operator's
+  backfill (see [research.md](../research.md#database)): issues with states
+  and merge requests and the retrospective's text, but no leftovers and only
+  the spend `agent_calls` still holds.
+
+### Which events show where
+
+Every event kind belongs to one of a milestone's two event tabs, never both
+(`pilotKinds` and `runtimeKinds` in `internal/ui/stream.go`, mirrored in
+`web/src/stream.ts`):
+
+- *Pilot*: `prompt.posted`, `prompt.answered`, `prompt.closed`, `needs`,
+  `autopilot`, `autopilot.paused`, `autopilot.resumed`, `proposal`,
+  `pilot.writeFailed`, `note`, `chat.user`, `chat.agent`,
+  `release.decided`, `release.started`, `release.ended` and
+  `retrospective`.
+- *Stream*: `run.started`, `run.finished`, `push`, `checkpoint` (a budget
+  stop, a lost pod or an OOM kill; under the *Runs* chip), `ci`, `review`,
+  `merged` and `closed`.
+
+A project's *Stream* tab and the dashboard's show all kinds, and every kind
+can be asked for with `kinds=`. A `prompt.posted` event is the prompt's
+compact card while the milestone view still has the prompt; if status
+dropped it, only the summary line shows. The bot's mirror comments
+(`ai-operator:prompt` and its answer reply) are hidden from the note
+threads, so a prompt shows once.
+
+### Context panel and pause history
+
+The context panel (from 1180 px, project pages only) shows the project's
+needs-you items, the active milestone's queue (a milestone waiting for its
+turn says *⏳ Waiting for its turn: %7, %9 go first*, from
+`autopilot.queuedBehind`; it is running, not paused, so it has no pause card
+and no Inbox item) and the last 30 days against the 30 before. Below
+1180 px the header's *Context* button opens it as a [sheet](#sheets); its
+count is the panel's own, so neither loads anything more.
+
+The milestone API carries the **pause history** (`pauses`, from the
+`autopilot.paused`/`autopilot.resumed` events within the history
+retention): the newest 20 pauses with kind, reason, start, end, who resolved
+each and how (`via`), an open one counting up to now, plus totals (time
+paused, per kind, mean time to resume, per resolver and per way it ended).
+It is absent without the history database.
+
+### Cost chips
+
+`$12.34 · 1.2M tok` on the stream header, each milestone scope tab and the
+Task page header. The tooltip splits input, output and cache tokens, calls,
+calls without a known cost and the part from runs recorded before agent
+calls. With the research database they sum the recorded agent calls and
+older runs, so deleted tasks still count; a cost no call reports (cursor
+without pricing) shows *n/a*. Without the database they sum the cost of the
+current tasks, without tokens.
+
+### Navigation
+
+Breadcrumbs are built from the URL: *Overview* › project › milestone ›
+issue, *Overview* › project › *Plans* › plan, *Research* › research ›
+*Runs* › run. A task page sits under its issue page; a task without an
+issue under the project. The Inbox, Costs, the research list and *Not
+found* show one crumb. Every crumb but the last links to that level's
+default tab. Crumbs show `%<iid>`, `#<iid>` or the task's name until the
+view has loaded titles; they cost no extra request. On narrow screens the
+middle crumbs fold behind `…`. The Spend tab keeps its own drill-down
+crumbs.
+
+The phone's bottom bar (`App.vue`, under 760 px) is 56 px high; the item
+of the section shown has `aria-current="page"`. It keeps clear of the
+bottom safe-area inset, and the content pane has as much bottom padding.
+While a text field has the focus (`src/textEntry.ts`) the bar and the
+padding go. ⌘K or Ctrl+K opens the [palette](#search-palette) from
+anywhere, also inside a text field.
+
+The **about line** comes from `GET /api/v1/about`, loaded with the features
+and refreshed every 5 minutes while the tab is visible; an error keeps the
+last answer. It links the running version's GitLab release (the releases
+page for a `dev` build, no link without `--self-project`). A newer self
+release that is *Waiting* or *Running* adds *Update to X rolling out*; a
+*Released* one *X is out — reload*. A `dev` build shows no note.
+
+### Queue and Finishing
+
+The project detail (`GET /api/v1/projects/{namespace}/{name}`) carries
+`project.queue` and `project.finishing`, from the same ranking and close-out
+fields the operator uses (`internal/milestoneorder`, autopilot status), so
+the Desk and `pick` cannot disagree. Queue states: `running`, `holding`
+(*Holding for %N*), `waiting`, `paused`, `budget`. With Desk chat and the
+`chat` grant (`project.queueCommands`) the rows post `kind: "command"` to
+the milestone's Spec task: *Run next* `{"cmd":"start"}`, *Clear mark*
+`{"cmd":"unstart"}` (both owner subjects only, like `/agent start` and
+`/agent start off`), *Pause* / *Resume* `{"cmd":"pause"}` /
+`{"cmd":"resume"}`.
+
+Finishing lists done autopilot milestones whose Spec task still exists,
+oldest first, with what holds the close (`closeMilestone`): *Re-planning*,
+*Retrospective being written*, *Follow-ups to settle*, each open issue of
+`CloseWaitsFor` and *Companions not landed*. *Close issue* (`steer` grant,
+an owner subject, GitLab connected) posts `POST
+…/milestones/{iid}/issues/{issue}/close` with the user's token: a note
+"Closed from the Desk by @\<you\> to finish %\<iid\>." then the close.
+`needsEstimate` selects unstarted queue milestones (`waiting` / `holding`
+with no spend) for `GET …/estimate?milestone=`.
+
+### Planner
+
+Plans are `AgentPlan` resources (feature `plans`, needs
+`ui.chat.writerSecret`). Writes (create, chat, edit, raise, create the
+milestone, delete) need the `steer` grant and the caller among the owner
+subjects of the project's live Spec tasks (the grant alone when none has
+any). Anyone who may see the project may list and read plans; bodies need
+`conversation`. The plan page polls every 5 s while visible. Chat is
+`GET`/`POST …/plans/{plan}/chat`, messages live in Postgres
+(`chat_messages.plan`). An owner edit is `PUT …/draft` (a new revision,
+`draftBy: owner`); the next turn tells the agent "the owner edited the
+draft; it is now: …". Calls are kind `plan`. Raising the cap is `POST
+…/budget` up to `plan.maxBudgetUSDLimit`. *Create milestone* uses the
+estimate of `GET …/estimate?plan=` (*not enough history* below three
+finished milestones) and `POST …/milestone` with the owner's GitLab token;
+the plan records the IID, its pod stops, and creating again is refused;
+audit line `plan.milestone`. After `plan.idleTimeout` the pod ends (phase
+*Idle*); the workspace stays and the next message resumes the engine
+session. Values: [chart README](../../charts/ai-operator/README.md#plan).
+
+### Agent calls
+
+The *Calls* tab reads the spend endpoint with `task=`, a run's calls with
+`run=`. *Lines* (`+A/−D`, implementer kinds implement, fix, ci and
+conflict) is the uncommitted diff the call left (`git diff --numstat HEAD`
+plus untracked text files). `· N gate blocks` counts read-gate blocks,
+`· N step-gate nudges` the nudges of `implement.maxStepLines`. A 💾 badge
+marks a call whose end saved a checkpoint commit; the totals also count the
+checkpoints saved without a call (`budget-stop`, `pod-lost`, `oom-kill`).
+Without the research database (404 or 503) the section is left out.
+
+The **context-growth chart** above an expanded run's calls plots the
+context tokens (input + cache) of each main-thread turn, one line per
+implementer step on one shared scale, fainter for older steps; an orange
+dot marks a turn after which a subagent ran. A series is at most 500
+points, spread over the call's real turn count. Cursor calls plot their ACP
+`usage_update` context sizes; calls without them and runs recorded before
+the series was tracked show no chart.
+
+### Notifications
+
+Only some Inbox items notify (`notifiable` in `inboxNotify.ts`): pauses,
+proposals, prompts, ready companions, budget warnings and tasks that need
+input. Failed and blocked tasks and rejected pilot writes (`pilotError`)
+only count. Each such item notifies once, also across reloads and live updates; items
+already there when the tab opens or when notifications are turned on don't
+notify. An autopilot that pauses again for another cause or issue is a new
+item, as is an issue whose raised budget crosses 80 % again. A click leads
+where the Inbox row does (one mapping, `inboxRoute.ts`). There is no
+service worker, no Web Push and no e-mail. The choice is kept per browser.
+
+### History
+
+The operator appends the factory's events to the research database: task
+status changes (a run started or finished with result, spend and duration,
+a push, a final CI result or fix round, a review with its blocking
+findings, a question, failure or block, a merge, autopilot phase changes,
+the pilot's proposals, a task closed) and every comment it reads on issues
+and merge requests, its own included. Each event is written once and kept
+for `research.historyRetention` (a year by default). What happened while
+the operator was down is not recorded (comments are caught up when read
+again), and an edited comment keeps its first version.
+
+### Chat commands
+
+Desk chat posts `kind: "command"` with a JSON body; the thread renders a
+short label and nests the operator's answer under it. Each command goes to
+the task that owns it:
+
+| Task | Commands |
+|------|----------|
+| Implement | `retry`, `review`, `use`, `effort`, `answer` (to `needsInput` prompts, owners), `restart` (owners) |
+| autopilot Spec | `pause`, `resume` (`"issue":N` lifts one hold) and `skip` (chat grant); `merge`, `parallel`, `start`, `unstart`, `endmilestone` and `restart` (also the milestone's `owner-subjects`) |
+| Coordinate (pilot) | `accept`, `reject`, `answer`, `revisit`, `draft` and `restart`, all only for the milestone's `owner-subjects`; plain messages need the chat grant only |
+
+| Command | Effect |
+|---------|--------|
+| `{"cmd":"answer","prompt":"Q5","option":"B"}` | Choose option B of prompt Q5: its actions run (checked again by the operator). |
+| `{"cmd":"answer","prompt":"Q5","text":"…"}` | Your own words (at most 4000 bytes). On an action prompt the pilot adds the option "From your answer: …" to confirm; on an agent's question the text is the answer. |
+| `{"cmd":"revisit","decision":"D42-3","text":"…"}` | Revisit a decision with that instruction. Without `text`: opens the `revisit` prompt. |
+| `{"cmd":"draft","followUps":[1,3]}` | Ask the pilot of a done milestone for a draft of a follow-up milestone from those leftovers (1 to 9); it lands in `retrospective.draft`, untrusted until an owner confirms it. |
+
+An explicit prompt id is always required, and a prompt takes one answer.
+Sends are retry-safe (`clientKey` in session storage until a 2xx). Chat
+events appear in the stream when the `chat` feature is on (keyed apart from
+history events). Delivery needs `agents.chat: true` on the AgentProject;
+without it the operator marks the row failed.
+
+### Pause card actions
+
+The *Way out* section lists the `exits` of the milestone API (the
+operator's `PauseExits` table). Automatic exits come first with a status
+chip: *lifts on the next poll*, *in progress*, *waiting* or *not known*.
+A remedy the API marks `allowed` for the viewer (`resume`, `skip`, `retry`,
+`review` with the chat grant, `merge` with `permissions.merge`) is a button
+sending the same chat command; other commands (`rebase`, `mergeBase`,
+`unskip`, `startAnyway`, `endMilestone`, `restart`, or any without the
+grant) show as the command text. With the section the card drops its
+*Continues by itself* line and its action row keeps only links.
+
+Against an operator that sends no exits, the actions depend on the kind:
+
+| Kind | Actions |
+|------|---------|
+| `reviewErrors`, `notReviewed` | Review again, Merge anyway, Skip |
+| `findings`, `runFailed`, `needsInput` | Retry, Open #N chat, Skip |
+| `ciRed`, `ciCanceled` | Retry, Open pipeline, Skip |
+| `mergeRequest` | Open MR, Resume, Skip |
+| `companion` | Open companion MR, Resume, Skip |
+| `cycle`, `stuck` | Open plan, Skip |
+| `owner`, `mainRed`, `config`, no kind | Resume |
+| `budget`, `emptyPlan` | none |
+| `release` | Open pipeline, Resume |
+| `stalled` | Skip |
+
+Retry and Review again go to the paused issue's Implement task; Resume,
+Skip and Merge anyway to the Spec task. *Merge anyway* names the head the
+card shows, so the operator refuses it after a newer push. A hold card is
+the same component with a `hold` and always offers *Resume*
+(`{"cmd":"resume","issue":N}`), even for kinds whose pause card has none.
+
+### Live transcript
+
+The UI reads the pod's logs through the Kubernetes API and passes on only
+known kinds of lines of the current run, with a fixed set of fields, never
+a raw log line. A restarted container's log is followed again. Each new run
+opens a new stream. The lines are what the containers logged, not signed,
+and are shown as text only. The chart lets the UI's service account read
+`pods` and `pods/log` in each namespace of `agent.namespaces` (Roles,
+nothing cluster-wide); a project elsewhere gets "pod not available".
+Prompts (`spec.agents.logPrompts`) are cut at 64 KiB each.
+
+### GitLab steering
+
+- **Thread:** read with the user's token, so GitLab decides what they see;
+  read again every 30 seconds and after every change of the task.
+- **Comments:** at most 10 000 characters and 10 per minute per UI replica.
+  The UI logs user, GitLab user, project, target and note id, never the
+  text. A comment goes to an MR only if its source branch is the task
+  issue's work branch, and to a tracking issue only if it is the
+  operator's tracking issue of the task's milestone.
+- **Pilot prefix:** the UI puts `workflow.pilotPrefix` (`/pilot`) in front
+  unless the message starts with it, so `/agent pause` arrives as `/pilot
+  /agent pause`.
+- **Follow-up milestone:** title (one line, at most 255 characters) and
+  description (at most 64 KiB), then the project's markers and the
+  source's `owners`, `owner-subjects` and `followup-of` lines (dropped from
+  the user's text). The operator marks the leftovers taken; the UI writes
+  nothing to the database. The fixed token needs the project's Planner or
+  Reporter role to create milestones.
+- **Tokens:** access and refresh token in an encrypted, `HttpOnly` cookie
+  bound to the UI user, refreshed when the access token runs out, never
+  readable by JavaScript; the connection ends 30 days after it was made.
+- The `gitlab-client-secret` key must exist in the Secret, or the UI pod
+  does not start. Projects on another host than `ui.gitlab.url` get no
+  thread and no box.
+
+### One-off researches
+
+- **Namespace.** Created in `ui.research.namespace` only; the request has
+  no namespace field. The chart grants the UI `create`, `delete` and `get`
+  on AgentResearches there only. Without `allowCreate` the chart renders no
+  write Role and the endpoints answer 404.
+- **Names:** `q-<yyyymmdd>-<6 random characters>`.
+- **Creator:** stamped as `ai.wiemers.me/created-by: <user name>`; only
+  that user may delete it.
+- **Projects:** runs with an AgentProject of that namespace that has
+  `spec.research.writerSecret`.
+- **Limits:** at most 32 KiB per request, a question of 1 to 16384
+  characters, at most 20 topics of up to 100 characters, 10 researches per
+  user and hour (then 429 with `Retry-After`).
+- **Audit:** `"msg"="audit" "action"="research.create"` (or
+  `research.delete`) with user, namespace, name, depth and agent, never the
+  question.
+
+### Research results and markdown
+
+Each block type has its own component; unknown types are skipped. Agent
+text is rendered by the Desk's own subset renderer (`web/src/markdown.ts`,
+component `Markdown.vue`) straight into page elements, never through HTML:
+paragraphs, headings, lists and task lists, blockquotes, tables, rules,
+`<details>`/`<summary>`, emphasis, strikethrough, code, entities, the
+attribute-free inline tags `code`, `kbd`, `sub`, `sup`, `b`, `strong`, `i`,
+`em`, `s`, `del` and `br`, and links (`http(s)` only, new tab,
+`rel="noopener noreferrer nofollow"`). Other HTML shows as typed, HTML
+comments are dropped, images are never loaded. `mode="block"` renders run
+summaries, notes, research summaries, prompt text, pause and release
+reasons, transcript lines and research prompts; `mode="inline"` renders one
+line for rows that are links already. Machine strings (condition messages,
+exit reasons, API errors, thinking lines) stay plain text. Full-text search
+over results is in the API only (`GET /api/v1/research/search`).
+
+### Security
+
+- **Identity.** The UI's service account may `get`, `list` and `watch`
+  AgentProjects, AgentTasks and AgentResearches and read pods and their
+  logs in the agent namespaces. No Secrets, no GitLab token; the research
+  database only with the read-only reader login. The API returns views
+  without the operator's bookkeeping and secret references. Its only write
+  access, with `ui.research.allowCreate`, is `create`/`delete` on
+  AgentResearches in `ui.research.namespace`.
+- **Login.** Authorization code flow with PKCE, `state` and `nonce`; the ID
+  token's signature, issuer, audience and expiry are verified. The session
+  cookie holds only the user name, the roles and the expiry; the refresh
+  token is only in the sealed refresh cookie, never logged or shown to the
+  web app, and revoked at logout. See [Desk session model](design.md#desk-session-model).
+- **Sessions** are AES-GCM encrypted cookies (`__Host-` prefix, `HttpOnly`,
+  `Secure`, `SameSite=Lax`). A copied cookie stays valid until it expires;
+  changing the session key ends all sessions. Logout ends the session at
+  the provider if it supports RP-initiated logout.
+- **Redirects.** After the login the browser only goes back to a path on
+  the UI's own host; login errors reach the sign-in page as codes.
+- **Signing in again.** On a 401 the Desk goes to
+  `/oauth2/login?return=<current route>` once (`signInAgain.ts`): a
+  `sessionStorage` marker stops another attempt for 60 seconds, and a
+  `login_error` or a browser without `sessionStorage` stops it too. Unsent
+  composer text is kept in `sessionStorage`
+  (`desk-sign-in-draft:<route>:<composer>`) and put back when the login
+  returns.
+- **Browser protections.** A strict Content Security Policy (only the UI's
+  own scripts, styles and API, no framing), HSTS, `nosniff`, and Go's
+  cross-origin protection for requests that change state. Links to GitLab
+  must be `http(s)` URLs.
+- **Research results** are validated against the block schema again before
+  they are sent.
+- **https only.** `externalURL` must use https (http only for `localhost`);
+  TLS ends at the Gateway.
+- **Writing only as the user**, with their OAuth token (scope `api`) or
+  fixed fine-grained token, never a shared or the bot's token. A stolen
+  pair of cookies could post as that user until the GitLab connection
+  expires or is revoked.
+- **Without login** (`auth.mode: none`) the UI listens on localhost inside
+  its pod only and answers only requests for a localhost host name (421
+  otherwise), so a web page that points a DNS name at 127.0.0.1 (DNS
+  rebinding) cannot use it.
 
 ## Roadmap
 

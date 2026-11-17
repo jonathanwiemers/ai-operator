@@ -121,7 +121,7 @@ What the values do:
 The Desk pod must reach your OIDC provider and the Kubernetes API. Every
 `ui` value, such as a NetworkPolicy for the pod, is in the
 [chart README](../../charts/ai-operator/README.md#web-ui), and the access
-rules are explained in [Access rules](../ui.md#access-rules).
+rules are explained in [Access rules](../guides/desk.md#who-sees-what).
 
 ## 4. Turn on chat in your project
 
@@ -195,6 +195,7 @@ milestone names `anonymous` as its owner.
 
 - [Your first milestone](first-milestone.md): write a short spec, watch it
   get planned and answer a prompt.
-- The Desk guide guides/desk.md, written later, explains each view; until
-  then see [Web UI](../ui.md).
+- [The Desk](../guides/desk.md): each view, and who sees what.
+- [Steer from the Desk](../guides/steer-from-the-desk.md): chat, prompts,
+  pause cards and the queue.
 - [Glossary](../concepts/glossary.md): the terms on this page.

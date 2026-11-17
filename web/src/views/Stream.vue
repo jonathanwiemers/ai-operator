@@ -149,7 +149,7 @@ const projectInbox = computed(() => {
   return items.filter((i) => i.namespace === props.namespace && i.project === props.name)
 })
 
-// The context panel (docs/ui.md, "Context panel"): beside a project stream
+// The context panel (docs/contributing/web-ui.md, "Context panel and pause history"): beside a project stream
 // from 1180 px; below, on project and milestone pages, the Context button
 // opens it as a sheet. The button's count is projectInbox's, so the sheet
 // loads nothing of its own.

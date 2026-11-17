@@ -65,7 +65,7 @@ export function chatWaiting(input: ChatWaitingInput): ChatWaiting | null {
   }
 }
 
-// ChatCommand is the JSON body of kind "command" (docs/ui.md, chatcmd).
+// ChatCommand is the JSON body of kind "command" (docs/contributing/web-ui.md, "Chat commands").
 export type ChatCommand =
   | { cmd: 'retry' }
   | { cmd: 'review' }

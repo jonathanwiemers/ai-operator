@@ -1,4 +1,4 @@
-// Signing in again by itself when the API answers 401 (docs/ui.md,
+// Signing in again by itself when the API answers 401 (docs/contributing/web-ui.md,
 // "Security"): a top-level navigation to the login, once per minute, so a
 // login that keeps failing ends on the sign-in page instead of a loop.
 

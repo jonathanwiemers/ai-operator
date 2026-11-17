@@ -487,7 +487,7 @@ it and say so in their description.
    Implement commands; 9b autopilot verbs, proposals, `ownerSubjects`;
    9c web buttons.
 10. **`workflow.inputs`** (built with the Desk prompts milestone; see
-    [usage.md](../usage.md#prompts) and
+    [usage.md](../guides/steer-from-the-desk.md#answer-prompts) and
     [configuration.md](../reference/agentproject.md#specworkflow)): gate the note
     readers, fresh-session context from the chat table, run report wording;
     docs.

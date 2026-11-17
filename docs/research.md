@@ -30,7 +30,7 @@ Research is the second feature of the platform, next to the factory
   no Research section.
 * The UI shows researches in its **Research** section (news flash, report,
   run history) and starts one-off researches, see
-  [ui.md](ui.md#platform).
+  [The Desk](guides/desk.md#research).
 
 To turn research on: set up the [database](#database) and its logins, set
 the chart values `research.database.*` (see the [my-cluster
@@ -606,7 +606,7 @@ spec:
       name: agents.research-writer.ai-operator-postgres.credentials.postgresql.acid.zalan.do
 ```
 
-Add [research rules](ui.md#research-rules) to `ui.authorization.rules` for
+Add [research rules](guides/desk.md#research-rules) to `ui.authorization.rules` for
 the users who should see the Research section.
 
 ## Troubleshooting

@@ -17,7 +17,7 @@ with fixes if needed → merge, by you or by
 Click the issue in the milestone's *Issues* tab to open its task page. It
 shows the merge request, the run as it happens, the CI pipeline and what
 the run cost. The *Live* tab follows the agent: its steps, what it says and
-the tools it calls. See [Live transcript](../ui.md#live-transcript) for
+the tools it calls. See [Live transcript](desk.md#live-transcript) for
 more on the views.
 
 ## The draft merge request

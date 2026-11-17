@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// The rail's content (docs/ui.md, "Navigation"): Inbox, Overview, projects,
+// The rail's content (docs/contributing/web-ui.md, "Navigation"): Inbox, Overview, projects,
 // research, engine meters and the user. App.vue renders it in the aside on
 // tablet and desktop and in the rail sheet on phones; App.vue loads the data.
 import { computed } from 'vue'

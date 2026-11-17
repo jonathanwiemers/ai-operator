@@ -169,4 +169,5 @@ a [retrospective](../concepts/glossary.md#retrospective) on the
   from plan to last merge, and [the pilot](../guides/pilot.md) that
   handles what goes wrong.
 - [Guides](../guides/README.md): answering, iterating and the other tasks.
-  Steering from the Desk is still in [Usage](../usage.md).
+  [Steer from the Desk](../guides/steer-from-the-desk.md) shows what you
+  can do in the Desk.

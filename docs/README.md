@@ -25,8 +25,9 @@ get [your first milestone](getting-started/first-milestone.md) planned.
 [owners](guides/owners-and-pings.md),
 [iterate and finish](guides/iterate-and-finish.md), run it
 [on autopilot](guides/autopilot.md), handle
-[pauses](guides/pauses.md), work with [the pilot](guides/pilot.md), and
-know what happens [when runs go wrong](guides/when-runs-go-wrong.md).
+[pauses](guides/pauses.md), work with [the pilot](guides/pilot.md),
+know what happens [when runs go wrong](guides/when-runs-go-wrong.md), use
+[the Desk](guides/desk.md) and [steer from it](guides/steer-from-the-desk.md).
 
 ## Reference
 
@@ -59,10 +60,9 @@ The old pages, until their sections have moved to the sections above. The
 [docs revamp spec](specs/docs-revamp.spec.md#inventory) lists where each
 section goes.
 
-- **[Usage](usage.md)**: budgets, companion repositories, releases,
-  prompts, and watching progress from the Desk and from Kubernetes.
-- **[Web UI](ui.md)**: the Desk. What it shows
-  ([screenshots](ui.md#screenshots)), roles and steering.
+- **[Usage](usage.md)**: budgets, companion repositories, releases, and
+  watching from Kubernetes.
+- **[Web UI](ui.md)**: spend and the Costs page in the Desk.
 - **[Research](research.md)**: news flashes, scheduled and one-off
   researches next to the projects, with their own database.
 

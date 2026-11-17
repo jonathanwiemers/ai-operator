@@ -39,7 +39,7 @@ inert: no mentions besides the owners', no quick actions.
 ## Talk to it in the Desk
 
 Open the milestone's *Pilot* tab. From top to bottom it shows the pause card,
-the hold cards, the pilot's prompts with its autonomy and cost, and *Ask the
+the hold cards, the pilot's prompts with its autonomy and cost, and *Message the
 pilot*, the message box. Type your question there; the answer comes in the
 same thread.
 
@@ -51,8 +51,9 @@ v2 API". That runs nothing yet: the pilot turns it into one more option,
 "From your answer: …", which you confirm with one click, or it asks one
 follow-up question. The operator checks that option like the pilot's own.
 
-Only the milestone's `owner-subjects` answer prompts and message the pilot
-in the Desk. Everyone else sees the tab read-only. See
+Only the milestone's `owner-subjects` answer prompts in the Desk. Anyone
+with the `chat` grant may message the pilot; without it the tab is
+read-only. See
 [Owners and pings](owners-and-pings.md).
 
 ## Talk to it in GitLab

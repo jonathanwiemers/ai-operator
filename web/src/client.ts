@@ -1,4 +1,4 @@
-// The Desk's client of the UI API (docs/ui.md, "Client"): one function per
+// The Desk's client of the UI API (docs/contributing/design.md, "Desk API"): one function per
 // route, named verb + resource, with path parameters as arguments and
 // encoded here. Return types come from generated/views.ts. No get<T> or
 // post<T> outside this file.
