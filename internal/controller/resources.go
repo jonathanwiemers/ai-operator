@@ -177,6 +177,10 @@ func workspacePod(meta metav1.ObjectMeta, spec aiv1.AgentProjectSpec, deskURL st
 	if deskURL != "" {
 		runnerEnv = append(runnerEnv, corev1.EnvVar{Name: "AI_DESK_URL", Value: deskURL})
 	}
+	// The runner reads Cursor's usage with the agents' key (runner's
+	// cursorUsage); optional, the secret may have no Cursor key.
+	runnerEnv = append(runnerEnv, corev1.EnvVar{Name: "CURSOR_API_KEY", ValueFrom: &corev1.EnvVarSource{SecretKeyRef: &corev1.SecretKeySelector{
+		LocalObjectReference: corev1.LocalObjectReference{Name: agents.CredentialsSecretName}, Key: "CURSOR_API_KEY", Optional: ptr.To(true)}}})
 
 	// The runner tells the implementer what the agent container may use.
 	if q, ok := agentRes.Limits[corev1.ResourceMemory]; ok {

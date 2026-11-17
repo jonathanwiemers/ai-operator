@@ -144,12 +144,29 @@ func ranOn(role aiv1.RoleSpec, res *Result) aiv1.Engine {
 	return role.Engine
 }
 
-// nearLimit returns a soft limit when the role has a fallback and its
+// nearLimit returns a soft limit when the role has a fallback and either
+// its engine is cursor and the account is in Cursor's slow pool, or its
 // engine's freshest reading has a window, not reset since, at or over
 // agents.fallbackAtPercent; the fullest such window counts.
-func (r *Runner) nearLimit(role aiv1.RoleSpec) *UsageLimitError {
+func (r *Runner) nearLimit(ctx context.Context, role aiv1.RoleSpec) *UsageLimitError {
+	if role.Fallback == nil {
+		return nil
+	}
+	if role.Engine == aiv1.EngineCursor {
+		slow, reset, err := r.Cursor.slowPool(ctx, r.now())
+		if err != nil {
+			r.log().Info("could not read Cursor's usage", "error", err.Error())
+		}
+		if slow {
+			msg := "plan is used up (slow pool)"
+			if !reset.IsZero() {
+				msg = fmt.Sprintf("plan is used up (slow pool until %s UTC)", utcMinute(reset))
+			}
+			return &UsageLimitError{Engine: role.Engine, ResetAt: reset, Soft: true, Message: msg}
+		}
+	}
 	at := r.projectSpec.Agents.FallbackAtPercent
-	if at == nil || role.Fallback == nil {
+	if at == nil {
 		return nil
 	}
 	now := r.now()

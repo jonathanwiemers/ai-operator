@@ -223,7 +223,8 @@ func runRunner(ctx context.Context) {
 			n, _ := strconv.ParseInt(os.Getenv("AI_AGENT_MEMORY_BYTES"), 10, 64)
 			return n
 		}(),
-		Log: log,
+		Cursor: runner.NewCursorUsage(os.Getenv("CURSOR_API_KEY")),
+		Log:    log,
 	}
 	log.Info("runner started", "task", r.TaskName)
 	if err := r.Loop(ctx); err != nil {

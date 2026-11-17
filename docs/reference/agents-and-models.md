@@ -295,6 +295,13 @@ window of its engine is that full, which keeps headroom for the roles
 without a fallback. Only claude reports its windows. The threshold never
 makes a run wait.
 
+A cursor role with a fallback also switches while the Cursor account is in
+the slow pool: past the plan's usage Cursor delays every request by seconds
+without an error. The runner asks Cursor's dashboard API with the
+`CURSOR_API_KEY` of the credentials secret, at most every 10 minutes, and
+treats an unreadable answer as "not slow". This works without
+`fallbackAtPercent` and, like the threshold, never makes a run wait.
+
 The fallback must be on another engine and name an allowed model, by name
 or alias. `effort` is claude only. The role's other fields stay. Model and
 effort labels on an issue change the implementer, not its fallback. The

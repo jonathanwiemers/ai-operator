@@ -2967,7 +2967,11 @@ Things to keep in mind with subscriptions:
   window's). With `agents.fallbackAtPercent`, a role with a fallback switches
   before the hard limit: when the project's freshest reading of its engine
   has a window, not reset since, at or above the threshold. That only
-  routes (a "soft" limit, never recorded or deferred).
+  routes (a "soft" limit, never recorded or deferred). A cursor role with a
+  fallback gets the same soft limit while Cursor's dashboard API says the
+  account is in the slow pool (`runner.CursorUsage`, cached 10 min, fails
+  open; the runner container gets `CURSOR_API_KEY` from the credentials
+  secret for it).
 * Claude Code reports its usage windows with every call (a
   `rate_limit_event` in the stream: status, and per window the
   utilization and reset time). The runner keeps the newest reading per
