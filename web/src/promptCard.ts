@@ -27,17 +27,66 @@ export function promptOptions(view: PromptView): PromptOptionLine[] {
   })
 }
 
+// closedOptions splits a closed prompt's options for its card: the chosen
+// one stays in sight, the others fold under "Other options (n)". An answer
+// in words folds all options under "Other options"; a prompt that closed
+// without an answer folds all under "Options".
+export function closedOptions(view: PromptView): { shown: PromptOptionLine[]; folded: PromptOptionLine[]; fold: string } {
+  const lines = promptOptions(view)
+  const shown = lines.filter((o) => o.chosen)
+  const folded = lines.filter((o) => !o.chosen)
+  return { shown, folded, fold: view.state === 'answered' ? 'Other options' : 'Options' }
+}
+
+// askedQuestion is the question of a prompt.posted stream row: the prompt's
+// own while status has it, else the event summary's ("Q12 posted: …").
+export function askedQuestion(summary: string, id: string, prompt?: PromptView): string {
+  if (prompt) return prompt.question
+  const prefix = `${id} posted: `
+  return id && summary.startsWith(prefix) ? summary.slice(prefix.length) : summary
+}
+
 // recommendedOption is the option the compact card offers as its button.
 export function recommendedOption(view: PromptView): PromptOptionView | undefined {
   return (view.options || []).find((o) => o.recommended)
 }
 
 // PromptStatus says where a prompt is: tone for the badge, text for the
-// line under the question, at for the time beside it.
+// line under the question, at for the time beside it, and for a replaced
+// prompt the ID of the one that replaced it (link it with promptAnchor).
 export interface PromptStatus {
-  tone: 'warning' | 'success' | 'neutral'
+  tone: 'warning' | 'success' | 'neutral' | 'progress'
   text: string
   at?: string
+  replacedBy?: string
+}
+
+// closeCauses are the words for why a prompt closed without an answer, the
+// same as the state line of its GitLab comment.
+const closeCauses: Record<string, string> = {
+  mainHealthy: 'main is green again',
+  issueDone: 'the issue was merged or closed',
+  agentRanAgain: 'the agent ran again without the answer',
+  budgetResolved: 'the budget is no longer short',
+  pauseOver: 'the pause ended',
+  stateChanged: 'the milestone moved on',
+}
+
+// shortStatus is the badge word for a prompt's state: its close reason's
+// gist when the operator recorded one, else the state.
+export function shortStatus(view: PromptView): string {
+  if (promptOpen(view)) return 'open'
+  switch (view.closedReason) {
+    case 'answered':
+    case 'expired':
+    case 'replaced':
+      return view.closedReason
+    case undefined:
+    case '':
+      return view.state
+  }
+  if (!closeCauses[view.closedReason]) return view.state
+  return view.closedBy === 'pilot' || view.closedBy === 'owner' ? 'handled' : 'resolved'
 }
 
 function viaText(via: string | undefined): string {
@@ -56,21 +105,59 @@ function clip(text: string, max: number): string {
   return t.length > max ? t.slice(0, max - 1) + '…' : t
 }
 
-// promptStatus says whether a prompt waits for an answer, who answered it
-// with which option (or words), when and where, or why it closed.
-export function promptStatus(view: PromptView): PromptStatus {
-  switch (view.state) {
-    case 'answered': {
-      const a = view.answer
-      if (!a) return { tone: 'success', text: 'Answered', at: view.closedAt }
-      const by = a.by ? ` by ${a.by}` : ''
-      const option = a.optionID ? (view.options || []).find((o) => o.id === a.optionID) : undefined
-      let what = ''
-      if (option) what = `: ${option.label}`
-      else if (a.optionID) what = `: option ${a.optionID}`
-      else if (a.text) what = `: "${clip(a.text, 120)}"`
-      return { tone: 'success', text: `Answered${by}${viaText(a.via)}${what}`, at: a.at || view.closedAt }
+function answeredStatus(view: PromptView): PromptStatus {
+  const a = view.answer
+  if (!a) return { tone: 'success', text: 'Answered', at: view.closedAt }
+  const by = a.by ? ` by ${a.by}` : ''
+  const option = a.optionID ? (view.options || []).find((o) => o.id === a.optionID) : undefined
+  let what = ''
+  if (option) what = `: ${option.label}`
+  else if (a.optionID) what = `: option ${a.optionID}`
+  else if (a.text) what = `: "${clip(a.text, 120)}"`
+  return { tone: 'success', text: `Answered${by}${viaText(a.via)}${what}`, at: a.at || view.closedAt }
+}
+
+// closedStatus is the status from the close reason the operator recorded;
+// undefined for prompts closed before it did (or an unknown reason).
+function closedStatus(view: PromptView): PromptStatus | undefined {
+  const at = view.closedAt
+  switch (view.closedReason) {
+    case undefined:
+    case '':
+      return undefined
+    case 'answered':
+      return answeredStatus(view)
+    case 'expired':
+      return { tone: 'neutral', text: 'Expired: nobody answered in time', at }
+    case 'replaced': {
+      const by = view.replacedBy
+      return { tone: 'neutral', text: by ? `Replaced by ${by}` : 'Replaced by a newer question', at, replacedBy: by }
     }
+  }
+  const cause = closeCauses[view.closedReason]
+  if (!cause) return undefined
+  switch (view.closedBy) {
+    case 'pilot':
+      return { tone: 'progress', text: `Handled by the pilot: ${cause}`, at }
+    case 'owner':
+      return { tone: 'success', text: `Handled by an owner: ${cause}`, at }
+    default:
+      return { tone: 'neutral', text: `Resolved on its own: ${cause}`, at }
+  }
+}
+
+// promptStatus says whether a prompt waits for an answer, who answered it
+// with which option (or words), when and where, or who closed it and why
+// (the recorded close reason; prompts closed before the operator recorded
+// one keep the texts by state).
+export function promptStatus(view: PromptView): PromptStatus {
+  if (!promptOpen(view)) {
+    const closed = closedStatus(view)
+    if (closed) return closed
+  }
+  switch (view.state) {
+    case 'answered':
+      return answeredStatus(view)
     case 'superseded':
       return { tone: 'neutral', text: 'Superseded: its cause resolved or a newer question replaced it', at: view.closedAt }
     case 'expired':

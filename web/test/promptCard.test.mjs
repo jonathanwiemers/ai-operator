@@ -3,13 +3,16 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   answerCommand,
+  askedQuestion,
   canAnswerText,
+  closedOptions,
   maxAnswerText,
   promptAnchor,
   promptOptions,
   promptStatus,
   readOnlyText,
   recommendedOption,
+  shortStatus,
   splitPrompts,
   textBox,
 } from '../src/promptCard.ts'
@@ -113,6 +116,89 @@ test('promptStatus: superseded and expired say why they closed', () => {
     text: 'Expired: nobody answered in time',
     at: closedAt,
   })
+})
+
+test('promptStatus: the recorded close reason names who closed it and why', () => {
+  const closedAt = '2026-11-05T11:00:00Z'
+  const closed = (closedReason, closedBy, extra = {}) =>
+    promptStatus(prompt({ state: 'superseded', closedAt, closedReason, closedBy, ...extra }))
+  const at = '2026-11-05T10:00:00Z'
+  assert.deepEqual(
+    closed('answered', 'owner', { state: 'answered', answer: { optionID: 'B', by: 'ada', at, via: 'desk' } }),
+    { tone: 'success', text: 'Answered by ada in the Desk: Re-review #42', at },
+  )
+  assert.deepEqual(closed('expired', 'operator', { state: 'expired' }), {
+    tone: 'neutral',
+    text: 'Expired: nobody answered in time',
+    at: closedAt,
+  })
+  assert.deepEqual(closed('replaced', 'operator', { replacedBy: 'Q14' }), {
+    tone: 'neutral',
+    text: 'Replaced by Q14',
+    at: closedAt,
+    replacedBy: 'Q14',
+  })
+  const causes = {
+    mainHealthy: 'main is green again',
+    issueDone: 'the issue was merged or closed',
+    agentRanAgain: 'the agent ran again without the answer',
+    budgetResolved: 'the budget is no longer short',
+    pauseOver: 'the pause ended',
+    stateChanged: 'the milestone moved on',
+  }
+  for (const [reason, cause] of Object.entries(causes)) {
+    assert.deepEqual(closed(reason, 'operator'), { tone: 'neutral', text: `Resolved on its own: ${cause}`, at: closedAt }, reason)
+  }
+  assert.deepEqual(closed('pauseOver', 'pilot'), {
+    tone: 'progress',
+    text: 'Handled by the pilot: the pause ended',
+    at: closedAt,
+  })
+  for (const by of ['selfHealed', 'laterRun', undefined, '']) {
+    assert.deepEqual(closed('pauseOver', by), { tone: 'neutral', text: 'Resolved on its own: the pause ended', at: closedAt }, by)
+  }
+  assert.deepEqual(closed('pauseOver', 'owner'), { tone: 'success', text: 'Handled by an owner: the pause ended', at: closedAt })
+})
+
+test('promptStatus: without a recorded reason, the texts by state stay', () => {
+  const closedAt = '2026-11-05T11:00:00Z'
+  const old = { tone: 'neutral', text: 'Superseded: its cause resolved or a newer question replaced it', at: closedAt }
+  assert.deepEqual(promptStatus(prompt({ state: 'superseded', closedAt })), old)
+  assert.deepEqual(promptStatus(prompt({ state: 'superseded', closedAt, closedReason: 'someday' })), old)
+  // An open prompt ignores stray close fields.
+  assert.equal(promptStatus(prompt({ closedReason: 'expired' })).text, 'Waiting for an answer')
+})
+
+test('shortStatus: the badge word of a stream row and the card', () => {
+  assert.equal(shortStatus(prompt()), 'open')
+  assert.equal(shortStatus(prompt({ state: 'superseded' })), 'superseded')
+  assert.equal(shortStatus(prompt({ state: 'answered', closedReason: 'answered', closedBy: 'owner' })), 'answered')
+  assert.equal(shortStatus(prompt({ state: 'superseded', closedReason: 'replaced', replacedBy: 'Q5' })), 'replaced')
+  assert.equal(shortStatus(prompt({ state: 'superseded', closedReason: 'pauseOver', closedBy: 'pilot' })), 'handled')
+  assert.equal(shortStatus(prompt({ state: 'superseded', closedReason: 'mainHealthy', closedBy: 'operator' })), 'resolved')
+})
+
+test('closedOptions: the choice stays, the rest folds', () => {
+  const answered = closedOptions(prompt({ state: 'answered', answer: { optionID: 'C', by: 'ada' } }))
+  assert.deepEqual(answered.shown.map((o) => o.id), ['C'])
+  assert.deepEqual(answered.folded.map((o) => o.id), ['B', 'A'])
+  assert.equal(answered.fold, 'Other options')
+  const words = closedOptions(prompt({ state: 'answered', answer: { text: 'retry it', by: 'ada' } }))
+  assert.deepEqual(words.shown, [])
+  assert.equal(words.folded.length, 3)
+  assert.equal(words.fold, 'Other options')
+  for (const state of ['superseded', 'expired']) {
+    const c = closedOptions(prompt({ state }))
+    assert.deepEqual(c.shown, [])
+    assert.equal(c.folded.length, 3)
+    assert.equal(c.fold, 'Options')
+  }
+})
+
+test('askedQuestion: the prompt in status, else the event summary', () => {
+  assert.equal(askedQuestion('Q4 posted: old words', 'Q4', prompt()), 'Re-review #42?')
+  assert.equal(askedQuestion('Q4 posted: Re-review #42?', 'Q4'), 'Re-review #42?')
+  assert.equal(askedQuestion('Which flow?', 'Q4'), 'Which flow?')
 })
 
 test('answerCommand: an option sends the prompt and option id', () => {

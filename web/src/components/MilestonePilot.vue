@@ -127,7 +127,7 @@ const quiet = 'text-[13px] text-(--text-3)'
 
     <section class="min-w-0">
       <h3 :class="sectionHead"><span>Pilot events</span></h3>
-      <IssueStream :namespace="namespace" :name="name" :milestone="milestone.iid" :kinds="pilotStreamKinds" :can-steer="active && !!perms?.steer" />
+      <IssueStream :namespace="namespace" :name="name" :milestone="milestone.iid" :kinds="pilotStreamKinds" :prompts="milestone.prompts" :can-steer="active && !!perms?.steer" />
     </section>
 
     <PausesCard v-if="milestone.pauses" :pauses="milestone.pauses" />

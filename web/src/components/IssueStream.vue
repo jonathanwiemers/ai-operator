@@ -6,7 +6,7 @@ import { getStream, LoginRequiredError } from '../client'
 import { live } from '../live'
 import { chatStreamKinds, dayLabel, groupThreads, kindsForFilter, sameLocalDay, streamEventKey } from '../stream'
 import EventCard from './stream/EventCard.vue'
-import type { StreamEvent, StreamKind } from '../types'
+import type { PromptView, StreamEvent, StreamKind } from '../types'
 
 // An issue's stream (R10): GET /api/v1/stream with project, milestone and
 // issue, newest first, *Load older* pages back, live events come in on
@@ -20,6 +20,8 @@ const props = defineProps<{
   issue?: number
   kinds?: readonly StreamKind[]
   canSteer?: boolean
+  // prompts: the view's prompts, for the state badge of prompt.posted rows.
+  prompts?: PromptView[]
 }>()
 
 const events = ref<StreamEvent[]>([])
@@ -145,7 +147,7 @@ function showDay(i: number): string | null {
     <template v-for="(item, i) in items" :key="item.kind === 'thread' ? item.key : streamEventKey(item.event)">
       <div v-if="showDay(i)" class="day">{{ showDay(i) }}</div>
       <EventCard v-if="item.kind === 'thread'" :notes="item.notes" :can-steer="canSteer" @posted="loadInitial" />
-      <EventCard v-else :event="item.event" :can-steer="canSteer" @posted="loadInitial" />
+      <EventCard v-else :event="item.event" :can-steer="canSteer" :prompts="prompts" @posted="loadInitial" />
     </template>
 
     <div v-if="older" class="mt-[18px] flex justify-center">

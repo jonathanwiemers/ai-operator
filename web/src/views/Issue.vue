@@ -118,6 +118,7 @@ const gone = computed(() => {
           :name="name"
           :milestone="v.milestoneIID"
           :issue="v.iid"
+          :prompts="task?.prompts"
           :can-steer="!!task?.permissions?.steer"
         />
       </section>

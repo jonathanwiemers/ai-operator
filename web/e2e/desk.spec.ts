@@ -1973,8 +1973,8 @@ test.describe('prompt card', () => {
       await shoot(page, testInfo, `prompt-card-task@${size.width}`)
 
       await option.click()
-      await expect(card.getByText('sent…')).toBeVisible()
-      await expect(card.getByRole('button', { name: 'Refuse above one capture', exact: true })).toBeDisabled()
+      await expect(card.getByText('✓ Split across captures · sending…')).toBeVisible()
+      await expect(card.getByRole('button', { name: 'Refuse above one capture', exact: true })).toHaveCount(0)
       expect(posts).toEqual([command({ cmd: 'answer', prompt: refundsPrompt.id, option: 'split' })])
 
       // The answered card of the same task shows who answered, read-only.
@@ -1996,30 +1996,32 @@ test.describe('prompt card', () => {
       await shoot(page, testInfo, `prompt-card-pilot@${size.width}`)
       await send.click()
 
-      await expect(text).toHaveValue('')
-      await expect(card.getByText('Your answer:')).toBeVisible()
+      await expect(card.getByText('✓ your answer · sending…')).toBeVisible()
+      await expect(text).toHaveCount(0)
       expect(posts).toEqual([command({ cmd: 'answer', prompt: refundsPrompt.id, text: 'Split, but never more than three captures.' })])
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })
 
-    test(`stream compact card answers with the recommended option@${size.width}`, async ({ page, baseURL }, testInfo) => {
+    test(`stream shows a prompt as one line without buttons@${size.width}`, async ({ page, baseURL }, testInfo) => {
       const { problems, posts } = await open(page, baseURL, 'stream-milestone-stream', size)
-      // The prompt.posted row of the stream (e2e/fixtures/overview.ts).
-      const card = page.locator(`.ev [data-prompt="${refundsPrompt.id}"]`)
-      await expect(card).toHaveCount(1)
-      await expect(card.locator('.md-inline strong')).toHaveText('partial refund')
-      await expect(card.getByRole('link', { name: 'more…' })).toHaveAttribute('href', `/projects/team-a/shop/milestones/14#prompt-${refundsPrompt.id}`)
-      // exact: a clipped question is a Truncated button whose name contains
-      // the option's words.
-      const recommended = card.getByRole('button', { name: 'Split across captures', exact: true })
-      if (phone) expect((await recommended.boundingBox())!.height, 'button height').toBeGreaterThanOrEqual(44)
-      await expect(card.getByRole('button', { name: 'Refuse above one capture', exact: true })).toHaveCount(0)
+      // The prompt.posted row of the stream (e2e/fixtures/overview.ts): the
+      // question from status, its state and a link to the card (R9).
+      await expect(page.locator(`[data-prompt="${refundsPrompt.id}"]`)).toHaveCount(0)
+      const row = page.locator('.ev [data-prompt-row]')
+      await expect(row).toHaveCount(1)
+      await expect(row.locator('.md-inline strong')).toHaveText('partial refund')
+      await expect(row.getByText('open', { exact: true })).toBeVisible()
+      const link = row.getByRole('link', { name: `${refundsPrompt.id} asked:` })
+      await expect(link).toHaveAttribute('href', `/projects/team-a/shop/milestones/14#prompt-${refundsPrompt.id}`)
+      if (phone) expect((await link.boundingBox())!.height, 'link height').toBeGreaterThanOrEqual(44)
+      await expect(row.getByRole('button')).toHaveCount(0)
       await noSidewaysScroll(page)
-      await shoot(page, testInfo, `prompt-card-compact@${size.width}`)
+      await shoot(page, testInfo, `prompt-row-stream@${size.width}`)
 
-      await recommended.click()
-      await expect(card.getByText('sent…')).toBeVisible()
-      expect(posts).toEqual([command({ cmd: 'answer', prompt: refundsPrompt.id, option: 'split' })])
+      // The link opens the tab that holds the card.
+      await link.click()
+      await expect(page.locator(`#prompt-${refundsPrompt.id}`)).toBeVisible()
+      expect(posts).toEqual([])
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })
   }

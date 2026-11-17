@@ -695,8 +695,8 @@ the bottom bar and above a 300 px `--keyboard-inset`
 
 `web/src/components/PromptCard.vue` is the one prompt card (see *Prompt
 card* above for what it shows and sends): full on the Task page, the
-milestone's *Pilot* tab and the full pause card, `compact` in the stream's
-`prompt.posted` rows and the compact pause card.
+milestone's *Pilot* tab and the full pause card, `compact` in the compact
+pause card. Stream rows never show it (below).
 
 ```vue
 <PromptCard :namespace="ns" :name="project" :prompt="p" />
@@ -714,13 +714,39 @@ milestone's *Pilot* tab and the full pause card, `compact` in the stream's
 - Both answer through `usePromptAnswer` (`src/promptAnswer.ts`); the order,
   status and command logic is `src/promptCard.ts`. Buttons are 44 px on
   phones (the global rule). Both carry `data-prompt="<id>"`.
+- From the click on an option, or *Send*, every option button and the text
+  box give way to "✓ <label> · sending…" ("✓ your answer" for text). A
+  failed post or a failed command row brings them back with the error. A
+  sent answer keeps them away ("· sent") until the status update closes the
+  prompt.
+- A closed full card shows only the chosen option with its "→" actions,
+  the free text, the outcome and the status line. The other options fold
+  under *Other options (n)*; a prompt closed without an answer folds them
+  all under *Options (n)*.
+- The status line and badge come from `promptStatus` and `shortStatus`.
+  With the recorded `closedReason` and `closedBy`: "Answered by …"
+  (success), "Handled by the pilot: <cause>" (progress), "Resolved on its
+  own: <cause>", "Replaced by Q14" (a hash link to its card, without
+  `?tab=`) and "Expired"
+  (neutral). Prompts closed before the operator recorded a reason keep the
+  texts by state.
+
+A `prompt.posted` stream row (`EventCard.vue`) is one line without
+buttons: "Q12 asked:" linked to the card (`#prompt-Q12` without `?tab=`,
+so `milestoneTabFromRoute` picks the tab that holds it), the question
+(from the prompt in status, else the event summary) and, while the view
+has the prompt, its state badge. `IssueStream` takes the view's `prompts`
+for that badge (the *Pilot* tab and the issue page pass them).
 
 The e2e cases `prompt card …` answer at 375 and 1280 px through the route
 mock and check the POST body to the target task's chat: an option on the
-Task page, free text on the *Pilot* tab and the compact card's recommended
-option on the milestone stream, with the touch sizes and no sideways scroll
+Task page and free text on the *Pilot* tab, check the milestone stream's
+one-line `prompt.posted` row, with the touch sizes and no sideways scroll
 (`prompt-card-task@<width>.png`, `prompt-card-pilot@<width>.png`,
-`prompt-card-compact@<width>.png`).
+`prompt-row-stream@<width>.png`). `e2e/prompt-card.spec.ts` checks the
+card after a click (no button left, "sending…"), after a refused post (the
+buttons and the error), closed cards with their folds and labels, and that
+the *Pilot* tab draws an open prompt once.
 
 ### Note thread
 
@@ -1464,9 +1490,9 @@ Every event kind belongs to one of a milestone's two event tabs, never both
   `merged` and `closed`.
 
 A project's *Stream* tab and the dashboard's show all kinds, and every kind
-can be asked for with `kinds=`. A `prompt.posted` event is the prompt's
-compact card while the milestone view still has the prompt; if status
-dropped it, only the summary line shows. The bot's mirror comments
+can be asked for with `kinds=`. A `prompt.posted` event is one line,
+"Q12 asked: …", with the prompt's state badge while the milestone view
+still has it, and a link to its card; no stream row has answer buttons. The bot's mirror comments
 (`ai-operator:prompt` and its answer reply) are hidden from the note
 threads, so a prompt shows once.
 

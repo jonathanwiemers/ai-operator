@@ -17,7 +17,7 @@ import {
 import Badge from '../Badge.vue'
 import ExtLink from '../ExtLink.vue'
 import Markdown from '../Markdown.vue'
-import PromptCard from '../PromptCard.vue'
+import { askedQuestion, promptStatus, shortStatus } from '../../promptCard'
 import NoteThread from '../NoteThread.vue'
 import { fromStreamEvents } from '../../noteThread'
 
@@ -36,6 +36,9 @@ const sendError = ref('')
 const e = computed(() => props.event)
 const threadNotes = computed(() => fromStreamEvents(props.notes ?? [], session.me?.username))
 const prompt = computed(() => (props.event ? promptForEvent(props.event, props.prompts) : undefined))
+const question = computed(() =>
+  e.value ? askedQuestion(e.value.summary ?? '', e.value.data.promptID ?? '', prompt.value) : '',
+)
 const isPrompt = computed(() => !!e.value?.kind.startsWith('prompt.'))
 const isRelease = computed(() => !!e.value && isReleaseEvent(e.value))
 const releaseBadge = computed(() => (e.value ? releaseEventBadge(e.value) : undefined))
@@ -279,17 +282,15 @@ function taskLink(ev: StreamEvent) {
         </ExtLink>
       </div>
 
-      <!-- prompt.posted: the compact card while status still has the prompt -->
-      <PromptCard
-        v-else-if="prompt"
-        compact
-        :namespace="e.namespace"
-        :name="e.project"
-        :prompt="prompt"
-        :to="promptTo(e)"
-      />
+      <!-- prompt.posted: one line, no buttons: "Q12 asked: …", the prompt's
+           state while status has it, and a link to its card (D528-P2) -->
+      <div v-else-if="e.kind === 'prompt.posted' && e.data.promptID" class="compact" data-prompt-row>
+        <RouterLink :to="promptTo(e)" class="inline-flex min-h-11 shrink-0 items-center whitespace-nowrap tablet:min-h-0">{{ e.data.promptID }} asked:</RouterLink>
+        <span class="min-w-0 flex-1 truncate"><Markdown mode="inline" :text="question" /></span>
+        <Badge v-if="prompt" :tone="promptStatus(prompt).tone">{{ shortStatus(prompt) }}</Badge>
+      </div>
 
-      <!-- prompt.posted without its prompt, prompt.answered, prompt.closed: one line -->
+      <!-- prompt.answered, prompt.closed: one line -->
       <div v-else-if="isPrompt" class="compact">
         <span>{{ e.summary }}</span>
       </div>
