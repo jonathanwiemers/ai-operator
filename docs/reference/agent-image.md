@@ -29,7 +29,8 @@ installed release (see [`spec.agents`](agents-and-models.md#specagents)).
 
 ## What the image holds
 
-- The runner, git, and the `claude` and `cursor-agent` CLIs. The build
+- The runner, git, `make`, a C compiler and linker (`gcc`, `libc6-dev`),
+  and the `claude` and `cursor-agent` CLIs. The build
   arguments `INSTALL_CLAUDE` and `INSTALL_CURSOR` leave a CLI out.
 - `mise` and `rustup`, pinned and checksum-checked (build arguments
   `MISE_VERSION` and `RUSTUP_VERSION`). With them the agent installs the
@@ -41,6 +42,22 @@ installed release (see [`spec.agents`](agents-and-models.md#specagents)).
 Toolchains go to `/workspace/home/.toolchains`, on the workspace, so the
 next run of the same issue finds them. Extend the image for tools without a
 pin, or to save the download per issue.
+
+## Keep the image in your project
+
+Keep the Dockerfile of your agent image in the project's own repository,
+next to the pins it bakes in (`rust-toolchain.toml`, `.mise.toml`), and
+build it in the project's pipeline. A change to a pin then rebuilds the
+image in the same merge request.
+
+The image carries the runner of the agent image it starts `FROM`. Keep
+that tag at the version of the installed release: when you upgrade the
+operator, bump the `FROM` tag, build, and point `spec.agents.image` at the
+new tag. Renovate's Dockerfile manager finds the tag on its own. Install
+toolchains as root outside `$HOME` (for example `/opt`), make them
+readable for uid 1000, and put them on `PATH`. For a preinstalled Rust
+toolchain, set `RUSTUP_HOME` to where you installed it and leave
+`CARGO_HOME` on the workspace, where cargo writes its caches.
 
 ## How the pod runs
 
