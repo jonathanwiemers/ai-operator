@@ -148,17 +148,26 @@ const routes: Route[] = [
       ready: (page) => expect(page.locator('main').getByText(taskReady[t.id]).first()).toBeVisible(),
     })),
   ),
-  // The project's plan list (PlanList.vue): Drafting and Milestones created.
-  // Only this route has the plans feature, so the other pages keep theirs.
-  {
-    name: 'plans',
-    path: '/projects/team-a/shop/plans',
-    features: [...features.features, { name: 'plans' }],
-    ready: async (page) => {
-      await expect(page.locator('main').getByText('Not planned')).toBeVisible()
-      await expect(page.locator('main').getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50')
-    },
-  },
+  // The plan list (PlanList.vue): Drafting and Milestones created, on the
+  // project's Plans tab (an old /plans link redirects there) and on /plans.
+  // Only these routes have the plans feature, so the other pages keep theirs.
+  ...(
+    [
+      ['stream-project-plans', '/projects/team-a/shop/plans'],
+      ['all-plans', '/plans'],
+    ] as const
+  ).map(
+    ([name, path]): Route => ({
+      name,
+      path,
+      features: [...features.features, { name: 'plans' }],
+      ready: async (page) => {
+        await expect(page.locator('main').getByText('Not planned')).toBeVisible()
+        await expect(page.locator('main').getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50')
+        await expect(page.locator('main').getByRole('button', { name: 'Plan milestone' })).toBeVisible()
+      },
+    }),
+  ),
   {
     name: 'researches',
     path: '/research',

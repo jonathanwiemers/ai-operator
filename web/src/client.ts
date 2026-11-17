@@ -24,7 +24,6 @@ import type {
   MilestoneView,
   NoteView,
   OverviewView,
-  PlanListItem,
   PlanOverview,
   PlanView,
   ProjectDetail,
@@ -304,9 +303,6 @@ function planPath(namespace: string, name: string, plan?: string): string {
   return plan ? `${base}/${encodeURIComponent(plan)}` : base
 }
 
-export function listPlans(namespace: string, name: string): Promise<PlanListItem[]> {
-  return get(planPath(namespace, name))
-}
 // getPlans: GET /plans[?project=ns/name], the plans and projects of the
 // plan lists. plansPath is the full path (tested in node); get adds /api/v1.
 export function getPlans(project?: { namespace: string; name: string }): Promise<PlanOverview> {

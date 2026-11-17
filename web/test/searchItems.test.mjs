@@ -40,12 +40,12 @@ test('pages are gated by features', () => {
   assert.deepEqual(pages([{ name: 'history' }, { name: 'research' }]), ['Inbox', 'Overview', 'Costs', 'Research'])
 })
 
-test('Plan milestone is in Pages only with the plans feature and an open project', () => {
+test('Plans is in Pages with the plans feature, Plan milestone also needs an open project', () => {
   const pages = (features, project) => by(paletteGroups({ ...data, features, project }), 'pages').items
-  assert.deepEqual(
-    pages([{ name: 'plans' }], null).map((x) => x.label),
-    ['Inbox', 'Overview'],
-  )
+  const plansOnly = pages([{ name: 'plans' }], null)
+  assert.deepEqual(plansOnly.map((x) => x.label), ['Inbox', 'Overview', 'Plans'])
+  assert.deepEqual(plansOnly.at(-1).to, { name: 'all-plans' })
+  assert.equal(plansOnly.at(-1).icon, 'i-lucide-flag')
   assert.deepEqual(
     pages([], { namespace: 'ns', name: 'app' }).map((x) => x.label),
     ['Inbox', 'Overview'],
@@ -53,9 +53,14 @@ test('Plan milestone is in Pages only with the plans feature and an open project
   const withProject = pages([{ name: 'plans' }], { namespace: 'ns', name: 'app' })
   assert.deepEqual(
     withProject.map((x) => x.label),
-    ['Inbox', 'Overview', 'Plan milestone'],
+    ['Inbox', 'Overview', 'Plans', 'Plan milestone'],
   )
-  assert.deepEqual(withProject.at(-1).to, { name: 'plans', params: { namespace: 'ns', name: 'app' } })
+  // Plan milestone opens the project's Plans tab.
+  assert.deepEqual(withProject.at(-1).to, {
+    name: 'stream-project',
+    params: { namespace: 'ns', name: 'app' },
+    query: { tab: 'plans' },
+  })
 })
 
 test('searchQuery needs two characters after trimming', () => {

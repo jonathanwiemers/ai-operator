@@ -578,8 +578,10 @@ Groups, built by `src/searchItems.ts`:
   leaves the group empty. `#12` finds issue 12, `!34` merge request 34. A hit
   opens the task page.
 * **Pages**: Inbox, Overview, Costs (feature `history`), Research (feature
-  `research`), and *Plan milestone* (feature `plans`, when a project is
-  open) to that project's [plans list](#planner).
+  `research`), *Plans* (feature `plans`) to `/plans`, and *Plan milestone*
+  (feature `plans`, when a project is open) to that project's Plans tab
+  (`?tab=plans`); both reuse the flag icon for the bundle budget. See
+  [Planner](#planner).
 
 Keyboard: ⌘K / Ctrl+K opens, arrows move, Enter opens the item and closes
 the palette, Escape closes it. The palette joins the browser history like a
@@ -889,18 +891,31 @@ and Nuxt UI, without scoped CSS; light and dark, readable at 375 px.
 
 ### Plans
 
-The plans list (`web/src/views/Plans.vue`) and plan page
-(`web/src/views/Plan.vue`) are Tailwind utilities and Nuxt UI, without
-scoped CSS. The list is `PlanList.vue`: it loads `GET /api/v1/plans`
-(`?project=` when given a project) on mount and on a project change, not
-live, and shows *Drafting* (every phase but Created) and *Milestones
-created*, each last active first and hidden when empty. Each plan is a
-`PlanRow.vue` (project only across projects, title, phase, spend, last
+The plan lists and the plan page (`web/src/views/Plan.vue`, route `plans`
+at `/projects/:namespace/:name/plans/:plan`) are Tailwind utilities and
+Nuxt UI, without scoped CSS. There is one list, `PlanList.vue`, with two
+thin hosts: `AllPlans.vue` (route `all-plans` at `/plans`, its own chunk,
+heading *Plans*) and the project's Plans tab (`Stream.vue`, `?tab=plans`
+on `stream-project`; `projectTabsFor(hasFeature('plans'))` in
+`streamTabs.ts` appends it, `milestoneTabs` spreads `streamBaseTabs`
+without it). The old list URL `/projects/:namespace/:name/plans` is a
+redirect record (`plans-list`) to that tab. `PlanList.vue` loads `GET
+/api/v1/plans` (`?project=` when given a project) on mount and on a
+project change, not live, and shows *Drafting* (every phase but Created)
+and *Milestones created*, each last active first and hidden when empty; a
+404 shows an empty list (`AllPlans.vue` shows *Not found*). Each plan is
+a `PlanRow.vue` (project only across projects, title, phase, spend, last
 activity, and the milestone's `%N` with its state and `ProgressBar.vue`,
 or *Not planned* with the GitLab link). `ProgressBar.vue` is shared with
-`MilestoneRow.vue`. Entry points: *Plan milestone* / *Plans* on the project Stream
-(`Stream.vue`), *Plan* in `RailNav.vue`, and *Plan milestone* in the ⌘K
-Pages group (`searchItems.ts`). Chat is `PlanChat.vue` (Desk chat parts);
+`MilestoneRow.vue`. *Plan milestone* in `PlanList.vue` shows when
+`planStartProjects` (`planStart.ts`: the `steer` projects, sorted) is not
+empty, also on an empty list: one project starts an untitled plan
+(`createPlan`) and opens it, two or more open an inline picker of buttons
+that wraps on phones. It reads *…* while busy, shows errors in a banner,
+and a 403 hides it until the list reloads. Entry points: *Plans* in
+`RailNav.vue` (below *Costs*), the project's Plans tab, and *Plans* /
+*Plan milestone* in the ⌘K Pages group (`searchItems.ts`). *Delete* on
+the plan page returns to the project's Plans tab. Chat is `PlanChat.vue` (Desk chat parts);
 the draft is `PlanDraft.vue` with Edit / Preview, Save, the newer-draft
 diff (`planDraft.ts`) and `PlanCreateDialog.vue` (Spec / Autopilot, estimate
 from `estimate.ts`). List helpers live in `planRows.ts` (`plansPath` in
@@ -1512,7 +1527,9 @@ describe in plain words. The endpoints are in [design.md](design.md#desk-api).
   at `/research`.
 - **Project** (`/projects/<namespace>/<name>`) and **milestone**
   (`…/milestones/<iid>`): the view tab is kept in `?tab=`; the default
-  (*Stream* on a project, *Issues* on a milestone) is left out. Old
+  (*Stream* on a project, *Issues* on a milestone) is left out. A project
+  has *Stream | Board | Spend*, plus *Plans* with the feature `plans`
+  (`?tab=plans` without it opens *Stream*); a milestone has no *Plans*. Old
   `…/milestones/3?tab=stream` links still open the stream; a milestone link
   with a `#prompt-Q<n>` hash and no `?tab=` opens *Pilot*. The view tabs are
   a [RouteTabs](#routetabs) strip. Scope tabs keep a chosen view tab where
@@ -1587,9 +1604,10 @@ current tasks, without tokens.
 Breadcrumbs are built from the URL: *Overview* › project › milestone ›
 issue, *Overview* › project › *Plans* › plan, *Research* › research ›
 *Runs* › run. A task page sits under its issue page; a task without an
-issue under the project. The Inbox, Costs, the research list and *Not
-found* show one crumb. Every crumb but the last links to that level's
-default tab. Crumbs show `%<iid>`, `#<iid>` or the task's name until the
+issue under the project. The Inbox, Costs, Plans (`/plans`), the research
+list and *Not found* show one crumb. Every crumb but the last links to that
+level's default tab, but a plan's *Plans*, which opens the project's Plans
+tab. Crumbs show `%<iid>`, `#<iid>` or the task's name until the
 view has loaded titles; they cost no extra request. On narrow screens the
 middle crumbs fold behind `…`. The Spend tab keeps its own drill-down
 crumbs.
@@ -1653,7 +1671,12 @@ goes there: while both are empty, each turn's prompt has a `## Title`
 section and the turn schema's `title` (first line, trimmed, at most 255
 runes) is written once; an interrupted turn writes none. *Create milestone*
 then sets `status.title` to the milestone's title in the patch that records
-the IID; a GitLab failure leaves it. After `plan.idleTimeout` the pod ends (phase
+the IID; a GitLab failure leaves it. So a `spec.title` given on create
+wins until the milestone settles the title, and *Plan milestone* sends
+none. The plan lists (`GET /api/v1/plans`, see [Plans](#plans)) link a
+created milestone to its Desk page with the dashboard's state and
+progress, or, while the Desk has no row for it, to GitLab with *Not
+planned*. After `plan.idleTimeout` the pod ends (phase
 *Idle*); the workspace stays and the next message resumes the engine
 session. Values: [chart README](../../charts/ai-operator/README.md#plan).
 

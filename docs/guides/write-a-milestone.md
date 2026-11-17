@@ -17,8 +17,9 @@ With Desk chat on, an owner of the project can plan a milestone with an
 agent that reads the project's default branch, its milestones and its
 issues:
 
-1. Open the project and click *Plan milestone* on its *Stream* tab, or
-   *Plan* in the rail.
+1. Open the project's *Plans* tab and click *Plan milestone*. Or open
+   *Plans* in the rail, click *Plan milestone* and pick the project; with
+   one project you own, there is nothing to pick.
 2. Tell the agent what you want in the chat on the left. It writes the
    draft on the right, and you can edit the draft yourself with *Edit* and
    *Save*. The next chat turn sees your edit.
@@ -29,6 +30,24 @@ issues:
 The operator then creates the milestone in GitLab with your GitLab login.
 A plan has its own budget; the chart values are in the
 [chart README](../../charts/ai-operator/README.md#plan).
+
+### Find your plans
+
+*Plans* in the rail lists the plans of every project you may see, with the
+project's name. A project's *Plans* tab lists only its plans. Both show
+*Drafting* first, then *Milestones created*, each last active first. A row
+shows the title, the phase, the spend of the plan's budget and the last
+activity.
+
+The agent names a new plan after your first message. Once the milestone
+is created, the plan takes the milestone's title and keeps it. A plan you
+started with a title through the API keeps that title until then.
+
+A plan that created a milestone links to it as *%N*, with the milestone's
+state (running, waiting, paused, planned or done) and how many of its
+issues are merged. When the operator does not plan that milestone, for
+example because you switched *Spec* off, *%N* opens it in GitLab and the
+row says *Not planned*.
 
 ## Write it in GitLab
 

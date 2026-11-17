@@ -2,14 +2,17 @@
 // so it can be linked to and reloaded; the first tab of a list is the
 // default and is left out.
 //
-// Project pages: Stream | Board | Spend. Milestone pages: Issues | Needs you |
+// Project pages: Stream | Board | Spend, and Plans with the plans feature
+// (R13). Milestone pages: Issues | Needs you |
 // Pilot | Retrospective | Stream | Board | Spend (decision 7, R12), so an old
 // milestone link with ?tab=stream still opens the stream. The dashboard
 // at /: Overview | Stream (decision 3). The task page (and the issue page
 // with a live task): Overview | Chat | Live | Logs | Calls | Details (R10;
 // Logs for the task's owners, run watchdog R8).
-export type StreamTab = 'stream' | 'board' | 'spend'
-export type MilestoneTab = 'issues' | 'needs' | 'pilot' | 'retrospective' | StreamTab
+// BaseTab: the tabs project and milestone pages share.
+export type BaseTab = 'stream' | 'board' | 'spend'
+export type StreamTab = BaseTab | 'plans'
+export type MilestoneTab = 'issues' | 'needs' | 'pilot' | 'retrospective' | BaseTab
 export type DashboardTab = 'overview' | 'stream'
 export type TaskTab = 'overview' | 'chat' | 'live' | 'logs' | 'calls' | 'details'
 // A plan's tabs on phones; desktop shows both columns.
@@ -24,18 +27,24 @@ export interface Tab<T extends string> {
   label: string
 }
 
-export const projectTabs: Tab<StreamTab>[] = [
+export const streamBaseTabs: Tab<BaseTab>[] = [
   { id: 'stream', label: 'Stream' },
   { id: 'board', label: 'Board' },
   { id: 'spend', label: 'Spend' },
 ]
+
+// projectTabsFor are a project page's tabs: Plans only with the plans
+// feature, so ?tab=plans without it opens Stream.
+export function projectTabsFor(plans: boolean): Tab<StreamTab>[] {
+  return plans ? [...streamBaseTabs, { id: 'plans', label: 'Plans' }] : streamBaseTabs
+}
 
 export const milestoneTabs: Tab<MilestoneTab>[] = [
   { id: 'issues', label: 'Issues' },
   { id: 'needs', label: 'Needs you' },
   { id: 'pilot', label: 'Pilot' },
   { id: 'retrospective', label: 'Retrospective' },
-  ...projectTabs,
+  ...streamBaseTabs,
 ]
 
 // storedMilestoneTabs are a milestone's tabs once its tasks are gone: the
@@ -60,12 +69,12 @@ export const taskTabs: Tab<TaskTab>[] = [
 
 type QueryValue = string | null | (string | null)[] | undefined
 
-// tabFromQuery reads ?tab= against tabs (the project tabs by default):
+// tabFromQuery reads ?tab= against tabs (Stream, Board, Spend by default):
 // unknown, empty or repeated values fall back to the first known one, else
 // to the list's first tab.
-export function tabFromQuery(v: QueryValue): StreamTab
+export function tabFromQuery(v: QueryValue): BaseTab
 export function tabFromQuery<T extends string>(v: QueryValue, tabs: readonly Tab<T>[]): T
-export function tabFromQuery(v: QueryValue, tabs: readonly Tab<string>[] = projectTabs): string {
+export function tabFromQuery(v: QueryValue, tabs: readonly Tab<string>[] = streamBaseTabs): string {
   const list = Array.isArray(v) ? v : [v]
   for (const s of list) {
     const t = tabs.find((x) => x.id === s)
@@ -99,7 +108,7 @@ export function taskTabFromRoute(v: QueryValue, hash: string, available: readonl
 export function tabQuery<Q extends Record<string, unknown>>(
   query: Q,
   tab: string,
-  tabs: readonly Tab<string>[] = projectTabs,
+  tabs: readonly Tab<string>[] = streamBaseTabs,
 ): Omit<Q, 'tab'> & { tab?: string } {
   const { tab: _, ...rest } = query
   return tab === tabs[0]!.id ? rest : { ...rest, tab }

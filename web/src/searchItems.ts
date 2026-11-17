@@ -5,7 +5,7 @@ export interface PaletteItem {
   label: string
   suffix?: string
   icon: string
-  to: { name: string; params?: Record<string, string | number> }
+  to: { name: string; params?: Record<string, string | number>; query?: Record<string, string> }
 }
 export interface PaletteGroup {
   id: string
@@ -35,13 +35,15 @@ export function paletteGroups(a: {
   ]
   if (has('history')) pages.push({ label: 'Costs', icon: 'i-lucide-wallet', to: { name: 'costs' } })
   if (has('research')) pages.push({ label: 'Research', icon: 'i-lucide-flask-conical', to: { name: 'researches' } })
-  // D449-P1: the palette opens the project's plans list, it does not create.
-  // Reuse flag (already in the icon scan) so the initial bundle stays under budget.
+  // Plans, and for the open project Plan milestone, which opens its Plans tab
+  // (D449-P1: the palette does not create). Both reuse flag (already in the
+  // icon scan) so the initial bundle stays under budget.
+  if (has('plans')) pages.push({ label: 'Plans', icon: 'i-lucide-flag', to: { name: 'all-plans' } })
   if (has('plans') && a.project) {
     pages.push({
       label: 'Plan milestone',
       icon: 'i-lucide-flag',
-      to: { name: 'plans', params: { namespace: a.project.namespace, name: a.project.name } },
+      to: { name: 'stream-project', params: { namespace: a.project.namespace, name: a.project.name }, query: { tab: 'plans' } },
     })
   }
   return [

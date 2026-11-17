@@ -6,7 +6,8 @@ import {
   milestoneTabFromRoute,
   milestoneTabs,
   planTabs,
-  projectTabs,
+  projectTabsFor,
+  streamBaseTabs,
   storedMilestoneTabs,
   tabFromQuery,
   tabQuery,
@@ -42,8 +43,8 @@ test('tabQuery: stream drops the parameter, other tabs set it', () => {
   assert.deepEqual(tabQuery({}, 'stream'), {})
 })
 
-test('projectTabs: Stream comes first', () => {
-  assert.equal(projectTabs[0].id, 'stream')
+test('streamBaseTabs: Stream comes first', () => {
+  assert.equal(streamBaseTabs[0].id, 'stream')
 })
 
 test('dashboard tabs: Overview is the default, Stream by ?tab=stream', () => {
@@ -80,7 +81,7 @@ test('milestone tabs: unknown values fall back to Issues', () => {
 })
 
 test('project tabs: issues is unknown there', () => {
-  assert.equal(tabFromQuery('issues', projectTabs), 'stream')
+  assert.equal(tabFromQuery('issues', projectTabsFor(true)), 'stream')
 })
 
 test('milestone tabQuery: Issues drops the parameter, Stream sets it', () => {
@@ -157,4 +158,22 @@ test('milestoneTabFromRoute: prompt and problem links open Needs you, ?tab=pilot
 test('milestone tabs: Needs you sits between Issues and Pilot, also when stored', () => {
   assert.deepEqual(milestoneTabs.slice(0, 3).map((t) => t.label), ['Issues', 'Needs you', 'Pilot'])
   assert.ok(storedMilestoneTabs.some((t) => t.id === 'needs'))
+})
+
+test('project tabs: Plans only with the plans feature', () => {
+  assert.deepEqual(projectTabsFor(false).map((t) => t.label), ['Stream', 'Board', 'Spend'])
+  assert.deepEqual(projectTabsFor(true).map((t) => t.label), ['Stream', 'Board', 'Spend', 'Plans'])
+  assert.equal(tabFromQuery('plans', projectTabsFor(true)), 'plans')
+  assert.deepEqual(tabQuery({}, 'plans', projectTabsFor(true)), { tab: 'plans' })
+})
+
+test('milestone tabs have no Plans', () => {
+  assert.ok(!milestoneTabs.some((t) => t.id === 'plans'))
+  assert.ok(!storedMilestoneTabs.some((t) => t.id === 'plans'))
+  assert.equal(tabFromQuery('plans', milestoneTabs), 'issues')
+})
+
+test('tabFromQuery: ?tab=plans without the feature falls back to Stream', () => {
+  assert.equal(tabFromQuery('plans', projectTabsFor(false)), 'stream')
+  assert.equal(tabFromQuery('plans'), 'stream')
 })

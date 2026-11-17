@@ -120,17 +120,18 @@ write rule must match names there (for example `agents/*`). A user may start
 
 ![Desk overview with running, paused and done milestones, their progress, cost and tokens](../assets/screenshots/dashboard.webp)
 
-- **The rail** on the left has *Inbox*, *Overview*, *Costs*, your projects
+- **The rail** on the left has *Inbox*, *Overview*, *Costs*, *Plans* (with
+  Desk chat), your projects
   with a status dot (running, needs you, idle) and a count of what needs
   you, the researches, and how much of each
   [engine's](../concepts/glossary.md#engine) usage window is used. Its
   footer shows the operator's version, with a note when an update is
   rolling out or out.
 - **Breadcrumbs** at the top lead back up, one click per level: *Overview* ›
-  project › milestone › issue.
+  project › milestone › issue, or *Overview* › project › *Plans* › plan.
 - **Search**: ⌘K (macOS) or Ctrl+K opens the search from anywhere. It finds
   projects, milestones, issues and merge requests, and pages such as the
-  Inbox or *Plan milestone*.
+  Inbox, *Plans* or *Plan milestone*, which opens the project's *Plans* tab.
 - **Live**: every page updates by itself.
 
 ## Inbox
@@ -186,15 +187,18 @@ event of all your projects.
 
 ![Project page with its milestones, the pilot message box and a run that asks a question, beside the needs-you panel and the queue](../assets/screenshots/project-stream.webp)
 
-A project page has three tabs:
+A project page has the tabs *Stream | Board | Spend*, and *Plans* with Desk
+chat:
 
 - **Stream**: the project's [autopilot queue and the milestones that are
-  finishing](steer-from-the-desk.md#the-queue-and-finishing), *Plan
-  milestone* and *Plans*, its milestones in progress and done, then the
-  stream: what happened, newest first. A message box sits above the
-  stream; a paused milestone pins its short pause card over it.
+  finishing](steer-from-the-desk.md#the-queue-and-finishing), its
+  milestones in progress and done, then the stream: what happened, newest
+  first. A message box sits above the stream; a paused milestone pins its
+  short pause card over it.
 - **Board**: one board per milestone, plus the issues without one.
 - **Spend**: what the project's agent calls cost.
+- **Plans**: the project's [plans](write-a-milestone.md#draft-it-in-the-desk)
+  and, for an owner, *Plan milestone*.
 
 Filter chips narrow the stream: *All*, *Chat*, *Needs you*, *Runs*, *CI &
 review* and *Merged*. Comments on the same issue or merge request are one

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// The rail's content (docs/contributing/web-ui.md, "Navigation"): Inbox, Overview, projects,
+// The rail's content (docs/contributing/web-ui.md, "Navigation"): Inbox, Overview, Costs, Plans, projects,
 // research, engine meters and the user. App.vue renders it in the aside on
 // tablet and desktop and in the rail sheet on phones; App.vue loads the data.
 import { computed } from 'vue'
@@ -51,15 +51,6 @@ function researchSub(r: ResearchSummary): string {
 function projectActive(namespace: string, name: string) {
   return route.params.namespace === namespace && route.params.name === name && route.path.startsWith('/projects/')
 }
-
-// D449-P1: Plan opens the project's plans list when a project is open.
-const planTo = computed(() => {
-  if (!hasFeature('plans')) return null
-  const { namespace: ns, name } = route.params
-  return typeof ns === 'string' && typeof name === 'string' && route.path.startsWith('/projects/')
-    ? { name: 'plans' as const, params: { namespace: ns, name } }
-    : null
-})
 </script>
 
 <template>
@@ -79,8 +70,9 @@ const planTo = computed(() => {
         <span class="dot" />
         <span class="name">Costs<span class="sub">what agents cost, across projects</span></span>
       </RouterLink>
-      <RouterLink v-if="planTo" :to="planTo" class="item soft" data-rail-plan>
-        <span class="name">Plan</span>
+      <RouterLink v-if="hasFeature('plans')" to="/plans" class="item" active-class="active" data-rail-plans>
+        <span class="dot" />
+        <span class="name">Plans<span class="sub">milestone plans, across projects</span></span>
       </RouterLink>
 
       <div class="sect"><span>Projects</span></div>

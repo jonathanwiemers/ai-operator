@@ -1,23 +1,12 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
 import Badge from '../components/Badge.vue'
 import { useBackClose } from '../ui/useBackClose'
 import { hasFeature } from '../api'
-import {
-  ApiError,
-  createPlan,
-  getInbox,
-  getMilestone,
-  getProject,
-  getProjectHistory,
-  getStream,
-  listPlans,
-  LoginRequiredError,
-  NotFoundError,
-} from '../client'
+import { getInbox, getMilestone, getProject, getProjectHistory, getStream, LoginRequiredError, NotFoundError } from '../client'
 import { setCrumbNames } from '../crumbNames'
 import Board from '../components/Board.vue'
 import ContextPanel from '../components/ContextPanel.vue'
@@ -32,6 +21,7 @@ import MilestoneNeeds from '../components/MilestoneNeeds.vue'
 import MilestonePilot from '../components/MilestonePilot.vue'
 import MilestoneRetro from '../components/MilestoneRetro.vue'
 import MilestoneSections from '../components/MilestoneSections.vue'
+import PlanList from '../components/PlanList.vue'
 import ProjectFinishing from '../components/ProjectFinishing.vue'
 import ProjectQueue from '../components/ProjectQueue.vue'
 import RouteTabs from '../ui/RouteTabs.vue'
@@ -60,7 +50,7 @@ import type {
   StreamEvent,
 } from '../types'
 import { useStreamNote } from '../streamNote'
-import { milestoneTabFromRoute, milestoneTabs, projectTabs, storedMilestoneTabs, tabFromQuery, tabQuery } from '../streamTabs'
+import { milestoneTabFromRoute, milestoneTabs, projectTabsFor, storedMilestoneTabs, tabFromQuery, tabQuery } from '../streamTabs'
 import NotFound from './NotFound.vue'
 // The sheet is loaded below 1180 px only, where the Context button is.
 const USlideover = defineAsyncComponent(() => import('@nuxt/ui/components/Slideover.vue'))
@@ -74,16 +64,15 @@ const props = defineProps<{
 const everything = computed(() => !props.namespace || !props.name)
 const milestoneIID = computed(() => (props.iid ? Number(props.iid) : undefined))
 
-// tab: Stream, Board or Spend on project streams, Issues (the default),
+// tab: Stream, Board, Spend or Plans (feature plans) on project streams, Issues (the default),
 // Needs you, Pilot, Retrospective, Stream, Board or Spend on milestones, kept in ?tab= so it can be
 // linked to (a #prompt-Q<n> link without it opens Needs you); Everything has no
 // tabs. A stored milestone has no tasks, so no Board. The Needs you tab's
 // label carries the count of its Open items ("Needs you · n", D530-P1).
 const route = useRoute()
-const router = useRouter()
 const tabs = computed(() => {
   if (everything.value) return []
-  if (!milestoneIID.value) return projectTabs
+  if (!milestoneIID.value) return projectTabsFor(hasFeature('plans'))
   const m = milestone.value?.iid === milestoneIID.value ? milestone.value : null
   const list = m?.stored ? storedMilestoneTabs : milestoneTabs
   const n = m ? needsOpen(m).count : 0
@@ -172,42 +161,6 @@ onMounted(() => narrowQuery.addEventListener('change', onWidth))
 onBeforeUnmount(() => narrowQuery.removeEventListener('change', onWidth))
 
 const canSteer = computed(() => !!milestone.value?.permissions?.steer)
-
-// Plan milestone (owners): listPlans carries permissions.steer on each item;
-// an empty list still shows the button (first plan), a loaded false hides it.
-const showPlans = computed(() => hasFeature('plans') && !everything.value && !milestoneIID.value && !!props.namespace && !!props.name)
-const canPlan = ref(false)
-const planBusy = ref(false)
-const planError = ref('')
-watch(
-  () => [showPlans.value, props.namespace, props.name] as const,
-  async ([show, ns, n]) => {
-    canPlan.value = false
-    planError.value = ''
-    if (!show || !ns || !n) return
-    try {
-      const items = await listPlans(ns, n)
-      canPlan.value = items[0]?.permissions.steer !== false
-    } catch {
-      canPlan.value = false
-    }
-  },
-  { immediate: true },
-)
-async function startPlan() {
-  if (planBusy.value || !props.namespace || !props.name) return
-  planBusy.value = true
-  planError.value = ''
-  try {
-    const p = await createPlan(props.namespace, props.name)
-    await router.push({ name: 'plans', params: { namespace: props.namespace, name: props.name, plan: p.name } })
-  } catch (e) {
-    planError.value = e instanceof Error ? e.message : String(e)
-    if (e instanceof ApiError && e.status === 403) canPlan.value = false
-  } finally {
-    planBusy.value = false
-  }
-}
 
 // paused: the loaded milestone's paused autopilot, pinned above the composer
 // (project and milestone streams only; the Inbox covers Everything).
@@ -542,18 +495,6 @@ function showDay(i: number): string | null {
       <div v-if="tab === 'stream'" class="scroll">
         <!-- A project's milestones (R9), in the dashboard's lists. -->
         <div v-if="!everything && !milestoneIID && namespace && name" class="milestones">
-          <div v-if="showPlans" class="mb-3 flex flex-wrap items-center gap-2" data-plan-entry>
-            <UButton
-              v-if="canPlan"
-              color="primary"
-              size="sm"
-              :disabled="planBusy"
-              :label="planBusy ? '…' : 'Plan milestone'"
-              @click="startPlan"
-            />
-            <RouterLink :to="{ name: 'plans', params: { namespace, name } }" class="text-sm text-(--text-2)">Plans</RouterLink>
-            <span v-if="planError" class="text-sm text-(--tone-danger-fg)" role="alert">{{ planError }}</span>
-          </div>
           <ProjectQueue
             v-if="project"
             class="mb-3"
@@ -681,6 +622,10 @@ function showDay(i: number): string | null {
         />
         <div v-else-if="milestoneFailed" class="banner danger">The milestone could not be loaded.</div>
         <div v-else class="empty">Loading…</div>
+      </div>
+      <div v-else-if="tab === 'plans'" class="scroll board">
+        <!-- The project's plans (R13); a 404 (no chat) shows an empty list. -->
+        <PlanList v-if="namespace && name" :project="{ namespace, name }" />
       </div>
       <div v-else-if="tab === 'spend'" class="scroll board">
         <SpendPanel

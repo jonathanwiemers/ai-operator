@@ -128,6 +128,7 @@ exists in GitLab.
 
 | Method and path | Purpose | Needs |
 |-----------------|---------|-------|
+| `GET /api/v1/plans` | The plans of every project you may see, last active first, and those projects with whether you may start plans in them. `?project=namespace/name` narrows both to one project. | see, Desk chat |
 | `GET /api/v1/projects/{namespace}/{name}/plans` | The project's plans, newest first. | see, Desk chat |
 | `GET /api/v1/projects/{namespace}/{name}/plans/{plan}` | One plan with its draft. | see, Desk chat |
 | `POST /api/v1/projects/{namespace}/{name}/plans` | Start a plan, with an optional `{"title": "…"}`. | `steer`, Desk chat |

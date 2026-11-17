@@ -1,16 +1,19 @@
 import type { RouteName } from './routeNames.ts'
 
 // The breadcrumbs of a route (R19, decisions 16 and 17): Overview › project
-// › %milestone › #issue, the task page under its issue when it has one, and
-// Research › research › runs › run. The last crumb names the current view
-// and has no link; every other one links to its level without ?tab=, so it
-// opens that level's default tab. Names come from crumbNames, filled by
-// the views from what they loaded; until then a crumb shows the IID or
-// the route's label.
+// › %milestone › #issue, the task page under its issue when it has one, a
+// plan under its project's Plans tab, and Research › research › runs › run.
+// The last crumb names the current view and has no link; every other one
+// links to its level without ?tab=, so it opens that level's default tab,
+// but Plans, which is the project's Plans tab. Names come from crumbNames,
+// filled by the views from what they loaded; until then a crumb shows the
+// IID or the route's label.
 
 export interface CrumbLink {
   name: RouteName
   params: Record<string, string>
+  // query: only the Plans crumb's ?tab=plans, never the route's query.
+  query?: { tab: 'plans' }
 }
 
 export interface Crumb {
@@ -101,11 +104,16 @@ export function crumbsFor(route: CrumbRoute, names: CrumbNames = {}): Crumb[] {
     case 'stream-project':
       trail = [overview, project]
       break
+    case 'all-plans':
+      trail = [{ label: 'Plans' }]
+      break
+    // plans-list only redirects to the project's Plans tab.
+    case 'plans-list':
+      trail = [overview, project, { label: 'Plans' }]
+      break
     case 'plans': {
-      const plan = param(p, 'plan')
-      trail = plan
-        ? [overview, project, { label: 'Plans', to: { name: 'plans', params: { namespace, name } } }, { label: plan }]
-        : [overview, project, { label: 'Plans' }]
+      const tab: Crumb = { label: 'Plans', to: { name: 'stream-project', params: { namespace, name }, query: { tab: 'plans' } } }
+      trail = [overview, project, tab, { label: param(p, 'plan') || 'Plan' }]
       break
     }
     case 'stream-milestone': {

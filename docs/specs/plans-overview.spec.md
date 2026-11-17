@@ -266,3 +266,16 @@ follow-up issue), and requirements without an issue and why.
   Plans tab replaces it. `plansPath` lives in `web/src/plansPath.ts`,
   re-exported by `planRows.ts`: importing `planRows.ts` from `client.ts`
   pulled the whole module into the initial chunk (+0.7 kB).
+- 2026-11-17 #537 (R11–R15): R11 (*Plan milestone* in `PlanList.vue`,
+  `planStart.ts`) is implemented in this MR, as #536 announced. The picker
+  is an inline list of project buttons under the button, not a popover:
+  it wraps on a phone and adds no component to a chunk (D537-P1). The
+  project tabs are `projectTabsFor(hasFeature('plans'))` over
+  `streamBaseTabs`, which `milestoneTabs` spreads (D537-P2). The old list
+  URL is the redirect record `plans-list` (D537-P3), with its own crumb
+  case so every route stays named. A 404 (no chat) on the project's Plans
+  tab shows an empty list. R15 went to the pages #534 named: the Planner,
+  Plans, palette, navigation and routes sections of
+  `docs/contributing/web-ui.md`, the API table in
+  `docs/contributing/design.md`, `docs/reference/desk-api.md` and the user
+  guides (`desk.md`, `write-a-milestone.md`, `steer-from-the-desk.md`).

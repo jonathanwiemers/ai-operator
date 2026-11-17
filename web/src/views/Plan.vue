@@ -47,7 +47,7 @@ async function onDelete() {
   if (!view.value || !window.confirm(`Delete the plan ${planTitle(view.value.title, view.value.createdAt)}?`)) return
   try {
     await deletePlan(props.namespace, props.name, props.plan)
-    await router.push({ name: 'plans', params: { namespace: props.namespace, name: props.name } })
+    await router.push({ name: 'stream-project', params: { namespace: props.namespace, name: props.name }, query: { tab: 'plans' } })
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)
   }

@@ -229,7 +229,8 @@ With nothing left, the row says *Closes on the next poll*. There is no
 ## Plan a milestone
 
 Owners with the `steer` grant draft a new milestone with an agent: *Plan
-milestone* on the project's *Stream* tab, or *Plan* in the rail. The steps
+milestone* on the project's *Plans* tab, or on *Plans* in the rail after
+picking the project. The steps
 are in [Write a milestone](write-a-milestone.md#draft-it-in-the-desk).
 
 - **The plan page** has the chat on the left and the draft on the right; on
@@ -237,8 +238,10 @@ are in [Write a milestone](write-a-milestone.md#draft-it-in-the-desk).
   the agent sees your edit with its next turn. If the agent writes a newer
   draft while you edit, the Desk shows the difference and lets you pick
   *Use agent's draft* or *Keep mine*.
-- **The plans list** (*Plans*) shows each plan's title, phase, spend and the
-  milestone it created.
+- **The plan lists** (*Plans* in the rail, and each project's *Plans* tab)
+  show each plan's title, phase, spend and the
+  milestone it created, with its state and progress. *Delete* on a plan
+  page leads back to the project's *Plans* tab.
 - **Its budget** starts at the default cap. At the cap the plan stops until an
   owner raises it, up to the highest cap.
 - **Create milestone** shows the title, the draft, the switches *Spec* and
