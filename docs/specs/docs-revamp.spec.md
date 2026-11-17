@@ -418,3 +418,18 @@ with the requirement label and the issue or merge request.
   R13's.
   The glossary's Desk and Prompt entries still named the Desk guides as
   planned plain text (R9's note); they are links now.
+- R13 (#518): the README leads with autopilot, the pilot and the Desk.
+  The label hand-over is one sentence that links
+  `guides/answer-and-hand-over.md`. "Talk to it in GitLab" became "Steer it"
+  (`#steer-it`); `#quick-start` stays. Highlights went from 13 to 12 rows:
+  "Describes its work" joined "Implements and reviews", "Iterates by
+  comment" became the chat row, "Planned releases" joined "Autopilot",
+  "Right model for the job" joined "Easy on tokens", and the Desk row left
+  because "How it works" and "Steer it" cover it. New rows: the pilot, spend
+  and budgets, chat, and hung runs. `/agent restart` is no GitLab command
+  (restarting is a Desk action, see `reference/commands.md`), so "Steer it"
+  names it under the Desk and says so instead of listing it as a comment.
+  The defaults sentence was checked against the CRD defaults: it now
+  names the pilot on Sonnet and the reviewers by name. The Quick start
+  installs from a values file, so the Desk step adds its `ui` block to the
+  same file, and it drops the board, which only helps the manual flow.
