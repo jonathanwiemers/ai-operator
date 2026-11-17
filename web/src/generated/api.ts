@@ -592,7 +592,7 @@ export interface WorkflowSpec {
   commitTypes?: string[];
   /**
    * Release configures when the operator releases the default branch by
-   * decision instead of on every merge, see docs/usage.md#releases.
+   * decision instead of on every merge, see docs/guides/releases.md.
    * +optional
    */
   release?: ReleaseSpec;
@@ -612,7 +612,7 @@ export const ReleaseAuto: ReleaseMode = "Auto";
  */
 export const ReleaseOff: ReleaseMode = "Off";
 /**
- * ReleaseSpec configures releasing by decision, see docs/usage.md#releases.
+ * ReleaseSpec configures releasing by decision, see docs/guides/releases.md.
  */
 export interface ReleaseSpec {
   /**

@@ -161,7 +161,7 @@ test over only once the test was flaky twice. See
 **Releases.** In an answer or an assessment, the pilot may add a release
 after an issue of the milestone or drop a planned one, with a one-line
 reason. That needs no answer from you. See
-[Releases](../usage.md#releases).
+[Releases](releases.md#the-pilots-releases).
 
 ## Your words to the agent
 

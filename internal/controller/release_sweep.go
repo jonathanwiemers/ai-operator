@@ -27,7 +27,7 @@ func (ph releasePhase) run(ctx context.Context) {
 }
 
 // syncProjectReleases keeps the release decisions outside milestones in the
-// project's status.releases (decisions 12 and 13, docs/usage.md#releases):
+// project's status.releases (decisions 12 and 13, docs/guides/releases.md):
 // while no autopilot of the project runs or is paused, a companion waiting
 // for a release and the sweep add records, then the releaser moves them on.
 // While one runs, the milestone's releases cover everything: a record

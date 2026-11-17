@@ -3,7 +3,7 @@
 The operator turns GitLab milestones and issues into work for coding agents
 running in Kubernetes pods. A milestone runs on autopilot; the pilot handles
 what goes wrong, and you steer from the Desk. For the user-facing workflow
-see [usage.md](../usage.md), for all settings the
+see the [guides](../guides/README.md), for all settings the
 [AgentProject reference](../reference/agentproject.md) and
 [Install](../getting-started/install.md) for installation.
 
@@ -917,6 +917,90 @@ parsed strictly: unknown keys, negative prices or an unreadable file stop
 the operator at start. Prices apply to calls written from then on; stored
 rows keep their cost.
 
+### What the spend counts
+
+User side: [What counts as spend](../guides/budgets-and-spend.md#what-counts-as-spend).
+Budgets, the Spend tab ([Spend tab in detail](web-ui.md#spend-tab-in-detail)),
+the Costs page and the retrospective read the same numbers: one row per
+agent call in `agent_calls`. Calls without a known cost add nothing to the
+spend a budget compares.
+
+- **A call counts only itself.** Its tokens are input, output, cache read
+  and cache write of everything the call ran: the main thread, subagents
+  and compaction (claude's `modelUsage`). A call that resumes a session
+  (implementer steps, fix rounds, re-runs) counts only what it spent
+  itself, not the session's earlier calls: claude's `--resume` restores
+  the session's totals into `modelUsage` and `total_cost_usd`, so the
+  operator takes `model_usage_since_last_result` instead. Desk chat turns
+  count their own turn the same way.
+- **Per-model tokens are the same tokens, split.** A call's models (its
+  main model and the subagents' models) add up to the call's tokens, so
+  *by model*, *by kind*, *by role* and the drill-down all add up to the
+  total. Calls recorded by older releases could hold a
+  resumed session's carried-over totals in their models: such a call
+  counts whole on its main model, with its own tokens and cost, and is
+  not split.
+- **Cursor's `auto` is not metered.** Cursor calls with model `auto` (any role or
+  profile set to it) let cursor pick the model, and its ACP session
+  reports neither which model it picked
+  (`currentModelId: "default[]"`) nor any usage. So these calls have no
+  tokens and no cost: they appear as *cursor auto (unmetered)*, count as
+  *N calls not metered* next to the total, add nothing to the token sums,
+  and add nothing to a budget. No model or price is guessed for them.
+- **Old token basis.** Calls recorded before a call stored how its tokens
+  were computed (`token_basis` 0, older releases: before the sum of
+  `modelUsage` and per-turn deltas) are on the old basis, and their tokens
+  are not comparable with newer calls'. Every total, child and breakdown
+  counts them (runs without calls and checkpoint events are no calls and
+  never count). When a milestone holds such calls, the retrospective's
+  total says so: "N of M calls on the old token basis" when it mixes both,
+  "old token basis" when all are old. They are not recomputed.
+- **Cursor's cost: reported, estimated or n/a.** Cursor sends usage over
+  ACP only optionally, and the cursor-agent in the agent image sends none
+  yet. When an ACP `usage_update` carries a cost in USD, that is the
+  call's reported cost (ACP's cost is the session's running total, so a
+  call counts the increase since the previous call of its session; other
+  currencies and credits are ignored). Otherwise a call with tokens (from
+  the ACP prompt response) is estimated from the
+  [`pricing:` table](../../charts/ai-operator/README.md#pricing), and without tokens or a
+  price its cost is n/a, never $0. The context size a `usage_update`
+  reports becomes the call's context series, never its tokens. Calls
+  recorded before a price was configured, or before this release, are not
+  re-priced.
+
+### Spend report script
+
+`hack/spend-report.sql` answers "where did this issue's cost come from" and
+"what do conflict rounds cost" from `agent_calls` alone, with psql on the
+research database (it only reads). Variables: `project` (required),
+`milestone` and `issue` (0 or unset: all). It prints four tables:
+
+1. per issue: kinds, models, runs, review rounds (as in the Spend tab's
+   *Review rounds*), calls, input, output, cache read and cache write
+   tokens, cost and cost per 1M tokens;
+2. conflict calls per issue and model, with the most calls one run made
+   (above 1: the run resolved conflicts repeatedly) and the output and
+   cache tokens, to see conflict rounds on Opus with large outputs;
+3. the calls of one issue (`issue` ≠ 0): task, run, seq, kind, role, model,
+   resumed, tokens, cost and duration;
+4. every cursor call and every call on model `auto`, oldest first: time,
+   kind, role, issue, task, run, seq, engine, model, `fallback_from`, cost
+   source, tokens, cost, duration and the engine and `fallback_from` of the
+   next call of its run. A cursor call that hit its usage limit is a row
+   without cost or tokens; when the role has a fallback, the next call is
+   the fallback's (`next_fallback_from` = `cursor`).
+
+```sh
+# Why did #179 cost $53.88: every call of the issue, in order.
+psql "$DATABASE_URL" -v project=ai-operator -v issue=179 -f hack/spend-report.sql
+# The milestone's issues, its conflict spend by model and its cursor/auto calls.
+psql "$DATABASE_URL" -v project=ai-operator -v milestone=12 -f hack/spend-report.sql
+```
+
+Models are the calls' own models; the Spend tab's *By kind and model*
+(and *Conflict calls per run* at milestone and issue scope) also splits out
+the subagent models. Expired calls are left out, as in the tab.
+
 ### Research store migrations
 
 The operator applies the embedded SQL migrations
@@ -1806,6 +1890,346 @@ it). The pilot's spend is its task's `status.run.costUSD`; on claude a
 single answer or assessment may spend at most what is left (or
 `agents.pilot.maxBudgetUSD`, if lower).
 
+### Budgets in detail
+
+What the user guide ([Budgets and spend](../guides/budgets-and-spend.md))
+and the Autopilot section above leave out, from the old usage page:
+
+* **Status.** The spec task's `status.autopilot.budget` holds `limitUSD`
+  and `spentUSD`; the pause reason reads "the budget of $5.00 is used
+  ($5.12 spent) …". The milestone's spend is every `agent_calls` row with
+  its milestone, the spec, pilot and retro calls included. Calls without a
+  known cost add nothing to it.
+* **The line.** `/agent budget <usd>` takes a decimal (a leading `$` is
+  accepted); a value that is not above 0 is ignored and logged. It is no
+  part of the spec hash, like the owners and the rules. A failed spend read
+  is logged on every poll and enforces nothing.
+* **The run stop.** With `spec.budgetStop` the run ends `Deferred` ("the
+  budget is used") after the call in progress: the steps it pushed stay on
+  the branch, the workspace and session are kept, and the run request stays
+  pending without a pod until the flag is cleared.
+* **Prompts.** The `budget` prompts are mirrored on the tracking issue;
+  each open one is one Desk Inbox item and one browser notification. A
+  prompt closes (superseded) once its budget is another or the spend is
+  under its threshold again; the 80 % prompt also closes when the 100 % one
+  follows. Falling under 80 % and crossing it again with the same budget
+  posts nothing new. `raiseBudget` reads the description again first: a
+  budget raised above the amount or removed by hand meanwhile is kept, and
+  the outcome says so. Issue budgets get no prompt.
+* **Issue budgets.** `/agent budget <usd>` on an issue or its MR is stored
+  in the Implement task's `spec.budgetUSD`, starts no run and is answered on
+  the issue; `/agent budget default` clears it. The milestone's budget is
+  checked first, then the issues in queue order; a pending issue that spent
+  its budget earlier pauses before it starts. Merged and skipped issues have
+  no budget. The issue pause reads "#12 used its budget of $20.00 ($20.31
+  spent). Raise it with `/agent budget <usd>` on the issue".
+* **Heads-ups.** The comment lists the issue's top three kinds and models.
+  Thresholds passed in separate polls get a heads-up each; in one poll only
+  the highest, and an issue that jumps past its budget gets only the pause.
+  The 80 % heads-up of an issue's budget is the Inbox item `budgetWarning`,
+  derived from `budgetAlertedUSD` (one per crossing); it opens the issue's
+  Implement task and leaves the Inbox when the issue merges or is skipped,
+  the budget is raised or the budget pause takes over. The
+  `perIssueAlertUSD` heads-up is no Inbox item.
+
+### Releases
+
+How the operator decides and carries out releases; the user side is
+[Releases](../guides/releases.md), the values are under
+[`spec.workflow.release`](../reference/agentproject.md#specworkflowrelease).
+Code: `internal/controller/release.go` (the releaser), `release_sweep.go`
+(outside milestones), `pilot_release.go`, `owner_release.go`,
+`companion_release.go` and `release_notes.go`.
+
+A release is a decision with a reason, recorded in
+`status.autopilot.releases` (at most 50: the oldest ended records are
+dropped first, records that have not ended always stay). The
+operator carries the decisions out on every poll, also while the milestone is
+paused; the queue does not wait for them. Each release that runs is
+commented on the tracking issue and carries release notes, see
+[what is posted](#what-a-release-posts).
+
+Each decision is recorded in the history: `release.decided` when it is
+made (who, why, after which issue), `release.started` when its pipeline
+starts (pipeline, the head it runs on, issues and merge requests) and
+`release.ended` when it ends (state, version, reason, release link). A
+retried or resumed pipeline starts again, and a decision that ends again (a
+failed final release ended without a release) ends again. The milestone's
+snapshot in the research database keeps the decisions, so a closed
+milestone still has them, and the Desk's milestone view (`releases`, and the
+`version` of each issue) reads them from there once its tasks are gone; the
+Pilot tab shows the three events. Decisions outside milestones (AgentProject
+`status.releases`) get no history events.
+
+**The planner decides first.** The planning run decides per issue whether to
+release after it (`release` and `releaseWhy` in `status.plan`), and writes
+the decision into the issue's description as a `**Release:**` line (see
+[what an issue holds](../guides/write-a-milestone.md)). On every poll the
+operator syncs the plan into the records:
+
+- An issue the plan releases after gets one record `by: planner`,
+  `afterIssue`, `why` and `state: Planned`, unless a planner record after it
+  already exists, in any state. Polling again or planning again never adds a
+  second one.
+- A re-plan that no longer releases after the issue, or that dropped the
+  issue, makes a record that is still `Planned` `Dropped` ("the re-plan
+  dropped it"). A record past `Planned` is never changed by a re-plan: once
+  its issue is merged, only the pilot or an owner can drop it.
+- When the issue merges, its `Planned` records become `Waiting` with the
+  merge commit as `sha`, and the steps below carry them out. An issue merged
+  without a known merge commit (closed as done by hand) leaves its record
+  `Planned`.
+- A record after a skipped issue stays `Planned`: if the issue is merged
+  after all, its release follows; otherwise the milestone's final release
+  covers it.
+
+**The pilot decides next.** An answer or an assessment of the
+[pilot](../guides/pilot.md) may carry a release decision: after issue N,
+add a release (`release: true`) or drop a planned one (`false`), with a
+reason. The runner records it in the pilot task's
+`status.pilot.releaseDecisions`; on every poll, with the commands of the
+tracking issue, the operator handles those newer than
+`status.autopilot.lastPilotRelease`, each once, in order. It validates each:
+
+- N is an issue of this milestone's queue;
+- the reason is not empty (it is folded to one line of 200 characters);
+- it never touches the final release.
+
+A valid decision is carried out:
+
+- **Add** creates a record `by: pilot`, `afterIssue: N` and the reason as
+  `why`: `Planned` while N is not merged, `Waiting` with N's merge commit as
+  `sha` once it is. Nothing is added while a record after N has not ended or
+  has released it ("already decided"); after a `Dropped`, `Failed` or
+  `NotNeeded` one a new record is added.
+- **Drop** makes the `Planned` and `Waiting` records after N that are not
+  the final release `Dropped` ("dropped by the pilot: <reason>"), whoever
+  decided them. A `Running` release is never stopped.
+
+A refused decision changes nothing, and one comment on the tracking issue
+says what was refused and why ("🛑 Refused the pilot's release after #42:
+#42 is not an issue of this milestone"); a decision with nothing to do
+(already decided, nothing to drop, the release already runs) is answered the
+same way with "ℹ️". Either way it is handled: the watermark moves past it,
+and the pilot sees the records in its next state.
+
+**Owners decide too**, with two commands on the tracking issue (owners only,
+also with `commandsFrom: members`, see [commands](../reference/commands.md#on-the-tracking-issue)):
+`/agent release [reason]` adds a record `by: owner`, `actor: @you`, `Waiting`
+for the newest commit of the default branch (the SHA of its newest pipeline);
+`/agent no-release #N [reason]` drops the `Planned` and `Waiting` records
+after N that are not the final release ("dropped by @you: <reason>"). The
+reason is optional and folded to one line of 200 characters.
+
+**A waiting companion decides by itself.** A [companion](#cross-repo) of the
+milestone in `waitingRelease` whose home merge is not docs-only adds a
+record `by: companion`, `afterIssue` its home issue, `Waiting` for the home
+merge commit, with the why "<project>!<mr> waits for #N to be live". No
+record is added while another one covers the home merge: a companion record
+after that issue in any state (a `Failed` or `Dropped` one is not tried
+again; the final release covers it), any record after that issue that has
+not ended or has released, or a record that has not ended or has released
+whose commit (`releasedSHA` once it runs) contains the home merge. Once a
+tag contains the home merge, the companion lands on by itself. A companion
+outside a milestone on autopilot adds its record to the project's list, see
+[outside milestones](#outside-milestones).
+
+**No contract with the project's CI:** the operator creates the release
+itself through the API (`POST /projects/:id/releases`): a tag with the next
+calendar version (`YEAR.MONTH.N`: one more than the highest `N` of the
+current UTC month among the project's newest 100 tags, from 1) on the
+default branch and a GitLab release with the notes. Whatever the project's CI
+runs for a tag (images, charts, packages, a deploy) is what the release
+builds; a project without tag pipelines is released by the tag alone. A human
+releases the same way, in the GitLab UI (*Deploy → Releases → New release*)
+or with `glab release create <version> --ref main --notes "<why>"`; the
+operator sees such a tag like its own. ai-operator itself builds in the
+pipeline of its release tags (see [Releasing](releasing.md)).
+
+A decision is `Planned` until its commit is merged, then `Waiting`. Each
+poll checks the `Running` decisions first, then the others by ID (the order
+they were made), in this order:
+
+1. **Mode Off:** with `spec.workflow.release.mode: Off` the decision is
+   `NotApplicable` ("release.mode is Off").
+2. **Already released:** before anything is created, the operator asks
+   whether a calendar-version tag contains the commit. If one does, the
+   decision is `AlreadyReleased` with that version: a project that still
+   tags on push, or a release a human created, is reported. If the tag is
+   the version of a release the operator ran for this milestone, the
+   decision is `Released` instead ("contained in 2026.11.3"); while that
+   release still runs, the decision waits for it. The tag of a `Failed`
+   release does not count.
+3. **One at a time:** while one release of the milestone is `Running`, the
+   others wait ("after the running release").
+4. **Minimum interval:** a release starts at most once per
+   `spec.workflow.release.minInterval` (default 15 m) after the last start,
+   failed attempts included; the reason says until when. The milestone's
+   final release is exempt.
+5. **Green head:** the release tags the head of the default branch. Its
+   newest pipeline must be `success`, and its commit must contain the
+   decision's commit (the same commit, or a descendant). Until then the
+   decision waits, with the reason. A default branch without any pipeline (a
+   project without CI there) releases the decision's commit itself.
+6. **Created:** the operator creates the tag and the GitLab release at that
+   head. The decision is `Running`, with the version, the release's link,
+   the head (`releasedSHA`), and the milestone's merged issues and merge
+   requests that no earlier release lists. If the version's tag exists
+   already (someone tagged meanwhile), the decision waits and the next poll
+   counts on from that tag.
+
+A `Running` decision follows the pipeline of its tag. Once it succeeded (or
+was skipped), the decision is `Released`. Without a tag pipeline 10 minutes
+after the release was created, the tag is the release: `Released`, with the
+reason "no pipeline for the tag …". A tag pipeline that failed or was
+canceled is a failed attempt.
+
+**Retry once:** after a failed attempt the operator retries the tag pipeline
+(never a new tag); the reason keeps the failure. After the second failed
+attempt the decision is `Failed` with the reason, and the queue goes on.
+
+A GitLab error ends the poll; the next poll tries again.
+
+#### The final release
+
+The milestone's last release is the operator's, with no model involved. Once
+every issue of the queue is through, autopilot is not done before a release
+contains the milestone's last merge. The order is: final release, then the
+[companions](#cross-repo), then done, then the
+[retrospective](../guides/pilot.md#the-retrospective).
+
+- A milestone that merged nothing (or only issues closed as done by hand,
+  without a merge commit) has no final release.
+- Otherwise there is one record `by: final`, `final: true`, `why: "the
+  milestone's last merge"`, `afterIssue` and `sha` of the issue merged last
+  (`mergedAt` of its queue item). It is created once; planning again does not
+  add a second one. If another issue merges after it was created (a re-plan
+  added one, a revisit follow-up), it moves to that newer merge, as a fresh
+  decision, unless its pipeline is running.
+- **Not needed:** when the record is created and no tag contains the commit
+  yet, the operator compares the newest calendar-version tag (the highest
+  version) with the commit. An empty change gives `NotNeeded` ("no change
+  since 2026.11.3"), a change of only `docs/**` and `*.md` files
+  (the docs-only rule of [Cross-repo](#cross-repo)) gives `NotNeeded`
+  ("nothing release-relevant since 2026.11.3"): no pipeline. A project without calendar-version tags is
+  left to the steps above, which then record `NotApplicable` or release.
+- While the record has not ended, the milestone keeps running, and the
+  tracking issue says "every issue is through; done once a release contains
+  the last merge". The final release does not wait for the minimum interval.
+- Once it is `Released`, `AlreadyReleased`, `NotNeeded`, `NotApplicable` or
+  `Dropped`, the records still `Planned` (their issue was never merged) are
+  `Dropped` ("its issue was not merged"), and autopilot goes on to the
+  companions and done.
+- A final release that failed twice pauses the milestone with
+  [`pauseKind: release`](../guides/pauses.md#release), with the reason. Its ways out:
+  - By itself, once a tag contains the commit (released by hand): the record
+    is `AlreadyReleased` with that version and autopilot is done.
+  - `/agent resume`: the final release starts over: its tag pipeline is
+    retried as a first attempt (one retry again); without a tag yet it is
+    `Waiting` with attempts back to 0 and the same checks.
+  - `/agent endMilestone` (owners only): the failed record is `Dropped`
+    ("ended without a release by @you") and autopilot is done. A final
+    release that is `Waiting` or `Running` is left as it is.
+
+The green-head check looks at the default branch's own pipelines only;
+pipelines recorded for a release are skipped, so they never hold a later
+release back.
+
+#### Outside milestones
+
+Merges outside milestones (Renovate, a human's merge request) are released
+by the operator too. Their decisions are kept in the AgentProject's
+`status.releases` (newest 20, ended ones are dropped first) and carried out
+with the same steps as above, after the companions and main's health on every
+full poll. Two deciders add records there, and only while **no autopilot of
+the project is `Running` or `Paused`**: the milestone's releases, its final
+one last, cover everything merged meanwhile. While one runs, a record that is
+already `Running` is followed to its end and every other one waits.
+
+- **A waiting companion:** a [companion](#cross-repo) in `waitingRelease` whose
+  home merge is not docs-only adds a record `by: companion` at once,
+  `afterIssue` its home issue, `Waiting` for the home merge commit ("<project>!<mr>
+  waits for #N to be live"). Not while another record of the list has not
+  ended (the next poll adds it, if that release did not contain it), and only
+  once per home merge: a `Failed` one is not tried again, the sweep covers it.
+- **The sweep:** when the project tags its default branch
+  (the tag rule of [Cross-repo](#cross-repo)) and no record of the list has
+  not ended, the
+  operator compares the newest calendar-version tag with the default branch.
+  If the change is release-relevant (not empty, not only `docs/**` and
+  `*.md`), its oldest commit landed more than
+  `spec.workflow.release.maxUnreleasedAge` ago (default 24 h), and
+  [main's health](#main-health) is green (or flaky) on the head, it adds a
+  record `by: sweep`, `Waiting` for the head: "3 commits since 2026.11.4 are
+  unreleased, the oldest since 2026-11-09 06:00 UTC (more than 24h)". A
+  commit lands when it reaches the default branch: the first parents from the
+  head count (merge commits, squashed or rebased commits), not the older
+  commits of a merged branch. A docs-only commit among code commits counts
+  too, so such a release may come earlier, never later. There is one sweep
+  decision per head: one that `Failed` is not tried again until another
+  merge moves the head. With
+  `mainHealth.disabled` the green-head step alone decides.
+
+So a Renovate merge outside a milestone is released within a day. These
+records are not commented anywhere (there is no tracking issue) and get no
+history events; their release notes say why, without a list of issues.
+
+#### What a release posts
+
+**On the tracking issue**, one comment when a release starts to run and one
+when that run ends. The retry after a failed attempt is the same run; a
+final release started over with `/agent resume` is a new one.
+
+- Started: "🚀 Release started (planner): <why>. Contains #1, #2. Release
+  2026.11.3: <link>". An owner's release names the owner.
+- Released: "📦 Released 2026.11.3: <link to the GitLab release>".
+- Failed after the retry: "❌ The release failed twice: <reason>. The queue
+  goes on." The final release says "the milestone is not done without it"
+  instead, and the [release pause](../guides/pauses.md#release) follows.
+- The final release's end is commented also when nothing ran, since it
+  decides when the milestone is done: "📦 Released 2026.11.3" when an
+  earlier release of the milestone contains it (`Released`, reason
+  "contained in 2026.11.3"), "📦 Already released in 2026.11.3 (…)" for
+  another tag (`AlreadyReleased`), "📦 No release needed: nothing release-relevant since 2026.11.2",
+  "📦 No release: release.mode is Off". A final
+  release released by hand while paused is said by the resume comment
+  only. A dropped decision and one that waits are not commented; a
+  decision that a release of another one contains says so in its record.
+
+The record's `announced` is the state last commented on: a comment that
+fails is posted on the next poll, and none is posted twice.
+
+**The release notes** (the description of the GitLab release the operator
+creates; the project's tag pipeline may add to it) are markdown:
+
+```markdown
+## Why
+
+The planner released after #2. Reason given by the planner: users see the new API.
+
+## Contains
+
+- #1 API for checkout (!11)
+- #2 Checkout page (!12)
+
+Milestone: [Checkout v2](https://gitlab.example/group/app/-/milestones/3)
+```
+
+The final release says "The operator released after #2: the end of
+milestone Checkout v2.", an owner's "@alice released: <why>". The list
+holds the issues and merge requests the release contains (`issues` and
+`mergeRequests` of the record).
+
+The planner's and the pilot's reasons and the issue titles are agent text
+and stay untrusted: each is folded to one line and cut to 200 characters,
+mentions and quick actions are defused (a zero-width space after `@` and
+before `/`), the characters of links, images, HTML and code
+(`` \ [ ] ( ) < > ! ` ``) are escaped with a backslash, and URLs are broken
+(a zero-width space after `://` and in `www.`), so `@all`,
+`[x](http://evil)` or `<img>` render as plain text. The reason is labelled
+as the planner's or the pilot's. The notes are at most 4000 bytes, valid
+UTF-8: the list is cut at whole lines and ends with "… and N more issues".
+
 ## Pilot
 
 A milestone's pilot is a `Coordinate` task with its own pod, workspace and
@@ -2600,7 +3024,7 @@ An issue can change one **companion repository** besides its home project
 agent session: typically a feature here plus the infra config that turns it
 on. The spec with the options and trade-offs is
 [specs/cross-repo-changes.spec.md](../specs/cross-repo-changes.spec.md); how
-it is used: [usage.md](../usage.md#companion-repository).
+it is used: [Cross-repo changes](../guides/cross-repo-changes.md).
 
 **The companion checkout in the home task (option A).** The issue's pod
 gets a second mirror and checkout, the one implementer session edits both
@@ -2810,6 +3234,86 @@ calendar version (`YEAR.MONTH.N`, see [Releasing](releasing.md)). The
 operator logs it at start (`ai-operator starting`, `version`,
 `selfProject`). A `dev` build never counts as a release, so the companions
 of `--self-project` wait until a released operator runs.
+
+### Companions in detail
+
+What the user guide ([Cross-repo changes](../guides/cross-repo-changes.md))
+leaves out, from the old usage page:
+
+* **Lines and labels.** A malformed `/agent repo` line, or one whose project
+  is no valid target, is named once on the tracking issue
+  (`status.autopilot.repoNotices`) when there is one; otherwise only the
+  operator log and the spec task's `spec.repos[].problem` say so. The
+  planner reads at most 200 files under the allowed `paths` of all the
+  milestone's companions together (through the GitLab API). The plan's
+  `agent-repo::<project>` label is recorded in the issue description; a
+  `repo` that is none of the milestone's companions gives no label, and the
+  issue's plan comment says so. On a re-plan a label the plan set follows
+  the plan (replaced, or removed when the item drops `repo`); a label an
+  owner set stays. Without such lines the planner's prompt is unchanged.
+* **The checkout.** The companion branch is checked out on its remote head
+  if it exists, else on the companion's default branch. The companion's
+  changes are committed after the implementer and each fix round, and with
+  each step in a run that pushes steps. The branch is pushed (a normal
+  push, so the companion's CI runs) only when it differs from the
+  companion's default branch; a failed push fails the run with a report,
+  and the next run pushes both again.
+* **The merge request.** Title `<home title> (companion of <home
+  project>#<iid>)`, label `agent::companion`, the describer's text for the
+  companion diff and the line `Lands after: <home project>!<home MR> is
+  merged and live.` Later runs find it again and rewrite its description
+  when the companion diff changed. The home merge request gets
+  `Companion: <project>!<iid>` inside the runner's part of its description.
+  `status.run.companion` holds `project`, `mrIID`, `mrURL`, `branch`,
+  `pushedSHA` and `reviewedSHA`. A later run that ends without a companion
+  change (reverted, or the issue lost its label) closes the merge request,
+  deletes its branch, removes the `Companion:` line and clears
+  `status.run.companion`; a merge request merged by hand meanwhile is left
+  as it is, and without a token for the companion the report asks to close
+  it by hand.
+* **Prompts.** The reviewers' input has `## Tree: home (<project>)` and
+  then `## Tree: companion (<project>, allowed paths: …; lands after the
+  home change is released)`, each with its changed files and diff. The
+  security reviewer is told that Flux applies the companion to production
+  on merge, and asked to flag secrets, plaintext credentials, RBAC widening
+  and changes that break when applied before the home release. The
+  implementer's "Companion repository" section names the checkout, branch
+  and allowed paths, that out-of-path, CI-configuration, symlink and
+  submodule changes fail the run, that the companion lands only after the
+  home change is merged and released, and that the runner commits both
+  trees. The system prompts are the same with and without a companion.
+* **Review heads.** A run without a review (a CI fix) that pushes a new
+  companion head leaves the companion unreviewed; autopilot pauses with
+  `notReviewed` before the merge.
+* **CI.** The companion's pipeline is that of the companion merge request's
+  head if it is `pushedSHA`, else the newest pipeline of the commit, with
+  the home rules: failed jobs retried once, a canceled pipeline goes to
+  review with a comment, none within `ci.noPipelineTimeout` counts as no
+  CI. The default-branch check is the home project's only. The state is in
+  `status.ci.companion` (`sha`, `state`, `pipelineID`, `failedJobs`,
+  `since`). A red companion gets a CI fix run with
+  `spec.source.ciFixProject` naming it; both trees share
+  `status.run.ciRound` against `ci.maxFixRounds`, home is fixed first, and
+  a companion still red after the rounds moves the issue to
+  `agent::needs-input` with a comment naming it. `ciRed` and `notReviewed`
+  pauses name the companion. `/agent merge #N <sha>` skips the review
+  checks of both trees; CI and the companion's open and mergeable checks
+  still apply.
+* **Landing fields.** A `status.companions` entry records `homeMergeSHA`,
+  the pushed `headSHA` with the hash of its change, `rebasedSHA` (one
+  rebase per entry), `pipelineStartedAt`, `mergeStartedAt`, `mergeSHA`,
+  `mergeRefusals`, `notifiedAt`, `remindedAt`, `readyAt`, `endedAt` and
+  `release`. The owners' comment names the home merge request, the release
+  that made the home change live and why autopilot does not merge; such an
+  entry (`ready`, no `autoMerge`, `notifiedAt`) raises the Desk's
+  `companionReady` Inbox item. Ended entries are removed from the status 7
+  days later. A companion of an autopilot milestone waiting in
+  `waitingRelease` adds a release decision for its home merge (see
+  [Releases](#releases)).
+* **Done.** Only companions that land by rule hold the milestone's done: a
+  companion whose home issue was skipped does not. The retrospective lists
+  the milestone's companions with merge request, state, release and who
+  merged them.
 
 ## Security
 

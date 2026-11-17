@@ -120,7 +120,7 @@ Every role and profile has these fields:
 
 A lower `maxInlineDiff` saves input tokens on big changes, but the reviewer
 then reads files itself and may look less closely. To tune it, compare the
-*Review rounds* in the Desk's [Spend tab](../ui.md#spend): if a lower cap
+*Review rounds* in the Desk's [Spend tab](../guides/budgets-and-spend.md#the-spend-tab): if a lower cap
 raises the cost per call or brings more rounds, go back up.
 
 `implement` and every profile also have:

@@ -67,7 +67,7 @@ const CursorAutoModel = "auto"
 // CursorAutoLabel names CursorAutoModel in spend reports when its calls
 // report nothing: cursor's ACP tells neither the model it picked
 // (currentModelId "default[]") nor the usage, so they are unmetered
-// (docs/usage.md).
+// (docs/guides/budgets-and-spend.md).
 const CursorAutoLabel = "cursor auto (unmetered)"
 
 // ModelLabel names a model in spend reports: CursorAutoModel as

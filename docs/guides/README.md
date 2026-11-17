@@ -33,6 +33,12 @@ In the order you need them for a milestone:
 11. [Steer from the Desk](steer-from-the-desk.md): chat with an agent, ask
     the pilot, answer prompts, revisit decisions, pause cards, the queue,
     the planner, costs and the Desk on a phone.
+12. [Budgets and spend](budgets-and-spend.md): what counts as spend, budgets
+    for a milestone and its issues, and the Spend tab and Costs page.
+13. [Releases](releases.md): release points in the plan, `/agent release`,
+    the final release, the sweep and the version format.
+14. [Cross-repo changes](cross-repo-changes.md): a change that spans a
+    companion repository, and how its merge request lands.
 
 The other guides are being written from the old pages, see the
 [docs map](../README.md#pages-being-moved).

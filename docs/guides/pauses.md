@@ -309,7 +309,7 @@ The milestone, or one of its open issues, spent its
 with the choices. It ends by itself once the budget is raised above the
 spend or removed: the `/agent budget <usd>` line in the milestone
 description, or the comment on the issue for its own budget. `/agent resume`
-alone pauses again. See [Budget](../usage.md#budget).
+alone pauses again. See [Budgets and spend](budgets-and-spend.md#when-a-budget-is-reached).
 
 #### `companion`
 
@@ -318,7 +318,7 @@ still has conflicts or needs a rebase, needs an approval, has unresolved
 discussions, someone pushed to it, or GitLab reports another blocking
 status. A red companion pipeline pauses as `ciRed`, an unreviewed one as
 `notReviewed`. After the home merge, the same kind pauses the milestone
-while a companion is stuck in its [landing](../usage.md#landing).
+while a companion is stuck in its [landing](cross-repo-changes.md#how-a-companion-lands).
 
 It ends by itself when the companion's merge request can be merged again,
 was rebased or merged by hand (or closed by hand once the home change is
@@ -344,7 +344,7 @@ planned again with issues. If that plan is empty too, it pauses again.
 
 #### `release`
 
-The milestone's [final release](../usage.md#the-final-release) failed twice.
+The milestone's [final release](releases.md#the-final-release) failed twice.
 It ends by itself once a tag contains the milestone's last merge, for
 example a release you made by hand: autopilot is then done.
 

@@ -29,15 +29,16 @@ planned, implemented, reviewed and merged issue by issue, with the
 
 A spending cap in US dollars, for an issue or for a whole milestone (the
 `/agent budget <usd>` line). When it is spent, autopilot pauses and asks an
-owner whether to raise it; see the planned guide guides/budgets-and-spend.md.
+owner whether to raise it; see
+[Budgets and spend](../guides/budgets-and-spend.md).
 
 ### Companion repository
 
 A second GitLab project an issue may change in the same run, for example an
 infrastructure repository. Your `AgentProject` allows it in
 `spec.crossRepo.targets`, the milestone names it with `/agent repo <project>`,
-and it gets its own merge request; see the planned guide
-guides/cross-repo-changes.md.
+and it gets its own merge request; see
+[Cross-repo changes](../guides/cross-repo-changes.md).
 
 ### Decision
 
@@ -162,8 +163,8 @@ section or asks a subagent. See [Roles](roles.md#read-gate).
 A place in the plan after which the operator cuts a release, written into
 the issue as a `**Release:**` line by the planner. The pilot can add or drop
 one, and an owner can cut a release in between with `/agent release`; see
-[How it works](how-it-works.md#planned-releases) and the planned guide
-guides/releases.md.
+[How it works](how-it-works.md#planned-releases) and
+[Releases](../guides/releases.md).
 
 ### Retrospective
 

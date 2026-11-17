@@ -1,6 +1,6 @@
 -- Per-issue cost analysis from agent_calls, for the Spend tab's questions
 -- ("why did #179 cost $53.88", "what do conflict rounds cost") when the tab is
--- not at hand (docs/usage.md "Spend report script"). It only reads.
+-- not at hand (docs/contributing/design.md "Spend report script"). It only reads.
 --
 --   psql "$DATABASE_URL" -v project=ai-operator -v milestone=12 -f hack/spend-report.sql
 --   psql "$DATABASE_URL" -v project=ai-operator -v issue=179 -f hack/spend-report.sql

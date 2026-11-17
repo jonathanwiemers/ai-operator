@@ -31,7 +31,7 @@ const releaseHeadPipelines = 10
 
 // releaser carries out the release decisions of one record list (a
 // milestone's, or the project's outside milestones), see
-// docs/usage.md#releases. The operator creates the tag and the GitLab
+// docs/guides/releases.md. The operator creates the tag and the GitLab
 // release itself; the project's CI builds whatever it builds for tags.
 type releaser struct {
 	r    *AgentProjectReconciler

@@ -36,7 +36,7 @@ import ChartTable from '../ui/charts/ChartTable.vue'
 import LineCompare from '../ui/charts/LineCompare.vue'
 import StackedBars from '../ui/charts/StackedBars.vue'
 
-// The Costs page (docs/ui.md, "Costs page"): what the projects the viewer
+// The Costs page (docs/contributing/web-ui.md, "Costs page"): what the projects the viewer
 // may see, and research, cost over a range. The filters live in the URL
 // (src/costs.ts); a change replaces the query and refetches, no reload.
 // The KPI row, then the charts (src/ui/charts, Chart.js in this chunk only).

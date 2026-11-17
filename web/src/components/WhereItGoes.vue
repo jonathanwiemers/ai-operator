@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Where it goes (docs/ui.md, "Costs page"): known cost by project, kind,
+// Where it goes (docs/contributing/web-ui.md, "Costs page"): known cost by project, kind,
 // model or engine as horizontal bars, top six plus Other, with a legend of
 // values and a table view. Each row of a project, kind or engine is a link
 // that filters the whole page (costs.ts's breakdownLink); a click on its bar

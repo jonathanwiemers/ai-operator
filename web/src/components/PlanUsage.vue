@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Plan usage (docs/ui.md, "Costs page"): per engine the freshest usage
+// Plan usage (docs/contributing/web-ui.md, "Costs page"): per engine the freshest usage
 // reading among the viewer's projects, with the project it came from and its
 // age. Live state, not bound to the range or the filters. No chart.
 import { RouterLink } from 'vue-router'

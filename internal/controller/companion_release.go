@@ -12,7 +12,7 @@ import (
 
 // companionReleases adds a release decision for each companion of the
 // milestone that waits for its home change to be live (decision 12, see
-// docs/usage.md#releases): {companion, after the home issue, its merge
+// docs/guides/releases.md): {companion, after the home issue, its merge
 // commit, Waiting}. The releaser then runs it like any other; the companion
 // goes on by itself once a tag contains the home merge. A docs-only home
 // merge is live at merge and needs none. No record is added while another

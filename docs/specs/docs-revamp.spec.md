@@ -119,9 +119,9 @@ Rows: `usage.md` 38, `ui.md` 57, `configuration.md` 34, `commands.md` 10,
 | usage.md | ### Several milestones at once | guides/autopilot.md | R5 | done; updated: the Desk buttons *Run next* and *Clear mark*; `maxConcurrentRuns` linked to reference/; `startRequestedAt`, `spec.runRequest` and `queuedBehind` are already in contributing/design.md |
 | usage.md | ### The merge gate | guides/autopilot.md | R5 | done; updated: condensed; the merge `sha`, the mechanical-rebase rules, `autoReReviews` and `mergeOverride` are already in contributing/design.md "Autopilot"; companion details stay with "Companion repository" (R7a) |
 | usage.md | ### When it pauses | guides/pauses.md | R5 | done; updated: Desk first (pause and hold cards and their buttons); each kind says what the pilot tries; `stalled` names the watchdog and the Desk restart, `/agent restart` is no GitLab command; defaults linked to reference/; the ways-out table, the pause records (`resolvedBy`, `via`, `pauseRunBy`) and the needs-input reason rules moved to contributing/design.md "Autopilot"; rejected status writes kept short, their internals already in contributing/design.md "Pilot" |
-| usage.md | ### Budget | guides/budgets-and-spend.md | R7a | open |
-| usage.md | ### Companion repository | guides/cross-repo-changes.md | R7a | open |
-| usage.md | ### Releases | guides/releases.md | R7a | open |
+| usage.md | ### Budget | guides/budgets-and-spend.md | R7a | done; updated: Desk first (the budget prompt on the pause card, the Inbox item, the Costs page's *Budgets*); the pilot's calls count towards the milestone budget; calls without a known cost add nothing to a budget (the old text said they count $0); cursor `auto` is not tied to the `fast` profile and the reviewers, any role set to it is unmetered; thresholds passed in one poll get one heads-up, the highest; the spend report SQL moved to contributing/design.md "Spend report script" and the guide describes what it answers (decision D515-P2); "What the spend counts" internals moved to contributing/design.md, the rest of the budget internals to its "Budgets in detail" |
+| usage.md | ### Companion repository | guides/cross-repo-changes.md | R7a | done; updated: Desk first (the *Companions* list, the Inbox item for a companion ready to merge, the *companion* marker on *Spend*); an example with the three gates; the 1 MiB cap counts added and changed files, not only new ones; an invalid `/agent repo` line is named on the tracking issue only when there is one; a companion of a skipped issue does not hold the milestone's done; any non-claude implementer moves to claude, not only cursor (one sentence, linked to the fallback engine); status fields, prompt sections, CI and landing internals moved to contributing/design.md "Companions in detail" (the rest was already in "Cross-repo" and "Security") |
+| usage.md | ### Releases | guides/releases.md | R7a | done; updated: Desk first (release rows and versions on the *Issues* tab, release events on *Pilot*); running decisions are checked first, then the rest in the order they were made (not "oldest first"); the next version is one more than this month's highest `N` among the newest 100 tags; `/agent endMilestone` drops only a final release that failed, not one that waits or runs; `/agent no-release #N` drops the releases after exactly #N; the stale "other deciders come in later changes" note dropped; record fields, history events, plan sync, the pilot's watermark and the release-note escaping moved to contributing/design.md "Releases" (decision D515-P1: the CRD comment points at the guide now) |
 | usage.md | ### Commands on the tracking issue | guides/autopilot.md | R5 | done; updated: a short table, every command and its limits linked to reference/commands.md; `/agent release` and `/agent no-release` added (the old table lacked them); status fields dropped (in contributing/design.md) |
 | usage.md | ### Tracking issue | guides/autopilot.md | R5 | done; updated: the description lists the holds |
 | usage.md | ### Switching it off | guides/autopilot.md | R5 | done; updated: changing the plan is its own section |
@@ -143,8 +143,8 @@ Rows: `usage.md` 38, `ui.md` 57, `configuration.md` 34, `commands.md` 10,
 | ui.md | ### Navigation | guides/desk.md | R6 | done; updated: rail, breadcrumbs, search and live updates in "Find your way", the bottom bar in steer-from-the-desk.md "On a phone"; search finds projects, milestones, issues and merge requests and pages; crumb, bar and about-line details moved to contributing/web-ui.md "Navigation" |
 | ui.md | ### Queue and Finishing | guides/steer-from-the-desk.md | R6 | done; target changed to guides/steer-from-the-desk.md (it is an action); the API fields and command bodies moved to contributing/web-ui.md "Queue and Finishing" |
 | ui.md | ### Planner | guides/steer-from-the-desk.md | R6 | done; target changed to guides/steer-from-the-desk.md "Plan a milestone", the steps stay in guides/write-a-milestone.md; defaults checked against the chart values; endpoints and storage moved to contributing/web-ui.md "Planner" |
-| ui.md | ### Spend | guides/budgets-and-spend.md | R7a | open |
-| ui.md | ### Costs page | guides/budgets-and-spend.md | R7a | open |
+| ui.md | ### Spend | guides/budgets-and-spend.md | R7a | done; updated: "Step commits" is a note under the implementer-steps table and "Gate blocks per call" a column of the subagents table, not tables of their own; the field-by-field text, the query parameters and the API moved to contributing/web-ui.md "Spend tab in detail" |
+| ui.md | ### Costs page | guides/budgets-and-spend.md | R7a | done; updated: an example address with filters; the CSV columns, quoting, URL parameter values, buckets, chunk budget and e2e cases moved to contributing/web-ui.md "Costs page"; `ui.md` deleted |
 | ui.md | ### Agent calls on the Task page | guides/desk.md | R6 | done; updated: a bullet of the *Calls* tab; the line counting, gate counts, checkpoint reasons and chart details moved to contributing/web-ui.md "Agent calls" |
 | ui.md | ### Notifications | guides/desk.md | R6 | done; updated: the dedup rules moved to contributing/web-ui.md "Notifications"; the History part to its "History", the `conversation` grant to "Who sees what" |
 | ui.md | ## Platform | guides/desk.md | R6 | done; updated: a short "Research" section; the block renderer and markdown subset moved to contributing/web-ui.md "Research results and markdown" |
@@ -381,3 +381,14 @@ with the requirement label and the issue or merge request.
   and the Costs page for R7a; "Costs at a glance" links them until the
   budgets guide exists. The old text placed engine usage on the Board tab;
   it is in the rail, the *Working now* cards and the Costs page.
+- R7a (#515): `guides/releases.md`, `guides/budgets-and-spend.md` and
+  `guides/cross-repo-changes.md` replace usage.md's budgets, companions and
+  releases and the rest of `ui.md`, which is deleted. The code comments on
+  releases now name `docs/guides/releases.md`, so the CRD descriptions and
+  `web/src/generated/` changed here, not in R12 (plan decision D515-P1). The
+  spend report SQL moved to `contributing/design.md` "Spend report script"
+  (D515-P2). Release internals are a new "Releases" subsection under
+  "Autopilot", budget internals "Budgets in detail", companion internals
+  "Companions in detail" (only what "Cross-repo" lacked), and the Spend tab
+  and Costs page internals are in `contributing/web-ui.md`. `usage.md`
+  keeps only watching from Kubernetes (R7b).

@@ -262,8 +262,7 @@ The values are in the [chart README](../../charts/ai-operator/README.md#plan).
   *Costs* in the rail compares projects over time.
 - An issue at 80 % of its budget shows in the Inbox.
 
-Spend and budgets are explained in [Spend](../ui.md#spend) and
-[Costs page](../ui.md#costs-page).
+Spend and budgets are explained in [Budgets and spend](budgets-and-spend.md).
 
 ## On a phone
 

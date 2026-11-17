@@ -355,7 +355,7 @@ type WorkflowSpec struct {
 	CommitTypes []string `json:"commitTypes,omitempty"`
 
 	// Release configures when the operator releases the default branch by
-	// decision instead of on every merge, see docs/usage.md#releases.
+	// decision instead of on every merge, see docs/guides/releases.md.
 	// +optional
 	Release ReleaseSpec `json:"release,omitempty"`
 }
@@ -372,7 +372,7 @@ const (
 	ReleaseOff ReleaseMode = "Off"
 )
 
-// ReleaseSpec configures releasing by decision, see docs/usage.md#releases.
+// ReleaseSpec configures releasing by decision, see docs/guides/releases.md.
 type ReleaseSpec struct {
 	// Mode: Auto (default, also when empty) or Off. Off means the operator
 	// never starts a release pipeline.

@@ -239,13 +239,13 @@ autopilot merge sends a matching squash commit message. See
 ### `spec.workflow.release`
 
 When the operator starts a release on its own, see
-[Releases](../usage.md#releases).
+[Releases](../guides/releases.md).
 
 | Field | Meaning | Default |
 |-------|---------|---------|
 | `mode` | `Auto` or `Off`. With `Off` the operator never starts a release pipeline. Empty means `Auto`. | `Auto` |
 | `minInterval` | The shortest time between two releases the operator starts. A milestone's final release does not wait for it. | `15m` |
-| `maxUnreleasedAge` | Outside milestones, with no autopilot running or paused: release the default branch once its oldest unreleased change is this old and the branch is green (see [Outside milestones](../usage.md#outside-milestones)). | `24h` |
+| `maxUnreleasedAge` | Outside milestones, with no autopilot running or paused: release the default branch once its oldest unreleased change is this old and the branch is green (see [Outside milestones](../guides/releases.md#outside-milestones)). | `24h` |
 
 ## `spec.notify`
 
@@ -291,7 +291,7 @@ Nothing else can be switched per milestone.
 Budgets of autopilot work, from what its agent calls cost. They need the
 research database. The operator checks them between calls: a running call
 is never killed, but the run makes no further call once its budget is used
-up. See [Budget](../usage.md#budget).
+up. See [Budgets and spend](../guides/budgets-and-spend.md).
 
 ```yaml
 spec:
@@ -333,7 +333,7 @@ itself is a chart setting (`webhook.*`, see the
 
 The [companion repositories](../concepts/glossary.md#companion-repository)
 an issue may change in the same run as its own project. See
-[Companion repository](../usage.md#companion-repository). Three gates must
+[Cross-repo changes](../guides/cross-repo-changes.md). Three gates must
 agree: the cluster allows the project, the AgentProject names it here, and
 a milestone line `/agent repo <project> [merge]` (or an owner's
 `/agent repo <project>` on the issue) gives it to an issue.

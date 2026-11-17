@@ -251,7 +251,7 @@ export function shareLabel(v: number): string {
 
 // cursorAutoLabel names cursor's model auto when its calls report nothing:
 // cursor's ACP tells neither the model it picked nor the usage
-// (docs/usage.md). As aiv1.ModelLabel in Go.
+// (docs/guides/budgets-and-spend.md). As aiv1.ModelLabel in Go.
 export const cursorAutoLabel = 'cursor auto (unmetered)'
 
 // modelLabel names a model in the Spend tab: cursor's auto as "cursor auto

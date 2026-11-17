@@ -11,7 +11,7 @@ runs the checks and releases nothing. The cluster follows every GitLab
 release, so a release is a deploy: the operator releases ai-operator like
 any other project it manages, when the planner, the pilot, an owner or the
 end of a milestone decides so, and says why
-([usage.md](../usage.md#releases)). GitHub builds the same release again when
+([Releases](../guides/releases.md)). GitHub builds the same release again when
 the tag arrives (see [GitHub releases](#github-releases)).
 
 ## Where the code lives
@@ -89,7 +89,7 @@ The operator binary knows its release: the Dockerfile's `ARG VERSION`
 (default `dev`) is linked in as `main.version`, which the operator logs at
 start and compares with the tags of `--self-project` (a companion of the
 operator's own project lands once the running release contains the merge,
-see [usage.md](../usage.md#landing)). GitHub passes it as a build argument; the
+see [Cross-repo changes](../guides/cross-repo-changes.md#how-a-companion-lands)). GitHub passes it as a build argument; the
 GitLab job writes it into its copy of the Dockerfile before the build. A
 local `make docker-build` is `dev`, which never counts as a release.
 
@@ -100,7 +100,7 @@ Nothing in CI decides or tags: the release exists first, and the tag's
 pipeline builds it.
 
 * **The operator** creates it through the API (`POST /projects/:id/releases`,
-  like for every project it manages, see [usage.md](../usage.md#releases)) when
+  like for every project it manages, see [Releases](../guides/releases.md)) when
   a release decision is due: the planner's after an issue, the pilot's, an
   owner's `/agent release [reason]` on the tracking issue, a companion
   waiting for its home release, the sweep outside milestones, and the final

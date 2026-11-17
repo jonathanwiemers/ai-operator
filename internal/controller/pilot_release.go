@@ -17,7 +17,7 @@ const pilotDropped = "dropped by the pilot: "
 
 // pilotReleases validates and carries out the pilot's release decisions
 // (status.pilot.releaseDecisions of the milestone's Coordinate task) newer
-// than LastPilotRelease, once each, see docs/usage.md#releases. One that is
+// than LastPilotRelease, once each, see docs/guides/releases.md. One that is
 // not applied gets one comment on the tracking issue; the watermark
 // advances either way. A failed comment is tried again on the next poll.
 func (a *autopilot) pilotReleases(ctx context.Context, coord *aiv1.AgentTask) error {
