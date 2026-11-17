@@ -109,8 +109,31 @@ func TestPromptSupersedesTheOpenPromptOfItsSource(t *testing.T) {
 	if got := promptStates(e.task(specTaskName)); got != "Q1=superseded Q2=open Q3=open Q4=open Q5=open Q6=open" {
 		t.Fatalf("only the open prompt of the same kind and key goes: %s", got)
 	}
-	if q := e.task(specTaskName).Status.Prompts[0]; q.ClosedAt == nil {
-		t.Fatalf("a superseded prompt is closed: %+v", q)
+	if q := e.task(specTaskName).Status.Prompts[0]; q.ClosedAt == nil ||
+		closeOf(q.ClosedReason, q.ClosedBy, q.ReplacedBy) != closeOf(aiv1.ClosedReplaced, aiv1.ResolvedByOperator, "Q6") {
+		t.Fatalf("a superseded prompt is closed, replaced by the newer one: %+v", q)
+	}
+	for _, q := range e.task(specTaskName).Status.Prompts[1:] {
+		if q.ClosedReason != "" || q.ClosedBy != "" || q.ReplacedBy != "" {
+			t.Fatalf("an open prompt has no close fields: %+v", q)
+		}
+	}
+
+	// On a holder other than the spec task, the newer id is known too.
+	impl := e.taskOf(1)
+	asked := func() aiv1.Prompt {
+		q := agentQuestion(1)
+		q.Source.Key = "questions"
+		return q
+	}
+	e.addPrompt(e.task(specTaskName), e.task(impl), asked())
+	e.addPrompt(e.task(specTaskName), e.task(impl), asked())
+	it := e.task(impl)
+	if got := promptStates(it); got != "Q7=superseded Q8=open" {
+		t.Fatalf("the agent's newer question replaces the older: %s", got)
+	}
+	if q := it.Status.Prompts[0]; closeOf(q.ClosedReason, q.ClosedBy, q.ReplacedBy) != closeOf(aiv1.ClosedReplaced, aiv1.ResolvedByOperator, "Q8") {
+		t.Fatalf("replaced by Q8: %+v", q)
 	}
 }
 

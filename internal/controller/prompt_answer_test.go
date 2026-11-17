@@ -130,6 +130,9 @@ func TestPromptAnswerDoNothingRecordsTheAnswerOnly(t *testing.T) {
 	if p.State != aiv1.PromptAnswered || p.Answer == nil || p.Answer.OptionID != "B" || p.Answer.Outcome != "" {
 		t.Fatalf("the answer is recorded without an outcome: %+v", p)
 	}
+	if p.ClosedReason != aiv1.ClosedAnswered || p.ClosedBy != aiv1.ResolvedByOwner || p.ReplacedBy != "" {
+		t.Fatalf("the answer records answered by an owner: %+v", p)
+	}
 	if ps := e.pilot().Status.Pilot; ps != nil && len(ps.Accepted) != 0 {
 		t.Fatalf("nothing is queued: %+v", ps.Accepted)
 	}

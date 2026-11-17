@@ -148,6 +148,7 @@ func (r *AgentProjectReconciler) showAnswers(ctx context.Context, task *aiv1.Age
 			if q := &list[i]; due(*q) {
 				d := delivery(answers, q.ID)
 				q.State, q.ClosedAt = aiv1.PromptAnswered, &now
+				q.ClosedReason, q.ClosedBy = aiv1.ClosedAnswered, aiv1.ResolvedByOwner
 				q.Answer = &aiv1.PromptAnswer{OptionID: d.OptionID, Text: d.Text, By: d.By, At: now, Via: "desk"}
 				shown = append(shown, q.ID)
 			}

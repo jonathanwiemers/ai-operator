@@ -237,8 +237,15 @@ func promptBody(p aiv1.Prompt, link, newer, extra string, limit int) string {
 	return fitNote(b.String(), tail, link, limit)
 }
 
-// stateLine is the first line of a closed prompt's comment.
+// stateLine is the first line of a closed prompt's comment: from its
+// recorded close reason, or as far as the prompt tells for one closed
+// before the reason was recorded.
 func stateLine(p aiv1.Prompt, newer string) string {
+	if p.State == aiv1.PromptSuperseded || p.State == aiv1.PromptExpired {
+		if s := closedLine(p); s != "" {
+			return s
+		}
+	}
 	switch p.State {
 	case aiv1.PromptAnswered:
 		a := p.Answer
@@ -254,6 +261,50 @@ func stateLine(p aiv1.Prompt, newer string) string {
 		return "⏹️ Superseded: " + supersededReason(p, newer)
 	case aiv1.PromptExpired:
 		return "⌛ Expired: nobody answered it within 24 h"
+	}
+	return ""
+}
+
+// closedLine is the state line of a prompt that closed without an answer,
+// from ClosedReason and ClosedBy; "" when no reason is recorded.
+func closedLine(p aiv1.Prompt) string {
+	switch p.ClosedReason {
+	case aiv1.ClosedExpired:
+		return "⌛ Expired: nobody answered in time"
+	case aiv1.ClosedReplaced:
+		if p.ReplacedBy == "" {
+			return "⏹️ Replaced by a newer question"
+		}
+		return "⏹️ Replaced by " + p.ReplacedBy
+	}
+	cause := closedCause(p.ClosedReason)
+	switch {
+	case cause == "":
+		return ""
+	case p.ClosedBy == aiv1.ResolvedByPilot:
+		return "⏹️ Handled by the pilot: " + cause
+	case p.ClosedBy == aiv1.ResolvedByOwner:
+		return "⏹️ Handled by an owner: " + cause
+	}
+	return "⏹️ Resolved on its own: " + cause
+}
+
+// closedCause says in words why a prompt's source resolved, "" for a
+// reason that is no such cause (answered, expired, replaced, unknown).
+func closedCause(r aiv1.PromptClosedReason) string {
+	switch r {
+	case aiv1.ClosedMainHealthy:
+		return "main is green again"
+	case aiv1.ClosedIssueDone:
+		return "the issue was merged or closed"
+	case aiv1.ClosedAgentRanAgain:
+		return "the agent ran again without the answer"
+	case aiv1.ClosedBudgetResolved:
+		return "the budget is no longer short"
+	case aiv1.ClosedPauseOver:
+		return "the pause ended"
+	case aiv1.ClosedStateChanged:
+		return "the milestone moved on"
 	}
 	return ""
 }

@@ -280,8 +280,8 @@ func TestSupersededAndExpiredPromptsAreOnlyEdited(t *testing.T) {
 
 	// A proposal goes on the tracking issue, also one about #1.
 	notes := promptNotes(e, tracking)
-	if len(notes) != 3 || !strings.HasPrefix(notes[0].Body, "⏹️ Superseded: **Q3** asks again\n\n🧭 **Q1:**") ||
-		!strings.HasPrefix(notes[1].Body, "⌛ Expired") || !strings.HasPrefix(notes[2].Body, "🧭 **Q3:**") {
+	if len(notes) != 3 || !strings.HasPrefix(notes[0].Body, "⏹️ Replaced by Q3\n\n🧭 **Q1:**") ||
+		!strings.HasPrefix(notes[1].Body, "⌛ Expired: nobody answered in time\n\n") || !strings.HasPrefix(notes[2].Body, "🧭 **Q3:**") {
 		t.Fatalf("Q1 is edited, the expired proposal Q2 too, Q3 posted, nothing else: %+v", notes)
 	}
 	if strings.Contains(notes[0].Body, "~~") || strings.Contains(notes[0].Body, "cc @") {
@@ -293,6 +293,15 @@ func TestSupersededAndExpiredPromptsAreOnlyEdited(t *testing.T) {
 	if p := e.prompt(specTaskName, "Q2"); p.MirroredState != aiv1.PromptExpired {
 		t.Fatalf("recorded as mirrored: %+v", p)
 	}
+	for id, want := range map[string]string{
+		"Q1": closeOf(aiv1.ClosedReplaced, aiv1.ResolvedByOperator, "Q3"),
+		"Q2": closeOf(aiv1.ClosedExpired, aiv1.ResolvedByOperator, ""),
+		"Q3": closeOf("", "", ""),
+	} {
+		if p := e.prompt(specTaskName, id); closeOf(p.ClosedReason, p.ClosedBy, p.ReplacedBy) != want {
+			t.Errorf("%s records %s, want %s", id, closeOf(p.ClosedReason, p.ClosedBy, p.ReplacedBy), want)
+		}
+	}
 
 	// Closed before it was posted: nothing to show.
 	st = e.task(specTaskName)
@@ -300,6 +309,60 @@ func TestSupersededAndExpiredPromptsAreOnlyEdited(t *testing.T) {
 	e.reconcile()
 	if p := e.prompt(specTaskName, q.ID); p.State != aiv1.PromptSuperseded || p.MirroredState != aiv1.PromptSuperseded || p.PostedNoteID != 0 || len(e.gl.IssueNotes[9]) != 0 {
 		t.Fatalf("a prompt closed before it was posted is not posted: %+v", p)
+	}
+	if p := e.prompt(specTaskName, q.ID); p.ClosedReason != aiv1.ClosedIssueDone || p.ClosedBy != aiv1.ResolvedByOperator {
+		t.Fatalf("a prompt of a closed issue records issueDone by the operator: %+v", p)
+	}
+}
+
+func TestStateLineSaysWhyThePromptClosed(t *testing.T) {
+	closed := func(state aiv1.PromptState, reason aiv1.PromptClosedReason, by aiv1.PauseResolver, replacedBy string) aiv1.Prompt {
+		p := issuePrompt(aiv1.PromptMainHealth, 0)
+		p.State, p.ClosedReason, p.ClosedBy, p.ReplacedBy = state, reason, by, replacedBy
+		return p
+	}
+	sup, op := aiv1.PromptSuperseded, aiv1.ResolvedByOperator
+	answered := closed(aiv1.PromptAnswered, aiv1.ClosedAnswered, aiv1.ResolvedByOwner, "")
+	answered.Options = []aiv1.PromptOption{{ID: "A", Label: "Retry"}}
+	answered.Answer = &aiv1.PromptAnswer{OptionID: "A", By: "alice", Via: "desk"}
+	for _, tc := range []struct {
+		name  string
+		p     aiv1.Prompt
+		newer string
+		want  string
+	}{
+		{"main is green", closed(sup, aiv1.ClosedMainHealthy, op, ""), "", "⏹️ Resolved on its own: main is green again"},
+		{"replaced", closed(sup, aiv1.ClosedReplaced, op, "Q14"), "Q15", "⏹️ Replaced by Q14"},
+		{"the pilot ended the pause", closed(sup, aiv1.ClosedPauseOver, aiv1.ResolvedByPilot, ""), "", "⏹️ Handled by the pilot: the pause ended"},
+		{"an owner ended the pause", closed(sup, aiv1.ClosedPauseOver, aiv1.ResolvedByOwner, ""), "", "⏹️ Handled by an owner: the pause ended"},
+		{"self-healed", closed(sup, aiv1.ClosedPauseOver, aiv1.ResolvedBySelfHealed, ""), "", "⏹️ Resolved on its own: the pause ended"},
+		{"a later run", closed(sup, aiv1.ClosedPauseOver, aiv1.ResolvedByLaterRun, ""), "", "⏹️ Resolved on its own: the pause ended"},
+		{"no resolver", closed(sup, aiv1.ClosedIssueDone, "", ""), "", "⏹️ Resolved on its own: the issue was merged or closed"},
+		{"expired", closed(aiv1.PromptExpired, aiv1.ClosedExpired, op, ""), "", "⌛ Expired: nobody answered in time"},
+		{"answered", answered, "", "✅ Answered by `@alice` in the Desk: Retry"},
+		{"old superseded", closed(sup, "", "", ""), "", "⏹️ Superseded: the default branch is healthy again, or its issue is closed"},
+		{"old superseded by a newer one", closed(sup, "", "", ""), "Q3", "⏹️ Superseded: **Q3** asks again"},
+		{"old expired", closed(aiv1.PromptExpired, "", "", ""), "", "⌛ Expired: nobody answered it within 24 h"},
+	} {
+		if got := stateLine(tc.p, tc.newer); got != tc.want {
+			t.Errorf("%s: got %q, want %q", tc.name, got, tc.want)
+		}
+	}
+
+	for r, want := range map[aiv1.PromptClosedReason]string{
+		aiv1.ClosedMainHealthy:    "main is green again",
+		aiv1.ClosedIssueDone:      "the issue was merged or closed",
+		aiv1.ClosedAgentRanAgain:  "the agent ran again without the answer",
+		aiv1.ClosedBudgetResolved: "the budget is no longer short",
+		aiv1.ClosedPauseOver:      "the pause ended",
+		aiv1.ClosedStateChanged:   "the milestone moved on",
+		aiv1.ClosedAnswered:       "",
+		aiv1.ClosedExpired:        "",
+		aiv1.ClosedReplaced:       "",
+	} {
+		if got := closedCause(r); got != want {
+			t.Errorf("closedCause(%s) = %q, want %q", r, got, want)
+		}
 	}
 }
 

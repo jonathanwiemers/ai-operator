@@ -77,6 +77,7 @@ func (r *AgentProjectReconciler) answerPrompt(ctx context.Context, project *aiv1
 			if q := &list[j]; q.ID == p.ID {
 				if refused = answerRefused(*q, cmd); refused == "" {
 					q.State, q.Answer, q.ClosedAt = aiv1.PromptAnswered, &answer, &now
+					q.ClosedReason, q.ClosedBy = aiv1.ClosedAnswered, aiv1.ResolvedByOwner
 				}
 			}
 		}

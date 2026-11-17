@@ -157,6 +157,11 @@ func TestAgentQuestionsAnsweredFromTheDesk(t *testing.T) {
 	if got := promptStates(impl); got != "Q1=answered Q2=answered" {
 		t.Fatalf("the newer run supersedes no answered question: %s", got)
 	}
+	for _, p := range impl.Status.Prompts {
+		if got, want := closeOf(p.ClosedReason, p.ClosedBy, p.ReplacedBy), closeOf(aiv1.ClosedAnswered, aiv1.ResolvedByOwner, ""); got != want {
+			t.Fatalf("%s records %s, want %s", p.ID, got, want)
+		}
+	}
 	if l := e.labelsOf(1); !slices.Contains(l, "agent::working") || slices.Contains(l, "agent::needs-input") {
 		t.Fatalf("the issue moves to working: %v", l)
 	}
@@ -192,6 +197,9 @@ func TestAgentQuestionSupersededByANewerRun(t *testing.T) {
 	e.reconcile()
 	if got := promptStates(e.task(e.taskOf(1))); got != "Q1=answered Q2=superseded" {
 		t.Fatalf("the open question goes, the answer stays: %s", got)
+	}
+	if p := e.task(e.taskOf(1)).Status.Prompts[1]; closeOf(p.ClosedReason, p.ClosedBy, p.ReplacedBy) != closeOf(aiv1.ClosedAgentRanAgain, aiv1.ResolvedByOperator, "") {
+		t.Fatalf("Q2 records agentRanAgain by the operator: %+v", p)
 	}
 	if r := e.implCommand(402, "alice@example.com", `{"cmd":"answer","prompt":"Q2","text":"yes"}`); r != "Q2 no longer applies (superseded)." {
 		t.Fatalf("reply %q", r)

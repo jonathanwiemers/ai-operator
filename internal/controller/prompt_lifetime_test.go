@@ -148,7 +148,9 @@ func TestAnsweredPromptsAreNeverChanged(t *testing.T) {
 	e.gl.Clock = e.gl.Clock.Add(2 * proposalTTL)
 	e.reconcile()
 	for _, p := range e.task(specTaskName).Status.Prompts {
-		if p.State != aiv1.PromptAnswered || p.Answer == nil || p.Answer.By != "alice" || !p.ClosedAt.Equal(&at) {
+		// Closed before the reason was recorded: the fields stay empty.
+		if p.State != aiv1.PromptAnswered || p.Answer == nil || p.Answer.By != "alice" || !p.ClosedAt.Equal(&at) ||
+			p.ClosedReason != "" || p.ClosedBy != "" || p.ReplacedBy != "" {
 			t.Fatalf("an answered prompt stays as it was: %+v", p)
 		}
 	}
@@ -171,21 +173,31 @@ func TestSyncPromptsWritesOnlyWhenSomethingCloses(t *testing.T) {
 	})
 
 	st = e.task(specTaskName)
-	never := func(aiv1.Prompt) (aiv1.PromptState, bool) { return "", false }
+	never := func(aiv1.Prompt) (promptClose, bool) { return promptClose{}, false }
 	if err := e.r.syncPrompts(e.ctx, st, never); err != nil || patches != 0 {
 		t.Fatalf("nothing resolved, nothing written: %d patches, %v", patches, err)
 	}
 
 	asked := 0
-	notC := func(p aiv1.Prompt) (aiv1.PromptState, bool) {
+	notC := func(p aiv1.Prompt) (promptClose, bool) {
 		asked++
-		return aiv1.PromptSuperseded, p.Source.Key != "c"
+		c, _ := superseded(aiv1.ClosedMainHealthy)
+		return c, p.Source.Key != "c"
 	}
 	if err := e.r.syncPrompts(e.ctx, st, notC); err != nil || patches != 1 {
 		t.Fatalf("two prompts resolved, one write: %d patches, %v", patches, err)
 	}
 	if got := promptStates(e.task(specTaskName)); got != "Q1=superseded Q2=superseded Q3=open" {
 		t.Fatalf("the resolved prompts close: %s", got)
+	}
+	for _, p := range e.task(specTaskName).Status.Prompts {
+		want := closeOf(aiv1.ClosedMainHealthy, aiv1.ResolvedByOperator, "")
+		if p.ID == "Q3" {
+			want = closeOf("", "", "")
+		}
+		if got := closeOf(p.ClosedReason, p.ClosedBy, p.ReplacedBy); got != want {
+			t.Errorf("%s records %s, want %s", p.ID, got, want)
+		}
 	}
 	asked = 0
 	if err := e.r.syncPrompts(e.ctx, st, notC); err != nil || patches != 1 || asked != 1 {
@@ -252,6 +264,50 @@ func TestAssessmentOfAPauseClosesWithThePause(t *testing.T) {
 	}
 }
 
+// closeOf shows a prompt's close fields as "reason/by/replacedBy".
+func closeOf(reason aiv1.PromptClosedReason, by aiv1.PauseResolver, replacedBy string) string {
+	return fmt.Sprintf("%s/%s/%s", reason, by, replacedBy)
+}
+
+func TestPauseOverRecordsWhoEndedThePause(t *testing.T) {
+	now := time.Date(2026, 11, 6, 19, 0, 0, 0, time.UTC)
+	since := &metav1.Time{Time: now.Add(-time.Hour)}
+	posted := &metav1.Time{Time: now.Add(-30 * time.Minute)}
+	assessment := func(iid int64, key string) aiv1.Prompt {
+		return aiv1.Prompt{PostedAt: posted, Source: aiv1.PromptSource{Kind: aiv1.PromptAssessment, IssueIID: iid, Key: "event/" + key + "@3"}}
+	}
+	pause := assessment(0, "pause-"+hashString("paused by @owner")+"/0/")
+	stalled := assessment(1, fmt.Sprintf("%s%d", aiv1.StalledEventPrefix, since.Unix()))
+	stuck := assessment(1, "stuck/1/sha1")
+	tasks := map[int64]*aiv1.AgentTask{1: {Status: aiv1.AgentTaskStatus{Run: aiv1.RunStatus{PushedSHA: "sha2"}}}}
+	issues := map[int64]gitlab.Issue{1: {IID: 1}}
+	resumed := func(by aiv1.PauseResolver) *aiv1.AutopilotStatus {
+		return &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning, ResumedBy: by}
+	}
+	newer := &aiv1.AutopilotStatus{Phase: aiv1.AutopilotPaused, PausedReason: "another", PausedAt: since, ResumedBy: aiv1.ResolvedByPilot}
+
+	for _, tc := range []struct {
+		name string
+		p    aiv1.Prompt
+		ap   *aiv1.AutopilotStatus
+		by   aiv1.PauseResolver
+	}{
+		{"the pilot ended the pause", pause, resumed(aiv1.ResolvedByPilot), aiv1.ResolvedByPilot},
+		{"an owner ended the pause", pause, resumed(aiv1.ResolvedByOwner), aiv1.ResolvedByOwner},
+		{"the pilot lifted the stalled pause", stalled, resumed(aiv1.ResolvedByPilot), aiv1.ResolvedByPilot},
+		{"nobody recorded", pause, resumed(""), aiv1.ResolvedByOperator},
+		{"a newer pause", pause, newer, aiv1.ResolvedByOperator},
+		{"a stuck event's head moved", stuck, resumed(aiv1.ResolvedByPilot), aiv1.ResolvedByOperator},
+	} {
+		st := &aiv1.AgentTask{Status: aiv1.AgentTaskStatus{Autopilot: tc.ap}}
+		got, ok := promptResolved(now, nil, issues, tasks, st, func(int64) bool { return false })(tc.p)
+		want := promptClose{State: aiv1.PromptSuperseded, Reason: aiv1.ClosedPauseOver, By: tc.by}
+		if !ok || got != want {
+			t.Errorf("%s: got %+v %v, want %+v", tc.name, got, ok, want)
+		}
+	}
+}
+
 func TestPromptResolved(t *testing.T) {
 	now := time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)
 	posted := metav1.NewTime(now.Add(-time.Hour))
@@ -282,31 +338,40 @@ func TestPromptResolved(t *testing.T) {
 		return p
 	}
 
+	budget := aiv1.Prompt{Source: aiv1.PromptSource{Kind: aiv1.PromptBudget, Key: budgetKey80 + "10"}}
+	pause := aiv1.Prompt{PostedAt: &posted, Source: aiv1.PromptSource{Kind: aiv1.PromptAssessment, Key: "event/pause-" + hashString("x") + "/0/@3"}}
+	op := aiv1.ResolvedByOperator
+	gone := func(reason aiv1.PromptClosedReason) promptClose {
+		return promptClose{State: aiv1.PromptSuperseded, Reason: reason, By: op}
+	}
+
 	for _, tc := range []struct {
-		name  string
-		p     aiv1.Prompt
-		state aiv1.PromptState
+		name string
+		p    aiv1.Prompt
+		want promptClose
 	}{
-		{"fresh proposal", proposal, ""},
-		{"proposal after a day", old, aiv1.PromptExpired},
-		{"proposal on a changed milestone", moved, aiv1.PromptSuperseded},
-		{"main red over its issue", withMain(7), ""},
-		{"main red over another issue", withMain(8), aiv1.PromptSuperseded},
-		{"main red, no issue", withMain(0), ""},
-		{"question of the current run", question(3), ""},
-		{"question of an older run", question(2), aiv1.PromptSuperseded},
-		{"question without its run", question(0), ""},
-		{"budget", aiv1.Prompt{Source: aiv1.PromptSource{Kind: aiv1.PromptBudget}}, ""},
-		{"open issue", issuePrompt(aiv1.PromptAssessment, 1), ""},
-		{"merged issue, still listed", issuePrompt(aiv1.PromptAssessment, 2), aiv1.PromptSuperseded},
-		{"closed issue", issuePrompt(aiv1.PromptAssessment, 5), aiv1.PromptSuperseded},
-		{"issue not listed, open", issuePrompt(aiv1.PromptAssessment, 6), ""},
-		{"revisit of a closed issue's decision", issuePrompt(aiv1.PromptRevisit, 5), ""},
+		{"fresh proposal", proposal, promptClose{}},
+		{"proposal after a day", old, promptClose{State: aiv1.PromptExpired, Reason: aiv1.ClosedExpired, By: op}},
+		{"proposal on a changed milestone", moved, gone(aiv1.ClosedStateChanged)},
+		{"main red over its issue", withMain(7), promptClose{}},
+		{"main red over another issue", withMain(8), gone(aiv1.ClosedMainHealthy)},
+		{"main red, no issue", withMain(0), promptClose{}},
+		{"question of the current run", question(3), promptClose{}},
+		{"question of an older run", question(2), gone(aiv1.ClosedAgentRanAgain)},
+		{"question without its run", question(0), promptClose{}},
+		{"budget without a key", aiv1.Prompt{Source: aiv1.PromptSource{Kind: aiv1.PromptBudget}}, promptClose{}},
+		{"budget no longer set", budget, gone(aiv1.ClosedBudgetResolved)},
+		{"assessment of a pause that ended", pause, gone(aiv1.ClosedPauseOver)},
+		{"open issue", issuePrompt(aiv1.PromptAssessment, 1), promptClose{}},
+		{"merged issue, still listed", issuePrompt(aiv1.PromptAssessment, 2), gone(aiv1.ClosedIssueDone)},
+		{"closed issue", issuePrompt(aiv1.PromptAssessment, 5), gone(aiv1.ClosedIssueDone)},
+		{"issue not listed, open", issuePrompt(aiv1.PromptAssessment, 6), promptClose{}},
+		{"revisit of a closed issue's decision", issuePrompt(aiv1.PromptRevisit, 5), promptClose{}},
 	} {
 		asked = nil
-		state, ok := promptResolved(now, mh, issues, tasks, st, closed)(tc.p)
-		if state != tc.state || ok != (tc.state != "") {
-			t.Errorf("%s: got %q %v, want %q", tc.name, state, ok, tc.state)
+		got, ok := promptResolved(now, mh, issues, tasks, st, closed)(tc.p)
+		if got != tc.want || ok != (tc.want.State != "") {
+			t.Errorf("%s: got %+v %v, want %+v", tc.name, got, ok, tc.want)
 		}
 		if iid := tc.p.Source.IssueIID; len(asked) > 0 && (asked[0] != iid || issues[iid].IID != 0 || len(asked) > 1) {
 			t.Errorf("%s: GetIssue only for the prompt's issue missing from the lists, asked %v", tc.name, asked)

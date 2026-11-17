@@ -384,3 +384,11 @@ R1, R2 → R3, R4, R6, R7 → R5, R8, R10, R13 → R9, R11, R12 → R14, R15 →
   unchanged. (Goal 5)
 
 ## Steering log
+
+- 2026-11-17 #526 (R3, R5): a `pauseOver` prompt takes
+  `status.autopilot.resumedBy` only for `pause-` and stalled events once the
+  milestone is no longer paused; `stuck/` events (holds record no resolver)
+  and newer pauses get `operator` (D526-P1). Decision 5 has no label for a
+  pause an owner ended (`closedBy: owner` without an answer): the GitLab
+  state line says "Handled by an owner: the pause ended". R10 should use the
+  same words.

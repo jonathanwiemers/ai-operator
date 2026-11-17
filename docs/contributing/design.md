@@ -2747,6 +2747,20 @@ after posting; the others have no time-to-live. A proposal "P<n>" from
 before prompts stays answerable (`yes` / `no`, `/pilot yes P3`, Accept in
 the Desk) until it expires.
 
+A closed prompt records why (`closedReason`) and who closed it
+(`closedBy`, a `PauseResolver`), written with the state change and never
+deciding it. An answer records `answered` by `owner`. The lifetime check
+(`promptResolved` in `prompt_lifetime.go`, run by `syncPrompts`) records
+`expired`, `stateChanged`, `mainHealthy`, `agentRanAgain`,
+`budgetResolved`, `pauseOver` or `issueDone`, by `operator`; a `pauseOver`
+of a `pause-` or stalled event takes the milestone's
+`status.autopilot.resumedBy` once it is no longer paused (a hold records
+no resolver, so a `stuck/` event stays `operator`). `addPrompt` records
+`replaced`, `operator` and `replacedBy` (the newer `Q<n>`) on the prompt a
+newer one with the same kind and key supersedes. Prompts `boundPrompts`
+drops leave the status without them; prompts closed before the fields
+existed keep them empty.
+
 Every prompt (`Q<n>`, in `status.prompts` of the spec task or of an
 Implement task) is mirrored as one bot comment on its source: its merge
 request, else its issue, else the milestone's tracking issue
@@ -2782,9 +2796,17 @@ way.
   owner's words quoted as untrusted (inert, 2000 bytes) and `answer.outcome`, marked `prompt-answer=Q<n>` so it is not
   posted twice. When the option has actions, it waits for the outcome, two
   poll intervals at most.
-* **Superseded / expired:** the first line becomes "⏹️ Superseded: …" or
-  "⌛ Expired", without a reply. A prompt that closed before it was posted
-  is not posted.
+* **Superseded / expired:** the first line says why, from the prompt's
+  `closedReason` and `closedBy`, without a reply: "⌛ Expired: nobody
+  answered in time", "⏹️ Replaced by Q14", "⏹️ Handled by the pilot:
+  <cause>" (`closedBy: pilot`), "⏹️ Handled by an owner: <cause>" (an
+  owner ended the pause) or "⏹️ Resolved on its own: <cause>". The causes
+  come from one function, `closedCause` (`prompt_mirror.go`): "main is
+  green again", "the issue was merged or closed", "the agent ran again
+  without the answer", "the budget is no longer short", "the pause
+  ended", "the milestone moved on". A prompt closed before the reason was
+  recorded keeps the old line, "⏹️ Superseded: …" or "⌛ Expired". A
+  prompt that closed before it was posted is not posted.
 * Edits carry no mention (GitLab would notify again). Bodies are cut below
   GitLab's 1 MB limit and then end with the Desk link. GitLab errors are
   logged and tried again on the next poll.

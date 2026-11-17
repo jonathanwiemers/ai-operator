@@ -60,8 +60,9 @@ func (r *AgentProjectReconciler) syncOpenPrompts(ctx context.Context, gl gitlab.
 }
 
 // syncPrompts closes the open prompts of holder that resolved says are
-// resolved, in one optimistic-lock patch, and writes only when one is.
-func (r *AgentProjectReconciler) syncPrompts(ctx context.Context, holder *aiv1.AgentTask, resolved func(aiv1.Prompt) (aiv1.PromptState, bool)) error {
+// resolved, in one optimistic-lock patch, and writes only when one is. It
+// records why and by whom each one closed.
+func (r *AgentProjectReconciler) syncPrompts(ctx context.Context, holder *aiv1.AgentTask, resolved func(aiv1.Prompt) (promptClose, bool)) error {
 	due := func(p aiv1.Prompt) bool {
 		if p.State.Closed() {
 			return false
@@ -78,9 +79,9 @@ func (r *AgentProjectReconciler) syncPrompts(ctx context.Context, holder *aiv1.A
 		closed = closed[:0]
 		for i := range list {
 			if q := &list[i]; !q.State.Closed() {
-				if state, ok := resolved(*q); ok {
-					q.State, q.ClosedAt = state, &now
-					closed = append(closed, q.ID+"="+string(state))
+				if c, ok := resolved(*q); ok {
+					q.State, q.ClosedAt, q.ClosedReason, q.ClosedBy = c.State, &now, c.Reason, c.By
+					closed = append(closed, q.ID+"="+string(c.Reason))
 				}
 			}
 		}
@@ -92,52 +93,82 @@ func (r *AgentProjectReconciler) syncPrompts(ctx context.Context, holder *aiv1.A
 	return err
 }
 
+// promptClose is how an open prompt closes: its state, why and by whom.
+type promptClose struct {
+	State  aiv1.PromptState
+	Reason aiv1.PromptClosedReason
+	By     aiv1.PauseResolver
+}
+
+// superseded closes a prompt as superseded for reason, by the operator.
+func superseded(reason aiv1.PromptClosedReason) (promptClose, bool) {
+	return promptClose{State: aiv1.PromptSuperseded, Reason: reason, By: aiv1.ResolvedByOperator}, true
+}
+
 // promptResolved says which open prompts resolved, and how: st is the
 // milestone's spec task (nil: none), tasks its issues' tasks, issues the
 // open issues of the poll. closed confirms that an issue missing from
 // issues is closed; it is asked only for prompts whose issue is missing.
 func promptResolved(now time.Time, mh *aiv1.MainHealthStatus, issues map[int64]gitlab.Issue, tasks map[int64]*aiv1.AgentTask, st *aiv1.AgentTask,
-	closed func(int64) bool) func(aiv1.Prompt) (aiv1.PromptState, bool) {
-	return func(p aiv1.Prompt) (aiv1.PromptState, bool) {
+	closed func(int64) bool) func(aiv1.Prompt) (promptClose, bool) {
+	return func(p aiv1.Prompt) (promptClose, bool) {
 		src := p.Source
 		switch src.Kind {
 		case aiv1.PromptProposal:
 			if p.PostedAt == nil || now.Sub(p.PostedAt.Time) >= proposalTTL {
-				return aiv1.PromptExpired, true
+				return promptClose{State: aiv1.PromptExpired, Reason: aiv1.ClosedExpired, By: aiv1.ResolvedByOperator}, true
 			}
 			if p.PilotState != "" && st != nil && proposalState(st, tasks, p) != p.PilotState {
-				return aiv1.PromptSuperseded, true
+				return superseded(aiv1.ClosedStateChanged)
 			}
 		case aiv1.PromptMainHealth:
 			if !mainUnhealthy(mh, src.IssueIID) {
-				return aiv1.PromptSuperseded, true
+				return superseded(aiv1.ClosedMainHealthy)
 			}
 		case aiv1.PromptNeedsInput:
 			// An answer not shown yet (showAnswers) keeps it.
 			if t := tasks[src.IssueIID]; t != nil && src.RunRequest != 0 && t.Spec.RunRequest > src.RunRequest &&
 				delivery(t.Spec.Source.PromptAnswers, p.ID) == nil {
-				return aiv1.PromptSuperseded, true // the agent ran again without the answer
+				return superseded(aiv1.ClosedAgentRanAgain)
 			}
 		case aiv1.PromptBudget:
 			if budgetResolved(p, st) {
-				return aiv1.PromptSuperseded, true
+				return superseded(aiv1.ClosedBudgetResolved)
 			}
 		case aiv1.PromptRevisit:
 			// A revisit is about a merged issue's decision: its issue
 			// resolves nothing.
-			return "", false
+			return promptClose{}, false
 		case aiv1.PromptAssessment:
 			if pauseOver(p, st, tasks) {
-				return aiv1.PromptSuperseded, true
+				c, ok := superseded(aiv1.ClosedPauseOver)
+				c.By = pauseEndedBy(p, st)
+				return c, ok
 			}
 		}
 		if iid := src.IssueIID; iid != 0 {
 			if _, open := issues[iid]; autopilotItemState(st, iid) == aiv1.AutopilotItemMerged || !open && closed(iid) {
-				return aiv1.PromptSuperseded, true
+				return superseded(aiv1.ClosedIssueDone)
 			}
 		}
-		return "", false
+		return promptClose{}, false
 	}
+}
+
+// pauseEndedBy is who ended the pause that assessment p, closed by
+// pauseOver, was about: the milestone's ResumedBy for a pause or stalled
+// event once the milestone is no longer paused. A stuck event (a hold
+// records no resolver), a newer pause or an unrecorded resolver count as
+// the operator's.
+func pauseEndedBy(p aiv1.Prompt, st *aiv1.AgentTask) aiv1.PauseResolver {
+	ap := st.Status.Autopilot // pauseOver held: not nil
+	key := strings.TrimPrefix(p.Source.Key, "event/")
+	pauseKey := strings.HasPrefix(key, "pause-") || strings.HasPrefix(key, aiv1.StalledEventPrefix)
+	paused := ap.Phase == aiv1.AutopilotPaused && ap.PausedAt != nil
+	if pauseKey && !paused && ap.ResumedBy != "" {
+		return ap.ResumedBy
+	}
+	return aiv1.ResolvedByOperator
 }
 
 // pauseOver reports whether assessment p, of a pause event (pilotEvents), is

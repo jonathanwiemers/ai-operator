@@ -47,6 +47,7 @@ func (r *AgentProjectReconciler) addPrompt(ctx context.Context, gl gitlab.API, s
 		for i := range list {
 			if q := &list[i]; !q.State.Closed() && p.Source.Key != "" && q.Source.Kind == p.Source.Kind && q.Source.Key == p.Source.Key {
 				q.State, q.ClosedAt = aiv1.PromptSuperseded, &now
+				q.ClosedReason, q.ClosedBy, q.ReplacedBy = aiv1.ClosedReplaced, aiv1.ResolvedByOperator, p.ID
 			}
 		}
 		list, dropped = boundPrompts(append(list, p), now)
