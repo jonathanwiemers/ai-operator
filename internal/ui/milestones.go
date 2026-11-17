@@ -117,35 +117,12 @@ func (s *Server) milestones(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if ref := q.Get("project"); ref != "" {
-		ap := visible[ref]
-		if ap == nil {
-			notFound(w)
-			return
-		}
-		visible = map[string]*aiv1.AgentProject{ref: ap}
+	if visible, ok = projectFilter(w, r, visible); !ok {
+		return
 	}
-	now := time.Now()
-	live := liveMilestoneRows(visible, tasks, now)
-
-	out := MilestoneList{Milestones: []MilestoneRow{}}
-	var stored []store.MilestoneRow
-	if st := s.milestoneStore(); st != nil {
-		keys := make([]store.ProjectKey, 0, len(visible))
-		for _, ap := range visible {
-			keys = append(keys, store.ProjectKey{Namespace: ap.Namespace, Name: ap.Name})
-		}
-		var err error
-		// All states: an open snapshot may be done live, a closed one may
-		// still have its tasks; the filter applies after the merge.
-		if stored, err = st.Milestones(r.Context(), store.MilestoneQuery{Projects: keys, Limit: store.MaxMilestones}); err != nil {
-			s.log.Error(err, "cannot read the milestones' snapshot")
-			stored = nil
-		} else {
-			out.History = true
-		}
-	}
-	for _, m := range mergeMilestoneRows(live, stored) {
+	rows, history := s.mergedMilestoneRows(r.Context(), visible, tasks, time.Now())
+	out := MilestoneList{Milestones: []MilestoneRow{}, History: history}
+	for _, m := range rows {
 		if state == "all" || (state == "done") == (m.State == MilestoneStateDone) {
 			out.Milestones = append(out.Milestones, m)
 		}
@@ -155,6 +132,31 @@ func (s *Server) milestones(w http.ResponseWriter, r *http.Request) {
 		out.Milestones = out.Milestones[:limit]
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// mergedMilestoneRows builds the milestone rows of the projects, in every
+// state and unsorted: the live rows from the tasks, merged with the
+// history snapshot. history: the snapshot answered; a failing one is
+// logged and leaves the live rows.
+func (s *Server) mergedMilestoneRows(ctx context.Context, visible map[string]*aiv1.AgentProject, tasks []aiv1.AgentTask, now time.Time) (rows []MilestoneRow, history bool) {
+	live := liveMilestoneRows(visible, tasks, now)
+	var stored []store.MilestoneRow
+	if st := s.milestoneStore(); st != nil {
+		keys := make([]store.ProjectKey, 0, len(visible))
+		for _, ap := range visible {
+			keys = append(keys, store.ProjectKey{Namespace: ap.Namespace, Name: ap.Name})
+		}
+		var err error
+		// All states: an open snapshot may be done live, a closed one may
+		// still have its tasks; the caller filters after the merge.
+		if stored, err = st.Milestones(ctx, store.MilestoneQuery{Projects: keys, Limit: store.MaxMilestones}); err != nil {
+			s.log.Error(err, "cannot read the milestones' snapshot")
+			stored = nil
+		} else {
+			history = true
+		}
+	}
+	return mergeMilestoneRows(live, stored), history
 }
 
 // visibleProjects lists the projects the user may see, by namespace/name,
@@ -179,6 +181,21 @@ func (s *Server) visibleProjects(w http.ResponseWriter, r *http.Request) (map[st
 		}
 	}
 	return visible, tasks.Items, true
+}
+
+// projectFilter narrows visible to the project of ?project=namespace/name,
+// if any: 404 when the user may not see it or it does not exist.
+func projectFilter(w http.ResponseWriter, r *http.Request, visible map[string]*aiv1.AgentProject) (map[string]*aiv1.AgentProject, bool) {
+	ref := r.URL.Query().Get("project")
+	if ref == "" {
+		return visible, true
+	}
+	ap := visible[ref]
+	if ap == nil {
+		notFound(w)
+		return nil, false
+	}
+	return map[string]*aiv1.AgentProject{ref: ap}, true
 }
 
 // milestoneKey is a milestone across projects.

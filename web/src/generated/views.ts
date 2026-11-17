@@ -1060,6 +1060,8 @@ export interface ExitView extends aiv1.PauseExit {
  */
 export interface PlanListItem {
   name: string;
+  namespace: string;
+  project: string;
   title: string;
   phase: aiv1.AgentPlanPhase;
   createdBy: string;
@@ -1072,6 +1074,20 @@ export interface PlanListItem {
   createdMilestoneIID?: number /* int64 */;
   createdMilestoneURL?: string;
   permissions: PlanPermissions;
+  /**
+   * Milestone is the created milestone's row on the Desk, nil without
+   * one.
+   */
+  milestone?: PlanMilestone;
+}
+/**
+ * PlanMilestone is where a plan's created milestone stands, from its row
+ * on the milestones dashboard. Stored: the row is the history snapshot's.
+ */
+export interface PlanMilestone {
+  state: MilestoneState;
+  progress: MilestoneProgress;
+  stored: boolean;
 }
 /**
  * PlanPermissions says what the caller may do with the project's plans.
@@ -1090,6 +1106,27 @@ export interface PlanView extends PlanListItem {
   draftRevision: number /* int64 */;
   draftBy?: string;
   draftSHA?: string;
+}
+
+//////////
+// source: plans_all.go
+
+/**
+ * PlanOverview is the answer of GET /api/v1/plans: the plans of the
+ * projects, last active first, and the projects, with or without plans.
+ */
+export interface PlanOverview {
+  plans: PlanListItem[];
+  projects: PlanProject[];
+}
+/**
+ * PlanProject is a project of the plan lists. Steer: the caller may create
+ * and steer its plans.
+ */
+export interface PlanProject {
+  namespace: string;
+  name: string;
+  steer: boolean;
 }
 
 //////////

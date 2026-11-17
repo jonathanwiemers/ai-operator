@@ -2,6 +2,7 @@ package ui
 
 import (
 	"cmp"
+	"context"
 	"crypto/rand"
 	"encoding/json"
 	"errors"
@@ -26,6 +27,8 @@ import (
 // PlanListItem is one milestone plan of a project, without its draft.
 type PlanListItem struct {
 	Name                string              `json:"name"`
+	Namespace           string              `json:"namespace"`
+	Project             string              `json:"project"`
 	Title               string              `json:"title"`
 	Phase               aiv1.AgentPlanPhase `json:"phase"`
 	CreatedBy           string              `json:"createdBy"`
@@ -38,6 +41,17 @@ type PlanListItem struct {
 	CreatedMilestoneIID int64               `json:"createdMilestoneIID,omitempty"`
 	CreatedMilestoneURL string              `json:"createdMilestoneURL,omitempty"`
 	Permissions         PlanPermissions     `json:"permissions"`
+	// Milestone is the created milestone's row on the Desk, nil without
+	// one.
+	Milestone *PlanMilestone `json:"milestone,omitempty"`
+}
+
+// PlanMilestone is where a plan's created milestone stands, from its row
+// on the milestones dashboard. Stored: the row is the history snapshot's.
+type PlanMilestone struct {
+	State    MilestoneState    `json:"state"`
+	Progress MilestoneProgress `json:"progress"`
+	Stored   bool              `json:"stored"`
 }
 
 // PlanPermissions says what the caller may do with the project's plans.
@@ -60,7 +74,7 @@ func (s *Server) planItem(pl *aiv1.AgentPlan, steer bool) PlanListItem {
 	if c := pl.Status.Chat; c != nil && c.LastTurnTime != nil && c.LastTurnTime.After(last) {
 		last = c.LastTurnTime.Time
 	}
-	return PlanListItem{Name: pl.Name, Title: cmp.Or(pl.Status.Title, pl.Spec.Title), Phase: pl.Status.Phase, CreatedBy: pl.Spec.CreatedBy,
+	return PlanListItem{Name: pl.Name, Namespace: pl.Namespace, Project: pl.Spec.ProjectRef, Title: cmp.Or(pl.Status.Title, pl.Spec.Title), Phase: pl.Status.Phase, CreatedBy: pl.Spec.CreatedBy,
 		CreatedAt: pl.CreationTimestamp.Time, LastActivityAt: last, SpendUSD: pl.Status.SpendUSD, Tokens: pl.Status.Tokens,
 		BudgetUSD: pl.BudgetUSD(s.cfg.Plan.MaxBudgetUSD), BudgetLimitUSD: s.cfg.Plan.MaxBudgetUSDLimit,
 		CreatedMilestoneIID: pl.Status.CreatedMilestoneIID, CreatedMilestoneURL: pl.Status.CreatedMilestoneURL,
@@ -89,27 +103,33 @@ func (s *Server) planOwner(p Principal, ap *aiv1.AgentProject, tasks []aiv1.Agen
 // projectPlans loads the project and its plans, newest first: 404 without
 // chat or a view of the project.
 func (s *Server) projectPlans(w http.ResponseWriter, r *http.Request) (*aiv1.AgentProject, []aiv1.AgentPlan, bool, bool) {
+	ap, _, plans, steer, ok := s.loadPlans(w, r)
+	return ap, plans, steer, ok
+}
+
+// loadPlans is projectPlans with the project's tasks.
+func (s *Server) loadPlans(w http.ResponseWriter, r *http.Request) (*aiv1.AgentProject, []aiv1.AgentTask, []aiv1.AgentPlan, bool, bool) {
 	if !s.cfg.ChatEnabled() {
 		notFound(w)
-		return nil, nil, false, false
+		return nil, nil, nil, false, false
 	}
 	ap, tasks, ok := s.loadProject(w, r)
 	if !ok {
-		return nil, nil, false, false
+		return nil, nil, nil, false, false
 	}
 	var list aiv1.AgentPlanList
 	if err := s.reader.List(r.Context(), &list, client.InNamespace(ap.Namespace)); err != nil {
 		s.internalError(w, err)
-		return nil, nil, false, false
+		return nil, nil, nil, false, false
 	}
 	plans := slices.DeleteFunc(list.Items, func(pl aiv1.AgentPlan) bool { return pl.Spec.ProjectRef != ap.Name })
 	sort.SliceStable(plans, func(i, j int) bool { return plans[j].CreationTimestamp.Before(&plans[i].CreationTimestamp) })
-	return ap, plans, s.planOwner(principalOf(r), ap, tasks), true
+	return ap, tasks, plans, s.planOwner(principalOf(r), ap, tasks), true
 }
 
 // plans lists a project's plans.
 func (s *Server) plans(w http.ResponseWriter, r *http.Request) {
-	_, plans, steer, ok := s.projectPlans(w, r)
+	ap, tasks, plans, steer, ok := s.loadPlans(w, r)
 	if !ok {
 		return
 	}
@@ -117,16 +137,51 @@ func (s *Server) plans(w http.ResponseWriter, r *http.Request) {
 	for i := range plans {
 		out = append(out, s.planItem(&plans[i], steer))
 	}
+	s.setPlanMilestones(r.Context(), out, map[string]*aiv1.AgentProject{ap.Namespace + "/" + ap.Name: ap}, tasks)
 	writeJSON(w, http.StatusOK, out)
 }
 
-// plan returns one plan with its draft.
+// plan returns one plan with its draft and its milestone's row.
 func (s *Server) plan(w http.ResponseWriter, r *http.Request) {
-	pl, steer, ok := s.projectPlan(w, r)
+	ap, tasks, plans, steer, ok := s.loadPlans(w, r)
 	if !ok {
 		return
 	}
-	writeJSON(w, http.StatusOK, s.planView(pl, steer))
+	pl, ok := pathPlan(w, r, plans)
+	if !ok {
+		return
+	}
+	v := s.planView(pl, steer)
+	items := []PlanListItem{v.PlanListItem}
+	s.setPlanMilestones(r.Context(), items, map[string]*aiv1.AgentProject{ap.Namespace + "/" + ap.Name: ap}, tasks)
+	v.PlanListItem = items[0]
+	writeJSON(w, http.StatusOK, v)
+}
+
+// setPlanMilestones sets the items' milestone from the milestone row with
+// the same namespace, project and IID. The rows are read only when an item
+// of a visible project created a milestone, and only for those projects.
+func (s *Server) setPlanMilestones(ctx context.Context, items []PlanListItem, visible map[string]*aiv1.AgentProject, tasks []aiv1.AgentTask) {
+	projects := map[string]*aiv1.AgentProject{}
+	for _, it := range items {
+		if k := it.Namespace + "/" + it.Project; it.CreatedMilestoneIID != 0 && visible[k] != nil {
+			projects[k] = visible[k]
+		}
+	}
+	if len(projects) == 0 {
+		return
+	}
+	rows, _ := s.mergedMilestoneRows(ctx, projects, tasks, time.Now())
+	byKey := make(map[milestoneKey]*MilestoneRow, len(rows))
+	for i := range rows {
+		byKey[milestoneKey{rows[i].Namespace, rows[i].Project, rows[i].IID}] = &rows[i]
+	}
+	for i := range items {
+		it := &items[i]
+		if m := byKey[milestoneKey{it.Namespace, it.Project, it.CreatedMilestoneIID}]; m != nil && it.CreatedMilestoneIID != 0 {
+			it.Milestone = &PlanMilestone{State: m.State, Progress: m.Progress, Stored: m.Stored}
+		}
+	}
 }
 
 func (s *Server) planView(pl *aiv1.AgentPlan, steer bool) PlanView {
@@ -220,12 +275,18 @@ func (s *Server) projectPlan(w http.ResponseWriter, r *http.Request) (*aiv1.Agen
 	if !ok {
 		return nil, false, false
 	}
+	pl, ok := pathPlan(w, r, plans)
+	return pl, steer, ok
+}
+
+// pathPlan is the plan of the request path among plans, 404 without it.
+func pathPlan(w http.ResponseWriter, r *http.Request, plans []aiv1.AgentPlan) (*aiv1.AgentPlan, bool) {
 	i := slices.IndexFunc(plans, func(pl aiv1.AgentPlan) bool { return pl.Name == r.PathValue("plan") })
 	if i < 0 {
 		notFound(w)
-		return nil, false, false
+		return nil, false
 	}
-	return &plans[i], steer, true
+	return &plans[i], true
 }
 
 // postPlanChat posts the owner's message or interrupt to a plan that has not
