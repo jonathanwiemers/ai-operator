@@ -239,9 +239,12 @@ works on the issue, and the issue's own stream.
 What waits for the milestone's owners. While something is open, the tab
 reads *Needs you · n*. *Open* holds the pause card and the hold cards, the
 open questions and the pilot's open proposals with *Accept* and *Reject*.
-*Handled* folds the earlier questions and shows the pause history: how long
-the milestone was paused, why, and who ended each pause. A link to a
-question (`#prompt-Q3`) opens this tab at its card.
+*Handled* lists one problem per issue, and one for the milestone: the
+questions about it, what the pilot did on its own and the pauses, newest
+first, with "Pilot attempts: 2 of 2" for the pilot's tries on the issue's
+current head. Open problems come first. Click a closed question to see its
+full card. The last line sums up the pauses. A link to a question
+(`#prompt-Q3`) or a problem (`#problem-280`) opens this tab there.
 
 ### Pilot
 

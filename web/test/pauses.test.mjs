@@ -1,7 +1,7 @@
 // Tests of src/pauses.ts: npm test (node --test, no extra dependencies).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { pauseDuration, pausesLine, pausesSummary, resolverLabel, viaLabel } from '../src/pauses.ts'
+import { pauseDuration, pauseEnd, pausesLine, pausesSummary, resolverLabel, viaLabel } from '../src/pauses.ts'
 
 const t0 = Date.parse('2026-11-05T10:00:00Z')
 const at = (min) => new Date(t0 + min * 60000).toISOString()
@@ -153,4 +153,13 @@ test('a later run ended by a takeover', () => {
   )
   assert.deepEqual([s.rows[0].resolver, s.rows[0].via], ['later run', 'takeover'])
   assert.deepEqual(s.vias, [{ via: 'takeover', label: 'takeover', count: 1 }])
+})
+
+test('pauseEnd says who ended a pause and how, nothing while open', () => {
+  const since = '2026-11-05T10:00:00Z'
+  const until = '2026-11-05T11:00:00Z'
+  assert.equal(pauseEnd({ kind: 'ciRed', since, seconds: 0 }), '')
+  assert.equal(pauseEnd({ kind: 'ciRed', since, until, resolvedBy: 'selfHealed', via: 'push', seconds: 3600 }), 'resolved by self-healed via push')
+  assert.equal(pauseEnd({ kind: 'ciRed', since, until, resolvedBy: 'pilot', seconds: 3600 }), 'resolved by pilot')
+  assert.equal(pauseEnd({ kind: 'ciRed', since, until, seconds: 3600 }), 'resolved by unknown')
 })

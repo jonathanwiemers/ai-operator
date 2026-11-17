@@ -1,10 +1,13 @@
 // The Needs you milestone tab (#530: R12): prompt links open it, an open
 // prompt shows once, the pause card's own prompt is not listed again, and
 // the Pilot tab keeps only the pilot line, the composer and its events.
+// Handled (#531: R14) lists one problem per issue with its prompts, the
+// pilot's actions and its pauses.
 // Run with npm run e2e (built UI, Chromium).
 import { expect, test, type Page } from '@playwright/test'
 import { answer, now } from './fixtures'
 import { paymentsMilestone } from './fixtures/stream'
+import { refundsPrompt } from './fixtures/task'
 import type { MilestoneView, PromptView } from '../src/types'
 
 const widths = [
@@ -58,6 +61,19 @@ const mainRed: MilestoneView = {
   prompts: [q5, openQ3],
 }
 
+// staleHead: #280 got a new push, so the pilot's count starts over.
+const staleHead: MilestoneView = {
+  ...paymentsMilestone,
+  pilot: { ...paymentsMilestone.pilot!, interventions: [{ issueIID: 280, used: 0, max: 2 }] },
+}
+
+// stored: milestone 14 from the history database: no pilot, no prompts,
+// only its pauses.
+const stored: MilestoneView = { ...paymentsMilestone, state: 'done', stored: true, autopilot: undefined, pilot: undefined, prompts: [] }
+
+// quiet: milestone 14 running with nothing asked, acted or paused.
+const quiet: MilestoneView = { ...running, prompts: [], pilot: { ...running.pilot!, acted: [], interventions: [] }, pauses: undefined }
+
 // open shows path with the API answered from the fixtures (GET only), the
 // milestone's view replaced by milestone when given.
 async function open(page: Page, baseURL: string | undefined, path: string, size: { width: number; height: number }, milestone?: MilestoneView) {
@@ -96,7 +112,7 @@ for (const size of widths) {
   test(`a prompt link opens Needs you at the card@${size.width}`, async ({ page, baseURL }) => {
     const problems = await open(page, baseURL, `${milestonePath}#prompt-Q3`, size)
     await expect(page.locator('#prompt-Q3')).toBeInViewport()
-    await expect(page.locator('[data-needs-handled] [data-earlier]')).toHaveAttribute('open', '')
+    await expect(page.locator('[data-needs-handled] #problem-0')).toHaveAttribute('data-open', '')
     await expect(tab(page, /^Needs you/)).toHaveAttribute('aria-current', 'page')
     expect(problems).toEqual([])
   })
@@ -149,6 +165,130 @@ for (const size of widths) {
     await tab(page, /^Pilot$/).click()
     await expect(page.getByRole('heading', { name: 'Pilot events' })).toBeVisible()
     await expect(page.getByRole('button', { name: 'Accept P7' })).toHaveCount(0)
+    expect(problems).toEqual([])
+  })
+
+  test(`Handled has one problem per issue, open ones first@${size.width}`, async ({ page, baseURL }) => {
+    const problems = await open(page, baseURL, `${milestonePath}?tab=needs`, size)
+    const handled = page.locator('[data-needs-handled]')
+    // #281 waits for an answer and #284 is held; the milestone's newest
+    // entry is newer than #280's.
+    await expect(handled.locator('[data-problem]')).toHaveCount(4)
+    const ids = await handled.locator('[data-problem]').evaluateAll((es) => es.map((e) => e.id))
+    expect(ids).toEqual(['problem-281', 'problem-284', 'problem-0', 'problem-280'])
+
+    const p281 = handled.locator('#problem-281')
+    await expect(p281).toHaveAttribute('data-open', '')
+    await expect(p281.locator('[data-problem-head]')).toContainText('Open')
+    await expect(p281.locator('[data-attempts]')).toHaveText('Pilot attempts: 0 of 2')
+    // The open prompt is a row that leads to its card under Open.
+    const row = p281.locator('[data-entry="prompt"]')
+    await expect(row).toContainText('Waiting for an answer')
+    await expect(row.getByRole('link', { name: refundsPrompt.id })).toHaveAttribute('href', new RegExp(`#prompt-${refundsPrompt.id}$`))
+    await expect(handled.locator('[data-entry="prompt"] button')).toHaveCount(0)
+    await expect(page.locator(`[data-prompt="${refundsPrompt.id}"]`)).toHaveCount(1)
+    await expect(page.getByRole('button', { name: 'Split across captures', exact: true })).toHaveCount(1)
+    await expect(p281.locator('[data-entry="pause"]')).toContainText('The agent needs input')
+    await expect(p281.locator('[data-entry="pause"]')).toContainText('since')
+
+    // The milestone: the accepted action that ran nothing, then Q3, Q1, Q2.
+    const m = handled.locator('#problem-0')
+    await expect(m).not.toHaveAttribute('data-open')
+    await expect(m.locator('[data-problem-head]')).toContainText('Milestone')
+    await expect(m.locator('[data-problem-head]')).toContainText('Handled')
+    await expect(m.locator('[data-entry]').first()).toBeHidden()
+    await m.getByRole('button', { name: 'Entries of the milestone' }).click()
+    await expect(m.locator('[data-entry]')).toHaveCount(4)
+    expect(await m.locator('[data-entry]').evaluateAll((es) => es.map((e) => e.getAttribute('data-entry')))).toEqual(['acted', 'prompt', 'prompt', 'prompt'])
+    await expect(m.locator('[data-entry="acted"]')).toContainText('@jo')
+    await expect(m.locator('[data-entry="acted"]')).toContainText('ran none of its actions')
+    await expect(m.locator('[data-entry="prompt"] summary > code')).toHaveText(['Q3', 'Q1', 'Q2'])
+
+    // The pause totals stay as one line at the end.
+    await expect(handled.locator('[data-pauses]')).toHaveText('Pauses: paused 1h 6m in 2 pauses · mean 42m to resume')
+    expect(problems).toEqual([])
+  })
+
+  test(`#280 shows the pilot's two attempts, its questions and its pause@${size.width}`, async ({ page, baseURL }) => {
+    const problems = await open(page, baseURL, `${milestonePath}?tab=needs`, size)
+    const p = page.locator('[data-needs-handled] #problem-280')
+    const head = p.locator('[data-problem-head]')
+    await expect(head.getByRole('link', { name: '#280 Provider SDK 4 with refund support' })).toHaveAttribute('href', '/projects/team-a/shop/milestones/14/issues/280')
+    await expect(head).toContainText('Handled')
+    await expect(p.locator('[data-attempts]')).toHaveText('Pilot attempts: 2 of 2')
+    const toggle = p.getByRole('button', { name: 'Entries of #280' })
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+    await expect(p).toHaveAttribute('data-open', '')
+
+    // Newest first: Q4, the pause, the restart, the retry, Q6.
+    const entries = p.locator('[data-entry]')
+    expect(await entries.evaluateAll((es) => es.map((e) => e.getAttribute('data-entry')))).toEqual(['prompt', 'pause', 'acted', 'acted', 'prompt'])
+    await expect(entries.nth(0)).toContainText('Q4')
+    await expect(entries.nth(0)).toContainText('The pipeline of #280 failed twice. Skip #280?')
+    await expect(entries.nth(0)).toContainText('Resolved on its own: the pause ended')
+    await expect(entries.nth(1)).toContainText('CI is red')
+    await expect(entries.nth(1)).toContainText('resolved by self-healed via push')
+    await expect(entries.nth(2)).toContainText('Pilot')
+    await expect(entries.nth(2)).toContainText('Restart the run of #280')
+    await expect(entries.nth(2)).toContainText('The retried job failed again in the same test.')
+    await expect(entries.nth(2).locator('strong')).toHaveText('restartRun')
+    await expect(entries.nth(2)).toContainText('restartRun #280: started run 3')
+    await expect(entries.nth(2)).not.toContainText('ran none')
+    // Summary and why are text: the backticks stay.
+    await expect(entries.nth(3)).toContainText('Retry the failed job of !303')
+    await expect(entries.nth(3)).toContainText('`test:integration-payments` timed out; it looks flaky.')
+    await expect(entries.nth(4)).toContainText('Answered by jo on GitLab: Keep it for one release')
+
+    // A closed prompt's row unfolds its full closed card.
+    const q4 = page.locator('#prompt-Q4')
+    await expect(q4).toBeHidden()
+    await entries.nth(0).locator('summary').first().click()
+    await expect(q4).toBeVisible()
+    await expect(q4).toHaveAttribute('data-prompt', 'Q4')
+    await expect(q4.getByText('Options (2)')).toBeVisible()
+    await expect(q4.getByRole('button')).toHaveCount(0)
+    expect(problems).toEqual([])
+  })
+
+  test(`a problem link opens Needs you at the problem@${size.width}`, async ({ page, baseURL }) => {
+    const problems = await open(page, baseURL, `${milestonePath}#problem-280`, size)
+    await expect(tab(page, /^Needs you/)).toHaveAttribute('aria-current', 'page')
+    const p = page.locator('#problem-280')
+    await expect(p).toHaveAttribute('data-open', '')
+    await expect(p).toBeInViewport()
+    await expect(p.locator('[data-entry="acted"]').first()).toBeVisible()
+    expect(problems).toEqual([])
+  })
+
+  test(`a prompt link unfolds its problem and its card@${size.width}`, async ({ page, baseURL }) => {
+    const problems = await open(page, baseURL, `${milestonePath}#prompt-Q6`, size)
+    await expect(page.locator('#problem-280')).toHaveAttribute('data-open', '')
+    await expect(page.locator('#prompt-Q6')).toBeVisible()
+    await expect(page.locator('#prompt-Q6')).toBeInViewport()
+    await expect(page.locator('#prompt-Q4')).toBeHidden()
+    expect(problems).toEqual([])
+  })
+
+  test(`a new push to #280 shows its attempts as 0 of 2@${size.width}`, async ({ page, baseURL }) => {
+    const problems = await open(page, baseURL, `${milestonePath}?tab=needs`, size, staleHead)
+    await expect(page.locator('#problem-280 [data-attempts]')).toHaveText('Pilot attempts: 0 of 2')
+    expect(problems).toEqual([])
+  })
+
+  test(`a stored milestone shows Handled only, without attempts@${size.width}`, async ({ page, baseURL }) => {
+    const problems = await open(page, baseURL, `${milestonePath}?tab=needs`, size, stored)
+    await expect(page.locator('[data-needs-handled] [data-problem]').first()).toBeVisible()
+    await expect(page.locator('[data-needs-open]')).toHaveCount(0)
+    await expect(page.locator('[data-attempts]')).toHaveCount(0)
+    expect(problems).toEqual([])
+  })
+
+  test(`a milestone without problems says nothing was handled@${size.width}`, async ({ page, baseURL }) => {
+    const problems = await open(page, baseURL, `${milestonePath}?tab=needs`, size, quiet)
+    await expect(page.locator('[data-needs-handled]')).toContainText('Nothing handled yet.')
+    await expect(page.locator('[data-problem]')).toHaveCount(0)
     expect(problems).toEqual([])
   })
 }

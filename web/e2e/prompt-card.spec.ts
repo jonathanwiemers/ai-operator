@@ -119,14 +119,17 @@ for (const size of widths) {
     await expect(q3.getByText('Ship together')).toBeVisible()
     await expect(q3.getByRole('button')).toHaveCount(0)
 
-    // Closed by the pilot: no option in sight, all fold under Options.
+    // Closed by the pilot: no option in sight, all fold under Options. Its
+    // row under Handled unfolds the card.
     const q2 = page.locator('#prompt-Q2')
+    await page.locator('#problem-0 [data-entry="prompt"]').filter({ hasText: 'Q2' }).locator('summary').first().click()
     await expect(q2.getByText('Handled by the pilot: the pause ended')).toBeVisible()
     await expect(q2.getByText('Revert a1b2c3d')).toBeHidden()
     await expect(q2.getByText('Options (2)')).toBeVisible()
 
     // Replaced: the label links to the newer prompt.
     const q1 = page.locator('#prompt-Q1')
+    await page.locator('#problem-0 [data-entry="prompt"]').filter({ hasText: 'Q1' }).locator('summary').first().click()
     await expect(q1.getByText('Replaced by')).toBeVisible()
     await expect(q1.getByRole('link', { name: 'Q3', exact: true })).toHaveAttribute('href', /#prompt-Q3$/)
     expect(problems).toEqual(clean)

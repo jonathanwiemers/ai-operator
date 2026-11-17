@@ -1,4 +1,5 @@
 import type { PilotActed } from './generated/api'
+import { promptAnchor } from './promptCard.ts'
 import type { MilestoneView, Pause, PromptView } from './types'
 
 // Groups a milestone's prompts, the pilot's own actions and its pauses into
@@ -21,6 +22,18 @@ export interface Problem {
 // problemAnchor is the element id of a problem; links point to it.
 export function problemAnchor(iid: number): string {
   return `problem-${iid}`
+}
+
+// linkedProblem is the IID of the problem a route hash names: #problem-<iid>,
+// or the problem that holds the prompt of #prompt-<id>; undefined for other
+// hashes.
+export function linkedProblem(problems: Problem[], hash: string): number | undefined {
+  const name = hash.startsWith('#') ? hash.slice(1) : hash
+  for (const p of problems) {
+    if (name === problemAnchor(p.iid)) return p.iid
+    if (p.entries.some((e) => e.kind === 'prompt' && name === promptAnchor(e.prompt.id))) return p.iid
+  }
+  return undefined
 }
 
 const ms = (s: string): number => {

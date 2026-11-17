@@ -1,7 +1,7 @@
 // Tests of src/needsCases.ts: npm test (node --test, no extra dependencies).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { needsCases, problemAnchor } from '../src/needsCases.ts'
+import { linkedProblem, needsCases, problemAnchor } from '../src/needsCases.ts'
 
 const at = (min) => new Date(Date.parse('2026-11-05T10:00:00Z') + min * 60000).toISOString()
 const prompt = (id, o = {}) => ({ id, state: 'answered', postedAt: at(0), ...o })
@@ -82,4 +82,16 @@ test('without pilot or pauses prompts still group, with no attempts', () => {
 test('problemAnchor', () => {
   assert.equal(problemAnchor(0), 'problem-0')
   assert.equal(problemAnchor(12), 'problem-12')
+})
+
+test('linkedProblem: a problem anchor or a prompt of the problem', () => {
+  const ps = needsCases(view({
+    prompts: [prompt('Q1', { issueIID: 12, closedAt: at(1) }), prompt('Q2', { closedAt: at(2) })],
+  }))
+  assert.equal(linkedProblem(ps, '#problem-12'), 12)
+  assert.equal(linkedProblem(ps, '#prompt-Q1'), 12)
+  assert.equal(linkedProblem(ps, '#prompt-Q2'), 0)
+  assert.equal(linkedProblem(ps, '#problem-13'), undefined)
+  assert.equal(linkedProblem(ps, '#prompt-Q9'), undefined)
+  assert.equal(linkedProblem(ps, ''), undefined)
 })

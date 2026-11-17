@@ -4,28 +4,33 @@ import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { chatPostError } from '../api'
 import { postTaskChat } from '../client'
+import { useNow } from '../live'
+import { linkedProblem, needsCases } from '../needsCases'
 import { needsOpen } from '../needsOpen'
-import { promptAnchor } from '../promptCard'
+import { pausesLine, pausesSummary } from '../pauses'
 import type { MilestoneView } from '../types'
 import Markdown from './Markdown.vue'
 import PauseCard from './PauseCard.vue'
-import PausesCard from './PausesCard.vue'
+import NeedsProblem from './NeedsProblem.vue'
 import PromptCard from './PromptCard.vue'
 import RelTime from './RelTime.vue'
 
 // MilestoneNeeds is a milestone's Needs you tab (R12). Open (live
 // milestones only): the full pause card while paused, one card per held
 // issue, the open prompts without the pause card's own, and the pilot's
-// open older proposals (P-n) with Accept and Reject. Handled: the closed
-// prompts folded under Earlier questions and the pause history. A stored
-// milestone shows only Handled.
+// open older proposals (P-n) with Accept and Reject. Handled (R14): one
+// block per problem from needsCases (open ones first), then the pause
+// totals on one line. A stored milestone shows only Handled.
 const props = defineProps<{ namespace: string; name: string; milestone: MilestoneView }>()
 
 const open = computed(() => needsOpen(props.milestone))
 const active = computed(() => !props.milestone.stored)
-// A Desk link to a closed prompt unfolds the closed ones.
+const problems = computed(() => needsCases(props.milestone))
+// A Desk link to a problem, or to a prompt of one, unfolds that problem.
 const route = useRoute()
-const closedLinked = computed(() => open.value.closed.some((p) => route.hash === `#${promptAnchor(p.id)}`))
+const linked = computed(() => linkedProblem(problems.value, route.hash))
+const now = useNow()
+const pauses = computed(() => pausesSummary(props.milestone.pauses, now.value))
 
 // Accept and Reject send the pilot task the same chat command as the chat's
 // buttons did; only owners with the chat grant get them.
@@ -50,9 +55,8 @@ async function decide(cmd: 'accept' | 'reject', proposal: number) {
   }
 }
 
-// Utilities only (docs/contributing/web-ui.md, "Needs you tab"). On phones
-// the Earlier questions fold is 44 px high; the cards bring their own
-// touch sizes.
+// Utilities only (docs/contributing/web-ui.md, "Needs you tab"); the cards
+// and problems bring their own touch sizes.
 const sectionHead =
   'm-0 mb-2 flex justify-between gap-2 text-[11.5px] font-semibold tracking-[0.06em] text-(--text-3) uppercase'
 const quiet = 'text-[13px] text-(--text-3)'
@@ -102,16 +106,17 @@ const chip = { color: 'neutral', variant: 'outline', size: 'sm' } as const
     <section class="min-w-0" data-needs-handled>
       <h3 :class="sectionHead"><span>Handled</span></h3>
       <div class="grid gap-2.5">
-        <div v-if="!open.closed.length && !milestone.pauses" :class="quiet">Nothing handled yet.</div>
-        <details v-if="open.closed.length" class="group" :open="closedLinked" data-earlier>
-          <summary class="min-h-11 cursor-pointer py-3 text-[13px] text-(--text-2) tablet:min-h-0 tablet:py-0 group-open:mb-2.5">
-            Earlier questions ({{ open.closed.length }})
-          </summary>
-          <div class="grid gap-2.5">
-            <PromptCard v-for="p in open.closed" :key="p.id" :namespace="namespace" :name="name" :prompt="p" />
-          </div>
-        </details>
-        <PausesCard v-if="milestone.pauses" :pauses="milestone.pauses" />
+        <div v-if="!problems.length" :class="quiet">Nothing handled yet.</div>
+        <NeedsProblem
+          v-for="p in problems"
+          :key="p.iid"
+          :namespace="namespace"
+          :name="name"
+          :milestone="milestone.iid"
+          :problem="p"
+          :linked="linked === p.iid"
+        />
+        <div v-if="pauses" :class="quiet" data-pauses>Pauses: {{ pausesLine(pauses) }}</div>
       </div>
     </section>
   </div>

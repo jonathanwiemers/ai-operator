@@ -5,10 +5,9 @@ import { needsLabel, needsOpen } from '../src/needsOpen.ts'
 
 const prompt = (id, kind, state) => ({ id, kind, question: `${id}?`, options: [], ...(state ? { state } : {}) })
 
-test('needsOpen: one open assessment prompt counts 1, closed ones go to Handled', () => {
+test('needsOpen: one open assessment prompt counts 1, closed ones are not under Open', () => {
   const n = needsOpen({ iid: 3, prompts: [prompt('Q2', 'assessment'), prompt('Q1', 'mainHealth', 'answered')] })
   assert.deepEqual(n.prompts.map((p) => p.id), ['Q2'])
-  assert.deepEqual(n.closed.map((p) => p.id), ['Q1'])
   assert.equal(n.count, 1)
   assert.equal(needsLabel(n.count), 'Needs you · 1')
 })

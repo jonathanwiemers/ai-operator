@@ -138,8 +138,8 @@ nothing" option.
 You find prompts:
 
 - in the Inbox, with a browser notification if you turned them on;
-- on the milestone's *Pilot* tab, as full cards; earlier ones are folded
-  under *Earlier questions*;
+- on the milestone's *Needs you* tab, as full cards; closed ones are rows
+  of their issue's problem under *Handled*;
 - in the stream, as a short card with the recommended option;
 - on a task page, above the chat, for an agent's questions;
 - on the pause card of a red default branch or a spent budget.

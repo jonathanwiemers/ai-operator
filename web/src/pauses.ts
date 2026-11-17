@@ -76,6 +76,14 @@ export function viaLabel(v: string | undefined): string {
   return viaLabels.get(v) ?? v
 }
 
+// pauseEnd says who ended a pause and how, in the Pauses words: "resolved
+// by self-healed via push"; '' while it is open.
+export function pauseEnd(p: Pause): string {
+  if (!p.until) return ''
+  const via = viaLabel(p.via)
+  return `resolved by ${resolverLabel(p.resolvedBy)}${via ? ` via ${via}` : ''}`
+}
+
 // pauseDuration is a pause's length: "<1m", "47m", "3h 10m", "2d 4h".
 export function pauseDuration(sec: number): string {
   const min = Math.floor(Math.max(0, sec) / 60)

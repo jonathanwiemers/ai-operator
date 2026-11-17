@@ -986,23 +986,39 @@ utilities only) sits between Issues and Pilot. `needsOpen`
   and the pilot's open proposals (P-n) with *Accept* and *Reject*, which
   post the same chat command to the pilot task as the chat's buttons did.
   The tab's label is *Needs you · n*, n the items under *Open*.
-- *Handled*: the closed prompts under *Earlier questions* and the pause
-  history (`PausesCard`). A stored milestone shows only *Handled*.
+- *Handled*: one block per problem (`web/src/components/NeedsProblem.vue`)
+  from `needsCases` (`web/src/needsCases.ts`): an issue, or the milestone,
+  with its prompts, the pilot's actions (`pilot.acted`) and its pauses,
+  newest first. The heading names the issue (a link to its page) or
+  *Milestone*, says *Open* or *Handled*, and "Pilot attempts: u of m" while
+  the milestone has a pilot. Open problems come first and start unfolded;
+  a chevron button (`aria-expanded`) folds the entries. The heading is no
+  `<summary>`, whose children are presentational: the issue link stays a
+  link.
+  A closed prompt is a row (ID, question, label) that unfolds the full
+  closed `PromptCard`; an open prompt's row links up to its card under
+  *Open* and has no buttons. An action shows "Pilot" or "@owner", the
+  summary and the why as text and the result lines as markdown without
+  HTML. A pause shows its kind (`pauseTitle`), its time span and who ended
+  it how (`pauseEnd`). The pause totals end the section on one line. A
+  stored milestone shows only *Handled*.
 - A prompt or problem link (`#prompt-Q<n>`, `#problem-<iid>`) without
-  `?tab=` opens this tab; a closed prompt's link unfolds *Earlier
-  questions* and scrolls to its card. On phones the fold is 44 px high.
+  `?tab=` opens this tab; it unfolds the problem (and a closed prompt's
+  row) and scrolls to it. On phones each fold is 44 px high.
 
 The e2e cases in `web/e2e/needs-you.spec.ts` at 375 and 1280 px check that
 a prompt link opens this tab at the card, that an open prompt shows once
 and is counted in the label, that a pause card's own prompt is not listed
-again, and that the Pilot tab has no questions and no pause history; the
+again, that the Pilot tab has no questions and no pause history, and that
+*Handled* lists one problem per issue, open ones first, with its entries
+newest first, the attempts, unfolding rows and problem links; the
 route checks cover `stream-milestone-needs` at the three widths.
 
 ### Pause cards
 
 The full pause card (`web/src/components/PauseCard.vue`, on the Needs you
-tab), the pause history (`web/src/components/PausesCard.vue`) and the
-compact card (`web/src/components/PauseCardCompact.vue`, Inbox, board,
+tab), the pause rows of the Needs you tab's problems
+(`web/src/components/NeedsProblem.vue`) and the compact card (`web/src/components/PauseCardCompact.vue`, Inbox, board,
 stream) are Tailwind utilities and Nuxt UI tokens, without scoped CSS.
 
 - The full card's reason is block markdown. Its actions, the Way out's
@@ -1010,7 +1026,7 @@ stream) are Tailwind utilities and Nuxt UI tokens, without scoped CSS.
   phones, where the action row and each remedy stack into a column and the
   skip select is 16 px. Commands post to the task chat as before
   (`pauseCard.ts`).
-- The pause history's reasons and the compact card's reason are inline
+- The pause rows' reasons and the compact card's reason are inline
   markdown clamped in `Truncated` (one and two lines): a tap opens the
   rest in place. No `title` holds their text.
 

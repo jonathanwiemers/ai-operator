@@ -2363,17 +2363,21 @@ test.describe('milestone pilot', () => {
       }
       await shoot(page, testInfo, `milestone-pilot@${size.width}`)
 
-      // The answered Q3 is folded under Earlier questions on Needs you: its
-      // link opens that tab, unfolds it and scrolls to the card.
+      // The answered Q3 is a row of the milestone's problem under Handled on
+      // Needs you: its link opens that tab, unfolds the problem and the row,
+      // and scrolls to the card.
       await page.goto('/projects/team-a/shop/milestones/14#prompt-Q3')
       const card = page.locator('#prompt-Q3')
       await expect(card).toBeVisible()
-      await expect(page.locator('main [data-earlier]')).toHaveAttribute('open', '')
+      await expect(page.locator('main #problem-0')).toHaveAttribute('data-open', '')
       await expect(card).toBeInViewport()
       expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
       if (phone) {
-        const fold = await page.locator('main [data-earlier] > summary').evaluate((s) => s.getBoundingClientRect().height)
-        expect(fold, 'Earlier questions height').toBeGreaterThanOrEqual(44)
+        const folds = await page.locator('main [data-needs-handled] :is(summary, [data-problem-toggle])').evaluateAll((ss) =>
+          ss.filter((s) => s.getClientRects().length).map((s) => s.getBoundingClientRect().height),
+        )
+        expect(folds.length, 'Handled folds').toBeGreaterThan(0)
+        for (const h of folds) expect(h, 'Handled fold height').toBeGreaterThanOrEqual(44)
       }
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })
@@ -2490,14 +2494,19 @@ test.describe('milestone pilot', () => {
       await page.goto(route.path)
       await route.ready(page)
       const card = page.locator('main [data-pause-card]:not([data-hold])')
-      const history = page.locator('main [data-pauses]')
+      // The pause totals end Handled; the ciRed pause is a row of #280's
+      // problem, which a click unfolds.
+      const totals = page.locator('main [data-pauses]')
+      const history = page.locator('main #problem-280 [data-entry="pause"]')
       await expect(card).toBeVisible()
+      await expect(totals).toBeVisible()
+      await page.getByRole('button', { name: 'Entries of #280' }).click()
       await expect(history).toBeVisible()
       await expect(card.locator('.md strong')).toHaveText('partial refunds')
       // RelTime keeps its absolute time; the companion chip (CompanionChip,
       // shared with the companions list) is not part of these cards.
       const titles = await page.locator('main').evaluate((main) =>
-        [...main.querySelectorAll('[data-pause-card] [title], [data-pauses] [title]')]
+        [...main.querySelectorAll('[data-pause-card] [title], [data-needs-handled] [title]')]
           .filter((e) => e.tagName !== 'TIME' && !e.textContent!.includes('companion:'))
           .map((e) => e.outerHTML.slice(0, 80)),
       )
