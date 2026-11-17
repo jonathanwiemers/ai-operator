@@ -681,3 +681,14 @@ func TestProjectReleaseSchema(t *testing.T) {
 		t.Fatalf("bad mode admitted: %v", errs)
 	}
 }
+
+func TestDecisionSyncWatermarkAdmitted(t *testing.T) {
+	crd := loadCRD(t, "agenttasks")
+	obj, errs := crd.admit(map[string]any{"status": map[string]any{"decisions": map[string]any{"checkedAt": "2026-11-15T10:00:00Z"}}})
+	if len(errs) > 0 {
+		t.Fatalf("status.decisions rejected: %v", errs)
+	}
+	if got := obj["status"].(map[string]any)["decisions"].(map[string]any)["checkedAt"]; got != "2026-11-15T10:00:00Z" {
+		t.Fatalf("checkedAt not stored: %v", got)
+	}
+}

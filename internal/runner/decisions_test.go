@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -17,6 +18,7 @@ import (
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab/gitlabfake"
+	"github.com/jonathanwiemers/ai-operator/internal/marker"
 )
 
 // decisionEngine records decisions: two on the first run, and on a revisit a
@@ -441,5 +443,30 @@ func TestImplementerIsToldItsLimits(t *testing.T) {
 	}
 	if writes == 0 {
 		t.Fatal("expected implementer invocations")
+	}
+}
+
+func TestRenderDecisionRoundTrip(t *testing.T) {
+	d := Decision{Title: "Pick a store", Question: "Which store?", Choice: "SQLite", Why: "Simple.\nNo server.\n\nEmbedded.",
+		Alternatives: []string{"Postgres", "Files"}, Supersedes: "D5-1"}
+	body := "intro\n\n" + renderDecision("D9-2", d) + "\n" + renderDecision("D9-3", Decision{Title: "x", Choice: "y"})
+	want := marker.ParsedDecision{ID: "D9-2", Title: d.Title, Question: d.Question, Choice: d.Choice, Why: d.Why,
+		Alternatives: d.Alternatives, Supersedes: "D5-1"}
+	got, ok := marker.ParseDecision(decisionSection(body, "D9-2"))
+	if !ok || !reflect.DeepEqual(got, want) {
+		t.Fatalf("got %+v (%v), want %+v", got, ok, want)
+	}
+
+	sup := markSuperseded(body, "D9-2", "D9-3", "x#2")
+	got, _ = marker.ParseDecision(decisionSection(sup, "D9-2"))
+	want.Superseded, want.SupersededBy = true, "D9-3"
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("superseded: got %+v, want %+v", got, want)
+	}
+	rev := markSuperseded(body, "D9-2", "", "x#2")
+	got, _ = marker.ParseDecision(decisionSection(rev, "D9-2"))
+	want.SupersededBy = ""
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("revisited: got %+v, want %+v", got, want)
 	}
 }

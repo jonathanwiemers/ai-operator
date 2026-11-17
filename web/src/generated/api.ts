@@ -3938,6 +3938,12 @@ export interface AgentTaskStatus {
    */
   revisits?: RevisitStatus;
   /**
+   * Decisions is the watermark of the operator's copy of the milestone's
+   * decisions into the history database (spec tasks).
+   * +optional
+   */
+  decisions?: DecisionSyncStatus;
+  /**
    * Pilot is the operator's bookkeeping of the milestone's pilot (spec
    * and Coordinate tasks).
    * +optional
@@ -5383,6 +5389,16 @@ export interface ItemHold {
    * +optional
    */
   runHead?: string;
+}
+/**
+ * DecisionSyncStatus is the watermark of the decision copy.
+ */
+export interface DecisionSyncStatus {
+  /**
+   * CheckedAt is when the operator last read every issue of the milestone
+   * that had changed; the next read starts there (minus the clock skew).
+   */
+  checkedAt: string;
 }
 /**
  * RevisitStatus is the watermark of handled revisit comments.

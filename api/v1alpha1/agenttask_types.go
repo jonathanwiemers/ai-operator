@@ -1160,6 +1160,11 @@ type AgentTaskStatus struct {
 	// +optional
 	Revisits *RevisitStatus `json:"revisits,omitempty"`
 
+	// Decisions is the watermark of the operator's copy of the milestone's
+	// decisions into the history database (spec tasks).
+	// +optional
+	Decisions *DecisionSyncStatus `json:"decisions,omitempty"`
+
 	// Pilot is the operator's bookkeeping of the milestone's pilot (spec
 	// and Coordinate tasks).
 	// +optional
@@ -2326,6 +2331,13 @@ type ItemHold struct {
 	RunBy string `json:"runBy,omitempty"`
 	// +optional
 	RunHead string `json:"runHead,omitempty"`
+}
+
+// DecisionSyncStatus is the watermark of the decision copy.
+type DecisionSyncStatus struct {
+	// CheckedAt is when the operator last read every issue of the milestone
+	// that had changed; the next read starts there (minus the clock skew).
+	CheckedAt metav1.Time `json:"checkedAt"`
 }
 
 // RevisitStatus is the watermark of handled revisit comments.
