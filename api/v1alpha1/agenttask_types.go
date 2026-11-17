@@ -738,6 +738,13 @@ type PilotStatus struct {
 	// +optional
 	Interventions map[string]PilotIntervention `json:"interventions,omitempty"`
 
+	// Acted are the proposals runAccepted ran without a prompt (Coordinate
+	// tasks): the pilot's own actions and the proposals owners accepted.
+	// Oldest first, the newest MaxPilotActed.
+	// +optional
+	// +kubebuilder:validation:MaxItems=30
+	Acted []PilotActed `json:"acted,omitempty"`
+
 	// Retrospective is the retrospective of the milestone once its autopilot
 	// is done: recorded by the pilot's run (Coordinate tasks) and copied to
 	// the spec task before the pilot is deleted. A milestone gets one.
@@ -875,6 +882,45 @@ type PilotAutonomyOverride struct {
 	Autonomy PilotAutonomy `json:"autonomy"`
 	By       string        `json:"by"`
 	At       metav1.Time   `json:"at"`
+}
+
+// MaxPilotActed bounds status.pilot.acted; the other bounds cut a
+// PilotActed's untrusted text, in bytes.
+const (
+	MaxPilotActed        = 30
+	MaxPilotActedSummary = 300
+	MaxPilotActedWhy     = 1000
+	MaxPilotActedLines   = 8
+	MaxPilotActedLine    = 300
+)
+
+// PilotActed is one proposal runAccepted ran without a prompt.
+type PilotActed struct {
+	At metav1.Time `json:"at"`
+	// By is the owner who accepted it, empty when the pilot acted on its
+	// own.
+	// +optional
+	By string `json:"by,omitempty"`
+	// Summary is the proposal's summary, at most MaxPilotActedSummary
+	// bytes. Untrusted.
+	// +optional
+	Summary string `json:"summary,omitempty"`
+	// Why is the proposal's reason, at most MaxPilotActedWhy bytes.
+	// Untrusted.
+	// +optional
+	Why string `json:"why,omitempty"`
+	// Lines are the per-action result lines its comment shows, each at most
+	// MaxPilotActedLine bytes. Untrusted.
+	// +optional
+	// +kubebuilder:validation:MaxItems=8
+	Lines []string `json:"lines,omitempty"`
+	// Issues are the intervention keys it counted against; 0 is the
+	// milestone.
+	// +optional
+	Issues []int64 `json:"issues,omitempty"`
+	// Ran is false when none of its actions ran.
+	// +optional
+	Ran bool `json:"ran,omitempty"`
 }
 
 // PilotIntervention counts the pilot's own actions on an issue's head.
@@ -1868,6 +1914,15 @@ const (
 	// merge gate.
 	ResolvedByLaterRun PauseResolver = "laterRun"
 )
+
+// Known reports whether r is one of the PauseResolver values.
+func (r PauseResolver) Known() bool {
+	switch r {
+	case ResolvedByOperator, ResolvedByPilot, ResolvedByOwner, ResolvedBySelfHealed, ResolvedByLaterRun:
+		return true
+	}
+	return false
+}
 
 // PauseResumeVia is how a pause ended (status.autopilot.resumedVia, the
 // autopilot.resumed history event), next to who ended it (PauseResolver).

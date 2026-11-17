@@ -45,6 +45,43 @@ const (
 	PromptExpired PromptState = "expired"
 )
 
+// PromptClosedReason is why a prompt closed (status prompts' closedReason).
+// Prompts closed before it was recorded have none.
+// +kubebuilder:validation:Enum=answered;expired;stateChanged;mainHealthy;agentRanAgain;budgetResolved;pauseOver;issueDone;replaced
+type PromptClosedReason string
+
+const (
+	// ClosedAnswered: an owner's answer.
+	ClosedAnswered PromptClosedReason = "answered"
+	// ClosedExpired: the prompt's lifetime ran out.
+	ClosedExpired PromptClosedReason = "expired"
+	// ClosedStateChanged: the proposal's milestone state changed.
+	ClosedStateChanged PromptClosedReason = "stateChanged"
+	// ClosedMainHealthy: main is green again.
+	ClosedMainHealthy PromptClosedReason = "mainHealthy"
+	// ClosedAgentRanAgain: the agent ran again without the answer.
+	ClosedAgentRanAgain PromptClosedReason = "agentRanAgain"
+	// ClosedBudgetResolved: the budget was resolved.
+	ClosedBudgetResolved PromptClosedReason = "budgetResolved"
+	// ClosedPauseOver: the pause ended.
+	ClosedPauseOver PromptClosedReason = "pauseOver"
+	// ClosedIssueDone: the issue merged or closed.
+	ClosedIssueDone PromptClosedReason = "issueDone"
+	// ClosedReplaced: a newer prompt with the same Kind and Key replaced it
+	// (ReplacedBy).
+	ClosedReplaced PromptClosedReason = "replaced"
+)
+
+// Known reports whether r is one of the PromptClosedReason values.
+func (r PromptClosedReason) Known() bool {
+	switch r {
+	case ClosedAnswered, ClosedExpired, ClosedStateChanged, ClosedMainHealthy, ClosedAgentRanAgain,
+		ClosedBudgetResolved, ClosedPauseOver, ClosedIssueDone, ClosedReplaced:
+		return true
+	}
+	return false
+}
+
 // Closed reports whether the prompt can no longer be answered.
 func (s PromptState) Closed() bool {
 	return s == PromptAnswered || s == PromptSuperseded || s == PromptExpired
@@ -160,6 +197,17 @@ type Prompt struct {
 	PostedAt *metav1.Time `json:"postedAt,omitempty"`
 	// +optional
 	ClosedAt *metav1.Time `json:"closedAt,omitempty"`
+	// ClosedReason is why the prompt closed.
+	// +optional
+	ClosedReason PromptClosedReason `json:"closedReason,omitempty"`
+	// ClosedBy is who closed it: owner for an answer, otherwise who ended
+	// its cause.
+	// +optional
+	ClosedBy PauseResolver `json:"closedBy,omitempty"`
+	// ReplacedBy is the ID of the newer prompt that replaced it ("Q14").
+	// +optional
+	// +kubebuilder:validation:Pattern=`^Q[0-9]+$`
+	ReplacedBy string `json:"replacedBy,omitempty"`
 	// PostedNoteID, PostedNoteURL and MirroredState are the GitLab comment
 	// that mirrors the prompt and the state it last showed.
 	// +optional
@@ -270,7 +318,11 @@ type PromptRefinement struct {
 	Error string `json:"error,omitempty"`
 }
 
-var promptID = regexp.MustCompile(`^Q[1-9][0-9]*$`)
+var (
+	promptID = regexp.MustCompile(`^Q[1-9][0-9]*$`)
+	// replacedByID is the CRD pattern of Prompt.ReplacedBy.
+	replacedByID = regexp.MustCompile(`^Q[0-9]+$`)
+)
 
 // Validate checks the prompt's shape. Whether its actions apply to the
 // milestone is checked by the operator.
@@ -294,6 +346,14 @@ func (p Prompt) Validate() error {
 	case "", PromptOpen, PromptAnswered, PromptSuperseded, PromptExpired:
 	default:
 		return fmt.Errorf("prompt state %q is unknown", p.State)
+	}
+	switch {
+	case p.ClosedReason != "" && !p.ClosedReason.Known():
+		return fmt.Errorf("prompt closedReason %q is unknown", p.ClosedReason)
+	case p.ClosedBy != "" && !p.ClosedBy.Known():
+		return fmt.Errorf("prompt closedBy %q is unknown", p.ClosedBy)
+	case p.ReplacedBy != "" && !replacedByID.MatchString(p.ReplacedBy):
+		return fmt.Errorf("prompt replacedBy %q is not Q<n>", p.ReplacedBy)
 	}
 	var producer, fromAnswer, recommended int
 	acting, doNothing := false, false

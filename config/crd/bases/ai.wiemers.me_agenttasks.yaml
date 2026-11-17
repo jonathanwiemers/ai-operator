@@ -2362,6 +2362,57 @@ spec:
                       - summary
                       type: object
                     type: array
+                  acted:
+                    description: |-
+                      Acted are the proposals runAccepted ran without a prompt (Coordinate
+                      tasks): the pilot's own actions and the proposals owners accepted.
+                      Oldest first, the newest MaxPilotActed.
+                    items:
+                      description: PilotActed is one proposal runAccepted ran without
+                        a prompt.
+                      properties:
+                        at:
+                          format: date-time
+                          type: string
+                        by:
+                          description: |-
+                            By is the owner who accepted it, empty when the pilot acted on its
+                            own.
+                          type: string
+                        issues:
+                          description: |-
+                            Issues are the intervention keys it counted against; 0 is the
+                            milestone.
+                          items:
+                            format: int64
+                            type: integer
+                          type: array
+                        lines:
+                          description: |-
+                            Lines are the per-action result lines its comment shows, each at most
+                            MaxPilotActedLine bytes. Untrusted.
+                          items:
+                            type: string
+                          maxItems: 8
+                          type: array
+                        ran:
+                          description: Ran is false when none of its actions ran.
+                          type: boolean
+                        summary:
+                          description: |-
+                            Summary is the proposal's summary, at most MaxPilotActedSummary
+                            bytes. Untrusted.
+                          type: string
+                        why:
+                          description: |-
+                            Why is the proposal's reason, at most MaxPilotActedWhy bytes.
+                            Untrusted.
+                          type: string
+                      required:
+                      - at
+                      type: object
+                    maxItems: 30
+                    type: array
                   autonomyOverride:
                     description: |-
                       AutonomyOverride is the owners' last "/pilot stop" or "/pilot go"
@@ -3393,6 +3444,30 @@ spec:
                     closedAt:
                       format: date-time
                       type: string
+                    closedBy:
+                      description: |-
+                        ClosedBy is who closed it: owner for an answer, otherwise who ended
+                        its cause.
+                      enum:
+                      - operator
+                      - pilot
+                      - owner
+                      - selfHealed
+                      - laterRun
+                      type: string
+                    closedReason:
+                      description: ClosedReason is why the prompt closed.
+                      enum:
+                      - answered
+                      - expired
+                      - stateChanged
+                      - mainHealthy
+                      - agentRanAgain
+                      - budgetResolved
+                      - pauseOver
+                      - issueDone
+                      - replaced
+                      type: string
                     context:
                       description: Context is markdown evidence for the question.
                         Untrusted.
@@ -3539,6 +3614,11 @@ spec:
                         Quiet: the producer mentioned the owners itself, so the GitLab
                         comment that mirrors the prompt does not.
                       type: boolean
+                    replacedBy:
+                      description: ReplacedBy is the ID of the newer prompt that replaced
+                        it ("Q14").
+                      pattern: ^Q[0-9]+$
+                      type: string
                     source:
                       description: PromptSource is what a prompt is about and who
                         made it.

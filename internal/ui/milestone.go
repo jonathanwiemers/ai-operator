@@ -404,6 +404,54 @@ type MilestonePilot struct {
 	Phase   aiv1.TaskPhase `json:"phase,omitempty"`
 	Message string         `json:"message,omitempty"`
 	PodName string         `json:"podName,omitempty"`
+	// Acted are the proposals the operator ran without a prompt (the
+	// pilot's own actions and accepted proposals), newest first. Summary,
+	// why and lines are untrusted.
+	Acted []aiv1.PilotActed `json:"acted"`
+	// Interventions are the pilot's own actions per issue on its current
+	// head, by issue IID (0: the milestone).
+	Interventions []InterventionView `json:"interventions"`
+}
+
+// InterventionView is how many of its own actions the pilot used on an
+// issue's current head (0 for the milestone), of the project's
+// pilot.maxInterventionsPerIssue.
+type InterventionView struct {
+	IssueIID int64 `json:"issueIID"`
+	Used     int32 `json:"used"`
+	Max      int32 `json:"max"`
+}
+
+// interventionViews are the pilot's intervention counts of coord by issue
+// IID. A count on another head than the issue's implement task's pushed
+// head counts 0, as the operator enforces it; the milestone (0) and an
+// issue without a task have the empty head.
+func interventionViews(p *aiv1.AgentProject, tasks []aiv1.AgentTask, ps *aiv1.PilotStatus) []InterventionView {
+	views := []InterventionView{}
+	if ps == nil {
+		return views
+	}
+	limit := p.Spec.Pilot.MaxInterventionsPerIssue
+	if limit <= 0 {
+		limit = aiv1.DefaultPilotInterventions
+	}
+	for key, c := range ps.Interventions {
+		iid, err := strconv.ParseInt(key, 10, 64)
+		if err != nil {
+			continue
+		}
+		var head string
+		if t := issueTask(tasks, iid); t != nil {
+			head = t.Status.Run.PushedSHA
+		}
+		used := c.Count
+		if c.Head != head {
+			used = 0
+		}
+		views = append(views, InterventionView{IssueIID: iid, Used: used, Max: limit})
+	}
+	slices.SortFunc(views, func(a, b InterventionView) int { return cmp.Compare(a.IssueIID, b.IssueIID) })
+	return views
 }
 
 // ProposalView is an open proposal of the pilot.
@@ -575,10 +623,14 @@ func milestoneView(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st, coord *aiv1
 	}
 	if coord != nil {
 		pv := &MilestonePilot{Task: coord.Name, Autonomy: p.Spec.Pilot.AutonomyOf(coord), Proposals: []ProposalView{},
-			CostUSD: aiv1.ShowCost(aiv1.CostOf(coord.Status.Run.CostUSD)), Phase: coord.Status.Phase, Message: coord.Status.Message, PodName: coord.Status.PodName}
+			CostUSD: aiv1.ShowCost(aiv1.CostOf(coord.Status.Run.CostUSD)), Phase: coord.Status.Phase, Message: coord.Status.Message, PodName: coord.Status.PodName,
+			Acted: []aiv1.PilotActed{}, Interventions: interventionViews(p, tasks, coord.Status.Pilot)}
 		if ps := coord.Status.Pilot; ps != nil {
 			for _, pr := range ps.Proposals {
 				pv.Proposals = append(pv.Proposals, ProposalView{ID: pr.ID, Summary: pr.Summary, PostedAt: pr.PostedAt})
+			}
+			for _, a := range slices.Backward(ps.Acted) {
+				pv.Acted = append(pv.Acted, a)
 			}
 		}
 		v.Pilot = pv

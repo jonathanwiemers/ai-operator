@@ -3310,6 +3310,14 @@ export interface PilotStatus {
    */
   interventions?: { [key: string]: PilotIntervention};
   /**
+   * Acted are the proposals runAccepted ran without a prompt (Coordinate
+   * tasks): the pilot's own actions and the proposals owners accepted.
+   * Oldest first, the newest MaxPilotActed.
+   * +optional
+   * +kubebuilder:validation:MaxItems=30
+   */
+  acted?: PilotActed[];
+  /**
    * Retrospective is the retrospective of the milestone once its autopilot
    * is done: recorded by the pilot's run (Coordinate tasks) and copied to
    * the spec task before the pilot is deleted. A milestone gets one.
@@ -3505,6 +3513,58 @@ export interface PilotAutonomyOverride {
   autonomy: PilotAutonomy;
   by: string;
   at: string;
+}
+export const MaxPilotActed = 30;
+export const MaxPilotActedSummary = 300;
+export const MaxPilotActedWhy = 1000;
+export const MaxPilotActedLines = 8;
+export const MaxPilotActedLine = 300;
+/**
+ * MaxPilotActed bounds status.pilot.acted; the other bounds cut a
+ * PilotActed's untrusted text, in bytes.
+ */
+export type MaxPilotActed = typeof MaxPilotActed | typeof MaxPilotActedSummary | typeof MaxPilotActedWhy | typeof MaxPilotActedLines | typeof MaxPilotActedLine;
+/**
+ * PilotActed is one proposal runAccepted ran without a prompt.
+ */
+export interface PilotActed {
+  at: string;
+  /**
+   * By is the owner who accepted it, empty when the pilot acted on its
+   * own.
+   * +optional
+   */
+  by?: string;
+  /**
+   * Summary is the proposal's summary, at most MaxPilotActedSummary
+   * bytes. Untrusted.
+   * +optional
+   */
+  summary?: string;
+  /**
+   * Why is the proposal's reason, at most MaxPilotActedWhy bytes.
+   * Untrusted.
+   * +optional
+   */
+  why?: string;
+  /**
+   * Lines are the per-action result lines its comment shows, each at most
+   * MaxPilotActedLine bytes. Untrusted.
+   * +optional
+   * +kubebuilder:validation:MaxItems=8
+   */
+  lines?: string[];
+  /**
+   * Issues are the intervention keys it counted against; 0 is the
+   * milestone.
+   * +optional
+   */
+  issues?: number /* int64 */[];
+  /**
+   * Ran is false when none of its actions ran.
+   * +optional
+   */
+  ran?: boolean;
 }
 /**
  * PilotIntervention counts the pilot's own actions on an issue's head.
@@ -5690,6 +5750,49 @@ export const PromptSuperseded: PromptState = "superseded";
  * PromptExpired: a proposal prompt nobody answered in time.
  */
 export const PromptExpired: PromptState = "expired";
+/**
+ * PromptClosedReason is why a prompt closed (status prompts' closedReason).
+ * Prompts closed before it was recorded have none.
+ * +kubebuilder:validation:Enum=answered;expired;stateChanged;mainHealthy;agentRanAgain;budgetResolved;pauseOver;issueDone;replaced
+ */
+export type PromptClosedReason = string;
+/**
+ * ClosedAnswered: an owner's answer.
+ */
+export const ClosedAnswered: PromptClosedReason = "answered";
+/**
+ * ClosedExpired: the prompt's lifetime ran out.
+ */
+export const ClosedExpired: PromptClosedReason = "expired";
+/**
+ * ClosedStateChanged: the proposal's milestone state changed.
+ */
+export const ClosedStateChanged: PromptClosedReason = "stateChanged";
+/**
+ * ClosedMainHealthy: main is green again.
+ */
+export const ClosedMainHealthy: PromptClosedReason = "mainHealthy";
+/**
+ * ClosedAgentRanAgain: the agent ran again without the answer.
+ */
+export const ClosedAgentRanAgain: PromptClosedReason = "agentRanAgain";
+/**
+ * ClosedBudgetResolved: the budget was resolved.
+ */
+export const ClosedBudgetResolved: PromptClosedReason = "budgetResolved";
+/**
+ * ClosedPauseOver: the pause ended.
+ */
+export const ClosedPauseOver: PromptClosedReason = "pauseOver";
+/**
+ * ClosedIssueDone: the issue merged or closed.
+ */
+export const ClosedIssueDone: PromptClosedReason = "issueDone";
+/**
+ * ClosedReplaced: a newer prompt with the same Kind and Key replaced it
+ * (ReplacedBy).
+ */
+export const ClosedReplaced: PromptClosedReason = "replaced";
 export const MaxPrompts = 20;
 export const MaxPromptQuestion = 1000;
 export const MaxPromptContext = 8 << 10;
@@ -5859,6 +5962,23 @@ export interface Prompt {
    * +optional
    */
   closedAt?: string;
+  /**
+   * ClosedReason is why the prompt closed.
+   * +optional
+   */
+  closedReason?: PromptClosedReason;
+  /**
+   * ClosedBy is who closed it: owner for an answer, otherwise who ended
+   * its cause.
+   * +optional
+   */
+  closedBy?: PauseResolver;
+  /**
+   * ReplacedBy is the ID of the newer prompt that replaced it ("Q14").
+   * +optional
+   * +kubebuilder:validation:Pattern=`^Q[0-9]+$`
+   */
+  replacedBy?: string;
   /**
    * PostedNoteID, PostedNoteURL and MirroredState are the GitLab comment
    * that mirrors the prompt and the state it last showed.

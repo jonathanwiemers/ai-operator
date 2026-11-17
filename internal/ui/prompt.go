@@ -31,6 +31,11 @@ type PromptView struct {
 	Task     string       `json:"task,omitempty"`
 	PostedAt *metav1.Time `json:"postedAt,omitempty"`
 	ClosedAt *metav1.Time `json:"closedAt,omitempty"`
+	// ClosedReason, ClosedBy and ReplacedBy say why and by whom it closed;
+	// prompts closed before the operator recorded them have none.
+	ClosedReason aiv1.PromptClosedReason `json:"closedReason,omitempty"`
+	ClosedBy     aiv1.PauseResolver      `json:"closedBy,omitempty"`
+	ReplacedBy   string                  `json:"replacedBy,omitempty"`
 	// CanAnswer: the prompt is open and the user is one of its owners with
 	// the Desk chat (the operator checks again).
 	CanAnswer bool `json:"canAnswer"`
@@ -93,7 +98,7 @@ func promptView(p aiv1.Prompt, owner bool, target PromptTarget) PromptView {
 	}
 	v := PromptView{ID: p.ID, Kind: p.Source.Kind, Question: p.Question, Context: p.Context, Options: []PromptOptionView{},
 		AllowFreeText: p.AllowFreeText, State: state, IssueIID: p.Source.IssueIID, MRIID: p.Source.MRIID, Task: p.Source.Task,
-		PostedAt: p.PostedAt, ClosedAt: p.ClosedAt, CanAnswer: owner && !state.Closed(), Target: target}
+		PostedAt: p.PostedAt, ClosedAt: p.ClosedAt, ClosedReason: p.ClosedReason, ClosedBy: p.ClosedBy, ReplacedBy: p.ReplacedBy, CanAnswer: owner && !state.Closed(), Target: target}
 	for _, o := range p.Options {
 		ov := PromptOptionView{ID: o.ID, Label: o.Label, Detail: o.Detail, Actions: []string{}, Recommended: o.Recommended, FromAnswer: o.FromAnswer}
 		for _, a := range o.Actions {

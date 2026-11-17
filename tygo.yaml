@@ -131,7 +131,9 @@ packages:
       aiv1.PauseExit: aiv1.PauseExit
       aiv1.PauseResolver: aiv1.PauseResolver
       aiv1.PauseResumeVia: aiv1.PauseResumeVia
+      aiv1.PilotActed: aiv1.PilotActed
       aiv1.PilotAutonomy: aiv1.PilotAutonomy
+      aiv1.PromptClosedReason: aiv1.PromptClosedReason
       aiv1.PromptKind: aiv1.PromptKind
       aiv1.PromptState: aiv1.PromptState
       aiv1.ReleaseBy: aiv1.ReleaseBy

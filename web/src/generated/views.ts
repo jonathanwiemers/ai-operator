@@ -739,6 +739,27 @@ export interface MilestonePilot {
   phase?: aiv1.TaskPhase;
   message?: string;
   podName?: string;
+  /**
+   * Acted are the proposals the operator ran without a prompt (the
+   * pilot's own actions and accepted proposals), newest first. Summary,
+   * why and lines are untrusted.
+   */
+  acted: aiv1.PilotActed[];
+  /**
+   * Interventions are the pilot's own actions per issue on its current
+   * head, by issue IID (0: the milestone).
+   */
+  interventions: InterventionView[];
+}
+/**
+ * InterventionView is how many of its own actions the pilot used on an
+ * issue's current head (0 for the milestone), of the project's
+ * pilot.maxInterventionsPerIssue.
+ */
+export interface InterventionView {
+  issueIID: number /* int64 */;
+  used: number /* int32 */;
+  max: number /* int32 */;
 }
 /**
  * ProposalView is an open proposal of the pilot.
@@ -1019,6 +1040,13 @@ export interface PromptView {
   task?: string;
   postedAt?: string;
   closedAt?: string;
+  /**
+   * ClosedReason, ClosedBy and ReplacedBy say why and by whom it closed;
+   * prompts closed before the operator recorded them have none.
+   */
+  closedReason?: aiv1.PromptClosedReason;
+  closedBy?: aiv1.PauseResolver;
+  replacedBy?: string;
   /**
    * CanAnswer: the prompt is open and the user is one of its owners with
    * the Desk chat (the operator checks again).

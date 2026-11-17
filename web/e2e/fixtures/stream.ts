@@ -345,6 +345,8 @@ export const paymentsMilestone: MilestoneView = {
     ],
     costUSD: '0.84',
     phase: 'Idle',
+    acted: [],
+    interventions: [],
   },
   prompts: [
     refundsPrompt,
@@ -484,7 +486,7 @@ export const checkoutMilestone: MilestoneView = {
     ],
   },
   tracking: { iid: 270, webURL: issueURL(270) },
-  pilot: { task: 'shop-m12-pilot', autonomy: 'managed', proposals: [], costUSD: '0.31', phase: 'Idle' },
+  pilot: { task: 'shop-m12-pilot', autonomy: 'managed', proposals: [], costUSD: '0.31', phase: 'Idle', acted: [], interventions: [] },
   prompts: [],
   tasks: checkoutTasks,
   // One companion, so the project page's context panel shows all four parts.

@@ -52,6 +52,7 @@ git history does; otherwise "no milestone".
 10. [One Costs page across all projects, with charts](costs-page.spec.md) — One `/costs` page across projects, with charts and drill-down. Milestone: Desk: one Costs page across all projects, with charts.
 11. [Stay logged in while you use it (OIDC refresh tokens)](desk-session-refresh.spec.md) — OIDC refresh tokens keep the Desk session alive. Milestone: Desk: stay logged in while you use it (OIDC refresh tokens).
 12. [Desk polish: version, phone Costs tab, ⌘K search](desk-polish.spec.md) — Version footer, phone Costs tab, drop the milestone strip, ⌘K search. Milestone: Desk polish: version, phone Costs tab, no milestone strip, ⌘K search.
+13. [One Needs you tab per milestone](desk-needs-you.spec.md) — What was asked, who handled it and what was tried, per milestone and in the Inbox. Milestone: Desk: one Needs you tab per milestone that shows what was asked, who handled it and what was tried.
 
 ## Research
 

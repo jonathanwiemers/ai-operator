@@ -91,6 +91,45 @@ func TestPromptValidate(t *testing.T) {
 	}
 }
 
+func TestPromptValidateClosed(t *testing.T) {
+	closed := func(f func(*Prompt)) Prompt {
+		p := promptOf(PromptMainHealth, rec, none)
+		p.State = PromptSuperseded
+		f(&p)
+		return p
+	}
+	for _, r := range []PromptClosedReason{ClosedAnswered, ClosedExpired, ClosedStateChanged, ClosedMainHealthy,
+		ClosedAgentRanAgain, ClosedBudgetResolved, ClosedPauseOver, ClosedIssueDone, ClosedReplaced} {
+		if err := closed(func(p *Prompt) { p.ClosedReason, p.ClosedBy = r, ResolvedByOperator }).Validate(); err != nil {
+			t.Errorf("closedReason %s: %v", r, err)
+		}
+	}
+	for _, by := range []PauseResolver{ResolvedByOperator, ResolvedByPilot, ResolvedByOwner, ResolvedBySelfHealed, ResolvedByLaterRun} {
+		if err := closed(func(p *Prompt) { p.ClosedBy = by }).Validate(); err != nil {
+			t.Errorf("closedBy %s: %v", by, err)
+		}
+	}
+	if err := closed(func(p *Prompt) { p.ClosedReason, p.ReplacedBy = ClosedReplaced, "Q14" }).Validate(); err != nil {
+		t.Errorf("replacedBy Q14: %v", err)
+	}
+	if err := closed(func(*Prompt) {}).Validate(); err != nil {
+		t.Errorf("closed without the fields: %v", err)
+	}
+	for name, tc := range map[string]struct {
+		p    Prompt
+		want string
+	}{
+		"unknown reason":  {closed(func(p *Prompt) { p.ClosedReason = "gone" }), "closedReason"},
+		"unknown closer":  {closed(func(p *Prompt) { p.ClosedBy = "someone" }), "closedBy"},
+		"replacedBy X1":   {closed(func(p *Prompt) { p.ReplacedBy = "X1" }), "replacedBy"},
+		"replacedBy bare": {closed(func(p *Prompt) { p.ReplacedBy = "Q" }), "replacedBy"},
+	} {
+		if err := tc.p.Validate(); err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: error %v, want one with %q", name, err, tc.want)
+		}
+	}
+}
+
 func TestPromptOption(t *testing.T) {
 	p := promptOf(PromptMainHealth, rec, act, none, from)
 	for id, want := range map[string]int{"A": 0, "B": 1, "C": 2, "D": 3, "E": -1, "": -1, "a": -1} {

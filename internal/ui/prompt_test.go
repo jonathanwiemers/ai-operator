@@ -91,6 +91,33 @@ func TestPromptViews(t *testing.T) {
 	}
 }
 
+func TestPromptViewClosedFields(t *testing.T) {
+	closed := aiv1.Prompt{ID: "Q3", Source: aiv1.PromptSource{Kind: aiv1.PromptMainHealth}, Question: "Main is red", State: aiv1.PromptSuperseded,
+		ClosedReason: aiv1.ClosedReplaced, ClosedBy: aiv1.ResolvedByOperator, ReplacedBy: "Q14"}
+	v := promptView(closed, false, PromptTarget{})
+	if v.ClosedReason != aiv1.ClosedReplaced || v.ClosedBy != aiv1.ResolvedByOperator || v.ReplacedBy != "Q14" {
+		t.Errorf("closed fields = %q %q %q", v.ClosedReason, v.ClosedBy, v.ReplacedBy)
+	}
+	closed.ClosedReason, closed.ClosedBy, closed.ReplacedBy = "", "", ""
+	v = promptView(closed, false, PromptTarget{})
+	if v.ClosedReason != "" || v.ClosedBy != "" || v.ReplacedBy != "" {
+		t.Errorf("an old prompt has no closed fields: %q %q %q", v.ClosedReason, v.ClosedBy, v.ReplacedBy)
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		t.Fatal(err)
+	}
+	for _, k := range []string{"closedReason", "closedBy", "replacedBy"} {
+		if _, ok := m[k]; ok {
+			t.Errorf("%s is set without a value", k)
+		}
+	}
+}
+
 func TestPromptsOnTheMilestoneAndTask(t *testing.T) {
 	env, gl := newSteeringEnv(t,
 		Rule{Roles: []string{"devs"}, Projects: []string{"team-a/*"}, Chat: true})
