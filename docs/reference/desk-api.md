@@ -152,6 +152,7 @@ of the project's milestones, when any of them names owner subjects.
 | `GET /api/v1/spend` | What a project, milestone, issue, task or run cost, with breakdowns by kind, role and model. `?namespace=&project=` are required; narrow it with `&milestone=`, `&issue=`, `&task=` and `&run=` (`run` needs `task`). | see, research database |
 | `GET /api/v1/costs` | Costs over a range for the Costs page. `?range=` or `?from=&to=`, `?group=`, filters. | see, research database |
 | `GET /api/v1/costs/top` | The ten costliest milestones, issues and runs of the range. | see, research database |
+| `GET /api/v1/costs/metrics` | The cost per 100 merged lines by experiment arm, model, effort and step session, and the median base context and top tools per project, for the range. | see, research database |
 
 ## Research
 

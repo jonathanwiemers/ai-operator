@@ -26,6 +26,8 @@ type fakeCosts struct {
 	top           store.CostTop
 	topQ          []store.CostQuery
 	topN          []int
+	metrics       store.Metrics
+	metricsQ      []store.CostQuery
 }
 
 type costSeriesCall struct {
@@ -468,4 +470,9 @@ func TestBudgetRows(t *testing.T) {
 	if got := budgetRows(nil, nil); got == nil {
 		t.Error("no budgets = nil, want empty")
 	}
+}
+
+func (f *fakeCosts) Metrics(_ context.Context, q store.CostQuery) (store.Metrics, error) {
+	f.metricsQ = append(f.metricsQ, q)
+	return f.metrics, nil
 }

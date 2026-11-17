@@ -73,6 +73,8 @@ async function costsReady(page: Page): Promise<void> {
   await expect(page.locator('[data-costs-top] [data-top]')).toHaveCount(3)
   await expect(page.locator('[data-costs-plan] [data-plan]')).toHaveCount(2)
   await expect(page.locator('[data-costs-budgets] [data-budget]')).toHaveCount(3)
+  await expect(page.locator('[data-costs-metrics] [data-metrics-table]')).toHaveCount(5)
+  await expect(page.locator('[data-costs-context] [data-context-project]')).toHaveCount(2)
 }
 
 // Every named route has a case here, with a variant per tab.
@@ -1085,6 +1087,51 @@ for (const { width, height } of [widths[0]!, widths[2]!]) {
     await expect(top.locator('[data-top=issue]')).toContainText('not metered')
     await expect(top.locator('[data-top=issue]')).not.toContainText('$0.00')
     await expect(top.locator('[data-top-unknown]').first()).toContainText('calls without cost')
+
+    problems.csp.push(...(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)))
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+}
+
+// Cost per merged line and Context (views/Costs.vue, #539): an arm table per
+// project, titled with the experiment it still runs, then by model, effort and
+// step session; rows below 5 merged issues are greyed out with the hint. On a
+// phone the rows are cards with labelled figures.
+for (const { width, height } of [widths[0]!, widths[2]!]) {
+  test(`costs metrics and context@${width}`, async ({ page, baseURL }) => {
+    const route = routes.find((r) => r.name === 'costs')!
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await page.setViewportSize({ width, height })
+    await page.clock.setFixedTime(now)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, route, problems)
+    await page.goto(route.path)
+    await route.ready(page)
+
+    const tables = page.locator('[data-costs-metrics] [data-metrics-table]')
+    await expect(tables.locator('h3')).toHaveText([
+      'Arms: team-b/a-project-with-a-rather-long-name.example',
+      'Arms of cost-levers: team-a/shop',
+      'By model',
+      'By effort',
+      'By step session',
+    ])
+    const shop = tables.nth(1)
+    await expect(shop.locator('tbody tr')).toHaveCount(4)
+    await expect(shop.locator('[data-low]')).toHaveText(['medium', 'sonnet'])
+    await expect(shop.locator('tbody tr').nth(2)).toContainText('fewer than 5 merged issues: too few to compare')
+    await expect(shop.locator('tbody tr').first()).toContainText('$3.37 · 7 issues')
+    // No merged lines: no cost per line.
+    await expect(shop.locator('tbody tr').nth(3)).toContainText('— · 3 issues')
+    // Labelled figures in the phone's cards, a table from the tablet up.
+    if (width < 760) await expect(shop.locator('[data-label]').first()).toBeVisible()
+    else await expect(shop.locator('[data-label]').first()).toBeHidden()
+
+    const ctx = page.locator('[data-costs-context] [data-context-project]')
+    await expect(ctx.first().locator('[data-context-base] tbody tr')).toHaveCount(2)
+    await expect(ctx.first().locator('[data-context-tools] tbody tr')).toHaveCount(5)
+    await expect(ctx.first().locator('[data-context-tools] tbody tr').first()).toContainText('~2M')
+    await expect(ctx.nth(1)).toContainText('No tool results in this range.')
 
     problems.csp.push(...(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)))
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })

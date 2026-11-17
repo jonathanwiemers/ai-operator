@@ -1343,6 +1343,18 @@ the milestone tab, an issue row to its issue, a run row to its task and run;
 a run without a milestone (research `research/<name>`, chat) opens the project
 tab with the scope query.
 
+*Cost per merged line* (`MetricsBreakdown.vue`) and *Context*
+(`MetricsContext.vue`): `getCostsMetrics`, fetched in parallel with
+`getCosts` (if it fails, both sections are left out). The tables
+(`metricsTables` in `metrics.ts`): one arm table per project with arms,
+titled with the project's experiment when it still has the arm, then by
+model, effort and step session. A `low` row is greyed out with the hint
+*fewer than 5 merged issues: too few to compare*; the cost per 100 lines
+carries the merged-issue count. The Context panel shows, per project, the
+median base context per role and the top five tools by result tokens, as
+`DataList` tables, so both stack into cards on phones. The kind and engine
+filters do not apply, which the section's subtitle says when one is set.
+
 *Plan usage*: one card per engine with `EngineUsage.vue` (5 h and 7 day
 windows), the project the reading came from and its age (`RelTime`). It is
 live state (`status.engineUsage`, the freshest reading per engine among the

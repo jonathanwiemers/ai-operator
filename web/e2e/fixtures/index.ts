@@ -2,7 +2,7 @@
 // fixture of its path. A path missing here answers 404 and fails the check
 // that asked for it, so add a fixture when a view starts asking for more.
 // Fixtures live in one module per API area, typed with the generated views.
-import { costs, costsTop } from './costs'
+import { costs, costsMetrics, costsTop } from './costs'
 import { doneMilestones, openMilestones, overview } from './overview'
 import { inbox, projects, researches } from './rail'
 import { researchAPI } from './research'
@@ -32,6 +32,7 @@ export const api: Record<string, Fixture> = {
   '/spend': answerSpend,
   '/costs': costs,
   '/costs/top': costsTop,
+  '/costs/metrics': costsMetrics,
   '/gitlab': gitlabStatus,
   '/search': answerSearch,
   [shopPath]: shopDetail,

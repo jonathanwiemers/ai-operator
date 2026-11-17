@@ -91,6 +91,7 @@ packages:
       - followup.go
       - gitlab.go
       - issue.go
+      - metrics.go
       - milestone.go
       - milestones.go
       - oidc.go

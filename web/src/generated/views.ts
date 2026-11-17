@@ -481,6 +481,83 @@ export interface IssueView extends MilestoneIssueRow {
 }
 
 //////////
+// source: metrics.go
+
+/**
+ * MetricsLowIssues is the fewest merged issues a group needs to compare it
+ * with others: below, MetricsGroup.Low is set.
+ */
+export const MetricsLowIssues = 5;
+/**
+ * MetricsGroup is what a group of issues cost per merged line: an experiment
+ * arm of a project, a model, an effort or a step-session mode (Key, "" for
+ * none). An issue counts whole for one group: its arm, or the model, effort
+ * and step session of its implement calls with the largest cost. Issues and
+ * MergedLines are of its merged issues, CostUSD (known cost) and Tokens of
+ * all its issues with calls in the range, merged or not. CostPer100Lines is
+ * CostUSD per 100 merged lines, 0 without merged lines. Low: fewer than
+ * MetricsLowIssues merged issues, too few to compare.
+ */
+export interface MetricsGroup {
+  /**
+   * Project (namespace/name) and Experiment, the name of the project's
+   * current experiment when Key is one of its arms, are set for arms only.
+   */
+  project?: string;
+  experiment?: string;
+  key: string;
+  issues: number /* int64 */;
+  mergedLines: number /* int64 */;
+  costUSD: number /* float64 */;
+  tokens: number /* int64 */;
+  costPer100Lines: number /* float64 */;
+  low: boolean;
+}
+/**
+ * RoleMedian is the median base context of a role's calls that started
+ * their session (the first turn's context: system prompt, tools, CLAUDE.md),
+ * over Calls calls.
+ */
+export interface RoleMedian {
+  role: string;
+  medianTokens: number /* int64 */;
+  calls: number /* int64 */;
+}
+/**
+ * ToolUsage is what a tool's results put into the context: Calls results of
+ * Bytes, Tokens estimated from them.
+ */
+export interface ToolUsage {
+  tool: string;
+  calls: number /* int64 */;
+  bytes: number /* int64 */;
+  tokens: number /* int64 */;
+}
+/**
+ * ProjectContext is what fills a project's contexts: the median base
+ * context per role and the tools with the largest results, at most five.
+ */
+export interface ProjectContext {
+  project: string;
+  baseContext: RoleMedian[];
+  topTools: ToolUsage[];
+}
+/**
+ * MetricsView is the answer of GET /api/v1/costs/metrics: what a merged line
+ * cost by experiment arm, model, effort and step-session mode, and what fills
+ * the context, over the Costs page's range and projects. The kind and engine
+ * filters do not apply: an issue counts whole. Arms is empty without
+ * experiment data.
+ */
+export interface MetricsView {
+  arms: MetricsGroup[];
+  byModel: MetricsGroup[];
+  byEffort: MetricsGroup[];
+  byStepSession: MetricsGroup[];
+  context: ProjectContext[];
+}
+
+//////////
 // source: milestone.go
 
 /**

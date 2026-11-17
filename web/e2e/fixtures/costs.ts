@@ -1,5 +1,5 @@
 import type { SpendTotals } from '../../src/generated/store'
-import type { CostPointView, CostsTopView, CostsView, CostTopRowView, SpendBreakdownView } from '../../src/generated/views'
+import type { CostPointView, CostsTopView, CostsView, CostTopRowView, MetricsGroup, MetricsView, SpendBreakdownView } from '../../src/generated/views'
 
 // GET /api/v1/costs?range=&from=&to=&group=&project=&kind=&engine=&tz=: what
 // the viewer's two projects and research cost in the last 30 days up to the
@@ -119,5 +119,52 @@ export const costsTop: CostsTopView = {
   runs: [
     topRow({ label: 'shop-i281 run 2', milestoneIID: 14, issueIID: 281, task: 'shop-i281', run: 2, kind: 'implement' }, '4.13'),
     topRow({ label: 'research/payments-news run 1', task: 'research/payments-news', run: 1, kind: 'research' }, '0.42'),
+  ],
+}
+
+// GET /api/v1/costs/metrics: the cost per merged line of the same range. shop
+// runs the experiment cost-levers with four arms, two of them below 5 merged
+// issues (greyed out); the long-named project has arms of an experiment it no
+// longer runs. A step session of none ("—") and an MCP tool with a long name.
+const group = (key: string, issues: number, lines: number, usd: number, tokens: number, extra: Partial<MetricsGroup> = {}): MetricsGroup => ({
+  key,
+  issues,
+  mergedLines: lines,
+  costUSD: usd,
+  tokens,
+  costPer100Lines: lines > 0 ? (usd * 100) / lines : 0,
+  low: issues < 5,
+  ...extra,
+})
+const arm = (project: string, experiment: string | undefined, key: string, issues: number, lines: number, usd: number, tokens: number) =>
+  group(key, issues, lines, usd, tokens, { project, ...(experiment ? { experiment } : {}) })
+
+export const costsMetrics: MetricsView = {
+  arms: [
+    arm(long, undefined, 'baseline', 2, 140, 6.1, 3_100_000),
+    arm(shop, 'cost-levers', 'baseline', 7, 1820, 61.4, 41_000_000),
+    arm(shop, 'cost-levers', 'fresh', 6, 1544, 38.9, 26_500_000),
+    arm(shop, 'cost-levers', 'medium', 4, 910, 22.75, 15_200_000),
+    arm(shop, 'cost-levers', 'sonnet', 3, 0, 4.2, 6_800_000),
+  ],
+  byModel: [group('claude-opus-5-5', 19, 4414, 129.15, 85_800_000), group('claude-sonnet-5-5', 3, 0, 4.2, 6_800_000)],
+  byEffort: [group('high', 15, 3504, 106.4, 70_600_000), group('medium', 4, 910, 22.75, 15_200_000), group('', 3, 0, 4.2, 6_800_000)],
+  byStepSession: [group('resume', 9, 1960, 67.5, 44_100_000), group('fresh', 6, 1544, 38.9, 26_500_000), group('', 7, 910, 26.95, 22_000_000)],
+  context: [
+    {
+      project: shop,
+      baseContext: [
+        { role: 'implement', medianTokens: 21_400, calls: 38 },
+        { role: 'review', medianTokens: 18_900, calls: 41 },
+      ],
+      topTools: [
+        { tool: 'Read', calls: 412, bytes: 8_123_400, tokens: 2_030_850 },
+        { tool: 'Bash', calls: 230, bytes: 3_402_000, tokens: 850_500 },
+        { tool: 'Grep', calls: 181, bytes: 1_200_000, tokens: 300_000 },
+        { tool: 'mcp__gitlab__get_merge_request_discussions', calls: 12, bytes: 640_000, tokens: 160_000 },
+        { tool: 'Task', calls: 9, bytes: 52_000, tokens: 13_000 },
+      ],
+    },
+    { project: long, baseContext: [{ role: 'implement', medianTokens: 9_800, calls: 3 }], topTools: [] },
   ],
 }

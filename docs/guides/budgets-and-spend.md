@@ -238,6 +238,15 @@ cache-read share, and the calls of unknown cost. Below them:
 - **Tokens:** the tokens per bucket by type, with the cache-read share.
 - **Most expensive:** the top ten milestones, issues and runs of the range.
   Each opens its place in the Spend tab.
+- **Cost per merged line:** the issues of the range by experiment arm
+  (per project, only when issues ran in an experiment), by model, by
+  effort and by step session. Each row shows the merged issues, their
+  merged lines, the cost and tokens of all its issues, and the cost per
+  100 merged lines. A row with fewer than 5 merged issues is greyed out:
+  too few to compare.
+- **Context:** per project, the median base context per role (what a
+  fresh session holds before the agent starts) and the five tools whose
+  results put the most tokens into the context.
 - **Plan usage:** each engine's 5-hour and 7-day usage windows, live.
 - **Budgets:** the budgets of milestones still on autopilot and of their
   issues, by share used, in the warning colour from 80 %. The page only

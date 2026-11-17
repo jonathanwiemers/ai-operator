@@ -19,6 +19,7 @@ import type {
   InboxResponse,
   IssueView,
   Me,
+  MetricsView,
   MilestoneList,
   MilestoneView,
   NoteView,
@@ -420,6 +421,13 @@ export function getCosts(params: CostsParams = {}): Promise<CostsView> {
 // runs of the same range and filters (group is ignored by the server).
 export function getCostsTop(params: CostsParams = {}): Promise<CostsTopView> {
   return get<CostsTopView>(`/costs/top${costsQuery(params)}`)
+}
+
+// getCostsMetrics: GET /costs/metrics, the cost per merged line by arm,
+// model, effort and step session and the context panel, for the same range
+// and projects (group, kind and engine are ignored by the server).
+export function getCostsMetrics(params: CostsParams = {}): Promise<MetricsView> {
+  return get<MetricsView>(`/costs/metrics${costsQuery(params)}`)
 }
 
 function costsQuery(params: CostsParams): string {

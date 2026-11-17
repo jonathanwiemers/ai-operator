@@ -48,3 +48,12 @@ func CostTopQueries(q CostQuery, n int) (sqls []string, args [][]any) {
 	}
 	return sqls, args
 }
+
+// MetricsQueries is the SQL and arguments of each statement Metrics runs,
+// for EXPLAIN tests.
+func MetricsQueries(q CostQuery) (sqls []string, args [][]any) {
+	for _, st := range metricsSQL(q) {
+		sqls, args = append(sqls, st.sql), append(args, st.args)
+	}
+	return sqls, args
+}
