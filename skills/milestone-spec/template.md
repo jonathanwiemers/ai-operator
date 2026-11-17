@@ -39,8 +39,9 @@ What exists:
 
 ### Docs
 
-- **R4** `docs/<page>.md` (…), and `docs/specs/<name>.spec.md` with a
-  steering log.
+- **R4** `docs/guides/<page>.md` (…), `docs/reference/<page>.md` (…),
+  `docs/specs/<name>.spec.md` with a steering log, and list the spec in
+  `docs/specs/README.md`.
 
 ## Constraints
 

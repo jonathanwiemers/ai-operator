@@ -91,8 +91,11 @@ questions you already answered.
 headings by area (for example `Operator (Go)`, `UI server (Go)`, `Web`,
 `Infra (companion)`, `Docs`). Each requirement says what changes and how it
 is tested (`Tests: …`). Keep one requirement to about one merge request.
-Always end with a `### Docs` group that names the pages that change and the
-spec file `docs/specs/<name>.spec.md` with a steering log.
+Always end with a `### Docs` group that names the pages by the layout in
+`docs/README.md` (`docs/guides/…`, `docs/reference/…`, `docs/concepts/…`,
+`docs/getting-started/…`, or `docs/contributing/…`), the spec file
+`docs/specs/<name>.spec.md` with a steering log, and a line in
+`docs/specs/README.md`.
 
 **Constraints.** The rules every merge request follows:
 - the project's size budget per MR (`spec.houseRules.maxMRLines`, default
@@ -132,7 +135,8 @@ Go through this before you create the milestone:
       that run before this one
 - [ ] Every question you would ask later is a Decision
 - [ ] Every requirement has a test line and fits about one MR
-- [ ] A Docs group with the pages and the spec file
+- [ ] A Docs group with pages named by the new layout, the spec file and an
+      index line in `docs/specs/README.md`
 - [ ] Companion repository lines and an Infra group if another repo changes
 - [ ] Non-goals name the tempting next step
 - [ ] Every Goal has an Acceptance scenario

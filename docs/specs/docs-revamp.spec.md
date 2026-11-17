@@ -320,8 +320,28 @@ Rows: `usage.md` 38, `ui.md` 57, `configuration.md` 34, `commands.md` 10,
 ## Steering log
 
 Narrowed requirements, follow-up issues and changes of plan, one line each,
-with the requirement label and the issue or merge request.
+with the requirement label and the issue or merge request. Issues in the
+order they landed: R1 #503, R2 #504, R11 #505, R10a #506, R10b #507, R9
+#508, R8a #509, R8b #510, R3 #511, R4 #512, R5 #513, R6 #514, R7a #515, R7b
+#516, R12 #517, R13 #518, R14 #519.
 
+- R1 (#503): inventory of every old `##`/`###` at 90824ec, empty section
+  folders with README indexes, and `docs/README.md` as the map (Decision 1).
+  No pages moved yet; old top-level files stayed until their MRs.
+- R2 (#504): `internal/docscheck` with the standard library only. Cap and
+  source-ref rules bind the four user folders from the start; table tests
+  cover broken links, missing anchors, 401-line pages, Go paths in guides,
+  unresolved `docs/….md#…` refs in code, and slug edge cases. The rules
+  section of this spec gained the "docs check" bullet.
+- R11 (#505): `docs/specs/README.md` lists every spec with one line and its
+  milestone; specs record their time and the docs win when they disagree
+  (Decision 7). Specs themselves were not rewritten.
+- R10a (#506): `design.md`, `releasing.md` and `sandbox-test-plan.md` moved
+  to `contributing/` with link fixes in `.gitlab-ci.yml`, `Makefile`,
+  `CLAUDE.md`, `web/` and `hack/`. Opening of `design.md` updated for
+  autopilot, the pilot and the Desk (Decision 6).
+- R10b (#507): contributor parts of `ui.md` became
+  `contributing/web-ui.md`; user parts stayed in `ui.md` for R6/R7a.
 - R9 (#508): the four concept pages are new text; no inventory row is only a
   concept explanation, so none moved. Glossary entries name pages that do
   not exist yet in plain text; the MRs that add them turn those into links.
@@ -433,3 +453,10 @@ with the requirement label and the issue or merge request.
   names the pilot on Sonnet and the reviewers by name. The Quick start
   installs from a values file, so the Desk step adds its `ui` block to the
   same file, and it drops the board, which only helps the manual flow.
+- R14 (#519): `CLAUDE.md` gained a short docs rule (layout, plain language,
+  400-line cap and no source refs, folder and specs indexes, chart README).
+  The `milestone-spec` skill and template name Docs pages by the new layout
+  and require listing the spec in `docs/specs/README.md`. Links already
+  pointed at `docs/reference/commands.md` and
+  `docs/guides/write-a-milestone.md`. This log now has a line for every
+  requirement R1 to R14.

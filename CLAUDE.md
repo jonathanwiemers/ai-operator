@@ -37,6 +37,21 @@
   pipeline builds it (`release` job). The push mirror carries the tag to
   GitHub, where `release.yml` builds the same version for ghcr.io. See
   `docs/contributing/releasing.md`.
-- Keep the docs in `docs/` and the chart README in sync with behavior changes.
+- Docs layout (map in `docs/README.md`): `getting-started/` install and first
+  milestone; `guides/` one task per page; `reference/` commands, fields,
+  labels, Desk API; `concepts/` how it works, roles, security, glossary;
+  `contributing/` design and internals; `specs/` archived specs with an
+  index. Chart values stay in `charts/ai-operator/README.md`.
+- User pages (`getting-started/`, `guides/`, `reference/`, `concepts/`):
+  "you", active voice, short sentences; open with what the page is for and
+  end with `Next` links; link terms to `docs/concepts/glossary.md`;
+  examples before tables; a complete example on every configuration page;
+  Desk first. Stay under 400 lines and name no source files (CRD fields,
+  commands, labels, Helm values and URLs are fine). Internals go in
+  `contributing/`. Defaults are stated once, in `reference/`. Enforced by
+  `go test ./internal/docscheck/`.
+- When you add a page, update that folder's README and `docs/README.md`.
+  List a new spec in `docs/specs/README.md`. Keep the chart README in sync
+  when Helm values change.
 - Write and review milestone specs with the `milestone-spec` skill
   (`skills/milestone-spec/`).
