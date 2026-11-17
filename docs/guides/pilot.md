@@ -52,8 +52,9 @@ v2 API". That runs nothing yet: the pilot turns it into one more option,
 follow-up question. The operator checks that option like the pilot's own.
 
 Only the milestone's `owner-subjects` answer prompts in the Desk. Anyone
-with the `chat` grant may message the pilot; without it the tab is
-read-only. See
+with the `chat` grant may message the pilot. With only the `steer` grant
+your message goes out as a `/pilot` comment in your name; with neither you
+see the tab but cannot write in it. See
 [Owners and pings](owners-and-pings.md).
 
 ## Talk to it in GitLab

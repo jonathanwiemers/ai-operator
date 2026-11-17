@@ -125,7 +125,7 @@ paused, or what an issue waits for. See [The pilot](pilot.md).
 Without the `chat` grant but with `steer`, the box posts your message as a
 `/pilot` comment on the tracking issue, in your name.
 Anyone with the `chat` grant can message the pilot, owner or not. With
-neither grant the tab is read-only.
+neither grant you see the tab but cannot write in it.
 
 ## Answer prompts
 
@@ -239,17 +239,18 @@ are in [Write a milestone](write-a-milestone.md#draft-it-in-the-desk).
   *Use agent's draft* or *Keep mine*.
 - **The plans list** (*Plans*) shows each plan's title, phase, spend and the
   milestone it created.
-- **Its budget** starts at $5 by default. At the cap the plan stops until an
-  owner raises it, up to $20 by default.
+- **Its budget** starts at the default cap. At the cap the plan stops until an
+  owner raises it, up to the highest cap.
 - **Create milestone** shows the title, the draft, the switches *Spec* and
   *Autopilot*, the `/agent` lines it adds, and an estimate of the cost from
   your finished milestones. It creates the milestone in GitLab with your
   token. A plan creates one milestone only.
-- **Idle plans.** After 30 minutes without a message the plan's pod stops;
-  the next message picks up where it left. A plan is deleted 30 days after
-  its last message.
+- **Idle plans.** After a while without a message the plan's pod stops;
+  the next message picks up where it left. A plan is deleted some time
+  after its last message.
 
-The values are in the [chart README](../../charts/ai-operator/README.md#plan).
+The caps, the idle time and how long plans are kept, with their defaults,
+are in the [chart README](../../charts/ai-operator/README.md#plan).
 
 ## Costs at a glance
 

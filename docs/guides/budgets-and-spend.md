@@ -255,7 +255,7 @@ a spreadsheet file. An unknown cost is an empty cell, never 0.
 - A range that mixes old and new token bases says so once.
 - Research counts from its first stored call; older research cost is on the
   research page only.
-- Calls expire with `research.historyRetention` (a year by default, see the
+- Calls expire with `research.historyRetention` (the default is in the
   [chart values](../../charts/ai-operator/README.md#research)), so a range
   starts no earlier than that.
 

@@ -35,7 +35,10 @@ watch [budgets and spend](guides/budgets-and-spend.md), ship
 
 **[reference/](reference/README.md)**: every `/agent` command in
 [commands](reference/commands.md), the [labels](reference/labels.md), the
-[`AgentProject` fields](reference/agentproject.md), the
+[`AgentProject` fields](reference/agentproject.md) with
+[agents and models](reference/agents-and-models.md),
+[lifecycle and CI](reference/lifecycle-and-ci.md) and the
+[agent image](reference/agent-image.md), the
 [`AgentResearch` fields](reference/agentresearch.md) and the
 [Desk API](reference/desk-api.md), for looking things up.
 
@@ -47,9 +50,12 @@ the [roles](concepts/roles.md) of the agents,
 
 ## Contributing
 
-**[contributing/](contributing/README.md)**: the design, web UI
-development, research internals, releasing and the sandbox test plan, for
-people who work on ai-operator itself.
+**[contributing/](contributing/README.md)**: the [design](contributing/design.md),
+[web UI development](contributing/web-ui.md),
+[releasing](contributing/releasing.md),
+[research internals](contributing/research.md) and the
+[sandbox test plan](contributing/sandbox-test-plan.md), for people who work
+on ai-operator itself.
 
 ## Specs
 

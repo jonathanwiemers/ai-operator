@@ -285,7 +285,8 @@ expire.
 ## Retention
 
 Each run's result is kept for `spec.retention` from the time the run
-started, 30 days by default. The operator deletes expired runs every hour. A
+started (the default is in the
+[`AgentResearch` reference](../reference/agentresearch.md#spec)). The operator deletes expired runs every hour. A
 changed `retention` applies to later runs only. Deleting an `AgentResearch`
 does not delete its stored runs: they expire as usual, and the Desk no
 longer shows them.

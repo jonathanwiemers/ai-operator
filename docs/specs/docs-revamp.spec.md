@@ -405,3 +405,16 @@ with the requirement label and the issue or merge request.
   `web/src/generated/` changed here too, like in R7a. The glossary gained
   a "Research" entry. The old run step list put *open merge request* after
   the push; the runner opens the draft before the agent starts.
+- R12 (#517): the MRs that emptied the old pages deleted them and fixed
+  their refs, the chart README links and its web UI section (plan decision
+  D517-P1), so this MR only sweeps. The pilot tab's "read-only" (no grant)
+  now reads "see but cannot write", and `guides/pilot.md` names the
+  `steer`-only case. `docs/README.md` names every page. The plan caps, idle
+  time and retention, `research.historyRetention` and a research's
+  `retention` were stated as numbers in guides; they now link the chart
+  README and `reference/agentresearch.md`. On/off defaults said in passing
+  ("empty by default", "the default agents run on claude") stay, each next
+  to its reference link. The README's "move cards" tagline and row are
+  R13's.
+  The glossary's Desk and Prompt entries still named the Desk guides as
+  planned plain text (R9's note); they are links now.

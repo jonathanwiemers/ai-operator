@@ -2,8 +2,7 @@
 
 The terms the docs use, in alphabetical order, one or two sentences each.
 Other pages link a term here the first time they use it. Each entry links the
-page that explains it; pages that are still being written are named in plain
-text.
+page that explains it.
 
 ### Agent container
 
@@ -56,8 +55,8 @@ push that changed the diff. See [Roles](roles.md#describer).
 
 The web UI where you steer: ask the [pilot](#pilot), chat with an agent,
 answer [prompts](#prompt), revisit decisions, and watch runs, CI and costs.
-See [How it works](how-it-works.md#steering-it) and the planned guides
-guides/desk.md and guides/steer-from-the-desk.md.
+See [How it works](how-it-works.md#steering-it) and the guides
+[The Desk](../guides/desk.md) and [Steer from the Desk](../guides/steer-from-the-desk.md).
 
 ### Engine
 
@@ -150,8 +149,8 @@ per issue; see [Roles](roles.md#implementer).
 
 A question to the owners with two to four options, one of them
 recommended, from the operator, the pilot or an agent, under an ID such as
-`Q5`. You answer it in the Desk with one click or one sentence; see the
-planned guide guides/steer-from-the-desk.md.
+`Q5`. You answer it in the Desk with one click or one sentence; see
+[Steer from the Desk](../guides/steer-from-the-desk.md#answer-prompts).
 
 ### Read gate
 
