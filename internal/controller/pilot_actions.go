@@ -723,6 +723,7 @@ func (r *AgentProjectReconciler) runAccepted(ctx context.Context, gl gitlab.API,
 		return err
 	}
 	var failed []string
+	var acted []aiv1.PilotActed
 	for i, p := range accepted {
 		var b strings.Builder
 		fmt.Fprintf(&b, "🧭 Proposal P%d accepted by `@%s`:", p.ID, p.AcceptedBy)
@@ -753,6 +754,7 @@ func (r *AgentProjectReconciler) runAccepted(ctx context.Context, gl gitlab.API,
 			}
 			continue
 		}
+		acted = append(acted, pilotActed(r.now(), p, lines, errs[i], tasks))
 		body := b.String() + "\n" + strings.Join(lines, "\n")
 		if p.AcceptedBy == "" {
 			body = auditNote(spec, coord, tasks, p, lines)
@@ -761,12 +763,42 @@ func (r *AgentProjectReconciler) runAccepted(ctx context.Context, gl gitlab.API,
 			log.FromContext(ctx).Info("could not post the outcome of a proposal", "issue", tracking, "error", err.Error())
 		}
 	}
-	if len(failed) == 0 {
+	if len(failed) == 0 && len(acted) == 0 {
 		return nil
 	}
 	return r.patchProposals(ctx, coord, func(ps *aiv1.PilotStatus) {
 		ps.OpenedIssues = slices.DeleteFunc(ps.OpenedIssues, func(k string) bool { return slices.Contains(failed, k) })
+		ps.Acted = append(ps.Acted, acted...)
+		ps.Acted = ps.Acted[max(0, len(ps.Acted)-aiv1.MaxPilotActed):]
 	})
+}
+
+// pilotActed is the log entry of a proposal runAccepted ran without a
+// prompt: its untrusted text raw (the Desk shows it without HTML), cut to
+// the bounds; the issues it counted against; whether any action ran.
+func pilotActed(now time.Time, p aiv1.PilotProposal, lines []string, errs []error, tasks map[int64]*aiv1.AgentTask) aiv1.PilotActed {
+	e := aiv1.PilotActed{
+		At:      metav1.NewTime(now),
+		By:      p.AcceptedBy,
+		Summary: cutText(p.Summary, aiv1.MaxPilotActedSummary),
+		Why:     cutText(p.Why, aiv1.MaxPilotActedWhy),
+		Ran:     slices.Contains(errs, nil),
+	}
+	for _, l := range lines[:min(len(lines), aiv1.MaxPilotActedLines)] {
+		e.Lines = append(e.Lines, cutText(l, aiv1.MaxPilotActedLine))
+	}
+	for _, a := range p.Actions {
+		key, _ := interventionKey(a, p.Trigger, tasks)
+		if iid, err := strconv.ParseInt(key, 10, 64); err == nil && !slices.Contains(e.Issues, iid) {
+			e.Issues = append(e.Issues, iid)
+		}
+	}
+	return e
+}
+
+// cutText cuts untrusted text to at most n bytes of valid UTF-8.
+func cutText(s string, n int) string {
+	return cutUTF8(strings.ToValidUTF8(s, "�"), n)
 }
 
 // runAction executes one validated action of an accepted proposal; how
