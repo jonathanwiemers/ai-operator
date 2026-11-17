@@ -28,6 +28,7 @@ import SpendPanel from '../components/SpendPanel.vue'
 import Composer from '../components/Composer.vue'
 import EventCard from '../components/stream/EventCard.vue'
 import MilestoneIssues from '../components/MilestoneIssues.vue'
+import MilestoneNeeds from '../components/MilestoneNeeds.vue'
 import MilestonePilot from '../components/MilestonePilot.vue'
 import MilestoneRetro from '../components/MilestoneRetro.vue'
 import MilestoneSections from '../components/MilestoneSections.vue'
@@ -35,6 +36,7 @@ import ProjectFinishing from '../components/ProjectFinishing.vue'
 import ProjectQueue from '../components/ProjectQueue.vue'
 import RouteTabs from '../ui/RouteTabs.vue'
 import { live, useResource } from '../live'
+import { needsLabel, needsOpen } from '../needsOpen'
 import { pausePrompt } from '../pauseCard'
 import {
   dayEndCursor,
@@ -73,15 +75,19 @@ const everything = computed(() => !props.namespace || !props.name)
 const milestoneIID = computed(() => (props.iid ? Number(props.iid) : undefined))
 
 // tab: Stream, Board or Spend on project streams, Issues (the default),
-// Pilot, Retrospective, Stream, Board or Spend on milestones, kept in ?tab= so it can be
-// linked to (a #prompt-Q<n> link without it opens Pilot); Everything has no
-// tabs. A stored milestone has no tasks, so no Board.
+// Needs you, Pilot, Retrospective, Stream, Board or Spend on milestones, kept in ?tab= so it can be
+// linked to (a #prompt-Q<n> link without it opens Needs you); Everything has no
+// tabs. A stored milestone has no tasks, so no Board. The Needs you tab's
+// label carries the count of its Open items ("Needs you · n", D530-P1).
 const route = useRoute()
 const router = useRouter()
 const tabs = computed(() => {
   if (everything.value) return []
   if (!milestoneIID.value) return projectTabs
-  return milestone.value?.iid === milestoneIID.value && milestone.value.stored ? storedMilestoneTabs : milestoneTabs
+  const m = milestone.value?.iid === milestoneIID.value ? milestone.value : null
+  const list = m?.stored ? storedMilestoneTabs : milestoneTabs
+  const n = m ? needsOpen(m).count : 0
+  return n ? list.map((t) => (t.id === 'needs' ? { ...t, label: needsLabel(n) } : t)) : list
 })
 const tab = computed((): string => {
   if (everything.value) return 'stream'
@@ -224,16 +230,16 @@ const pauseProps = computed(() => {
     prompt: pausePrompt(m.autopilot?.pauseKind, m.prompts),
     namespace: props.namespace,
     projectName: props.name,
-    to: { name: 'stream-milestone', params: { namespace: props.namespace, name: props.name, iid: String(m.iid) }, query: { tab: 'pilot' } },
+    to: { name: 'stream-milestone', params: { namespace: props.namespace, name: props.name, iid: String(m.iid) }, query: { tab: 'needs' } },
   }
 })
 
 // holdProps: one compact card per held issue (stream tab; the Issues tab has
-// the Held lane, the Pilot tab the full cards), also while the milestone runs.
+// the Held lane, the Needs you tab the full cards), also while the milestone runs.
 const holdProps = computed(() => {
   const m = milestone.value
   if (everything.value || !m || m.stored || !props.namespace || !props.name) return []
-  const to = { name: 'stream-milestone', params: { namespace: props.namespace, name: props.name, iid: String(m.iid) }, query: { tab: 'pilot' } }
+  const to = { name: 'stream-milestone', params: { namespace: props.namespace, name: props.name, iid: String(m.iid) }, query: { tab: 'needs' } }
   return (m.autopilot?.holds ?? []).map((h) => ({ kind: h.kind, reason: h.reason, issue: h.iid, hold: true, milestoneTitle: m.title, exits: h.exits, to }))
 })
 
@@ -634,13 +640,23 @@ function showDay(i: number): string | null {
         </div>
       </div>
       <div v-else-if="tab === 'issues'" class="scroll board">
-        <!-- The full pause card is on the Pilot tab. -->
+        <!-- The full pause card is on the Needs you tab. -->
         <PauseCardCompact v-if="pauseProps" class="pause" v-bind="pauseProps" />
         <MilestoneIssues
           v-if="namespace && name && milestone && milestone.iid === milestoneIID"
           :milestone="milestone"
           :namespace="namespace"
           :name="name"
+        />
+        <div v-else-if="milestoneFailed" class="banner danger">The milestone could not be loaded.</div>
+        <div v-else class="empty">Loading…</div>
+      </div>
+      <div v-else-if="tab === 'needs'" class="scroll board">
+        <MilestoneNeeds
+          v-if="namespace && name && milestone && milestone.iid === milestoneIID"
+          :namespace="namespace"
+          :name="name"
+          :milestone="milestone"
         />
         <div v-else-if="milestoneFailed" class="banner danger">The milestone could not be loaded.</div>
         <div v-else class="empty">Loading…</div>

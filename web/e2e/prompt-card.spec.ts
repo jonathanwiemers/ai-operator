@@ -9,6 +9,7 @@ const widths = [
   { width: 1280, height: 800 },
 ]
 
+const needsTab = '/projects/team-a/shop/milestones/14?tab=needs'
 const pilotTab = '/projects/team-a/shop/milestones/14?tab=pilot'
 const chatPath = `/api/v1/projects/team-a/shop/tasks/${refundsPrompt.target.task}/chat`
 
@@ -26,6 +27,7 @@ async function open(
   path: string,
   size: { width: number; height: number },
   chat: { status: number; json: unknown } = { status: 200, json: { id: 991 } },
+  wait = true,
 ) {
   const origin = new URL(baseURL ?? '').origin
   const problems: Problems = { unknownAPI: [], otherOrigin: [], pageErrors: [] }
@@ -66,7 +68,7 @@ async function open(
     },
   )
   await page.goto(path)
-  await expect(page.locator(`#prompt-${refundsPrompt.id}`)).toBeVisible()
+  if (wait) await expect(page.locator(`#prompt-${refundsPrompt.id}`)).toBeVisible()
   return { problems, posts }
 }
 
@@ -75,7 +77,7 @@ const command = (cmd: Record<string, string>) => ({ body: JSON.stringify(cmd), c
 
 for (const size of widths) {
   test(`a click hides the buttons and shows sending@${size.width}`, async ({ page, baseURL }) => {
-    const { problems, posts } = await open(page, baseURL, pilotTab, size)
+    const { problems, posts } = await open(page, baseURL, needsTab, size)
     const card = page.locator(`#prompt-${refundsPrompt.id}`)
     await card.getByRole('button', { name: 'Refuse above one capture', exact: true }).click()
 
@@ -87,7 +89,7 @@ for (const size of widths) {
   })
 
   test(`a refused answer brings the buttons back with the error@${size.width}`, async ({ page, baseURL }) => {
-    const { problems, posts } = await open(page, baseURL, pilotTab, size, { status: 403, json: { error: 'forbidden' } })
+    const { problems, posts } = await open(page, baseURL, needsTab, size, { status: 403, json: { error: 'forbidden' } })
     const card = page.locator(`#prompt-${refundsPrompt.id}`)
     await card.getByRole('button', { name: 'Split across captures', exact: true }).click()
 
@@ -130,16 +132,19 @@ for (const size of widths) {
     expect(problems).toEqual(clean)
   })
 
-  test(`the pilot tab shows an open prompt once, its event row has no buttons@${size.width}`, async ({ page, baseURL }) => {
-    const { problems } = await open(page, baseURL, pilotTab, size)
-    await expect(page.locator(`[data-prompt="${refundsPrompt.id}"]`)).toHaveCount(1)
-
+  test(`the pilot tab shows an open prompt as one row without buttons, the row leads to its card@${size.width}`, async ({ page, baseURL }) => {
+    const { problems } = await open(page, baseURL, pilotTab, size, undefined, false)
     const events = page.locator('section', { has: page.getByRole('heading', { name: 'Pilot events' }) })
     const row = events.locator('[data-prompt-row]')
     await expect(row).toHaveCount(1)
     await expect(row.getByRole('link', { name: `${refundsPrompt.id} asked:` })).toBeVisible()
     await expect(row.getByText('open', { exact: true })).toBeVisible()
     await expect(row.getByRole('button')).toHaveCount(0)
+    // The card is on Needs you only.
+    await expect(page.locator(`[data-prompt="${refundsPrompt.id}"]`)).toHaveCount(0)
+    await row.getByRole('link', { name: `${refundsPrompt.id} asked:` }).click()
+    await expect(page.locator(`#prompt-${refundsPrompt.id}`)).toBeInViewport()
+    await expect(page.locator(`[data-prompt="${refundsPrompt.id}"]`)).toHaveCount(1)
     expect(problems).toEqual(clean)
   })
 }

@@ -2,14 +2,14 @@
 // so it can be linked to and reloaded; the first tab of a list is the
 // default and is left out.
 //
-// Project pages: Stream | Board | Spend. Milestone pages: Issues | Pilot |
-// Retrospective | Stream | Board | Spend (decision 7), so an old
+// Project pages: Stream | Board | Spend. Milestone pages: Issues | Needs you |
+// Pilot | Retrospective | Stream | Board | Spend (decision 7, R12), so an old
 // milestone link with ?tab=stream still opens the stream. The dashboard
 // at /: Overview | Stream (decision 3). The task page (and the issue page
 // with a live task): Overview | Chat | Live | Logs | Calls | Details (R10;
 // Logs for the task's owners, run watchdog R8).
 export type StreamTab = 'stream' | 'board' | 'spend'
-export type MilestoneTab = 'issues' | 'pilot' | 'retrospective' | StreamTab
+export type MilestoneTab = 'issues' | 'needs' | 'pilot' | 'retrospective' | StreamTab
 export type DashboardTab = 'overview' | 'stream'
 export type TaskTab = 'overview' | 'chat' | 'live' | 'logs' | 'calls' | 'details'
 // A plan's tabs on phones; desktop shows both columns.
@@ -32,6 +32,7 @@ export const projectTabs: Tab<StreamTab>[] = [
 
 export const milestoneTabs: Tab<MilestoneTab>[] = [
   { id: 'issues', label: 'Issues' },
+  { id: 'needs', label: 'Needs you' },
   { id: 'pilot', label: 'Pilot' },
   { id: 'retrospective', label: 'Retrospective' },
   ...projectTabs,
@@ -74,11 +75,12 @@ export function tabFromQuery(v: QueryValue, tabs: readonly Tab<string>[] = proje
 }
 
 // milestoneTabFromRoute is a milestone page's tab: ?tab= as tabFromQuery
-// reads it, but a prompt link (#prompt-Q<n>) without ?tab= opens the Pilot
-// tab, where the prompt's card is (D230-P1).
+// reads it, but a prompt or problem link (#prompt-Q<n>, #problem-<iid>)
+// without ?tab= opens the Needs you tab, where the card is (R12).
 export function milestoneTabFromRoute(v: QueryValue, hash: string, tabs: readonly Tab<string>[] = milestoneTabs): string {
   const none = v == null || v === '' || (Array.isArray(v) && !v.length)
-  if (none && hash.startsWith('#prompt-') && tabs.some((t) => t.id === 'pilot')) return 'pilot'
+  const card = hash.startsWith('#prompt-') || hash.startsWith('#problem-')
+  if (none && card && tabs.some((t) => t.id === 'needs')) return 'needs'
   return tabFromQuery(v, tabs)
 }
 

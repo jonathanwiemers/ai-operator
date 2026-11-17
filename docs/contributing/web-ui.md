@@ -930,13 +930,11 @@ the autopilot queue (`web/src/components/QueueList.vue`, on the Issues tab
 and in the context sheet) are Tailwind utilities and Nuxt UI tokens,
 without scoped CSS.
 
-- The Pilot tab keeps its order: pause card, questions (the merged
-  `PromptCard`), the message box (*Ask the pilot* is `TaskChat` with the
-  merged `Composer`, so its input is 16 px on phones), pilot events and the
-  pause history. On phones the *Pilot task* link and the *Earlier
-  questions* fold are 44 px high.
-- A prompt link (`#prompt-Q<n>`) still opens this tab, unfolds *Earlier
-  questions* for a closed prompt and scrolls to its card.
+- The Pilot tab keeps its order: the pilot line (autonomy, cost, *Pilot
+  task*), the message box (*Ask the pilot* is `TaskChat` with the merged
+  `Composer`, so its input is 16 px on phones) and pilot events. On phones
+  the *Pilot task* link is 44 px high.
+
 - A queue item shows its position, its number (never wrapped), its title
   (two lines, the rest opens on tap) and its state, which wrap onto lines of
   their own where the column is narrow; below come what a waiting item
@@ -977,9 +975,32 @@ payload and the stepper's payload and pending limit
 `milestone-queue@<width>.png`, `milestone-queue-dark@<width>.png`); the route checks cover
 `stream-milestone-pilot` at the three widths.
 
+### Needs you tab
+
+The milestone's Needs you tab (`web/src/components/MilestoneNeeds.vue`,
+utilities only) sits between Issues and Pilot. `needsOpen`
+(`web/src/needsOpen.ts`) splits the milestone view for it.
+
+- *Open* (live milestones only): the full pause card, one card per hold,
+  the open prompts (the merged `PromptCard`) without the pause card's own,
+  and the pilot's open proposals (P-n) with *Accept* and *Reject*, which
+  post the same chat command to the pilot task as the chat's buttons did.
+  The tab's label is *Needs you · n*, n the items under *Open*.
+- *Handled*: the closed prompts under *Earlier questions* and the pause
+  history (`PausesCard`). A stored milestone shows only *Handled*.
+- A prompt or problem link (`#prompt-Q<n>`, `#problem-<iid>`) without
+  `?tab=` opens this tab; a closed prompt's link unfolds *Earlier
+  questions* and scrolls to its card. On phones the fold is 44 px high.
+
+The e2e cases in `web/e2e/needs-you.spec.ts` at 375 and 1280 px check that
+a prompt link opens this tab at the card, that an open prompt shows once
+and is counted in the label, that a pause card's own prompt is not listed
+again, and that the Pilot tab has no questions and no pause history; the
+route checks cover `stream-milestone-needs` at the three widths.
+
 ### Pause cards
 
-The full pause card (`web/src/components/PauseCard.vue`, on the Pilot
+The full pause card (`web/src/components/PauseCard.vue`, on the Needs you
 tab), the pause history (`web/src/components/PausesCard.vue`) and the
 compact card (`web/src/components/PauseCardCompact.vue`, Inbox, board,
 stream) are Tailwind utilities and Nuxt UI tokens, without scoped CSS.

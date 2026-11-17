@@ -64,7 +64,7 @@ const reason = 'muted min-w-0 text-[13px] [&[role=button]]:relative [&[role=butt
           v-for="m in strip.milestones"
           :key="`${m.namespace}/${m.project}/${m.milestoneIID}`"
           class="inline-flex max-w-full min-h-11 items-center break-words tablet:min-h-0"
-          :to="{ name: 'stream-milestone', params: { namespace: m.namespace, name: m.project, iid: String(m.milestoneIID) }, query: { tab: 'pilot' } }"
+          :to="{ name: 'stream-milestone', params: { namespace: m.namespace, name: m.project, iid: String(m.milestoneIID) }, query: { tab: 'needs' } }"
         >
           {{ m.project }} · {{ m.title || `%${m.milestoneIID}` }}<template v-if="m.sinceMs != null"> ({{ duration(m.sinceMs) }})</template>
         </RouterLink>

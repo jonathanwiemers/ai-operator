@@ -61,7 +61,7 @@ test('dashboard tabQuery: overview drops the parameter, stream sets it', () => {
 })
 
 test('milestone tabs: Issues is the default', () => {
-  assert.deepEqual(milestoneTabs.map((t) => t.id), ['issues', 'pilot', 'retrospective', 'stream', 'board', 'spend'])
+  assert.deepEqual(milestoneTabs.map((t) => t.id), ['issues', 'needs', 'pilot', 'retrospective', 'stream', 'board', 'spend'])
   assert.equal(tabFromQuery(undefined, milestoneTabs), 'issues')
   assert.equal(tabFromQuery('', milestoneTabs), 'issues')
   assert.equal(tabFromQuery('issues', milestoneTabs), 'issues')
@@ -89,7 +89,7 @@ test('milestone tabQuery: Issues drops the parameter, Stream sets it', () => {
 })
 
 test('stored milestone tabs: no Board, a board link falls back to Issues', () => {
-  assert.deepEqual(storedMilestoneTabs.map((t) => t.id), ['issues', 'pilot', 'retrospective', 'stream', 'spend'])
+  assert.deepEqual(storedMilestoneTabs.map((t) => t.id), ['issues', 'needs', 'pilot', 'retrospective', 'stream', 'spend'])
   assert.equal(tabFromQuery('board', storedMilestoneTabs), 'issues')
 })
 
@@ -99,10 +99,10 @@ test('milestone tabs: ?tab=pilot opens the Pilot tab', () => {
   assert.deepEqual(tabQuery({}, 'pilot', milestoneTabs), { tab: 'pilot' })
 })
 
-test('milestoneTabFromRoute: a #prompt-Q<n> hash without ?tab= opens Pilot', () => {
-  assert.equal(milestoneTabFromRoute(undefined, '#prompt-Q4'), 'pilot')
-  assert.equal(milestoneTabFromRoute('', '#prompt-Q4'), 'pilot')
-  assert.equal(milestoneTabFromRoute(null, '#prompt-Q12', storedMilestoneTabs), 'pilot')
+test('milestoneTabFromRoute: a #prompt-Q<n> hash without ?tab= opens Needs you', () => {
+  assert.equal(milestoneTabFromRoute(undefined, '#prompt-Q4'), 'needs')
+  assert.equal(milestoneTabFromRoute('', '#prompt-Q4'), 'needs')
+  assert.equal(milestoneTabFromRoute(null, '#prompt-Q12', storedMilestoneTabs), 'needs')
 })
 
 test('milestoneTabFromRoute: ?tab= wins over the hash, other hashes keep the default', () => {
@@ -145,4 +145,16 @@ test('planTabs: Chat is the default, Draft is kept in ?tab=', () => {
   assert.equal(tabFromQuery('draft', planTabs), 'draft')
   assert.deepEqual(tabQuery({ tab: 'draft' }, 'chat', planTabs), {})
   assert.deepEqual(tabQuery({}, 'draft', planTabs), { tab: 'draft' })
+})
+
+test('milestoneTabFromRoute: prompt and problem links open Needs you, ?tab=pilot stays on Pilot', () => {
+  assert.equal(milestoneTabFromRoute(undefined, '#prompt-Q3'), 'needs')
+  assert.equal(milestoneTabFromRoute(undefined, '#problem-12'), 'needs')
+  assert.equal(milestoneTabFromRoute('pilot', '#prompt-Q3'), 'pilot')
+  assert.equal(milestoneTabFromRoute('needs', ''), 'needs')
+})
+
+test('milestone tabs: Needs you sits between Issues and Pilot, also when stored', () => {
+  assert.deepEqual(milestoneTabs.slice(0, 3).map((t) => t.label), ['Issues', 'Needs you', 'Pilot'])
+  assert.ok(storedMilestoneTabs.some((t) => t.id === 'needs'))
 })

@@ -43,7 +43,7 @@ the hold cards, the pilot's prompts with its autonomy and cost, and *Message the
 pilot*, the message box. Type your question there; the answer comes in the
 same thread.
 
-![Pause card on the milestone's Pilot tab: why it paused, the ways out and the pilot's question](../assets/screenshots/milestone-pilot.webp)
+![Pause card on the milestone's Needs you tab: why it paused, the ways out and the pilot's question](../assets/screenshots/milestone-pilot.webp)
 
 Answer a prompt with one click on an option. On a prompt with a text box
 you can also write a sentence, such as "do it differently: retry with the

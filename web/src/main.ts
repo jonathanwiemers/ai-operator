@@ -63,7 +63,11 @@ listenForSheets()
 const router = createRouter({
   history: createWebHistory(),
   routes,
-  scrollBehavior: (_to, _from, saved) => saved ?? { top: 0 },
+  // A prompt link scrolls to its card: the card scrolls itself into view
+  // when it mounts, which the jump to the top would undo on an in-app
+  // navigation (the window scrolls on phones). A missing card leaves the
+  // scroll to the card once it loads.
+  scrollBehavior: (to, _from, saved) => saved ?? (to.hash.startsWith('#prompt-') ? { el: to.hash, top: 12 } : { top: 0 }),
 })
 
 // Research pages exist only with the research feature; without it they are

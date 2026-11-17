@@ -23,7 +23,7 @@ const shots: Shot[] = [
   { name: 'dashboard-dark', path: '/', colorScheme: 'dark', ready: text('Checkout without account') },
   { name: 'project-stream', path: shop, ready: text('Run 2 needs input') },
   { name: 'milestone-issues', path: `${shop}/milestones/14`, ready: text('Document the refund flow for support') },
-  { name: 'milestone-pilot', path: `${shop}/milestones/14?tab=pilot`, ready: text('Split across captures') },
+  { name: 'milestone-pilot', path: `${shop}/milestones/14?tab=needs`, ready: text('Split across captures') },
   {
     name: 'milestone-retrospective',
     path: `${shop}/milestones/14?tab=retrospective`,

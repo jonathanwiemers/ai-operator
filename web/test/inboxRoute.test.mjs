@@ -6,8 +6,8 @@ import { inboxRoute } from '../src/inboxRoute.ts'
 
 const item = (kind, over = {}) => ({ namespace: 'team', project: 'shop', kind, ...over })
 
-test('inboxRoute: pauses and proposals open the milestone Pilot tab', () => {
-  const want = { name: 'stream-milestone', params: { namespace: 'team', name: 'shop', iid: '3' }, query: { tab: 'pilot' } }
+test('inboxRoute: pauses and proposals open the milestone Needs you tab', () => {
+  const want = { name: 'stream-milestone', params: { namespace: 'team', name: 'shop', iid: '3' }, query: { tab: 'needs' } }
   assert.deepEqual(inboxRoute(item('pause', { task: 'shop-spec-m3', milestoneIID: 3 })), want)
   assert.deepEqual(inboxRoute(item('proposal', { task: 'shop-pilot', milestoneIID: 3 })), want)
 })
@@ -33,11 +33,11 @@ test('inboxRoute: the rest opens the project stream', () => {
   assert.deepEqual(inboxRoute(item('proposal', { task: 'shop-pilot' })), want)
 })
 
-test('inboxRoute: prompts open the milestone Pilot tab or the task page, with the prompt hash', () => {
+test('inboxRoute: prompts open the milestone Needs you tab or the task page, with the prompt hash', () => {
   assert.deepEqual(inboxRoute(item('prompt', { task: 'shop-spec-m3', milestoneIID: 3, promptID: 'Q4', reason: 'mainHealth' })), {
     name: 'stream-milestone',
     params: { namespace: 'team', name: 'shop', iid: '3' },
-    query: { tab: 'pilot' },
+    query: { tab: 'needs' },
     hash: '#prompt-Q4',
   })
   assert.deepEqual(inboxRoute(item('prompt', { task: 'shop-impl-12', milestoneIID: 3, promptID: 'Q1', reason: 'needsInput' })), {

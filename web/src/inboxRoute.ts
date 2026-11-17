@@ -3,7 +3,7 @@ import type { InboxItem } from './types'
 type MilestoneRoute = {
   name: 'stream-milestone'
   params: { namespace: string; name: string; iid: string }
-  query?: { tab: 'pilot' }
+  query?: { tab: 'needs' }
   hash?: string
 }
 
@@ -14,8 +14,8 @@ export type InboxRoute =
 
 // inboxRoute is where an Inbox item leads, for a click on its row and on its
 // notification alike. Pauses, proposals and a milestone's prompts open the
-// milestone's Pilot tab, which holds the full pause card, the prompt cards
-// and the pilot chat with the proposal actions. A ready companion opens its
+// milestone's Needs you tab, which holds the full pause card, the prompt
+// cards and the proposals with their actions. A ready companion opens its
 // home task, without one its milestone. An issue's budget warning opens its
 // implement task, where the issue's budget is raised (chat `budget <usd>`),
 // without one its milestone.
@@ -25,10 +25,10 @@ export function inboxRoute(item: InboxItem): InboxRoute {
     const hash = item.promptID ? `#prompt-${item.promptID}` : undefined
     // An agent's question sits on its task page, the others in the milestone.
     if (item.reason === 'needsInput' && item.task) return { name: 'task', params: { ...base, task: item.task }, hash }
-    if (item.milestoneIID) return { ...pilotTab(base, item.milestoneIID), hash }
+    if (item.milestoneIID) return { ...needsTab(base, item.milestoneIID), hash }
     if (item.task) return { name: 'task', params: { ...base, task: item.task }, hash }
   }
-  if (item.milestoneIID && (item.kind === 'pause' || item.kind === 'proposal')) return pilotTab(base, item.milestoneIID)
+  if (item.milestoneIID && (item.kind === 'pause' || item.kind === 'proposal')) return needsTab(base, item.milestoneIID)
   // A ready companion opens its home task (release, home MR, owners); the
   // Inbox row also links the companion MR itself.
   if ((item.kind === 'task' || item.kind === 'companionReady' || item.kind === 'budgetWarning') && item.task) return { name: 'task', params: { ...base, task: item.task } }
@@ -36,6 +36,6 @@ export function inboxRoute(item: InboxItem): InboxRoute {
   return { name: 'stream-project', params: base }
 }
 
-function pilotTab(base: { namespace: string; name: string }, iid: number): MilestoneRoute {
-  return { name: 'stream-milestone', params: { ...base, iid: String(iid) }, query: { tab: 'pilot' } }
+function needsTab(base: { namespace: string; name: string }, iid: number): MilestoneRoute {
+  return { name: 'stream-milestone', params: { ...base, iid: String(iid) }, query: { tab: 'needs' } }
 }

@@ -42,11 +42,11 @@ const section = 'mt-9 min-w-0 first:mt-0'
       <Badge v-else-if="m.spec?.status.autopilot" :tone="apTone(m.spec.status.autopilot.phase)">
         Autopilot {{ m.spec.status.autopilot.phase.toLowerCase() }}
       </Badge>
-      <!-- Held issues: the Pilot tab has a card per hold. -->
+      <!-- Held issues: the Needs you tab has a card per hold. -->
       <RouterLink
         v-if="m.spec?.status.autopilot?.items && queueHeld(m.spec.status.autopilot.items)"
         :class="tap"
-        :to="{ name: 'stream-milestone', params: { namespace, name, iid: String(m.iid) }, query: { tab: 'pilot' } }"
+        :to="{ name: 'stream-milestone', params: { namespace, name, iid: String(m.iid) }, query: { tab: 'needs' } }"
         data-board-holds
       >
         <Badge tone="warning">{{ queueHeld(m.spec.status.autopilot.items) }} held</Badge>
@@ -69,7 +69,7 @@ const section = 'mt-9 min-w-0 first:mt-0'
       :reason="m.spec.status.autopilot.pausedReason"
       :issue="m.spec.status.autopilot.pausedFor"
       :waiting="autopilotWaitingFor(m.spec.status.autopilot, m.tasks)"
-      :to="{ name: 'stream-milestone', params: { namespace, name, iid: String(m.iid) }, query: { tab: 'pilot' } }"
+      :to="{ name: 'stream-milestone', params: { namespace, name, iid: String(m.iid) }, query: { tab: 'needs' } }"
     />
 
     <RouterLink

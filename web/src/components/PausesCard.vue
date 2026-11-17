@@ -8,7 +8,7 @@ import Truncated from '../ui/Truncated.vue'
 import Markdown from './Markdown.vue'
 import RelTime from './RelTime.vue'
 
-// PausesCard is the milestone's pause history on the Pilot tab: the totals,
+// PausesCard is the milestone's pause history on the Needs you tab: the totals,
 // the kinds by time paused, who resolved them and how, and the newest
 // pauses. An open pause counts on up to now.
 //

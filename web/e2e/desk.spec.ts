@@ -41,7 +41,8 @@ const projectReady = {
 }
 const milestoneReady = {
   issues: 'Document the refund flow for support',
-  pilot: 'Split across captures',
+  needs: 'Split across captures',
+  pilot: 'Message the pilot',
   retrospective: 'Retry the registry push in the release job',
   stream: 'Run 2 needs input',
   board: 'Partial captures for split shipments',
@@ -127,7 +128,7 @@ const routes: Route[] = [
     colorScheme: 'dark',
     ready: (page) => expect(page.locator('[data-finishing-entry]').first()).toBeVisible(),
   },
-  ...(['issues', 'pilot', 'retrospective', 'stream', 'board', 'spend'] as const).map(
+  ...(['issues', 'needs', 'pilot', 'retrospective', 'stream', 'board', 'spend'] as const).map(
     (tab): Route => ({
       name: `stream-milestone-${tab}`,
       path: `/projects/team-a/shop/milestones/14?tab=${tab}`,
@@ -1144,13 +1145,13 @@ test.describe('inbox rows', () => {
       const prompt = list.locator('li', { hasText: 'Support refunds' })
       const box = (await prompt.boundingBox())!
       await page.mouse.click(box.x + box.width - 8, box.y + box.height - 8)
-      await expect(page).toHaveURL(/\/projects\/team-a\/shop\/milestones\/14\?tab=pilot#prompt-p-281-1$/)
+      await expect(page).toHaveURL(/\/projects\/team-a\/shop\/milestones\/14\?tab=needs#prompt-p-281-1$/)
 
-      // The pause row's Open leads to the milestone's Pilot tab.
+      // The pause row's Open leads to the milestone's Needs you tab.
       await page.goBack()
       await route.ready(page)
       await list.locator('li', { hasText: 'Payment providers' }).getByRole('link', { name: 'Open' }).click()
-      await expect(page).toHaveURL(/\/projects\/team-a\/shop\/milestones\/14\?tab=pilot$/)
+      await expect(page).toHaveURL(/\/projects\/team-a\/shop\/milestones\/14\?tab=needs$/)
     })
   }
 })
@@ -1910,7 +1911,7 @@ test.describe('composer', () => {
 })
 
 // The prompt card (PromptCard.vue, R11): one component, full on the task
-// page and the milestone's Pilot tab, compact in the stream. An option, the
+// page and the milestone's Needs you tab, one line in the stream. An option, the
 // text box and the compact card's recommended option post an answer command
 // to the prompt's target task's chat; the card then waits for the reply. On
 // a phone the option buttons and Send are at least 44 px and the text 16 px.
@@ -1984,8 +1985,8 @@ test.describe('prompt card', () => {
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })
 
-    test(`pilot tab answers in free text@${size.width}`, async ({ page, baseURL }, testInfo) => {
-      const { problems, posts } = await open(page, baseURL, 'stream-milestone-pilot', size)
+    test(`needs you tab answers in free text@${size.width}`, async ({ page, baseURL }, testInfo) => {
+      const { problems, posts } = await open(page, baseURL, 'stream-milestone-needs', size)
       const card = page.locator(`#prompt-${refundsPrompt.id}`)
       const text = card.getByRole('textbox', { name: `Answer ${refundsPrompt.id} in your words` })
       const send = card.getByRole('button', { name: 'Send', exact: true })
@@ -2319,7 +2320,7 @@ test.describe('milestone issues', () => {
 
 // The milestone's Pilot tab (MilestonePilot.vue) and the queue
 // (QueueList.vue, R12), utilities only. A prompt link without ?tab= opens
-// the Pilot tab, unfolds Earlier questions for a closed prompt and scrolls
+// the Needs you tab, unfolds Earlier questions for a closed prompt and scrolls
 // to its card. The queue keeps its order, numbers stay on one line, and on
 // a phone the links and the fold are 44 px high.
 test.describe('milestone pilot', () => {
@@ -2356,26 +2357,24 @@ test.describe('milestone pilot', () => {
       const problems = await open(page, baseURL, 'stream-milestone-pilot', size)
       expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
       if (phone) {
-        const heights = await page.locator('main').evaluate((main) => {
-          const pilot = main.querySelector('[data-pilot]')!
-          return {
-            links: [...pilot.querySelectorAll('a')].map((a) => a.getBoundingClientRect().height),
-            fold: main.querySelector('[data-earlier] > summary')!.getBoundingClientRect().height,
-          }
-        })
-        for (const h of heights.links) expect(h, 'pilot link height').toBeGreaterThanOrEqual(44)
-        expect(heights.fold, 'Earlier questions height').toBeGreaterThanOrEqual(44)
+        const links = await page.locator('main [data-pilot] a').evaluateAll((as) => as.map((a) => a.getBoundingClientRect().height))
+        expect(links.length, 'pilot links').toBeGreaterThan(0)
+        for (const h of links) expect(h, 'pilot link height').toBeGreaterThanOrEqual(44)
       }
       await shoot(page, testInfo, `milestone-pilot@${size.width}`)
 
-      // The answered Q3 is folded under Earlier questions: its link opens
-      // the Pilot tab, unfolds it and scrolls to the card.
+      // The answered Q3 is folded under Earlier questions on Needs you: its
+      // link opens that tab, unfolds it and scrolls to the card.
       await page.goto('/projects/team-a/shop/milestones/14#prompt-Q3')
       const card = page.locator('#prompt-Q3')
       await expect(card).toBeVisible()
       await expect(page.locator('main [data-earlier]')).toHaveAttribute('open', '')
       await expect(card).toBeInViewport()
       expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
+      if (phone) {
+        const fold = await page.locator('main [data-earlier] > summary').evaluate((s) => s.getBoundingClientRect().height)
+        expect(fold, 'Earlier questions height').toBeGreaterThanOrEqual(44)
+      }
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })
 
@@ -2468,7 +2467,7 @@ test.describe('milestone pilot', () => {
     const phone = size.width < 760
 
     test(`pause cards: reason opens on tap, Skip posts@${size.width}`, async ({ page, baseURL }, testInfo) => {
-      const route = routes.find((r) => r.name === 'stream-milestone-pilot')!
+      const route = routes.find((r) => r.name === 'stream-milestone-needs')!
       const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
       await page.setViewportSize(size)
       await page.clock.setFixedTime(now)
@@ -2515,7 +2514,7 @@ test.describe('milestone pilot', () => {
         await expect(reason).toHaveAttribute('aria-expanded', 'true')
         expect(await reason.evaluate((e) => e.scrollWidth <= e.clientWidth && e.scrollHeight <= e.clientHeight), 'reason shown in full').toBe(true)
         await expect(reason.locator('code')).toHaveText('test:integration-payments')
-        await expect(page).toHaveURL(/\/milestones\/14(\?tab=pilot)?$/)
+        await expect(page).toHaveURL(/\/milestones\/14(\?tab=needs)?$/)
       }
       await shoot(page, testInfo, `pause-cards@${size.width}`)
 

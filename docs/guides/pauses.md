@@ -41,7 +41,7 @@ description lists every hold under its status line.
 
 ## In the Desk
 
-![Pause card on the milestone's Pilot tab: why it paused, the ways out and the pilot's question](../assets/screenshots/milestone-pilot.webp)
+![Pause card on the milestone's Needs you tab: why it paused, the ways out and the pilot's question](../assets/screenshots/milestone-pilot.webp)
 
 The milestone's *Pilot* tab shows a pause as a card: the cause, the paused
 issue and its merge request, what ends the pause by itself, and buttons for

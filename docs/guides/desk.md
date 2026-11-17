@@ -225,16 +225,22 @@ requests lists them under *Companions*.
 Click a row to open the **issue page**: the same figures, the task while one
 works on the issue, and the issue's own stream.
 
+### Needs you
+
+![Needs you tab with the pause card, its ways out and an open question](../assets/screenshots/milestone-pilot.webp)
+
+What waits for the milestone's owners. While something is open, the tab
+reads *Needs you · n*. *Open* holds the pause card and the hold cards, the
+open questions and the pilot's open proposals with *Accept* and *Reject*.
+*Handled* folds the earlier questions and shows the pause history: how long
+the milestone was paused, why, and who ended each pause. A link to a
+question (`#prompt-Q3`) opens this tab at its card.
+
 ### Pilot
 
-![Pilot tab with the pause card, its ways out and an open question](../assets/screenshots/milestone-pilot.webp)
-
-Everything for the milestone's owners: the pause card and the hold cards,
-the pilot's prompts with its autonomy and cost, *Message the pilot*, the
-pilot's events (questions, answers, pauses, releases, comments and chat),
-and the pause history: how long the milestone was paused, why, and who
-ended each pause. See
-[Steer from the Desk](steer-from-the-desk.md#ask-the-pilot).
+The pilot's autonomy and cost, *Message the pilot*, and the pilot's events
+(questions as one line each, answers, pauses, releases, comments and chat).
+See [Steer from the Desk](steer-from-the-desk.md#ask-the-pilot).
 
 ### Retrospective
 
