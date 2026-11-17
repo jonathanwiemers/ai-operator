@@ -243,7 +243,8 @@ cache-read share, and the calls of unknown cost. Below them:
   effort and by step session. Each row shows the merged issues, their
   merged lines, the cost and tokens of all its issues, and the cost per
   100 merged lines. A row with fewer than 5 merged issues is greyed out:
-  too few to compare.
+  too few to compare. How to run an experiment and read these tables is in
+  [Cost levers](cost-levers.md).
 - **Context:** per project, the median base context per role (what a
   fresh session holds before the agent starts) and the five tools whose
   results put the most tokens into the context.
@@ -286,3 +287,5 @@ call that followed it. How to run it is in
   fields.
 - [Agents and models](../reference/agents-and-models.md): the levers the
   tuning tables point at.
+- [Cost levers](cost-levers.md): try those levers side by side and compare
+  the cost per merged line.

@@ -209,7 +209,8 @@ The condition `ExperimentValid` on the AgentProject is `True` for a valid
 experiment and `False`, naming the problems, for an invalid one: then no
 issue gets an arm. Without an experiment the condition is absent. Rename
 the experiment or drop an arm, and the issues already assigned to it run
-without arm overrides and record no arm.
+without arm overrides and record no arm. How to run an experiment and read
+its results is in [Cost levers](../guides/cost-levers.md).
 
 ## Subagents
 

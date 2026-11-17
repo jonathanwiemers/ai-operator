@@ -16,6 +16,13 @@ The Kubernetes resource you write once per GitLab project: which project,
 which tokens, which models, how many runs at a time. Its fields are in the
 [AgentProject reference](../reference/agentproject.md).
 
+### Arm
+
+One variant of an [experiment](#experiment): a name and the implementer
+settings it changes, such as a fresh session per step, a lower effort or a
+[profile](#profile). An issue keeps its arm for every run. See
+[Cost levers](../guides/cost-levers.md#how-issues-get-their-arm).
+
 ### Autopilot
 
 A milestone with `/agent autopilot` in its description runs end to end:
@@ -63,6 +70,13 @@ See [How it works](how-it-works.md#steering-it) and the guides
 The coding agent CLI a role runs on: Claude Code (`claude`) or Cursor
 (`cursor`). Each role and [profile](#profile) names an engine and a model;
 see [Roles](roles.md).
+
+### Experiment
+
+Two to four [arms](#arm) of implementer settings that a project tries side
+by side, set in `agents.implement.experiment`. Each issue runs on one arm,
+and the Desk's Costs page compares the arms' cost per merged line. See
+[Cost levers](../guides/cost-levers.md).
 
 ### Hold
 

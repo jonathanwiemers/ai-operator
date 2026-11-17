@@ -2,7 +2,7 @@
 
 Each guide shows how to do one task once ai-operator runs: write a milestone,
 answer the agent, run a milestone on autopilot, handle a pause, steer from
-the Desk, watch spend, release. Guides show the Desk first and the `/agent`
+the Desk, watch spend, try cost levers, release. Guides show the Desk first and the `/agent`
 comment second.
 
 ## Pages
@@ -35,14 +35,17 @@ In the order you need them for a milestone:
     the planner, costs and the Desk on a phone.
 12. [Budgets and spend](budgets-and-spend.md): what counts as spend, budgets
     for a milestone and its issues, and the Spend tab and Costs page.
-13. [Releases](releases.md): release points in the plan, `/agent release`,
+13. [Cost levers](cost-levers.md): try fresh step sessions, a lower effort
+    and a cheaper profile side by side in an experiment, and read the arm
+    table and the Context panel.
+14. [Releases](releases.md): release points in the plan, `/agent release`,
     the final release, the sweep and the version format.
-14. [Cross-repo changes](cross-repo-changes.md): a change that spans a
+15. [Cross-repo changes](cross-repo-changes.md): a change that spans a
     companion repository, and how its merge request lands.
-15. [Watch from Kubernetes](watch-from-kubernetes.md): `kubectl` views of
+16. [Watch from Kubernetes](watch-from-kubernetes.md): `kubectl` views of
     projects and tasks, run logs, and what happens when an agent container
     or a pod is lost.
-16. [Research](research.md): news flashes and one-off reports, turning
+17. [Research](research.md): news flashes and one-off reports, turning
     research on, choosing agents, retention and troubleshooting.
 
 ## Next

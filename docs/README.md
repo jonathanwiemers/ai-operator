@@ -25,7 +25,8 @@ get [your first milestone](getting-started/first-milestone.md) planned.
 [pauses](guides/pauses.md), work with [the pilot](guides/pilot.md),
 know what happens [when runs go wrong](guides/when-runs-go-wrong.md), use
 [the Desk](guides/desk.md) and [steer from it](guides/steer-from-the-desk.md),
-watch [budgets and spend](guides/budgets-and-spend.md), ship
+watch [budgets and spend](guides/budgets-and-spend.md), try
+[cost levers](guides/cost-levers.md), ship
 [releases](guides/releases.md), make
 [cross-repo changes](guides/cross-repo-changes.md),
 [watch from Kubernetes](guides/watch-from-kubernetes.md) and run
