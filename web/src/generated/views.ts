@@ -1543,6 +1543,40 @@ export interface InboxItem {
  */
 export interface InboxResponse {
   items: InboxItem[];
+  /**
+   * Handled are the prompts closed and the pilot's actions of the last
+   * handledWindow, newest first, at most handledMax.
+   */
+  handled: HandledItem[];
+}
+/**
+ * HandledItem is a prompt that closed or an action the pilot ran
+ * (status.pilot.acted) in the last handledWindow.
+ */
+export interface HandledItem {
+  namespace: string;
+  project: string;
+  milestoneIID?: number /* int64 */;
+  /**
+   * IssueIID is the prompt's issue, or the action's first issue; 0 for
+   * the milestone.
+   */
+  issueIID?: number /* int64 */;
+  kind: 'prompt' | 'acted';
+  promptID?: string;
+  /**
+   * Title is the prompt's question or the action's summary. Untrusted.
+   */
+  title: string;
+  closedReason?: aiv1.PromptClosedReason;
+  closedBy?: aiv1.PauseResolver;
+  replacedBy?: string;
+  /**
+   * By is who answered the prompt, or the owner who accepted the action
+   * (empty: the pilot on its own).
+   */
+  by?: string;
+  at: string;
 }
 
 //////////

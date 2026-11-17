@@ -46,7 +46,7 @@ func TestResponsesKeepTheirShape(t *testing.T) {
 			map[string]any{"research": detail, "run": (*ResearchRun)(nil), "result": (*ResearchResult)(nil)}},
 		{"research runs", ResearchRunsPage{Runs: []ResearchRun{run}}, map[string]any{"runs": []ResearchRun{run}}},
 		{"research search", ResearchSearchPage{Hits: hits}, map[string]any{"hits": hits}},
-		{"inbox", InboxResponse{Items: items}, map[string]any{"items": items}},
+		{"inbox", InboxResponse{Items: items, Handled: []HandledItem{}}, map[string]any{"items": items, "handled": []any{}}},
 		{"research created", ResearchCreated{Namespace: "ns", Name: "n"}, map[string]string{"namespace": "ns", "name": "n"}},
 		{"logout redirect", LoginRedirect{Redirect: "/"}, map[string]string{"redirect": "/"}},
 		{"gitlab disconnected", GitLabDisconnected{Status: "disconnected"}, map[string]string{"status": "disconnected"}},

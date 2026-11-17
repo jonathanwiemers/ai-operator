@@ -102,6 +102,42 @@ export const inbox: InboxResponse = {
       at: ago(60 * 5),
     },
   ],
+  // The Handled view: newest first, one of each label.
+  handled: [
+    {
+      namespace: 'team-a',
+      project: 'shop',
+      milestoneIID: 14,
+      issueIID: 281,
+      kind: 'prompt',
+      promptID: 'Q3',
+      title: 'Release SDK 4 before the refunds issue?',
+      closedReason: 'answered',
+      closedBy: 'owner',
+      by: 'jo',
+      at: ago(30),
+    },
+    {
+      namespace: 'team-a',
+      project: 'shop',
+      milestoneIID: 14,
+      issueIID: 282,
+      kind: 'acted',
+      title: 'Retry #282 after the flaky e2e job',
+      at: ago(60 * 3),
+    },
+    {
+      namespace: 'team-a',
+      project: 'shop',
+      milestoneIID: 12,
+      kind: 'prompt',
+      promptID: 'Q2',
+      title: 'Main is red since `d4e5f6a`. Revert it?',
+      closedReason: 'mainHealthy',
+      closedBy: 'operator',
+      at: ago(60 * 26),
+    },
+  ],
 }
 
 // GET /api/v1/researches: the rail's research section.

@@ -147,7 +147,14 @@ count also shows in the browser tab's title, as `(3) Desk`:
 - issues that spent 80 % of their own [budget](../concepts/glossary.md#budget);
 - a status write of the pilot that the cluster refused, for a day.
 
-A row opens where you act: a milestone's *Pilot* tab, or the task page.
+A row opens where you act: a milestone's *Needs you* tab, or the task page.
+
+The *Open | Handled* switch on top changes the list. *Open* is the list
+above. *Handled* shows what closed in the last 7 days, newest first, at most
+50 rows: the prompts that closed, with who closed them and why, and the
+actions the pilot ran on its own or after an owner accepted them. A row
+opens the issue's problem on the milestone's *Needs you* tab. A link to
+`/inbox?view=handled` opens *Handled* directly.
 
 ### Browser notifications
 

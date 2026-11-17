@@ -538,6 +538,31 @@ type InboxItem struct {
 // InboxResponse is GET /api/v1/inbox.
 type InboxResponse struct {
 	Items []InboxItem `json:"items"`
+	// Handled are the prompts closed and the pilot's actions of the last
+	// handledWindow, newest first, at most handledMax.
+	Handled []HandledItem `json:"handled"`
+}
+
+// HandledItem is a prompt that closed or an action the pilot ran
+// (status.pilot.acted) in the last handledWindow.
+type HandledItem struct {
+	Namespace    string `json:"namespace"`
+	Project      string `json:"project"`
+	MilestoneIID int64  `json:"milestoneIID,omitempty"`
+	// IssueIID is the prompt's issue, or the action's first issue; 0 for
+	// the milestone.
+	IssueIID int64  `json:"issueIID,omitempty"`
+	Kind     string `json:"kind" tstype:"'prompt' | 'acted'"`
+	PromptID string `json:"promptID,omitempty"`
+	// Title is the prompt's question or the action's summary. Untrusted.
+	Title        string                  `json:"title"`
+	ClosedReason aiv1.PromptClosedReason `json:"closedReason,omitempty"`
+	ClosedBy     aiv1.PauseResolver      `json:"closedBy,omitempty"`
+	ReplacedBy   string                  `json:"replacedBy,omitempty"`
+	// By is who answered the prompt, or the owner who accepted the action
+	// (empty: the pilot on its own).
+	By string    `json:"by,omitempty"`
+	At time.Time `json:"at"`
 }
 
 // inbox lists what needs the user across the projects they may see: tasks
@@ -562,8 +587,8 @@ func (s *Server) inbox(w http.ResponseWriter, r *http.Request) {
 			visible[ap.Namespace+"/"+ap.Name] = ap
 		}
 	}
-	items := inboxOf(visible, tasks.Items, time.Now())
-	writeJSON(w, http.StatusOK, InboxResponse{Items: items})
+	now := time.Now()
+	writeJSON(w, http.StatusOK, InboxResponse{Items: inboxOf(visible, tasks.Items, now), Handled: handledOf(visible, tasks.Items, now)})
 }
 
 // inboxTitleMax cuts a prompt's question in the Inbox.
@@ -688,6 +713,65 @@ func inboxOf(projects map[string]*aiv1.AgentProject, tasks []aiv1.AgentTask, now
 		}
 		return a.After(*b)
 	})
+	return items
+}
+
+// handledWindow and handledMax bound the Inbox's Handled list.
+const (
+	handledWindow = 7 * 24 * time.Hour
+	handledMax    = 50
+)
+
+// handledOf lists the prompts closed and the pilot's actions run in the last
+// handledWindow on the tasks of projects, newest first, at most handledMax.
+func handledOf(projects map[string]*aiv1.AgentProject, tasks []aiv1.AgentTask, now time.Time) []HandledItem {
+	items := []HandledItem{}
+	recent := func(at time.Time) bool { return !at.IsZero() && now.Sub(at) <= handledWindow }
+	for i := range tasks {
+		t := &tasks[i]
+		ap := projects[t.Namespace+"/"+t.Spec.ProjectRef]
+		if ap == nil {
+			continue
+		}
+		base := HandledItem{Namespace: t.Namespace, Project: ap.Name}
+		if t.Spec.Milestone != nil {
+			base.MilestoneIID = t.Spec.Milestone.IID
+		}
+		for _, pr := range t.Status.Prompts {
+			if !pr.State.Closed() || pr.ClosedAt == nil || !recent(pr.ClosedAt.Time) {
+				continue
+			}
+			it := base
+			it.Kind, it.PromptID, it.IssueIID = "prompt", pr.ID, pr.Source.IssueIID
+			it.Title = truncateRunes(pr.Question, inboxTitleMax)
+			it.ClosedReason, it.ClosedBy, it.ReplacedBy, it.At = pr.ClosedReason, pr.ClosedBy, pr.ReplacedBy, pr.ClosedAt.Time
+			if pr.Answer != nil {
+				it.By = pr.Answer.By
+			}
+			items = append(items, it)
+		}
+		if t.Spec.Type != aiv1.TaskTypeCoordinate || t.Status.Pilot == nil {
+			continue
+		}
+		for _, a := range t.Status.Pilot.Acted {
+			if !recent(a.At.Time) {
+				continue
+			}
+			it := base
+			it.Kind, it.Title, it.By, it.At = "acted", truncateRunes(a.Summary, inboxTitleMax), a.By, a.At.Time
+			for _, iid := range a.Issues {
+				if iid != 0 {
+					it.IssueIID = iid
+					break
+				}
+			}
+			items = append(items, it)
+		}
+	}
+	sort.SliceStable(items, func(i, j int) bool { return items[i].At.After(items[j].At) })
+	if len(items) > handledMax {
+		items = items[:handledMax]
+	}
 	return items
 }
 
