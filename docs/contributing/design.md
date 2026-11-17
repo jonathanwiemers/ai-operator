@@ -823,7 +823,17 @@ session is resumed across calls. `token_basis` is how the
 runner computed the call's tokens: 1 is the sum of the per-model figures,
 each the call's or turn's own share (R6, R7, #255); 0 is not recorded (rows
 from before the column or from an older agent image), and nothing is
-backfilled. The runner only appends the
+backfilled. The cost-lever columns (#538) are NULL when empty: `arm` is the
+issue's experiment arm (`status.experiment`, while the project's experiment
+still has it) on every call of the issue's runs; `step_session` (`resume` or
+`fresh`) is set on implement calls of stepwise runs; `tool_results` is
+`{"<tool>": {"calls", "bytes"}}` of the claude stream's `tool_result`s by the
+name of their `tool_use` (a subagent's results under the tool that started
+it, unknown ids as `unknown`; estimated tokens are bytes / 4 on read); and
+`base_context_tokens` is the first main-thread turn's context of a claude
+call that started its session (`resume` empty). The planner records the
+profile and effort labels it set in a `plan-labels` marker of the issue
+description, so the arm assignment tells them from a human's. The runner only appends the
 call to the task's `status.run.calls` (the newest 50, each with a task-wide
 `seq`); the operator stays the only writer. The differ writes each call
 whose seq the previous status did not have, keyed `call/<task UID>/<seq>`.

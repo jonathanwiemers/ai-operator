@@ -216,3 +216,36 @@ func TestTokenBasis(t *testing.T) {
 		t.Errorf("old row token_basis = %d, %v; want 0", n, err)
 	}
 }
+
+// The cost-lever columns are stored as given; empty values are NULL.
+func TestCallCostLevers(t *testing.T) {
+	s := storetest.New(t)
+	ctx := t.Context()
+	at := time.Date(2026, 11, 17, 10, 0, 0, 0, time.UTC)
+	mk := func(key string, seq int64) store.Call {
+		return store.Call{Key: key, At: at, Namespace: "agents", Project: "p", Task: "t", Seq: seq, Kind: "implement",
+			CostSource: "unknown", ExpiresAt: at.Add(time.Hour)}
+	}
+	full := mk("full", 1)
+	full.Arm, full.StepSession, full.BaseContextTokens = "fresh", "fresh", 21000
+	full.ToolResults = map[string]store.ToolResultUsage{"Read": {Calls: 12, Bytes: 81234}, "Agent": {Calls: 3, Bytes: 900}}
+	if _, err := s.InsertCalls(ctx, []store.Call{full, mk("empty", 2)}); err != nil {
+		t.Fatal(err)
+	}
+	var arm, step *string
+	var tools map[string]store.ToolResultUsage
+	var base *int64
+	row := s.Pool().QueryRow(ctx, "SELECT arm, step_session, tool_results, base_context_tokens FROM agent_calls WHERE key = 'full'")
+	if err := row.Scan(&arm, &step, &tools, &base); err != nil {
+		t.Fatal(err)
+	}
+	if arm == nil || *arm != "fresh" || step == nil || *step != "fresh" || base == nil || *base != 21000 ||
+		tools["Read"] != (store.ToolResultUsage{Calls: 12, Bytes: 81234}) || tools["Agent"].Calls != 3 {
+		t.Errorf("full row: arm %v, step %v, tools %v, base %v", arm, step, tools, base)
+	}
+	var nulls int
+	if err := s.Pool().QueryRow(ctx, `SELECT (arm IS NULL)::int + (step_session IS NULL)::int + (tool_results IS NULL)::int
+		+ (base_context_tokens IS NULL)::int FROM agent_calls WHERE key = 'empty'`).Scan(&nulls); err != nil || nulls != 4 {
+		t.Errorf("empty row: %d NULL columns, %v; want 4", nulls, err)
+	}
+}

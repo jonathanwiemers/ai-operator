@@ -13,7 +13,7 @@ The reference is split into four pages:
   cross-repo changes and the other fields.
 - **[Agents and models](agents-and-models.md)**: `spec.agents`, the roles,
   subagents, the read gate, models and effort per issue, profiles,
-  fallbacks and engines.
+  experiments, fallbacks and engines.
 - **[Lifecycle and CI](lifecycle-and-ci.md)**: `spec.lifecycle`, `spec.ci`,
   `spec.checkpoint` and `spec.mainHealth`.
 - **[Agent image](agent-image.md)**: the image the agents run in, and the

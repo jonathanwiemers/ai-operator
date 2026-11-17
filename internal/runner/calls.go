@@ -14,6 +14,10 @@ import (
 func (r *Runner) newCall(engine aiv1.Engine, inv Invocation, res *Result, start time.Time) aiv1.AgentCall {
 	c := agentCall(engine, inv, res, start, r.now())
 	c.Run = r.runNumber
+	c.Arm = r.arm
+	if inv.Kind == aiv1.CallKindImplement {
+		c.StepSession = r.stepSession
+	}
 	return c
 }
 
@@ -56,6 +60,15 @@ func agentCall(engine aiv1.Engine, inv Invocation, res *Result, start, end time.
 			CacheReadTokens: m.CacheReadTokens, CacheWriteTokens: m.CacheWriteTokens, CostUSD: aiv1.FormatCost(m.CostUSD)})
 	}
 	c.ContextSeries, c.SubagentTurns = u.ContextSeries, u.SubagentTurns
+	if engine == aiv1.EngineClaude {
+		c.ToolResults = u.ToolResults
+		// The base context is the size of a new session's first turn: a
+		// resumed call's (or a later turn of an open session, which the
+		// runner resumes by ID) starts with the earlier turns.
+		if inv.Resume == "" {
+			c.BaseContextTokens = u.BaseContextTokens
+		}
+	}
 	return c
 }
 

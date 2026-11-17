@@ -94,6 +94,16 @@ spec:
                         items:
                           type: string
                         type: array
+                      bashMaxOutputChars:
+                        description: |-
+                          BashMaxOutputChars sets Claude Code's BASH_MAX_OUTPUT_LENGTH for the
+                          role's calls: Bash output longer than this many characters is cut
+                          before it enters the context. Unset, the variable is not set and
+                          Claude Code's own limit applies. Cursor ignores it.
+                        format: int32
+                        maximum: 200000
+                        minimum: 1000
+                        type: integer
                       disabled:
                         description: |-
                           Disabled keeps the placeholder description; the reports carry the
@@ -431,6 +441,16 @@ spec:
                         items:
                           type: string
                         type: array
+                      bashMaxOutputChars:
+                        description: |-
+                          BashMaxOutputChars sets Claude Code's BASH_MAX_OUTPUT_LENGTH for the
+                          role's calls: Bash output longer than this many characters is cut
+                          before it enters the context. Unset, the variable is not set and
+                          Claude Code's own limit applies. Cursor ignores it.
+                        format: int32
+                        maximum: 200000
+                        minimum: 1000
+                        type: integer
                       conflict:
                         description: |-
                           Conflict is the role of the calls that resolve the merge conflicts of
@@ -447,6 +467,16 @@ spec:
                             items:
                               type: string
                             type: array
+                          bashMaxOutputChars:
+                            description: |-
+                              BashMaxOutputChars sets Claude Code's BASH_MAX_OUTPUT_LENGTH for the
+                              role's calls: Bash output longer than this many characters is cut
+                              before it enters the context. Unset, the variable is not set and
+                              Claude Code's own limit applies. Cursor ignores it.
+                            format: int32
+                            maximum: 200000
+                            minimum: 1000
+                            type: integer
                           effort:
                             description: Effort level (claude engine only).
                             enum:
@@ -610,6 +640,73 @@ spec:
                         - claude
                         - cursor
                         type: string
+                      experiment:
+                        description: |-
+                          Experiment tries settings of the implementer side by side: each issue
+                          gets one of its arms at its first implement run, by a stable hash of
+                          the project, the experiment's name and the issue's IID, and keeps it.
+                          The arm's overrides sit between the issue's labels and the project's
+                          config. The ExperimentValid condition reports cross-field problems;
+                          an invalid experiment assigns no arms. Unset, no experiment.
+                        properties:
+                          arms:
+                            description: |-
+                              Arms are the variants the issues are spread over. At most one arm may
+                              override nothing: the baseline.
+                            items:
+                              description: |-
+                                ExperimentArm overrides settings of the implement role for the issues
+                                assigned to it. Unset fields keep the project's config.
+                              properties:
+                                effort:
+                                  description: |-
+                                    Effort overrides the implementer's effort, as an effort label the
+                                    planner set would. It may not be above agents.maxEffort.
+                                  enum:
+                                  - low
+                                  - medium
+                                  - high
+                                  - xhigh
+                                  - max
+                                  type: string
+                                name:
+                                  description: Name of the arm, recorded on the task
+                                    and its agent calls.
+                                  maxLength: 40
+                                  pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
+                                  type: string
+                                profile:
+                                  description: |-
+                                    Profile runs the issue on this profile instead of the one the planner
+                                    picked. It must be one of the project's profiles.
+                                  pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
+                                  type: string
+                                stepSession:
+                                  description: StepSession overrides agents.implement.stepSession.
+                                  enum:
+                                  - resume
+                                  - fresh
+                                  type: string
+                              required:
+                              - name
+                              type: object
+                            maxItems: 4
+                            minItems: 2
+                            type: array
+                            x-kubernetes-list-map-keys:
+                            - name
+                            x-kubernetes-list-type: map
+                          name:
+                            description: |-
+                              Name of the experiment, recorded with the arm. Renaming it starts a
+                              new experiment: issues assigned under the old name run without arm.
+                            maxLength: 40
+                            pattern: ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$
+                            type: string
+                        required:
+                        - arms
+                        - name
+                        type: object
                       fallback:
                         description: |-
                           Fallback is the engine and model the role runs on while its own
@@ -847,6 +944,16 @@ spec:
                         items:
                           type: string
                         type: array
+                      bashMaxOutputChars:
+                        description: |-
+                          BashMaxOutputChars sets Claude Code's BASH_MAX_OUTPUT_LENGTH for the
+                          role's calls: Bash output longer than this many characters is cut
+                          before it enters the context. Unset, the variable is not set and
+                          Claude Code's own limit applies. Cursor ignores it.
+                        format: int32
+                        maximum: 200000
+                        minimum: 1000
+                        type: integer
                       effort:
                         description: Effort level (claude engine only).
                         enum:
@@ -999,6 +1106,16 @@ spec:
                           items:
                             type: string
                           type: array
+                        bashMaxOutputChars:
+                          description: |-
+                            BashMaxOutputChars sets Claude Code's BASH_MAX_OUTPUT_LENGTH for the
+                            role's calls: Bash output longer than this many characters is cut
+                            before it enters the context. Unset, the variable is not set and
+                            Claude Code's own limit applies. Cursor ignores it.
+                          format: int32
+                          maximum: 200000
+                          minimum: 1000
+                          type: integer
                         description:
                           description: Description tells the spec agent which issues
                             this profile is for.
@@ -1228,6 +1345,16 @@ spec:
                         items:
                           type: string
                         type: array
+                      bashMaxOutputChars:
+                        description: |-
+                          BashMaxOutputChars sets Claude Code's BASH_MAX_OUTPUT_LENGTH for the
+                          role's calls: Bash output longer than this many characters is cut
+                          before it enters the context. Unset, the variable is not set and
+                          Claude Code's own limit applies. Cursor ignores it.
+                        format: int32
+                        maximum: 200000
+                        minimum: 1000
+                        type: integer
                       effort:
                         description: Effort level (claude engine only).
                         enum:
@@ -1508,6 +1635,16 @@ spec:
                         items:
                           type: string
                         type: array
+                      bashMaxOutputChars:
+                        description: |-
+                          BashMaxOutputChars sets Claude Code's BASH_MAX_OUTPUT_LENGTH for the
+                          role's calls: Bash output longer than this many characters is cut
+                          before it enters the context. Unset, the variable is not set and
+                          Claude Code's own limit applies. Cursor ignores it.
+                        format: int32
+                        maximum: 200000
+                        minimum: 1000
+                        type: integer
                       effort:
                         description: Effort level (claude engine only).
                         enum:

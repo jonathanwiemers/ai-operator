@@ -684,6 +684,15 @@ type RoleSpec struct {
 	// and cursor fallbacks ignore it with a warning). Unset, no gate.
 	// +optional
 	ReadGate *ReadGate `json:"readGate,omitempty"`
+
+	// BashMaxOutputChars sets Claude Code's BASH_MAX_OUTPUT_LENGTH for the
+	// role's calls: Bash output longer than this many characters is cut
+	// before it enters the context. Unset, the variable is not set and
+	// Claude Code's own limit applies. Cursor ignores it.
+	// +kubebuilder:validation:Minimum=1000
+	// +kubebuilder:validation:Maximum=200000
+	// +optional
+	BashMaxOutputChars *int32 `json:"bashMaxOutputChars,omitempty"`
 }
 
 // DefaultReadGateLines is the ReadGate.MinLines default.
@@ -783,6 +792,62 @@ type ImplementSpec struct {
 	// own session. Applies to the profiles too.
 	// +optional
 	Conflict *ConflictRoleSpec `json:"conflict,omitempty"`
+
+	// Experiment tries settings of the implementer side by side: each issue
+	// gets one of its arms at its first implement run, by a stable hash of
+	// the project, the experiment's name and the issue's IID, and keeps it.
+	// The arm's overrides sit between the issue's labels and the project's
+	// config. The ExperimentValid condition reports cross-field problems;
+	// an invalid experiment assigns no arms. Unset, no experiment.
+	// +optional
+	Experiment *Experiment `json:"experiment,omitempty"`
+}
+
+// Experiment is a named set of arms, see ImplementSpec.Experiment.
+type Experiment struct {
+	// Name of the experiment, recorded with the arm. Renaming it starts a
+	// new experiment: issues assigned under the old name run without arm.
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`
+	// +kubebuilder:validation:MaxLength=40
+	Name string `json:"name"`
+
+	// Arms are the variants the issues are spread over. At most one arm may
+	// override nothing: the baseline.
+	// +listType=map
+	// +listMapKey=name
+	// +kubebuilder:validation:MinItems=2
+	// +kubebuilder:validation:MaxItems=4
+	Arms []ExperimentArm `json:"arms"`
+}
+
+// ExperimentArm overrides settings of the implement role for the issues
+// assigned to it. Unset fields keep the project's config.
+type ExperimentArm struct {
+	// Name of the arm, recorded on the task and its agent calls.
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`
+	// +kubebuilder:validation:MaxLength=40
+	Name string `json:"name"`
+
+	// StepSession overrides agents.implement.stepSession.
+	// +optional
+	StepSession StepSessionMode `json:"stepSession,omitempty"`
+
+	// Effort overrides the implementer's effort, as an effort label the
+	// planner set would. It may not be above agents.maxEffort.
+	// +kubebuilder:validation:Enum=low;medium;high;xhigh;max
+	// +optional
+	Effort string `json:"effort,omitempty"`
+
+	// Profile runs the issue on this profile instead of the one the planner
+	// picked. It must be one of the project's profiles.
+	// +kubebuilder:validation:Pattern=`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`
+	// +optional
+	Profile string `json:"profile,omitempty"`
+}
+
+// Empty reports whether the arm overrides nothing (the baseline).
+func (a ExperimentArm) Empty() bool {
+	return a.StepSession == "" && a.Effort == "" && a.Profile == ""
 }
 
 // ConflictRoleSpec configures the calls that resolve merge conflicts.

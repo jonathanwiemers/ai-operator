@@ -99,6 +99,9 @@ type implementRun struct {
 	systemNotes string
 	fullPrompt  string
 	stepwise    bool
+	// stepSession is the effective step-session mode: the arm's, else
+	// agents.implement.stepSession.
+	stepSession aiv1.StepSessionMode
 	ciFix       bool
 	humanInput  int
 	// answers are the owners' prompt answers this session has not seen.
@@ -296,8 +299,18 @@ func (run *implementRun) readComments(ctx context.Context) error {
 func (run *implementRun) buildPrompt(ctx context.Context) error {
 	r, st, task, wf, issue, milestone, botID := run.r, run.state, run.task, run.wf, run.issue, run.milestone, run.botID
 	// The model and effort labels ("/agent use", "/agent effort", which the
-	// operator turns into labels) override the profile.
-	role, profile, roleNotes := run.spec.IssueRole(issue.Labels)
+	// operator turns into labels) override the profile. An experiment arm
+	// stands in for the planner's profile and effort labels.
+	labels := issue.Labels
+	run.stepSession = run.spec.Agents.Implement.StepSession
+	if arm, ok := run.experimentArm(ctx); ok {
+		planned, _ := plannedLabels(issue.Description)
+		labels = armLabels(wf, labels, planned, arm)
+		if arm.StepSession != "" {
+			run.stepSession = arm.StepSession
+		}
+	}
+	role, profile, roleNotes := run.spec.IssueRole(labels)
 	role, routeNotes, err := run.routeForCompanion(ctx, role)
 	if err != nil {
 		return err
@@ -390,6 +403,10 @@ func (run *implementRun) buildPrompt(ctx context.Context) error {
 		r.log().Info("revisiting decisions", "decisions", len(revisits), "notices", len(notices))
 	}
 	run.role, run.profile, run.inv, run.stepwise, run.plainSystem, run.fullPrompt = role, profile, inv, stepwise, plainSystem, fullPrompt
+	r.stepSession = ""
+	if stepwise {
+		r.stepSession = string(run.stepSession)
+	}
 	run.systemNotes = systemNotes
 	run.notices, run.revisits, run.ignored = notices, revisits, ignored
 	return nil
@@ -534,7 +551,7 @@ func (run *implementRun) implement(ctx context.Context) error {
 			callRole, call, callFull = conflictRole, conflictCall, conflictFull
 		}
 		s := r.step(ctx, "run implementer", "profile", run.profile, "engine", callRole.Engine, "model", callRole.Model, "effort", callRole.Effort,
-			"resume", call.Resume != "", "ciFix", run.ciFix, "conflicts", len(run.merge.Conflicts), "conflictRole", ok)
+			"resume", call.Resume != "", "ciFix", run.ciFix, "conflicts", len(run.merge.Conflicts), "conflictRole", ok, "arm", r.arm)
 		res, err := r.invoke(ctx, callRole, call, callFull)
 		run.res = res
 		if res != nil {
@@ -578,7 +595,7 @@ func (run *implementRun) implement(ctx context.Context) error {
 	}
 	if run.stepwise && run.runAgent {
 		res, seen, err := r.runSteps(ctx, run.gl, run.glProject, run.issue, run.mr.IID, botID, run.wf.CommandPrefix, run.branch, run.base, run.types, role,
-			run.spec.Agents.Implement.StepSession == aiv1.StepSessionFresh, *inv, run.fullPrompt, run.res, answer, st, out)
+			run.stepSession == aiv1.StepSessionFresh, *inv, run.fullPrompt, run.res, answer, st, out)
 		run.res = res
 		if err != nil {
 			// The steps pushed so far are on the branch: their decisions
@@ -635,6 +652,7 @@ func (run *implementRun) conflictCall(ctx context.Context) (role aiv1.RoleSpec, 
 	inv = run.inv
 	inv.SystemPrompt = own.SystemPrompt + run.systemNotes
 	inv.Model, inv.Effort, inv.MaxBudgetUSD, inv.AllowedTools = own.Model, own.Effort, own.MaxBudgetUSD, own.AllowedTools
+	inv.BashMaxOutputChars = own.BashMaxOutputChars
 	inv.Kind = aiv1.CallKindConflict
 	if fresh = fresh || role.Engine != run.role.Engine; !fresh {
 		return role, inv, run.fullPrompt, false, true

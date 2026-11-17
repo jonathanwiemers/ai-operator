@@ -191,6 +191,7 @@ func (r *AgentProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	// After the sync, which may replace status.webhook.
 	reportDeliveries(&project, spec, prevDelivery, lastDelivery, receiving)
 	reportFallbacks(&project, spec)
+	reportExperiment(&project, spec)
 	r.reportCrossRepo(&project, spec)
 	if err := r.Status().Patch(ctx, &project, client.MergeFrom(orig)); err != nil {
 		return ctrl.Result{}, err
@@ -376,6 +377,22 @@ func reportFallbacks(project *aiv1.AgentProject, spec aiv1.AgentProjectSpec) {
 		Message: "no fallback is broken", ObservedGeneration: project.Generation}
 	if errs := spec.FallbackErrors(); len(errs) > 0 {
 		cond.Status, cond.Reason, cond.Message = metav1.ConditionFalse, "InvalidFallback", textutil.Truncate(strings.Join(errs, "; "), 1024)
+	}
+	meta.SetStatusCondition(&project.Status.Conditions, cond)
+}
+
+// reportExperiment sets ExperimentValid: True for a valid
+// agents.implement.experiment, False with its problems (the runner then
+// assigns no arms), absent without one.
+func reportExperiment(project *aiv1.AgentProject, spec aiv1.AgentProjectSpec) {
+	if spec.Agents.Implement.Experiment == nil {
+		meta.RemoveStatusCondition(&project.Status.Conditions, aiv1.ConditionExperimentValid)
+		return
+	}
+	cond := metav1.Condition{Type: aiv1.ConditionExperimentValid, Status: metav1.ConditionTrue, Reason: "Valid",
+		Message: "the experiment is valid", ObservedGeneration: project.Generation}
+	if errs := spec.ExperimentErrors(); len(errs) > 0 {
+		cond.Status, cond.Reason, cond.Message = metav1.ConditionFalse, "InvalidExperiment", textutil.Truncate(strings.Join(errs, "; "), 1024)
 	}
 	meta.SetStatusCondition(&project.Status.Conditions, cond)
 }

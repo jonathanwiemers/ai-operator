@@ -127,6 +127,11 @@ type Runner struct {
 	callsMu      sync.Mutex
 	// runNumber is the run in progress (status.run.runCount after it).
 	runNumber int64
+	// arm is the experiment arm of the run's issue while the project's
+	// experiment still has it (see runArm); every call of the run records
+	// it. stepSession is the step-session mode of a stepwise implement
+	// run, recorded on its implement-kind calls; "" otherwise.
+	arm, stepSession string
 }
 
 // Outcome is the result of one run.
@@ -582,6 +587,14 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	spec := project.Spec.WithDefaults()
 	r.projectSpec = spec
 	r.logPrompts = spec.Agents.LogPrompts
+	// The issue's arm from an earlier run; the first implement run assigns
+	// it (buildPrompt).
+	r.arm, r.stepSession = "", ""
+	if task.Spec.Type == aiv1.TaskTypeImplement {
+		if arm, ok := runArm(spec, task.Status.Experiment); ok {
+			r.arm = arm.Name
+		}
+	}
 	r.pilot = pilotAddressed(project, spec)
 	gl := r.guardedGitLab(spec, task)
 	var out *Outcome
@@ -994,14 +1007,19 @@ func roleInvocation(role aiv1.RoleSpec, system string, tools []string, schema st
 	if len(role.AllowedTools) > 0 {
 		tools = role.AllowedTools
 	}
+	var bash int32
+	if role.BashMaxOutputChars != nil {
+		bash = *role.BashMaxOutputChars
+	}
 	return Invocation{
-		SystemPrompt: withInstructions(system, role.Instructions),
-		Model:        role.Model,
-		Effort:       role.Effort,
-		MaxBudgetUSD: role.MaxBudgetUSD,
-		AllowedTools: tools,
-		JSONSchema:   schema,
-		ReadOnly:     readOnly,
+		BashMaxOutputChars: bash,
+		SystemPrompt:       withInstructions(system, role.Instructions),
+		Model:              role.Model,
+		Effort:             role.Effort,
+		MaxBudgetUSD:       role.MaxBudgetUSD,
+		AllowedTools:       tools,
+		JSONSchema:         schema,
+		ReadOnly:           readOnly,
 	}
 }
 

@@ -681,7 +681,14 @@ func StoreCall(c aiv1.AgentCall) store.Call {
 		CostSource: c.CostSource, Turns: c.Turns, DurationMS: c.DurationMS,
 		SubagentCalls: c.SubagentCalls, ReadGateBlocks: c.ReadGateBlocks, ContextSeries: c.ContextSeries, SubagentTurns: c.SubagentTurns,
 		Checkpoint: c.Checkpoint, CheckpointSHA: c.CheckpointSHA, LinesAdded: c.LinesAdded, LinesDeleted: c.LinesDeleted,
-		StepGateNudges: c.StepGateNudges, TokenBasis: int16(c.TokenBasis)}
+		StepGateNudges: c.StepGateNudges, TokenBasis: int16(c.TokenBasis),
+		Arm: c.Arm, StepSession: c.StepSession, BaseContextTokens: c.BaseContextTokens}
+	if len(c.ToolResults) > 0 {
+		call.ToolResults = make(map[string]store.ToolResultUsage, len(c.ToolResults))
+		for name, u := range c.ToolResults {
+			call.ToolResults[name] = store.ToolResultUsage{Calls: int64(u.Calls), Bytes: u.Bytes}
+		}
+	}
 	switch c.CostSource {
 	case aiv1.CostReported, aiv1.CostEstimated:
 		if call.CostUSD = costOf(c.CostUSD); call.CostUSD == nil {

@@ -209,6 +209,9 @@ func (s AgentProjectSpec) ConflictRole(impl RoleSpec) (role RoleSpec, fresh, ok 
 	if o.ReadGate != nil {
 		role.ReadGate = o.ReadGate
 	}
+	if o.BashMaxOutputChars != nil {
+		role.BashMaxOutputChars = o.BashMaxOutputChars
+	}
 	return role.WithDefaults(), c.Fresh(), true
 }
 

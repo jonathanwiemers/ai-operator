@@ -63,8 +63,23 @@ type Call struct {
 	// SubagentTurns are indexes into it after which a subagent ran.
 	ContextSeries []int64
 	SubagentTurns []int32
+	// Arm is the experiment arm of the call's issue; StepSession the
+	// step-session mode of an implement call of a stepwise run. "" is NULL.
+	Arm, StepSession string
+	// ToolResults is what each tool put into the context, by tool name;
+	// empty is NULL.
+	ToolResults map[string]ToolResultUsage
+	// BaseContextTokens is the first turn's context size of a call that
+	// started its session; 0 is NULL.
+	BaseContextTokens int64
 
 	ExpiresAt time.Time
+}
+
+// ToolResultUsage is one tool's entry of the tool_results column.
+type ToolResultUsage struct {
+	Calls int64 `json:"calls"`
+	Bytes int64 `json:"bytes"`
 }
 
 // CallModel is one model's share of a call, an element of the models column.
@@ -98,23 +113,32 @@ func (s *Store) InsertCalls(ctx context.Context, calls []Call) (int64, error) {
 		if err != nil {
 			return 0, err
 		}
+		var tools []byte // NULL when empty
+		if len(c.ToolResults) > 0 {
+			if tools, err = json.Marshal(c.ToolResults); err != nil {
+				return 0, err
+			}
+		}
 		b.Queue(`INSERT INTO agent_calls
 			(key, at, namespace, project, milestone_iid, issue_iid, mr_iid, task, run, seq,
 			 kind, role, engine, model, effort, resumed, fallback_from,
 			 input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd, cost_source,
 			 turns, duration_ms, models, subagent_calls, context_series, subagent_turns, expires_at, read_gate_blocks,
-			 checkpoint, checkpoint_sha, lines_added, lines_deleted, step_gate_nudges, token_basis)
+			 checkpoint, checkpoint_sha, lines_added, lines_deleted, step_gate_nudges, token_basis,
+			 arm, step_session, tool_results, base_context_tokens)
 			VALUES ($1, $2, $3, $4, nullif($5, 0), nullif($6, 0), nullif($7, 0), $8, $9, $10,
 			 $11, $12, $13, $14, $15, $16, $17,
 			 $18, $19, $20, $21, $22, $23,
 			 $24, $25, $26, $27, $28, $29, $30, $31,
-			 $32, $33, $34, $35, $36, $37)
+			 $32, $33, $34, $35, $36, $37,
+			 nullif($38, ''), nullif($39, ''), $40::jsonb, nullif($41::bigint, 0))
 			ON CONFLICT (key) DO NOTHING`,
 			c.Key, c.At, c.Namespace, c.Project, c.MilestoneIID, c.IssueIID, c.MergeRequestIID, c.Task, c.Run, c.Seq,
 			c.Kind, c.Role, c.Engine, c.Model, c.Effort, c.Resumed, c.FallbackFrom,
 			c.InputTokens, c.OutputTokens, c.CacheReadTokens, c.CacheWriteTokens, c.CostUSD, c.CostSource,
 			c.Turns, c.DurationMS, models, c.SubagentCalls, series, turns, c.ExpiresAt, c.ReadGateBlocks,
-			c.Checkpoint, c.CheckpointSHA, c.LinesAdded, c.LinesDeleted, c.StepGateNudges, c.TokenBasis)
+			c.Checkpoint, c.CheckpointSHA, c.LinesAdded, c.LinesDeleted, c.StepGateNudges, c.TokenBasis,
+			c.Arm, c.StepSession, tools, c.BaseContextTokens)
 	}
 	var n int64
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {

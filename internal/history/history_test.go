@@ -739,6 +739,18 @@ func TestStoreCallCarriesTokenBasis(t *testing.T) {
 	}
 }
 
+func TestStoreCallCarriesCostLevers(t *testing.T) {
+	c := StoreCall(aiv1.AgentCall{Arm: "fresh", StepSession: "fresh", BaseContextTokens: 21000,
+		ToolResults: map[string]aiv1.ToolResultUsage{"Read": {Calls: 3, Bytes: 9000}, "mcp__gitlab__get_issue": {Calls: 1, Bytes: 40}}})
+	if c.Arm != "fresh" || c.StepSession != "fresh" || c.BaseContextTokens != 21000 || len(c.ToolResults) != 2 ||
+		c.ToolResults["Read"] != (store.ToolResultUsage{Calls: 3, Bytes: 9000}) || c.ToolResults["mcp__gitlab__get_issue"].Bytes != 40 {
+		t.Errorf("cost-lever fields: %+v", c)
+	}
+	if c := StoreCall(aiv1.AgentCall{}); c.Arm != "" || c.StepSession != "" || c.ToolResults != nil || c.BaseContextTokens != 0 {
+		t.Errorf("a call without them: %+v", c)
+	}
+}
+
 // TestStoreCallUnknownCost: a call without a cost is stored unknown with no
 // cost, never as $0, whatever source it names.
 func TestStoreCallUnknownCost(t *testing.T) {

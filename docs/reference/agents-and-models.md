@@ -107,6 +107,7 @@ Every role and profile has these fields:
 | `fallback` | both | `{engine, model, effort}` to run on while the engine is at a usage limit, see [Fallback engine](#fallback-engine). | – |
 | `subagents` | claude | Up to 8 helpers the role delegates to, see [Subagents](#subagents). | none |
 | `readGate` | claude | `{minLines}`: block whole reads of big files, see [Read gate](#read-gate). | no gate |
+| `bashMaxOutputChars` | claude | Sets Claude Code's `BASH_MAX_OUTPUT_LENGTH` for the role's calls: longer Bash output is cut before it fills the context. 1,000 to 200,000. A conflict role's value replaces the implementer's. | not set: Claude Code's own limit |
 
 `review` also has:
 
@@ -165,6 +166,50 @@ has:
 
 A fresh call on a lighter model is cheaper for a mostly mechanical merge.
 With a companion repository only a claude conflict role is used.
+
+### Experiment
+
+`implement.experiment` tries settings of the implementer side by side.
+Each issue gets one arm, and every agent call of the issue records it:
+
+```yaml
+agents:
+  implement:
+    experiment:
+      name: cost-levers
+      arms:
+        - name: baseline
+        - name: fresh
+          stepSession: fresh
+        - name: medium
+          effort: medium
+        - name: sonnet
+          profile: balanced
+```
+
+| Field | Meaning | Default |
+|-------|---------|---------|
+| `name` | The experiment's name, lowercase letters, digits and `-`, at most 40 characters. A new name starts a new experiment. | – |
+| `arms` | 2 to 4 arms with unique names. | – |
+| `arms[].stepSession` | Replaces `implement.stepSession` for the arm's issues. | the project's |
+| `arms[].effort` | Replaces the effort the planner chose. Not above `maxEffort`. | the planner's |
+| `arms[].profile` | Replaces the profile the planner chose. Must be one of the project's profiles. | the planner's |
+
+At most one arm may set nothing: the baseline. An issue gets its arm when
+its first implement run starts, from a stable hash of the project, the
+experiment's name and the issue number, and keeps it for every later run:
+fix, CI, conflict and review calls count for it too.
+
+Labels win over the arm. An issue with a model label, or a profile or
+effort label that a human or an `/agent` command set, gets no arm. The
+planner's own profile and effort labels do not count. A label set after the
+arm was assigned wins for that one setting; the issue keeps its arm.
+
+The condition `ExperimentValid` on the AgentProject is `True` for a valid
+experiment and `False`, naming the problems, for an invalid one: then no
+issue gets an arm. Without an experiment the condition is absent. Rename
+the experiment or drop an arm, and the issues already assigned to it run
+without arm overrides and record no arm.
 
 ## Subagents
 

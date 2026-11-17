@@ -164,6 +164,18 @@ func TestConflictRole(t *testing.T) {
 		t.Fatalf("the conflict role's fields win: %+v fresh=%v", got, fresh)
 	}
 
+	// bashMaxOutputChars: the implementer's unless the conflict role sets it.
+	implBash, conflictBash := int32(5000), int32(2000)
+	impl.BashMaxOutputChars = &implBash
+	if got, _, _ := s.ConflictRole(impl); got.BashMaxOutputChars == nil || *got.BashMaxOutputChars != 5000 {
+		t.Fatalf("the implementer's bashMaxOutputChars is inherited: %+v", got.BashMaxOutputChars)
+	}
+	s.Agents.Implement.Conflict.BashMaxOutputChars = &conflictBash
+	if got, _, _ := s.ConflictRole(impl); *got.BashMaxOutputChars != 2000 {
+		t.Fatalf("the conflict role's bashMaxOutputChars wins: %d", *got.BashMaxOutputChars)
+	}
+	impl.BashMaxOutputChars = nil
+
 	// Another engine: the implementer's model, effort and same-engine
 	// fallback are not inherited; claude gets the default model.
 	cursorImpl := RoleSpec{Engine: EngineCursor, Model: "auto", Fallback: &RoleFallback{Engine: EngineClaude, Model: "sonnet"}}

@@ -298,7 +298,7 @@ func applyPlan(ctx context.Context, log logr.Logger, gl gitlab.API, glProject st
 			if !planOwned {
 				item.Repo = "" // the description records only a label the plan set
 			}
-			desc, missing = renderIssue(item, keyToIID)
+			desc, missing = renderIssue(spec, item, keyToIID)
 			if err := gitlab.RetryTransient(ctx, func() error {
 				_, err := gl.UpdateIssue(ctx, glProject, iid, gitlab.UpdateIssueOptions{Title: item.Title, Description: desc, AddLabels: add, RemoveLabels: repoRemove})
 				return err
@@ -308,7 +308,7 @@ func applyPlan(ctx context.Context, log logr.Logger, gl gitlab.API, glProject st
 			updated++
 			log.Info("issue updated", "iid", iid, "key", item.Key, "repo", item.Repo)
 		} else {
-			desc, missing = renderIssue(item, keyToIID)
+			desc, missing = renderIssue(spec, item, keyToIID)
 			var is *gitlab.Issue
 			retry := false
 			if err := gitlab.RetryTransient(ctx, func() (err error) {
@@ -352,7 +352,7 @@ func applyPlan(ctx context.Context, log logr.Logger, gl gitlab.API, glProject st
 	// Dependencies on issues planned later in the list are resolved now that
 	// every issue has an IID.
 	for _, p := range unresolved {
-		desc, _ := renderIssue(p.item, keyToIID)
+		desc, _ := renderIssue(spec, p.item, keyToIID)
 		if err := gitlab.RetryTransient(ctx, func() error {
 			_, err := gl.UpdateIssue(ctx, glProject, p.iid, gitlab.UpdateIssueOptions{Description: desc})
 			return err
@@ -457,7 +457,7 @@ var releaseLine = regexp.MustCompile(`(?m)^[ \t]*\*\*Release:\*\*.*$`)
 // renderIssue renders the description of a planned issue. It reports whether
 // it must be rendered again once every issue has an IID: a dependency could
 // not be resolved.
-func renderIssue(item PlannedItem, keyToIID map[string]int64) (string, bool) {
+func renderIssue(spec aiv1.AgentProjectSpec, item PlannedItem, keyToIID map[string]int64) (string, bool) {
 	var b strings.Builder
 	// The planner's text must not carry the operator's markers, nor a
 	// release line of its own: the operator writes that one.
@@ -494,8 +494,32 @@ func renderIssue(item PlannedItem, keyToIID map[string]int64) (string, bool) {
 	if item.Repo != "" {
 		fmt.Fprintf(&b, "\n<!-- ai-operator:plan-repo=%s -->", item.Repo)
 	}
+	// The profile and effort labels the plan computed, so an experiment
+	// tells them from labels a human or a command set (plannedLabels).
+	if labels := slices.Concat(profileLabels(spec, item), effortLabels(spec, item)); len(labels) > 0 {
+		fmt.Fprintf(&b, "\n<!-- ai-operator:plan-labels=%s -->", strings.Join(labels, ","))
+	}
 	fmt.Fprintf(&b, "\n<!-- ai-operator:key=%s -->\n", item.Key)
 	return b.String(), missing
+}
+
+// planLabelsMarker records in a planned issue's description the profile
+// and effort labels the plan computed for it.
+var planLabelsMarker = regexp.MustCompile(`<!-- ai-operator:plan-labels=(.*?) -->`)
+
+// plannedLabels returns the labels of a description's plan-labels marker;
+// ok is false without one.
+func plannedLabels(description string) (labels []string, ok bool) {
+	m := planLabelsMarker.FindStringSubmatch(description)
+	if m == nil {
+		return nil, false
+	}
+	for l := range strings.SplitSeq(m[1], ",") {
+		if l = strings.TrimSpace(l); l != "" {
+			labels = append(labels, l)
+		}
+	}
+	return labels, true
 }
 
 // profileLabels returns the label of the profile the planner picked. An

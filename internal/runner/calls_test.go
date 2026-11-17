@@ -192,6 +192,36 @@ func TestNewCall(t *testing.T) {
 	}
 }
 
+func TestNewCallToolResultsAndBaseContext(t *testing.T) {
+	start := time.Date(2026, 11, 17, 12, 0, 0, 0, time.UTC)
+	r := &Runner{Now: func() time.Time { return start }}
+	usage := func() *CallUsage {
+		return &CallUsage{ContextSeries: []int64{21000, 24000}, BaseContextTokens: 20500,
+			ToolResults: map[string]aiv1.ToolResultUsage{"Read": {Calls: 2, Bytes: 4000}}}
+	}
+	inv := Invocation{Kind: aiv1.CallKindImplement, Role: "implement"}
+
+	// A fresh claude call: tool results and its base context.
+	c := r.newCall(aiv1.EngineClaude, inv, &Result{CallUsage: usage()}, start)
+	if c.BaseContextTokens != 20500 || c.ToolResults["Read"] != (aiv1.ToolResultUsage{Calls: 2, Bytes: 4000}) {
+		t.Errorf("fresh claude call: base %d, tools %v", c.BaseContextTokens, c.ToolResults)
+	}
+
+	// Resumed: the first turn carries the earlier turns, no base context.
+	inv.Resume = "sess"
+	c = r.newCall(aiv1.EngineClaude, inv, &Result{CallUsage: usage()}, start)
+	if c.BaseContextTokens != 0 || c.ToolResults["Read"].Calls != 2 {
+		t.Errorf("resumed claude call: base %d, tools %v", c.BaseContextTokens, c.ToolResults)
+	}
+
+	// Cursor: neither.
+	inv.Resume = ""
+	c = r.newCall(aiv1.EngineCursor, inv, &Result{CallUsage: usage()}, start)
+	if c.BaseContextTokens != 0 || c.ToolResults != nil {
+		t.Errorf("cursor call: base %d, tools %v", c.BaseContextTokens, c.ToolResults)
+	}
+}
+
 // TestCallTokensAreTheSumOfItsModels (R6): on the R5 subagent fixture,
 // usage holds the main thread, modelUsage the subagent too. The row records
 // the models' sum, so its tokens and its split share one basis; the cost

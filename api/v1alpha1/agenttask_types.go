@@ -1120,6 +1120,12 @@ type AgentTaskStatus struct {
 	// +optional
 	Run RunStatus `json:"run,omitempty"`
 
+	// Experiment is the issue's experiment arm, assigned at its first
+	// implement run and kept for every later run (implement tasks of a
+	// project with agents.implement.experiment).
+	// +optional
+	Experiment *ExperimentAssignment `json:"experiment,omitempty"`
+
 	// CI is the operator's view of the pipeline of the agent's last push.
 	// +optional
 	CI *CIStatus `json:"ci,omitempty"`
@@ -1581,6 +1587,17 @@ const (
 	CostUnknown   = "unknown"
 )
 
+// ExperimentAssignment is the arm an issue got in an experiment.
+type ExperimentAssignment struct {
+	// Name of the experiment.
+	Name string `json:"name"`
+
+	// Arm is the arm's name; empty is "no arm": the issue had an explicit
+	// profile, effort or model label.
+	// +optional
+	Arm string `json:"arm,omitempty"`
+}
+
 // AgentCall is one engine call: what ran, for what, and what it consumed.
 type AgentCall struct {
 	// Seq numbers the task's calls, starting at 1.
@@ -1658,6 +1675,29 @@ type AgentCall struct {
 	// +optional
 	ReadGateBlocks int32 `json:"readGateBlocks,omitempty"`
 
+	// Arm is the experiment arm of the task's issue (status.experiment)
+	// while the project's experiment still has it; empty without one.
+	// +optional
+	Arm string `json:"arm,omitempty"`
+
+	// StepSession is the step-session mode (resume or fresh) of an
+	// implement-kind call of a stepwise run; empty otherwise.
+	// +optional
+	StepSession string `json:"stepSession,omitempty"`
+
+	// ToolResults is what each tool put into the context during the call,
+	// by tool name (claude engine only). A subagent's tool results count
+	// under the tool that started the subagent; MCP tools keep their full
+	// name; results of an unknown tool_use count under "unknown".
+	// +optional
+	ToolResults map[string]ToolResultUsage `json:"toolResults,omitempty"`
+
+	// BaseContextTokens is the context size of the first turn of a call
+	// that started a new session (system prompt, tools, CLAUDE.md files);
+	// 0 for resumed calls and the cursor engine.
+	// +optional
+	BaseContextTokens int64 `json:"baseContextTokens,omitempty"`
+
 	// Checkpoint is the reason (e.g. usage-limit) when the call's end saved
 	// a checkpoint commit of the work tree; CheckpointSHA is that commit.
 	// +optional
@@ -1698,6 +1738,15 @@ type AgentCall struct {
 	// +listType=atomic
 	// +kubebuilder:validation:MaxItems=500
 	SubagentTurns []int32 `json:"subagentTurns,omitempty"`
+}
+
+// ToolResultUsage is how many results of one tool a call got and their
+// size; EstimatedTokens turns the bytes into tokens.
+type ToolResultUsage struct {
+	// +optional
+	Calls int32 `json:"calls,omitempty"`
+	// +optional
+	Bytes int64 `json:"bytes,omitempty"`
 }
 
 // CallModelUsage is one model's share of an agent call.

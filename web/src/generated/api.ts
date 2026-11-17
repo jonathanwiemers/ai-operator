@@ -968,6 +968,16 @@ export interface RoleSpec {
    * +optional
    */
   readGate?: ReadGate;
+  /**
+   * BashMaxOutputChars sets Claude Code's BASH_MAX_OUTPUT_LENGTH for the
+   * role's calls: Bash output longer than this many characters is cut
+   * before it enters the context. Unset, the variable is not set and
+   * Claude Code's own limit applies. Cursor ignores it.
+   * +kubebuilder:validation:Minimum=1000
+   * +kubebuilder:validation:Maximum=200000
+   * +optional
+   */
+  bashMaxOutputChars?: number /* int32 */;
 }
 /**
  * DefaultReadGateLines is the ReadGate.MinLines default.
@@ -1075,6 +1085,68 @@ export interface ImplementSpec extends RoleSpec {
    * +optional
    */
   conflict?: ConflictRoleSpec;
+  /**
+   * Experiment tries settings of the implementer side by side: each issue
+   * gets one of its arms at its first implement run, by a stable hash of
+   * the project, the experiment's name and the issue's IID, and keeps it.
+   * The arm's overrides sit between the issue's labels and the project's
+   * config. The ExperimentValid condition reports cross-field problems;
+   * an invalid experiment assigns no arms. Unset, no experiment.
+   * +optional
+   */
+  experiment?: Experiment;
+}
+/**
+ * Experiment is a named set of arms, see ImplementSpec.Experiment.
+ */
+export interface Experiment {
+  /**
+   * Name of the experiment, recorded with the arm. Renaming it starts a
+   * new experiment: issues assigned under the old name run without arm.
+   * +kubebuilder:validation:Pattern=`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`
+   * +kubebuilder:validation:MaxLength=40
+   */
+  name: string;
+  /**
+   * Arms are the variants the issues are spread over. At most one arm may
+   * override nothing: the baseline.
+   * +listType=map
+   * +listMapKey=name
+   * +kubebuilder:validation:MinItems=2
+   * +kubebuilder:validation:MaxItems=4
+   */
+  arms: ExperimentArm[];
+}
+/**
+ * ExperimentArm overrides settings of the implement role for the issues
+ * assigned to it. Unset fields keep the project's config.
+ */
+export interface ExperimentArm {
+  /**
+   * Name of the arm, recorded on the task and its agent calls.
+   * +kubebuilder:validation:Pattern=`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`
+   * +kubebuilder:validation:MaxLength=40
+   */
+  name: string;
+  /**
+   * StepSession overrides agents.implement.stepSession.
+   * +optional
+   */
+  stepSession?: StepSessionMode;
+  /**
+   * Effort overrides the implementer's effort, as an effort label the
+   * planner set would. It may not be above agents.maxEffort.
+   * +kubebuilder:validation:Enum=low;medium;high;xhigh;max
+   * +optional
+   */
+  effort?: string;
+  /**
+   * Profile runs the issue on this profile instead of the one the planner
+   * picked. It must be one of the project's profiles.
+   * +kubebuilder:validation:Pattern=`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`
+   * +optional
+   */
+  profile?: string;
 }
 /**
  * ConflictRoleSpec configures the calls that resolve merge conflicts.
@@ -3811,6 +3883,13 @@ export interface AgentTaskStatus {
    */
   run?: RunStatus;
   /**
+   * Experiment is the issue's experiment arm, assigned at its first
+   * implement run and kept for every later run (implement tasks of a
+   * project with agents.implement.experiment).
+   * +optional
+   */
+  experiment?: ExperimentAssignment;
+  /**
    * CI is the operator's view of the pipeline of the agent's last push.
    * +optional
    */
@@ -4388,6 +4467,21 @@ export const CostUnknown = "unknown";
  */
 export type Cost = typeof CostReported | typeof CostEstimated | typeof CostUnknown;
 /**
+ * ExperimentAssignment is the arm an issue got in an experiment.
+ */
+export interface ExperimentAssignment {
+  /**
+   * Name of the experiment.
+   */
+  name: string;
+  /**
+   * Arm is the arm's name; empty is "no arm": the issue had an explicit
+   * profile, effort or model label.
+   * +optional
+   */
+  arm?: string;
+}
+/**
  * AgentCall is one engine call: what ran, for what, and what it consumed.
  */
 export interface AgentCall {
@@ -4489,6 +4583,33 @@ export interface AgentCall {
    */
   readGateBlocks?: number /* int32 */;
   /**
+   * Arm is the experiment arm of the task's issue (status.experiment)
+   * while the project's experiment still has it; empty without one.
+   * +optional
+   */
+  arm?: string;
+  /**
+   * StepSession is the step-session mode (resume or fresh) of an
+   * implement-kind call of a stepwise run; empty otherwise.
+   * +optional
+   */
+  stepSession?: string;
+  /**
+   * ToolResults is what each tool put into the context during the call,
+   * by tool name (claude engine only). A subagent's tool results count
+   * under the tool that started the subagent; MCP tools keep their full
+   * name; results of an unknown tool_use count under "unknown".
+   * +optional
+   */
+  toolResults?: { [key: string]: ToolResultUsage};
+  /**
+   * BaseContextTokens is the context size of the first turn of a call
+   * that started a new session (system prompt, tools, CLAUDE.md files);
+   * 0 for resumed calls and the cursor engine.
+   * +optional
+   */
+  baseContextTokens?: number /* int64 */;
+  /**
    * Checkpoint is the reason (e.g. usage-limit) when the call's end saved
    * a checkpoint commit of the work tree; CheckpointSHA is that commit.
    * +optional
@@ -4539,6 +4660,20 @@ export interface AgentCall {
    * +kubebuilder:validation:MaxItems=500
    */
   subagentTurns?: number /* int32 */[];
+}
+/**
+ * ToolResultUsage is how many results of one tool a call got and their
+ * size; EstimatedTokens turns the bytes into tokens.
+ */
+export interface ToolResultUsage {
+  /**
+   * +optional
+   */
+  calls?: number /* int32 */;
+  /**
+   * +optional
+   */
+  bytes?: number /* int64 */;
 }
 /**
  * CallModelUsage is one model's share of an agent call.

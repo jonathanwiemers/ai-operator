@@ -2060,6 +2060,23 @@ spec:
                   - type
                   type: object
                 type: array
+              experiment:
+                description: |-
+                  Experiment is the issue's experiment arm, assigned at its first
+                  implement run and kept for every later run (implement tasks of a
+                  project with agents.implement.experiment).
+                properties:
+                  arm:
+                    description: |-
+                      Arm is the arm's name; empty is "no arm": the issue had an explicit
+                      profile, effort or model label.
+                    type: string
+                  name:
+                    description: Name of the experiment.
+                    type: string
+                required:
+                - name
+                type: object
               followUpOf:
                 description: |-
                   FollowUpOf is what the operator made of Spec.FollowUpOf (spec
@@ -3737,10 +3754,22 @@ spec:
                       description: 'AgentCall is one engine call: what ran, for what,
                         and what it consumed.'
                       properties:
+                        arm:
+                          description: |-
+                            Arm is the experiment arm of the task's issue (status.experiment)
+                            while the project's experiment still has it; empty without one.
+                          type: string
                         at:
                           description: At is when the call started.
                           format: date-time
                           type: string
+                        baseContextTokens:
+                          description: |-
+                            BaseContextTokens is the context size of the first turn of a call
+                            that started a new session (system prompt, tools, CLAUDE.md files);
+                            0 for resumed calls and the cursor engine.
+                          format: int64
+                          type: integer
                         cacheReadTokens:
                           format: int64
                           type: integer
@@ -3879,6 +3908,11 @@ spec:
                             to close its step during the call.
                           format: int32
                           type: integer
+                        stepSession:
+                          description: |-
+                            StepSession is the step-session mode (resume or fresh) of an
+                            implement-kind call of a stepwise run; empty otherwise.
+                          type: string
                         subagentCalls:
                           description: SubagentCalls is how many subagents the call
                             started.
@@ -3901,6 +3935,25 @@ spec:
                             agent image wrote the call.
                           format: int32
                           type: integer
+                        toolResults:
+                          additionalProperties:
+                            description: |-
+                              ToolResultUsage is how many results of one tool a call got and their
+                              size; EstimatedTokens turns the bytes into tokens.
+                            properties:
+                              bytes:
+                                format: int64
+                                type: integer
+                              calls:
+                                format: int32
+                                type: integer
+                            type: object
+                          description: |-
+                            ToolResults is what each tool put into the context during the call,
+                            by tool name (claude engine only). A subagent's tool results count
+                            under the tool that started the subagent; MCP tools keep their full
+                            name; results of an unknown tool_use count under "unknown".
+                          type: object
                         turns:
                           format: int32
                           type: integer

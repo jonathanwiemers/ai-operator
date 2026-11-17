@@ -16,6 +16,9 @@ bundle's schema). The R5 fixtures say so again in a first
 | `claude-stream-subagent-main-model.jsonl` | **reconstructed**, 2026-11-06 | claude 2.1.318 | a general-purpose subagent on the main model: `usage` is the main thread, `modelUsage` both |
 | `claude-chat-two-turns.jsonl` | **reconstructed**, 2026-11-06 | claude 2.1.318 | two turns in one `--input-format stream-json` process: `usage` per turn, `modelUsage` and `total_cost_usd` running totals, `model_usage_since_last_result` per turn |
 | `claude-resume-carryover.jsonl` | **recorded**, unbilled, 2026-11-06 | claude 2.1.318 | `-p --resume`: the result starts at the totals the transcript saved |
+| `claude-stream-tools.jsonl` | **reconstructed**, 2026-11-17 | claude 2.1.318 | Read, Bash (one error) and Grep results, string and text-block content: the per-tool accounting |
+| `claude-stream-tools-subagent.jsonl` | **reconstructed**, 2026-11-17 | claude 2.1.318 | an `Agent` subagent's Read and Grep results next to a main-thread Read |
+| `claude-stream-tools-mcp.jsonl` | **reconstructed**, 2026-11-17 | claude 2.1.318 | an MCP tool result and a result whose tool_use was not seen |
 | `claude-chat-resume-two-turns.jsonl` | **recorded**, unbilled, 2026-11-06 | claude 2.1.318 | a resumed `--input-format stream-json` session with two turns: both results carry the saved totals |
 
 ## How the R5 fixtures were made

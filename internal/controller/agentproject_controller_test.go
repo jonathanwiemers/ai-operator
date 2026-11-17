@@ -436,6 +436,31 @@ func TestFallbacksValidCondition(t *testing.T) {
 	}
 }
 
+func TestExperimentValidCondition(t *testing.T) {
+	var project aiv1.AgentProject
+	spec := project.Spec.WithDefaults()
+	reportExperiment(&project, spec)
+	if c := meta.FindStatusCondition(project.Status.Conditions, aiv1.ConditionExperimentValid); c != nil {
+		t.Fatalf("expected no ExperimentValid without an experiment, got %+v", c)
+	}
+	spec.Agents.Implement.Experiment = &aiv1.Experiment{Name: "levers", Arms: []aiv1.ExperimentArm{{Name: "baseline"}, {Name: "medium", Effort: "medium"}}}
+	reportExperiment(&project, spec)
+	if c := meta.FindStatusCondition(project.Status.Conditions, aiv1.ConditionExperimentValid); c == nil || c.Status != metav1.ConditionTrue {
+		t.Fatalf("expected ExperimentValid true, got %+v", c)
+	}
+	spec.Agents.Implement.Experiment.Arms[1].Profile = "balanced"
+	reportExperiment(&project, spec)
+	c := meta.FindStatusCondition(project.Status.Conditions, aiv1.ConditionExperimentValid)
+	if c == nil || c.Status != metav1.ConditionFalse || c.Reason != "InvalidExperiment" || !strings.Contains(c.Message, "no profile balanced") {
+		t.Fatalf("expected ExperimentValid false naming the profile, got %+v", c)
+	}
+	spec.Agents.Implement.Experiment = nil
+	reportExperiment(&project, spec)
+	if c := meta.FindStatusCondition(project.Status.Conditions, aiv1.ConditionExperimentValid); c != nil {
+		t.Fatalf("expected ExperimentValid removed with the experiment, got %+v", c)
+	}
+}
+
 func TestReviewCommandRequestsAReReview(t *testing.T) {
 	e := newProjectEnv(t)
 	human := gitlab.User{ID: 1, Username: "jonathan"}

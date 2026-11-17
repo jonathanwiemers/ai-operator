@@ -218,6 +218,11 @@ func (a *LocalAgent) prepareInvocation(ctx context.Context, engine aiv1.Engine, 
 	if err != nil {
 		return err
 	}
+	// The role's cap on Bash output (bashMaxOutputChars), claude only:
+	// per call, since all roles of a task share the pod.
+	if engine == aiv1.EngineClaude && inv.BashMaxOutputChars > 0 {
+		env = append(env, fmt.Sprintf("BASH_MAX_OUTPUT_LENGTH=%d", inv.BashMaxOutputChars))
+	}
 	inv.Env = env
 	return nil
 }

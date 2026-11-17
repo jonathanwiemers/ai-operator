@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -82,6 +83,9 @@ type Invocation struct {
 	// home tree when the engine returns (CallUsage.LinesAdded/Deleted). The
 	// runner sets it for implementer calls.
 	CountLines bool `json:"countLines,omitempty"`
+	// BashMaxOutputChars is the role's bashMaxOutputChars; the agent side
+	// sets BASH_MAX_OUTPUT_LENGTH from it for claude. 0 leaves it unset.
+	BashMaxOutputChars int32 `json:"bashMaxOutputChars,omitempty"`
 	// Env overrides variables of the engine's environment. It is set by the
 	// agent side and never crosses the socket.
 	Env []string `json:"-"`
@@ -150,6 +154,13 @@ type CallUsage struct {
 	// session during the call, read by the agent container from the gate's
 	// state file (with the lines, see Invocation.CountLines).
 	StepGateNudges int32
+	// ToolResults is what each tool's results put into the context, by
+	// tool name (see turnReader.countTools); nil without tool results.
+	ToolResults map[string]aiv1.ToolResultUsage
+	// BaseContextTokens is the first main-thread turn's context size, the
+	// series' first point before thinning. agentCall keeps it only for a
+	// call that started its session.
+	BaseContextTokens int64
 }
 
 // ModelUsage is one model's share of a call.
@@ -410,6 +421,10 @@ type turnReader struct {
 	counted map[string]bool
 	// gateBlocks counts the read gate's denials (see readGateBlocks).
 	gateBlocks int32
+	// toolNames maps the tool_use ids seen to their tool's name, in every
+	// thread; toolResults sums the results by name (see countTools).
+	toolNames   map[string]string
+	toolResults map[string]aiv1.ToolResultUsage
 }
 
 func (t *turnReader) flush() {
@@ -428,6 +443,7 @@ func (t *turnReader) consume(line []byte) bool {
 	switch ev := parseEvent(line); ev.Type {
 	case "assistant":
 		t.track(line)
+		t.countTools(line, false)
 		if t.status != nil {
 			if s := streamStatus(line); s != "" {
 				t.status(s)
@@ -442,6 +458,7 @@ func (t *turnReader) consume(line []byte) bool {
 		if ev.Type == "user" {
 			t.track(line)
 			t.gateBlocks += readGateBlocks(line)
+			t.countTools(line, true)
 		}
 		t.flush()
 		if ev.Type == "tool_call" && ev.Subtype == "started" {
@@ -536,6 +553,60 @@ func readGateBlocks(line []byte) int32 {
 	return n
 }
 
+// countTools reads the tool blocks of a claude assistant or user line. A
+// tool_use block maps its id to the tool's name; each tool_result block of
+// a user line adds one call and the size of its text (toolResultText) to
+// its tool's entry. In a subagent's thread (parent_tool_use_id) a result
+// counts under the tool that started the subagent, so a subagent's reads
+// add up with its own result. MCP tools keep their full name; a result
+// whose tool_use was not seen counts under "unknown". Lines without tool
+// blocks (cursor, text) add nothing.
+func (t *turnReader) countTools(line []byte, user bool) {
+	if !bytes.Contains(line, []byte(`"tool_use"`)) && !bytes.Contains(line, []byte(`"tool_result"`)) {
+		return
+	}
+	var ev struct {
+		ParentToolUseID string `json:"parent_tool_use_id"`
+		Message         struct {
+			Content []struct {
+				Type      string          `json:"type"`
+				ID        string          `json:"id"`
+				Name      string          `json:"name"`
+				ToolUseID string          `json:"tool_use_id"`
+				Content   json.RawMessage `json:"content"`
+			} `json:"content"`
+		} `json:"message"`
+	}
+	if json.Unmarshal(line, &ev) != nil {
+		return
+	}
+	for _, b := range ev.Message.Content {
+		switch {
+		case b.Type == "tool_use" && b.ID != "":
+			if t.toolNames == nil {
+				t.toolNames = map[string]string{}
+			}
+			t.toolNames[b.ID] = b.Name
+		case b.Type == "tool_result" && user:
+			id := b.ToolUseID
+			if ev.ParentToolUseID != "" {
+				id = ev.ParentToolUseID
+			}
+			name := t.toolNames[id]
+			if name == "" {
+				name = "unknown"
+			}
+			if t.toolResults == nil {
+				t.toolResults = map[string]aiv1.ToolResultUsage{}
+			}
+			u := t.toolResults[name]
+			u.Calls++
+			u.Bytes += int64(len(toolResultText(b.Content)))
+			t.toolResults[name] = u
+		}
+	}
+}
+
 // toolResultText is the text of a tool_result's content: the string, or
 // its text blocks joined by newlines.
 func toolResultText(raw json.RawMessage) string {
@@ -564,13 +635,17 @@ const maxContextPoints = 500
 
 // addCallUsage merges what the stream showed into the result's CallUsage.
 func (t *turnReader) addCallUsage(res *Result) {
-	if len(t.series) == 0 && len(t.subagents) == 0 && t.gateBlocks == 0 {
+	if len(t.series) == 0 && len(t.subagents) == 0 && t.gateBlocks == 0 && len(t.toolResults) == 0 {
 		return
 	}
 	if res.CallUsage == nil {
 		res.CallUsage = &CallUsage{}
 	}
 	u := res.CallUsage
+	if len(t.series) > 0 {
+		u.BaseContextTokens = t.series[0]
+	}
+	u.ToolResults = maps.Clone(t.toolResults)
 	u.ContextSeries, u.SubagentTurns = thinSeries(t.series, t.subTurns, maxContextPoints)
 	if u.SubagentCalls == 0 {
 		u.SubagentCalls = int32(len(t.subagents))
