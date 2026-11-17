@@ -1067,6 +1067,26 @@ plus the history retention; retention deletes a milestone with its issues,
 follow-ups and releases once all of them expired, so an active milestone stays whole.
 Research run pods have no rights on these tables.
 
+The decisions of planned milestones are copied into two more tables
+(`internal/research/store/decisions.go`, migration `20261117231921`), with
+no foreign key to `desk_milestones`, as an issue's decisions can be read
+before its milestone's snapshot exists. `desk_decisions` holds one row per
+decision, keyed by project and decision ID: milestone, issue, kind
+(`planner` or `implementer`), the number after `-` or `-P` for sorting,
+title, question, choice, why, alternatives, `supersedes`, the comment's
+`superseded` marker, run, URL, the issue's title and state, and the time it
+was posted. `desk_decision_revisits` holds the requests to revisit one
+(source `comment` or `followUp`, requester, instruction, URL, follow-up issue
+and its state) with the issue they were read from. `SaveIssueDecisions`
+replaces one issue's decisions and the requests read from it in one
+transaction, so a re-plan that renumbered the planner's decisions leaves no
+old ID. `Decisions` searches them (ID, title, question, choice, why and
+alternatives, `ILIKE`), derives the decision that superseded each one and
+whether a request was applied, and orders them by milestone (newest first),
+the issue's plan position, planner before implementer, and number. The rows
+carry the snapshot's expiry and `DeleteExpiredDecisions` deletes them on
+their own.
+
 The recorder fills them from the spec tasks' status
 (`internal/history/snapshot.go`): every informer add and update of a spec
 task, and its start for every cached spec task (adds arrive before leader

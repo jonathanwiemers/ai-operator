@@ -69,7 +69,7 @@ func TestPoolConfig(t *testing.T) {
 func TestMigrateEmptyAndConcurrent(t *testing.T) {
 	s := storetest.New(t)
 	ctx := t.Context()
-	exec(t, s.Pool(), "DROP TABLE IF EXISTS desk_backfill, desk_backfill_projects, desk_milestone_releases, desk_follow_ups, desk_milestone_issues, desk_milestones, agent_calls, chat_messages, history_events, research_items, research_results, research_runs, schema_migrations CASCADE")
+	exec(t, s.Pool(), "DROP TABLE IF EXISTS desk_decision_revisits, desk_decisions, desk_backfill, desk_backfill_projects, desk_milestone_releases, desk_follow_ups, desk_milestone_issues, desk_milestones, agent_calls, chat_messages, history_events, research_items, research_results, research_runs, schema_migrations CASCADE")
 	exec(t, s.Pool(), "DROP FUNCTION IF EXISTS chat_notify")
 
 	var wg sync.WaitGroup
@@ -83,7 +83,7 @@ func TestMigrateEmptyAndConcurrent(t *testing.T) {
 			t.Fatalf("concurrent Migrate: %v", err)
 		}
 	}
-	for _, table := range []string{"research_runs", "research_results", "research_items", "history_events", "chat_messages", "agent_calls", "desk_milestones", "desk_milestone_issues", "desk_follow_ups", "desk_milestone_releases", "desk_backfill", "desk_backfill_projects", "schema_migrations"} {
+	for _, table := range []string{"research_runs", "research_results", "research_items", "history_events", "chat_messages", "agent_calls", "desk_milestones", "desk_milestone_issues", "desk_follow_ups", "desk_milestone_releases", "desk_backfill", "desk_backfill_projects", "desk_decisions", "desk_decision_revisits", "schema_migrations"} {
 		var exists bool
 		if err := s.Pool().QueryRow(ctx, "SELECT to_regclass($1) IS NOT NULL", table).Scan(&exists); err != nil || !exists {
 			t.Errorf("table %s missing (%v)", table, err)
@@ -227,7 +227,7 @@ func TestGrants(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, table := range []string{"research_runs", "research_results", "research_items", "schema_migrations", "agent_calls", "desk_milestones", "desk_milestone_issues", "desk_follow_ups", "desk_milestone_releases", "desk_backfill", "desk_backfill_projects"} {
+	for _, table := range []string{"research_runs", "research_results", "research_items", "schema_migrations", "agent_calls", "desk_milestones", "desk_milestone_issues", "desk_follow_ups", "desk_milestone_releases", "desk_backfill", "desk_backfill_projects", "desk_decisions", "desk_decision_revisits"} {
 		exec(t, reader.Pool(), "SELECT * FROM "+table)
 	}
 	mustFail(t, reader.Pool(), "reader writes calls", insertCall)
@@ -257,7 +257,7 @@ func TestGrants(t *testing.T) {
 		VALUES ('n', 'p', 't', 'user', 'hi', now())`)
 	mustFail(t, writer.Pool(), "writer reads calls", "SELECT * FROM agent_calls")
 	mustFail(t, writer.Pool(), "writer writes calls", insertCall)
-	for _, table := range []string{"desk_milestones", "desk_milestone_issues", "desk_follow_ups", "desk_milestone_releases", "desk_backfill", "desk_backfill_projects"} {
+	for _, table := range []string{"desk_milestones", "desk_milestone_issues", "desk_follow_ups", "desk_milestone_releases", "desk_backfill", "desk_backfill_projects", "desk_decisions", "desk_decision_revisits"} {
 		mustFail(t, writer.Pool(), "writer reads the snapshot", "SELECT * FROM "+table)
 	}
 	mustFail(t, writer.Pool(), "writer writes the snapshot", insertDeskMilestone)
@@ -316,7 +316,8 @@ func TestGrantsRevokeHistoryFromOldWriters(t *testing.T) {
 	exec(t, s.Pool(), "DROP TABLE agent_calls")
 	exec(t, s.Pool(), "DROP TABLE desk_milestone_releases, desk_follow_ups, desk_milestone_issues, desk_milestones")
 	exec(t, s.Pool(), "DROP TABLE desk_backfill, desk_backfill_projects")
-	exec(t, s.Pool(), "DELETE FROM schema_migrations WHERE version IN (2, 4, 6, 9, 20261110173852)")
+	exec(t, s.Pool(), "DROP TABLE desk_decisions, desk_decision_revisits")
+	exec(t, s.Pool(), "DELETE FROM schema_migrations WHERE version IN (2, 4, 6, 9, 20261110173852, 20261117231921)")
 	if err := s.Migrate(ctx, store.Grants{Writers: []string{role}}); err != nil {
 		t.Fatal(err)
 	}
@@ -328,6 +329,8 @@ func TestGrantsRevokeHistoryFromOldWriters(t *testing.T) {
 	mustFail(t, writer.Pool(), "old writer reads the releases", "SELECT * FROM desk_milestone_releases")
 	mustFail(t, writer.Pool(), "old writer writes the backfill", insertBackfill)
 	mustFail(t, writer.Pool(), "old writer reads the backfill", "SELECT * FROM desk_backfill_projects")
+	mustFail(t, writer.Pool(), "old writer reads the decisions", "SELECT * FROM desk_decisions")
+	mustFail(t, writer.Pool(), "old writer reads the revisits", "SELECT * FROM desk_decision_revisits")
 	exec(t, writer.Pool(), "SELECT * FROM research_runs")
 }
 
