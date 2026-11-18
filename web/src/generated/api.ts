@@ -3675,6 +3675,12 @@ export interface PilotStatus {
    */
   lastProposal?: number /* int64 */;
   /**
+   * LastChatAccepted is the newest chat message whose request ran as its
+   * owner: a message's request runs once, never one older than it.
+   * +optional
+   */
+  lastChatAccepted?: number /* int64 */;
+  /**
    * OpenedIssues are the title keys of the issues the pilot opened.
    * +optional
    */

@@ -47,6 +47,9 @@ var ownerTools = []string{"raiseBudget", "endMilestone"}
 // not counted (countedTools).
 var answerTools = []string{"unskip", "startAnyway", "markDone"}
 
+// chatTools run when asked for in a problem chat; the rest (spec, rules, decisions, ways out) need an Accept.
+var chatTools = append(slices.Clone(countedTools), "skip", "pause", "resume")
+
 // queueTools go through the tracking issue's commands.
 var queueTools = []string{"rebase", "mergeBase", "skip", "unskip", "startAnyway", "pause", "resume", "revisit", "endMilestone"}
 
@@ -248,7 +251,22 @@ func (r *AgentProjectReconciler) postProposals(ctx context.Context, gl gitlab.AP
 		return "", err
 	}
 	opened := slices.Clone(ps.OpenedIssues)
-	proposed, own, counts := manage(spec, st, coord, tasks, ps.Proposed, &opened)
+	fromChat := slices.DeleteFunc(slices.Clone(ps.Proposed), func(p aiv1.PilotProposal) bool { return p.ChatMessageID == 0 })
+	proposed, own, counts := manage(spec, st, coord, tasks, slices.DeleteFunc(slices.Clone(ps.Proposed), func(p aiv1.PilotProposal) bool { return p.ChatMessageID != 0 }), &opened)
+	// Run as the owner who asked in a problem chat, else put; never by autonomy.
+	var chat []aiv1.PilotProposal
+	mark := ps.LastChatAccepted
+	for _, p := range fromChat {
+		if p.ChatMessageID <= mark {
+			log.FromContext(ctx).Info("the chat's proposal is dropped: its message or a newer one ran", "task", coord.Name, "message", p.ChatMessageID)
+		} else if by, why := chatAccepted(st, coord, tasks, p); by != "" {
+			p.AcceptedBy, mark = by, p.ChatMessageID
+			chat = append(chat, p)
+		} else {
+			log.FromContext(ctx).Info("the chat's proposal waits for an owner's answer", "task", coord.Name, "message", p.ChatMessageID, "why", why)
+			proposed = append(proposed, p)
+		}
+	}
 	var bodies []string
 	last := ""
 	for i, p := range append(slices.Clone(proposed), extra...) {
@@ -309,7 +327,7 @@ func (r *AgentProjectReconciler) postProposals(ctx context.Context, gl gitlab.AP
 		last = q.ID
 	}
 	if err := r.patchProposals(ctx, coord, func(ps *aiv1.PilotStatus) {
-		ps.Proposed = nil
+		ps.Proposed, ps.Accepted, ps.LastChatAccepted = nil, append(ps.Accepted, chat...), max(ps.LastChatAccepted, mark)
 		if counts != nil {
 			ps.Accepted, ps.Interventions = append(ps.Accepted, own...), counts
 		}
@@ -322,6 +340,30 @@ func (r *AgentProjectReconciler) postProposals(ctx context.Context, gl gitlab.AP
 		}
 	}
 	return last, nil
+}
+
+// chatAccepted is the owner whose "problem: #<Trigger> …" asked for chat proposal p,
+// all on that issue or the milestone, in a state that holds; else why not.
+func chatAccepted(st, coord *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, p aiv1.PilotProposal) (by, why string) {
+	i := slices.IndexFunc(coord.Spec.Source.ChatMessages, func(m aiv1.ChatMessage) bool { return m.ID == p.ChatMessageID })
+	if i < 0 {
+		return "", "the message is gone"
+	}
+	m := coord.Spec.Source.ChatMessages[i]
+	rest, ok := strings.CutPrefix(strings.TrimSpace(m.Text), fmt.Sprintf("problem: #%d", p.Trigger))
+	switch {
+	case !slices.Contains(coord.Spec.OwnerSubjects, m.Author):
+		return "", "its author is no owner"
+	case p.Trigger <= 0 || !ok || rest != "" && strings.ContainsRune("0123456789", rune(rest[0])):
+		return "", "the message is not about the proposal's issue"
+	case len(p.Actions) == 0 || len(p.Options) > 0 || slices.ContainsFunc(p.Actions, func(a aiv1.PilotAction) bool {
+		return a.IssueIID != 0 && a.IssueIID != p.Trigger || !slices.Contains(chatTools, a.Tool)
+	}):
+		return "", "an action is on another issue or needs an owner's Accept"
+	case aiv1.PilotState(st, tasks, p.Actions) != p.State:
+		return "", "the milestone's state changed"
+	}
+	return cmp.Or(m.AuthorName, m.Author), ""
 }
 
 // proposalPrompt is the prompt of proposal p: A runs those of its actions
@@ -731,7 +773,11 @@ func (r *AgentProjectReconciler) runAccepted(ctx context.Context, gl gitlab.API,
 	var acted []aiv1.PilotActed
 	for i, p := range accepted {
 		var b strings.Builder
-		fmt.Fprintf(&b, "🧭 Proposal P%d accepted by `@%s`:", p.ID, p.AcceptedBy)
+		head := fmt.Sprintf("Proposal P%d accepted", p.ID)
+		if p.ChatMessageID != 0 {
+			head = "Asked for in the Desk chat"
+		}
+		fmt.Fprintf(&b, "🧭 %s by `@%s`:", head, p.AcceptedBy)
 		var lines []string
 		for j, a := range p.Actions {
 			var answer string

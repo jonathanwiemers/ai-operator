@@ -2648,6 +2648,12 @@ spec:
                       Interventions count the pilot's own actions per issue on the issue's
                       current head (Coordinate tasks), by issue IID; "0" is the milestone.
                     type: object
+                  lastChatAccepted:
+                    description: |-
+                      LastChatAccepted is the newest chat message whose request ran as its
+                      owner: a message's request runs once, never one older than it.
+                    format: int64
+                    type: integer
                   lastNoteID:
                     description: |-
                       LastNoteID is the newest comment on the tracking issue handed to the

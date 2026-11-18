@@ -816,3 +816,189 @@ func TestPilotProposesARestartAndAnOwnersYesRunsIt(t *testing.T) {
 		t.Fatalf("an owner's yes is no intervention: %+v", c.Interventions)
 	}
 }
+
+// newProblemChatEnv is the pilot env with #1 active whose pilot has autonomy and
+// whose milestone alice also owns by her Desk subject.
+func newProblemChatEnv(t *testing.T, autonomy aiv1.PilotAutonomy) *projectEnv {
+	t.Helper()
+	e := newManagedEnv(t)
+	e.patchProject(func(p *aiv1.AgentProject) { p.Spec.Pilot.Autonomy = autonomy })
+	e.gl.Milestones[0].Description += "\n/agent owner-subjects alice@example.com"
+	e.reconcile()
+	if !slices.Contains(e.pilot().Spec.OwnerSubjects, "alice@example.com") {
+		t.Fatalf("alice owns the milestone by her subject: %+v", e.pilot().Spec.OwnerSubjects)
+	}
+	return e
+}
+
+// chatMessage puts author's Desk chat message id on the pilot.
+func (e *projectEnv) chatMessage(id int64, author, text string) {
+	e.t.Helper()
+	pilot := e.pilot()
+	pilot.Spec.Source.ChatMessages = append(pilot.Spec.Source.ChatMessages,
+		aiv1.ChatMessage{ID: id, Kind: "message", Text: text, Author: author, AuthorName: strings.Split(author, "@")[0]})
+	if err := e.c.Update(e.ctx, &pilot); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+// chatPropose plays a problem chat turn: the pilot records the actions of
+// message msg (source chat/id) for issue trigger, as the runner does.
+func (e *projectEnv) chatPropose(id, msg, trigger int64, actions ...aiv1.PilotAction) {
+	e.t.Helper()
+	p := aiv1.PilotProposal{Summary: "From the chat", Actions: actions, State: e.pilotState(actions),
+		Source: fmt.Sprintf("chat/%d", id), Trigger: trigger, ChatMessageID: msg}
+	e.patchStatus(pilotTaskName, func(s *aiv1.AgentTaskStatus) {
+		if s.Pilot == nil {
+			s.Pilot = &aiv1.PilotStatus{}
+		}
+		s.Pilot.Proposed = append(s.Pilot.Proposed, p)
+	})
+}
+
+func (e *projectEnv) acted() []aiv1.PilotActed {
+	if ps := e.pilot().Status.Pilot; ps != nil {
+		return ps.Acted
+	}
+	return nil
+}
+
+var chatAsk = []aiv1.PilotAction{{Tool: "retry", IssueIID: 1}, {Tool: "instruct", IssueIID: 1, Kind: "rerun", Note: "answer in JSON"}}
+
+func TestPilotRunsWhatAnOwnerAskedForInAProblemChatOnce(t *testing.T) {
+	// The pilot only proposes: the owner's words accept it.
+	e := newProblemChatEnv(t, aiv1.PilotPropose)
+	before := e.toolEffect()
+	e.chatMessage(7, "alice@example.com", "problem: #1\nrerun it with a hint to answer in JSON")
+	e.chatPropose(7, 7, 1, chatAsk...)
+	e.reconcile()
+	e.reconcile()
+	after := e.toolEffect()
+	if after.runs <= before.runs || after.instruction.Note != "answer in JSON" {
+		t.Fatalf("the actions run: %+v → %+v\n%s\n%+v\n%+v", before, after, strings.Join(botComments(e, e.tracking()), "\n---\n"), e.pilot().Status.Pilot, e.task(specTaskName).Status.Prompts)
+	}
+	if r := e.lastReply(); !strings.Contains(r, "🧭 Asked for in the Desk chat by `@alice`:") || !strings.Contains(r, "**retry**") || !strings.Contains(r, "**instruct**") {
+		t.Fatalf("the outcome is posted as accepted by alice: %q", r)
+	}
+	acted := e.acted()
+	if len(acted) != 1 || acted[0].By != "alice" || !slices.Equal(acted[0].Issues, []int64{1}) || !acted[0].Ran {
+		t.Fatalf("pilot.acted lists them for #1: %+v", acted)
+	}
+	if slices.ContainsFunc(e.task(specTaskName).Status.Prompts, func(q aiv1.Prompt) bool { return q.Source.Key == "chat/7" }) {
+		t.Fatal("an accepted request gets no prompt")
+	}
+	// The pilot records it again (a restarted turn), also once the log of
+	// what it did has moved on: it does not run twice.
+	e.patchStatus(pilotTaskName, func(s *aiv1.AgentTaskStatus) { s.Pilot.Acted = nil })
+	e.chatPropose(7, 7, 1, chatAsk...)
+	e.reconcile()
+	e.reconcile()
+	if again := e.toolEffect(); again != after || len(e.acted()) != 0 {
+		t.Fatalf("a chat message runs once: %+v → %+v, acted %+v", after, again, e.acted())
+	}
+	if ps := e.pilot().Status.Pilot; len(ps.Proposed)+len(ps.Accepted) != 0 {
+		t.Fatalf("the repeat is dropped: %+v", ps)
+	}
+}
+
+func TestPilotChatRequestIsNotAcceptedWithoutAnOwnersMessageOnItsIssue(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		author  string
+		text    string
+		msg     int64
+		actions []aiv1.PilotAction
+	}{
+		{"not an owner", "mallory@example.com", "problem: #1\nrerun it", 7, chatAsk},
+		{"another issue's problem", "alice@example.com", "problem: #2\nrerun #1", 7, chatAsk},
+		{"a longer issue number", "alice@example.com", "problem: #11\nrerun it", 7, chatAsk},
+		{"no problem", "alice@example.com", "rerun #1", 7, chatAsk},
+		{"no message", "alice@example.com", "problem: #1\nrerun it", 8, chatAsk},
+		{"an action on another issue", "alice@example.com", "problem: #1\nrerun it and #2",
+			7, []aiv1.PilotAction{{Tool: "retry", IssueIID: 1}, {Tool: "skip", IssueIID: 2}}},
+		{"a spec edit", "alice@example.com", "problem: #1\nfix the spec", 7, []aiv1.PilotAction{{Tool: "editSpec", Spec: "# New spec\n\nAll of it."}}},
+		{"a rule", "alice@example.com", "problem: #1\nalways rerun", 7, []aiv1.PilotAction{{Tool: "setRule", Kind: "switch", Note: "ci.maxFixRounds=3"}}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// The pilot manages: it does not run the request on its own.
+			e := newProblemChatEnv(t, aiv1.PilotManaged)
+			before := e.toolEffect()
+			e.chatMessage(7, tc.author, tc.text)
+			e.chatPropose(7, tc.msg, 1, tc.actions...)
+			e.reconcile()
+			e.reconcile()
+			if after := e.toolEffect(); after != before || len(e.acted()) != 0 {
+				t.Fatalf("nothing runs: %+v → %+v, acted %+v", before, after, e.acted())
+			}
+			if !slices.ContainsFunc(e.task(specTaskName).Status.Prompts, func(q aiv1.Prompt) bool {
+				return q.Source.Kind == aiv1.PromptProposal && q.Source.Key == "chat/7" && !q.State.Closed()
+			}) {
+				t.Fatalf("the request waits for an owner's answer: %+v", e.task(specTaskName).Status.Prompts)
+			}
+		})
+	}
+}
+
+func TestPilotChatRequestWithoutAMessageIDIsAProposal(t *testing.T) {
+	e := newProblemChatEnv(t, aiv1.PilotPropose)
+	before := e.toolEffect()
+	e.chatMessage(7, "alice@example.com", "problem: #1\nrerun it")
+	e.chatPropose(7, 0, 1, chatAsk...)
+	e.reconcile()
+	e.reconcile()
+	if after := e.toolEffect(); after != before || len(e.acted()) != 0 {
+		t.Fatalf("nothing runs: %+v → %+v", before, after)
+	}
+	if p := e.prompt(specTaskName, "Q1"); p.Source.Key != "chat/7" {
+		t.Fatalf("it is put as a proposal: %+v", p)
+	}
+}
+
+func TestChatAcceptedRunsOnlyChatTools(t *testing.T) {
+	coord := &aiv1.AgentTask{}
+	coord.Spec.OwnerSubjects = []string{"alice@example.com"}
+	coord.Spec.Source.ChatMessages = []aiv1.ChatMessage{{ID: 7, Author: "alice@example.com", AuthorName: "alice", Text: "problem: #1\ndo it"}}
+	st := &aiv1.AgentTask{}
+	for tool, ok := range map[string]bool{"retry": true, "instruct": true, "skip": true, "pause": true,
+		"editSpec": false, "setRule": false, "forgetRule": false, "revisit": false,
+		"markDone": false, "startAnyway": false, "unskip": false, "raiseBudget": false, "endMilestone": false} {
+		actions := []aiv1.PilotAction{{Tool: tool, IssueIID: 1}}
+		p := aiv1.PilotProposal{Source: "chat/7", Trigger: 1, ChatMessageID: 7, Actions: actions, State: aiv1.PilotState(st, nil, actions)}
+		if by, why := chatAccepted(st, coord, nil, p); (by == "alice") != ok || !ok && why == "" {
+			t.Errorf("%s: accepted by %q (%q), want accepted %v", tool, by, why, ok)
+		}
+	}
+}
+
+func TestPilotChatRequestRecordedTwiceInOneBatchRunsOnce(t *testing.T) {
+	e := newProblemChatEnv(t, aiv1.PilotPropose)
+	before := e.toolEffect()
+	e.chatMessage(7, "alice@example.com", "problem: #1\nrerun it")
+	retry := aiv1.PilotAction{Tool: "retry", IssueIID: 1}
+	e.chatPropose(7, 7, 1, retry)
+	e.chatPropose(7, 7, 1, retry)
+	e.reconcile()
+	e.reconcile()
+	if after := e.toolEffect(); after.runs != before.runs+1 || len(e.acted()) != 1 {
+		t.Fatalf("the request runs once: %+v → %+v, acted %+v", before, after, e.acted())
+	}
+	if ps := e.pilot().Status.Pilot; ps.LastChatAccepted != 7 || len(ps.Proposed)+len(ps.Accepted) != 0 {
+		t.Fatalf("message 7 is marked as run: %+v", ps)
+	}
+}
+
+func TestChatAcceptedRefusesAProposalWithoutActions(t *testing.T) {
+	coord := &aiv1.AgentTask{}
+	coord.Spec.OwnerSubjects = []string{"alice@example.com"}
+	coord.Spec.Source.ChatMessages = []aiv1.ChatMessage{{ID: 7, Author: "alice@example.com", Text: "problem: #1\ndo it"}}
+	st := &aiv1.AgentTask{}
+	for name, p := range map[string]aiv1.PilotProposal{
+		"no actions": {Trigger: 1, ChatMessageID: 7, State: aiv1.PilotState(st, nil, nil)},
+		"options": {Trigger: 1, ChatMessageID: 7, State: aiv1.PilotState(st, nil, nil),
+			Options: []aiv1.PromptOption{{Label: "Retry", Actions: []aiv1.PilotAction{{Tool: "retry", IssueIID: 1}}}}},
+	} {
+		if by, why := chatAccepted(st, coord, nil, p); by != "" || why == "" {
+			t.Errorf("%s: accepted by %q (%q), want a proposal", name, by, why)
+		}
+	}
+}

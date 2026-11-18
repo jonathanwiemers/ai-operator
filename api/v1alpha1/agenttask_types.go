@@ -729,6 +729,11 @@ type PilotStatus struct {
 	// +optional
 	LastProposal int64 `json:"lastProposal,omitempty"`
 
+	// LastChatAccepted is the newest chat message whose request ran as its
+	// owner: a message's request runs once, never one older than it.
+	// +optional
+	LastChatAccepted int64 `json:"lastChatAccepted,omitempty"`
+
 	// OpenedIssues are the title keys of the issues the pilot opened.
 	// +optional
 	OpenedIssues []string `json:"openedIssues,omitempty"`

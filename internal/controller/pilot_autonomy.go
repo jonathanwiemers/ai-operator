@@ -194,6 +194,9 @@ func proposalHow(p aiv1.PilotProposal) string {
 	if p.Prompt != "" && p.AcceptedBy != "" {
 		return fmt.Sprintf("prompt %s, answered by `@%s`", p.Prompt, p.AcceptedBy)
 	}
+	if p.ChatMessageID != 0 && p.AcceptedBy != "" {
+		return fmt.Sprintf("asked for in the Desk chat by `@%s`", p.AcceptedBy)
+	}
 	return pilotHow(p.ID, p.AcceptedBy)
 }
 
