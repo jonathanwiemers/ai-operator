@@ -247,8 +247,9 @@ R1 → R2 → R3 → R4 → R5 → R5b → R6 → R7 → R8 → R10 → R9 (afte
 - 2026-11-16: drafted. The `/agent owner-subjects` line is added only in
   the GitLab milestone description: it carries an e-mail address, and
   this repository is mirrored publicly.
-- Status: implemented. Every R is a merge request below, by its commit
-  subject, or a line here.
+- Status: implemented in this repository; the infra change R9 is still
+  open (below). Every R is a merge request below, by its commit subject,
+  or a line here.
 - R1 (`3e151d6`): `ai_operator_gitlab_requests_total{kind, owner}` as
   specified.
 - R3 (`3868624`): the matcher is `internal/projectglob`, shared by the set
@@ -278,6 +279,23 @@ R1 → R2 → R3 → R4 → R5 → R5b → R6 → R7 → R8 → R10 → R9 (afte
   cross-repo allow-list is kept explicit: it lists the companions by full
   path and does not use the new globs, so a companion is a decision per
   project and the set's reach does not widen it.
+- R9 (#560): not applied yet. The plan gave #560 no companion repository,
+  so its merge request carries only this line and the infra change is
+  still to do in `jo.wiemers/infra/cluster`, by hand or by a follow-up
+  issue labelled `agent-repo::jo.wiemers/infra/cluster`. The change: the
+  set `jo-wiemers` in `agents` (group `jo.wiemers`, token `gitlab/token`,
+  include `jo.wiemers/**`, exclude `jo.wiemers/archived/**`, template =
+  `defaults.yaml` without `gitlab`, plus `webhook.enabled`,
+  `webhook.secretRef` `gitlab-webhook`/`token` and `webhook.url`); the same
+  `webhook` block once in `defaults.yaml` for the 14 explicit
+  AgentProjects; the public route to `POST /hooks/gitlab` if infra has
+  none; the image bump to the release after R6. Receiver URL and the sealed
+  secret are not decided yet: seal it with the cluster's certificate
+  (`kubectl -n agents create secret generic gitlab-webhook
+  --from-literal=token=… --dry-run=client -o yaml | kubeseal -o yaml`),
+  never commit a plain Secret. The acceptance checks after rollout
+  (`Ready` and `Discovered`, `explicit` entries, `WebhookRegistered`, the
+  GraphQL counter) are recorded here when R9 lands.
 - R10 (#559): `docs/usage.md` and `docs/projectsets.md` predate the docs
   layout. The guide is `docs/guides/project-sets.md`, the fields are
   `docs/reference/agentprojectset.md`, and the links come from the
