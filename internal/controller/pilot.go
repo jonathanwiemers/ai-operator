@@ -428,6 +428,10 @@ func (r *AgentProjectReconciler) syncPilots(ctx context.Context, gl gitlab.API, 
 				err = r.wakePilot(ctx, coord, pilotEvents(spec, project.Status.MainHealth, st, issues, tasks, st == lane, stalls, r.now()))
 			}
 			if err == nil {
+				// The pilot answers at once while a problem waits for an owner.
+				err = r.warmPilot(ctx, coord, st.Status.Autopilot, spec.Lifecycle.ProblemWarmMax.Duration)
+			}
+			if err == nil {
 				_, err = r.postProposals(ctx, gl, project, spec, st, coord, tracking)
 			}
 			if err == nil {

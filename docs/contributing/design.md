@@ -469,7 +469,12 @@ stateDiagram-v2
   `lifecycle.problemWarmMax`) and `spec.warmRequestedAt` plus
   `chatIdleTimeout` (written by the Desk); then the rules above apply.
   Warmth starts no run, does not count toward `maxRunsPerTask` and loses to
-  `spec.suspend`.
+  `spec.suspend`. The project reconciler sets a milestone pilot's
+  `spec.warmUntil` while the milestone has an open problem: the autopilot
+  is paused or an active issue is held. The value is the earliest
+  `pausedAt` or hold `since` plus `problemWarmMax`, so a problem left open
+  stops keeping the pod after the cap. The reconciler clears the field when
+  no problem is open and writes only when the value changes.
 * **Hibernated**: pod deleted, PVC kept. This is the normal state between
   runs: no CPU or memory is held. Waking up costs a pod start; the checkout,
   build cache and agent session are still there. A warm pod would not keep
