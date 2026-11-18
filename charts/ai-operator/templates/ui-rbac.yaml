@@ -121,6 +121,10 @@ rules:
   - apiGroups: ["ai.wiemers.me"]
     resources: ["agentplans/status"]
     verbs: ["patch"]
+  # A pilot's warm request (spec.warmRequestedAt) from an open problem card.
+  - apiGroups: ["ai.wiemers.me"]
+    resources: ["agenttasks"]
+    verbs: ["patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding

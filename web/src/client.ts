@@ -508,6 +508,15 @@ export function postTaskChat(
   return post<ChatPostResponse>(`${taskPath(namespace, name, task)}/chat`, body)
 }
 
+// warmTask: POST .../tasks/{task}/warm wakes a pilot without a turn. Best
+// effort: errors are ignored (the pilot just starts cold on the first turn).
+export function warmTask(namespace: string, name: string, task: string): Promise<void> {
+  return post<unknown>(`${taskPath(namespace, name, task)}/warm`, {}).then(
+    () => undefined,
+    () => undefined,
+  )
+}
+
 // taskLogs: GET .../tasks/{task}/logs, the last tail lines of the task
 // pod's runner or agent container log as plain text (owners only); with
 // follow the server keeps writing new lines until the container stops.

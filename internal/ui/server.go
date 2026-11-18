@@ -176,6 +176,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/v1/projects/{namespace}/{name}/tasks/{task}/logs", s.authed(s.rawLogs))
 	mux.Handle("GET /api/v1/projects/{namespace}/{name}/tasks/{task}/chat", s.authed(s.getChat))
 	mux.Handle("POST /api/v1/projects/{namespace}/{name}/tasks/{task}/chat", s.authed(s.postChat))
+	mux.Handle("POST /api/v1/projects/{namespace}/{name}/tasks/{task}/warm", s.authed(s.warmTask))
 	mux.Handle("GET /api/v1/events", s.authed(s.events))
 	mux.Handle("GET /api/v1/stream", s.authed(s.stream))
 	mux.Handle("GET /api/v1/inbox", s.authed(s.inbox))
