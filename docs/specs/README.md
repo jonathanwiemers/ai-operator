@@ -55,6 +55,7 @@ git history does; otherwise "no milestone".
 12. [Desk polish: version, phone Costs tab, ⌘K search](desk-polish.spec.md) — Version footer, phone Costs tab, drop the milestone strip, ⌘K search. Milestone: Desk polish: version, phone Costs tab, no milestone strip, ⌘K search.
 13. [One Needs you tab per milestone](desk-needs-you.spec.md) — What was asked, who handled it and what was tried, per milestone and in the Inbox. Milestone: Desk: one Needs you tab per milestone that shows what was asked, who handled it and what was tried.
 14. [Plans name themselves, show their milestone's progress, one plan list](plans-overview.spec.md) — Agent-given plan titles, a `/plans` page and a Plans tab per project with milestone state. Milestone: Desk: plans name themselves, show their milestone's progress, and one plan list for all projects and each project.
+15. [One Decisions tab to read, search and revisit decisions](desk-decisions.spec.md) — Stored copies of every decision, a Decisions tab per milestone and project, the revisit chain and what Revisit does. Milestone: Desk: one Decisions tab to read, search and revisit what the agents decided.
 
 ## Research
 

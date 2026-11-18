@@ -12,6 +12,7 @@ import {
   filtered,
   groupByIssue,
   issueStateLabel,
+  milestoneLabel,
   searchFromQuery,
   stateFromQuery,
   type DecisionGroup,
@@ -26,7 +27,14 @@ import { useResource } from '../live'
 // a reload; the server filters. The controls slot takes more filters (the
 // project tab's milestone select). A #<id> link scrolls to its card once
 // the data is there and highlights it briefly; so does a later hash change.
-const props = defineProps<{ namespace: string; name: string; milestone: number }>()
+// Across all milestones (milestone 0), each group's header names its
+// milestone, by its title in milestones (the project's list).
+const props = defineProps<{
+  namespace: string
+  name: string
+  milestone: number
+  milestones?: readonly { iid: number; title: string }[]
+}>()
 
 const route = useRoute()
 const router = useRouter()
@@ -60,6 +68,11 @@ watch(draft, (v) => {
 })
 function setState(s: DecisionState) {
   void router.replace({ query: decisionsQuery(route.query, { state: s }) })
+}
+
+function milestoneTo(g: DecisionGroup) {
+  const { namespace, name } = props
+  return { name: 'stream-milestone' as const, params: { namespace, name, iid: String(g.milestoneIID) }, query: { tab: 'decisions' } }
 }
 
 function issueTo(g: DecisionGroup) {
@@ -142,6 +155,15 @@ const sectionHead = 'm-0 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 t
       <template v-else>
         <div v-for="g in groups" :key="g.key" class="mt-[18px] flex min-w-0 flex-col gap-2.5" data-decision-group>
           <h3 :class="sectionHead">
+            <RouterLink
+              v-if="!milestone"
+              :to="milestoneTo(g)"
+              class="inline-flex min-h-11 min-w-0 items-center font-medium [overflow-wrap:anywhere] text-(--text-3) tablet:min-h-0"
+              data-decision-milestone
+            >
+              {{ milestoneLabel(g.milestoneIID, milestones) }}
+            </RouterLink>
+            <span v-if="!milestone" aria-hidden="true" class="text-(--text-3)">/</span>
             <RouterLink :to="issueTo(g)" class="inline-flex min-h-11 min-w-0 items-center [overflow-wrap:anywhere] tablet:min-h-0">
               {{ g.issue.title || `#${g.issue.iid}` }}
             </RouterLink>

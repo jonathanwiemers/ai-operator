@@ -34,12 +34,29 @@ export function searchFromQuery(v: QueryValue): string {
 // theirs.
 export function decisionsQuery(
   query: Record<string, QueryValue>,
-  patch: { q?: string; state?: DecisionState },
+  patch: { q?: string; state?: DecisionState; milestone?: number },
 ): Record<string, QueryValue> {
   const { q: _q, state: _s, ...rest } = query
   const q = patch.q !== undefined ? patch.q.trim() : searchFromQuery(query.q)
   const state = patch.state ?? stateFromQuery(query.state)
+  if (patch.milestone !== undefined) {
+    delete rest.milestone
+    if (patch.milestone > 0) rest.milestone = String(patch.milestone)
+  }
   return { ...rest, ...(q ? { q } : {}), ...(state !== 'all' ? { state } : {}) }
+}
+
+// milestoneFromQuery reads the project tab's ?milestone=<iid>: 0 (all
+// milestones) for none or anything but a positive number.
+export function milestoneFromQuery(v: QueryValue): number {
+  const s = first(v).trim()
+  return /^\d+$/.test(s) ? Number(s) : 0
+}
+
+// milestoneLabel names a milestone in a project tab's group header: its
+// title from the project's milestones, else %<iid>.
+export function milestoneLabel(iid: number, milestones: readonly { iid: number; title: string }[] = []): string {
+  return milestones.find((m) => m.iid === iid)?.title || `%${iid}`
 }
 
 // DecisionParams is what GET …/decisions filters on: milestone 0 is the

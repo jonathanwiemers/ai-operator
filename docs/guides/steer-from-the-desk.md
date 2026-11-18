@@ -166,8 +166,11 @@ with the option's letter in the comment's thread (see
 
 Each [decision](../concepts/glossary.md#decision) in a milestone's queue
 has a *Revisit* button, on the *Issues* tab and in the project's context
-panel. It is there for owners with the `chat` grant, while the milestone has
-its pilot.
+panel. The card of the decision on the *Decisions* tab has it too, with a
+line that says what will happen. It is there for owners with the `chat`
+grant, while the milestone has its pilot. The decision's ID opens its card
+on the *Decisions* tab, or the comment on GitLab without the history
+database.
 
 1. Click *Revisit* on the decision.
 2. A prompt opens with the agent's choice and the alternatives it recorded
@@ -175,8 +178,10 @@ its pilot.
 3. Pick an alternative or write what you want instead.
 
 This works once the decision's issue is merged: the operator then opens a
-follow-up issue that makes the change. For an issue that is still open, write
+follow-up issue that makes the change. For an issue that is still open, the
+card has a text box and *Comment*, or write
 `/agent revisit <id> <what you want instead>` in the *Conversation* box. See
+[Read and revisit decisions](decisions.md) and
 [Decisions and Revisit](iterate-and-finish.md#decisions-and-revisit).
 
 ## Pause and hold cards

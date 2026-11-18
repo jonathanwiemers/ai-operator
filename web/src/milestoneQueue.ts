@@ -46,6 +46,16 @@ export function canRevisit(d: DecisionRef, permissions?: Pick<MilestonePermissio
   return !!permissions?.chat && !!permissions.merge && !d.superseded && !!d.id.trim()
 }
 
+// decisionHref is where a decision ID in the queue links (R14): with the
+// history feature, the Decisions tab of its milestone's Desk page
+// (milestonePath) at the card, "<path>?tab=decisions#<id>"; without it, the
+// GitLab comment (d.url, "" when there is none).
+export function decisionHref(d: Pick<DecisionRef, 'id' | 'url'>, milestonePath: string, history: boolean): string {
+  const id = d.id.trim()
+  if (history && id && milestonePath) return `${milestonePath}?tab=decisions#${encodeURIComponent(id)}`
+  return d.url ?? ''
+}
+
 // revisitPromptID finds the prompt id ("Q7") the operator's answer to a
 // revisit names, or '' when it names none.
 export function revisitPromptID(answer: string): string {

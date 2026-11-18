@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import { hasFeature } from '../api'
 import { companionOf } from '../companion'
 import {
   canRevisit,
+  decisionHref,
   laneGroups,
   parallelCommand,
   parallelMax,
@@ -88,6 +91,15 @@ const waves = computed(() => wavesLabel(props.milestone.autopilot?.items ?? []))
 
 // companion: the issue's companion merge request, if it has one.
 const companion = (iid: number) => companionOf(props.milestone.companions, iid)
+
+// A decision ID opens the milestone's Decisions tab at its card with the
+// history feature (R14, D548-P2), else the GitLab comment.
+const router = useRouter()
+const milestonePath = computed(() => {
+  const { namespace, name } = props
+  return router.resolve({ name: 'stream-milestone', params: { namespace, name, iid: String(props.milestone.iid) } }).path
+})
+const decisionLink = (d: { id: string; url?: string }) => decisionHref(d, milestonePath.value, hasFeature('history'))
 
 const issueURL = (iid: number) => props.milestone.webURL.replace(/\/-\/milestones\/\d+$/, `/-/issues/${iid}`)
 
@@ -175,7 +187,10 @@ const laneHead = 'm-0 mb-1 px-1.5 text-xs font-semibold text-(--text-2)'
             :class="{ 'line-through opacity-55': d.superseded }"
             :title="d.title"
           >
-            <ExtLink v-if="d.url" :href="d.url" :class="tap"><code>{{ d.id }}</code></ExtLink>
+            <RouterLink v-if="decisionLink(d).startsWith('/')" :to="decisionLink(d)" :class="tap" data-decision-link>
+              <code>{{ d.id }}</code>
+            </RouterLink>
+            <ExtLink v-else-if="decisionLink(d)" :href="decisionLink(d)" :class="tap"><code>{{ d.id }}</code></ExtLink>
             <code v-else>{{ d.id }}</code>
             <UButton
               v-if="pilotTask && canRevisit(d, milestone.permissions)"

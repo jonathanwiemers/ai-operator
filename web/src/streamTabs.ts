@@ -2,8 +2,8 @@
 // so it can be linked to and reloaded; the first tab of a list is the
 // default and is left out.
 //
-// Project pages: Stream | Board | Spend, and Plans with the plans feature
-// (R13). Milestone pages: Issues | Needs you | Decisions (R11, D546-P1) |
+// Project pages: Stream | Decisions (R14) | Board | Spend, and Plans with
+// the plans feature (R13). Milestone pages: Issues | Needs you | Decisions (R11, D546-P1) |
 // Pilot | Retrospective | Stream | Board | Spend (decision 7, R12), so an old
 // milestone link with ?tab=stream still opens the stream. The dashboard
 // at /: Overview | Stream (decision 3). The task page (and the issue page
@@ -11,7 +11,7 @@
 // Logs for the task's owners, run watchdog R8).
 // BaseTab: the tabs project and milestone pages share.
 export type BaseTab = 'stream' | 'board' | 'spend'
-export type StreamTab = BaseTab | 'plans'
+export type StreamTab = BaseTab | 'decisions' | 'plans'
 export type MilestoneTab = 'issues' | 'needs' | 'decisions' | 'pilot' | 'retrospective' | BaseTab
 export type DashboardTab = 'overview' | 'stream'
 export type TaskTab = 'overview' | 'chat' | 'live' | 'logs' | 'calls' | 'details'
@@ -33,10 +33,13 @@ export const streamBaseTabs: Tab<BaseTab>[] = [
   { id: 'spend', label: 'Spend' },
 ]
 
-// projectTabsFor are a project page's tabs: Plans only with the plans
-// feature, so ?tab=plans without it opens Stream.
+// projectTabsFor are a project page's tabs: Decisions right after Stream
+// (R14), Plans only with the plans feature, so ?tab=plans without it opens
+// Stream.
 export function projectTabsFor(plans: boolean): Tab<StreamTab>[] {
-  return plans ? [...streamBaseTabs, { id: 'plans', label: 'Plans' }] : streamBaseTabs
+  const [stream, ...rest] = streamBaseTabs
+  const tabs: Tab<StreamTab>[] = [stream!, { id: 'decisions', label: 'Decisions' }, ...rest]
+  return plans ? [...tabs, { id: 'plans', label: 'Plans' }] : tabs
 }
 
 export const milestoneTabs: Tab<MilestoneTab>[] = [

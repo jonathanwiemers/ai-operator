@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
+import USelect from '@nuxt/ui/components/Select.vue'
 import Badge from '../components/Badge.vue'
 import { useBackClose } from '../ui/useBackClose'
 import { hasFeature } from '../api'
@@ -51,6 +52,7 @@ import type {
   StreamEvent,
 } from '../types'
 import { useStreamNote } from '../streamNote'
+import { decisionsQuery, milestoneFromQuery } from '../decisions'
 import { milestoneTabFromRoute, milestoneTabs, projectTabsFor, storedMilestoneTabs, tabFromQuery, tabQuery } from '../streamTabs'
 import NotFound from './NotFound.vue'
 // The sheet is loaded below 1180 px only, where the Context button is.
@@ -65,7 +67,7 @@ const props = defineProps<{
 const everything = computed(() => !props.namespace || !props.name)
 const milestoneIID = computed(() => (props.iid ? Number(props.iid) : undefined))
 
-// tab: Stream, Board, Spend or Plans (feature plans) on project streams, Issues (the default),
+// tab: Stream, Decisions, Board, Spend or Plans (feature plans) on project streams, Issues (the default),
 // Needs you, Decisions, Pilot, Retrospective, Stream, Board or Spend on milestones, kept in ?tab= so it can be
 // linked to (a #prompt-Q<n> link without it opens Needs you); Everything has no
 // tabs. A stored milestone has no tasks, so no Board. The Needs you tab's
@@ -85,6 +87,21 @@ const tab = computed((): string => {
   return tabFromQuery(route.query.tab, tabs.value)
 })
 const filter = ref<StreamFilter>('all')
+
+// The project's Decisions tab (R14): all milestones, or the one ?milestone=
+// names, chosen from the project's milestones (one the list lacks shows as
+// %<iid>).
+const router = useRouter()
+const decisionsMilestone = computed(() => milestoneFromQuery(route.query.milestone))
+const decisionsMilestones = computed(() => project.value?.milestones ?? [])
+const decisionsMilestoneItems = computed(() => {
+  const items = [{ value: 0, label: 'All milestones' }, ...decisionsMilestones.value.map((m) => ({ value: m.iid, label: m.title || `%${m.iid}` }))]
+  const iid = decisionsMilestone.value
+  return iid && !items.some((i) => i.value === iid) ? [...items, { value: iid, label: `%${iid}` }] : items
+})
+function setDecisionsMilestone(iid: number) {
+  void router.replace({ query: decisionsQuery(route.query, { milestone: iid }) })
+}
 // A milestone's Stream tab has the runtime kinds only; the Pilot tab the rest.
 const filters = computed(() => (milestoneIID.value ? runtimeStreamFilters : streamFilters))
 const q = ref('')
@@ -426,7 +443,8 @@ function showDay(i: number): string | null {
     <div class="stream">
       <!-- Phones: the title has a row of its own and wraps, the cost and the
            Context button follow, then the tab strip and the search take a
-           full row each. From 760 px they share one row as before. -->
+           full row each. From 760 px they share one row; the search
+           shrinks from 180 px to 112 px before it would wrap. -->
       <div data-stream-head class="bg-(--bg) px-4 pt-3.5 tablet:px-7">
         <div v-if="milestone?.autopilot" class="flex items-center gap-1.5 text-[12.5px] text-(--text-3)">
           <span class="font-semibold text-(--tone-progress-fg)">Autopilot {{ milestone.autopilot.phase.toLowerCase() }}</span>
@@ -445,7 +463,7 @@ function showDay(i: number): string | null {
           <form
             v-if="tab === 'stream'"
             role="search"
-            class="order-2 basis-full tablet:order-none tablet:basis-auto"
+            class="order-2 basis-full tablet:order-none tablet:max-w-45 tablet:grow tablet:basis-28"
             @submit.prevent="applySearch"
           >
             <UInput
@@ -454,7 +472,7 @@ function showDay(i: number): string | null {
               placeholder="Search…"
               aria-label="Search stream"
               icon="i-lucide-search"
-              class="w-full tablet:w-45"
+              class="w-full"
               :ui="{ base: 'tablet:text-sm/5' }"
             />
           </form>
@@ -606,6 +624,27 @@ function showDay(i: number): string | null {
       <div v-else-if="tab === 'decisions'" class="scroll board">
         <!-- From the history database, so also on stored milestones. -->
         <MilestoneDecisions v-if="namespace && name && milestoneIID" :namespace="namespace" :name="name" :milestone="milestoneIID" />
+        <MilestoneDecisions
+          v-else-if="namespace && name"
+          :namespace="namespace"
+          :name="name"
+          :milestone="decisionsMilestone"
+          :milestones="decisionsMilestones"
+        >
+          <template #controls>
+            <USelect
+              :model-value="decisionsMilestone"
+              :items="decisionsMilestoneItems"
+              aria-label="Milestone"
+              trailing-icon="i-lucide-chevron-down"
+              selected-icon="i-lucide-check"
+              class="min-h-11 w-full tablet:min-h-0 tablet:w-auto tablet:min-w-44"
+              :ui="{ base: 'tablet:text-sm/5', item: 'min-h-11 tablet:min-h-0' }"
+              data-decisions-milestone
+              @update:model-value="setDecisionsMilestone(Number($event))"
+            />
+          </template>
+        </MilestoneDecisions>
       </div>
       <div v-else-if="tab === 'pilot'" class="scroll board">
         <MilestonePilot

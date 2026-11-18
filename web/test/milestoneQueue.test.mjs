@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   canRevisit,
+  decisionHref,
   laneGroups,
   parallelCommand,
   queueDone,
@@ -66,6 +67,18 @@ test('canRevisit: owners on live decisions only', () => {
   assert.equal(canRevisit({ id: 'D1-1' }, { chat: true, merge: false }), false)
   assert.equal(canRevisit({ id: 'D1-1' }, { chat: false, merge: true }), false)
   assert.equal(canRevisit({ id: 'D1-1' }, undefined), false)
+})
+
+test('decisionHref: the Decisions tab with the history feature, GitLab without', () => {
+  const d = { id: 'D42-3', url: 'https://gitlab.example/g/p/-/issues/42#note_7' }
+  const path = '/projects/team-a/shop/milestones/14'
+  assert.equal(decisionHref(d, path, true), '/projects/team-a/shop/milestones/14?tab=decisions#D42-3')
+  assert.equal(decisionHref(d, path, false), d.url)
+  assert.equal(decisionHref({ id: 'D42-3' }, path, false), '')
+  assert.equal(decisionHref({ id: ' D42-P1 ' }, path, true), `${path}?tab=decisions#D42-P1`)
+  // No ID or no milestone page: GitLab.
+  assert.equal(decisionHref({ id: '', url: d.url }, path, true), d.url)
+  assert.equal(decisionHref(d, '', true), d.url)
 })
 
 test('revisitPromptID: finds the prompt in the answer', () => {

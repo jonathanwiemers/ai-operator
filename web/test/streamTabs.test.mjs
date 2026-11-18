@@ -167,9 +167,12 @@ test('milestone tabs: Needs you, then Decisions, sit between Issues and Pilot, a
   assert.deepEqual(storedMilestoneTabs.slice(0, 4).map((t) => t.label), ['Issues', 'Needs you', 'Decisions', 'Pilot'])
 })
 
-test('project tabs: Plans only with the plans feature', () => {
-  assert.deepEqual(projectTabsFor(false).map((t) => t.label), ['Stream', 'Board', 'Spend'])
-  assert.deepEqual(projectTabsFor(true).map((t) => t.label), ['Stream', 'Board', 'Spend', 'Plans'])
+test('project tabs: Decisions after Stream, Plans only with the plans feature', () => {
+  assert.deepEqual(projectTabsFor(false).map((t) => t.label), ['Stream', 'Decisions', 'Board', 'Spend'])
+  assert.deepEqual(projectTabsFor(true).map((t) => t.label), ['Stream', 'Decisions', 'Board', 'Spend', 'Plans'])
+  assert.equal(tabFromQuery('decisions', projectTabsFor(false)), 'decisions')
+  assert.deepEqual(tabQuery({ q: 'x' }, 'decisions', projectTabsFor(false)), { q: 'x', tab: 'decisions' })
+  assert.deepEqual(tabQuery({ tab: 'decisions', q: 'x' }, 'stream', projectTabsFor(true)), { q: 'x' })
   assert.equal(tabFromQuery('plans', projectTabsFor(true)), 'plans')
   assert.deepEqual(tabQuery({}, 'plans', projectTabsFor(true)), { tab: 'plans' })
 })

@@ -1087,6 +1087,33 @@ the issue's plan position, planner before implementer, and number. The rows
 carry the snapshot's expiry and `DeleteExpiredDecisions` deletes them on
 their own.
 
+`syncDecisions` (`internal/controller/decisions_sync.go`) fills them. It
+runs in `autopilotPhase.run` right after `syncRevisits`, for every spec task
+with a milestone, autopilot or not. It lists the milestone's issues, open
+and closed, updated since `status.decisions.checkedAt` (`DecisionSyncStatus`)
+minus `revisitClockSkew` (5 minutes). Without a watermark it lists all of
+them: that is the backfill of existing milestones, once per milestone. For
+each issue it reads the notes: decisions come only from bot notes that are
+not system notes and start with the decisions header (as
+`isDecisionComment`), parsed by `marker.ParseDecisions`, plus planner
+decisions (`-P` IDs) from the description of a bot-authored issue. Revisit
+requests come from human notes that are a `revisit` command with the
+project's prefix (requester, instruction, link, time) and from a bot
+follow-up's `ai-operator:revisit=<id>` marker (the requester and change its
+description names, the follow-up and its state). When a follow-up is read,
+the issue it revisits is read in the same sweep, if it is in the milestone,
+so its *superseded* state follows. The tracking issue is read for revisit
+requests only. Each issue's set goes to `history.Recorder.RecordIssueDecisions`
+(`internal/history/decisions.go`): queued by project and issue, a newer set
+replacing a queued one, flushed every second, dropped and counted past the
+queue size, a no-op without the database. The watermark (the time before
+the listing) is patched only after every listed issue was read; a GitLab
+error returns before it, is reported as `decisions of milestone …` like
+other phase errors and does not stop the poll, so the window is read again.
+The UI server's endpoint decides each decision's revisit mode (`prompt`,
+`comment`, `command` or `none`, see the API table) from the milestone's
+tasks and the issue's state, so the web only renders it.
+
 The recorder fills them from the spec tasks' status
 (`internal/history/snapshot.go`): every informer add and update of a spec
 task, and its start for every cached spec task (adds arrive before leader

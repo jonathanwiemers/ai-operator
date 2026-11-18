@@ -187,14 +187,15 @@ event of all your projects.
 
 ![Project page with its milestones, the pilot message box and a run that asks a question, beside the needs-you panel and the queue](../assets/screenshots/project-stream.webp)
 
-A project page has the tabs *Stream | Board | Spend*, and *Plans* with Desk
-chat:
+A project page has the tabs *Stream | Decisions | Board | Spend*, and *Plans*
+with Desk chat:
 
 - **Stream**: the project's [autopilot queue and the milestones that are
   finishing](steer-from-the-desk.md#the-queue-and-finishing), its
   milestones in progress and done, then the stream: what happened, newest
   first. A message box sits above the stream; a paused milestone pins its
   short pause card over it.
+- **Decisions**: the decisions of all its milestones, or of the one you pick.
 - **Board**: one board per milestone, plus the issues without one.
 - **Spend**: what the project's agent calls cost.
 - **Plans**: the project's [plans](write-a-milestone.md#draft-it-in-the-desk)
@@ -263,6 +264,7 @@ A revisited decision shows its chain: who asked, what for, the comment or
 follow-up issue, and the decision that replaced it. A line says what a
 revisit does. Owners get *Revisit* (opens the prompt in *Needs you*),
 *Comment* (on an open issue, in your GitLab name) or a command to copy.
+See [Read and revisit decisions](decisions.md).
 
 ### Pilot
 

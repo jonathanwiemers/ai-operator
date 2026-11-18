@@ -39,6 +39,7 @@ interface Route {
 // What the project and milestone tabs show once loaded (e2e/fixtures/stream.ts).
 const projectReady = {
   stream: 'Run 2 needs input',
+  decisions: 'Refund in the order currency',
   board: 'Guest checkout: confirmation mail',
   spend: 'Cache-read share',
 }
@@ -120,7 +121,7 @@ const routes: Route[] = [
     path: '/costs?range=90d&group=model&kind=implement',
     ready: costsReady,
   },
-  ...(['stream', 'board', 'spend'] as const).map(
+  ...(['stream', 'decisions', 'board', 'spend'] as const).map(
     (tab): Route => ({
       name: `stream-project-${tab}`,
       path: `/projects/team-a/shop?tab=${tab}`,
@@ -2685,6 +2686,104 @@ test.describe('milestone decisions', () => {
     await page.reload()
     await expect(page.locator('main').getByText('Decisions need the history database.')).toBeVisible()
     await expect(page.locator('main').getByRole('searchbox', { name: 'Search decisions' })).toHaveCount(0)
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+
+  // R14: the queue's decision IDs open the Decisions tab at the card with
+  // the history feature, the GitLab comment without it.
+  async function openQueue(page: Page, baseURL: string | undefined, history: boolean) {
+    const route = routes.find((r) => r.name === 'stream-milestone-issues')!
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await page.setViewportSize(widths[2]!)
+    await page.clock.setFixedTime(now)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, route, problems)
+    const status = paymentsMilestone.spec.status
+    const milestone = {
+      ...paymentsMilestone,
+      spec: {
+        ...paymentsMilestone.spec,
+        status: {
+          ...status,
+          autopilot: {
+            ...status.autopilot!,
+            items: [{ iid: 280, state: 'Merged', decisions: [{ id: 'D280-2', title: 'Refund in the order currency', url: gitlabNote }] }],
+          },
+        },
+      },
+    }
+    await page.route((u) => u.pathname === '/api/v1/projects/team-a/shop/milestones/14', (r) => r.fulfill({ status: 200, json: milestone }))
+    if (!history) {
+      const json = { features: features.features.filter((f) => f.name !== 'history') }
+      await page.route('**/api/v1/features', (r) => r.fulfill({ status: 200, json }))
+    }
+    await page.goto('/projects/team-a/shop/milestones/14')
+    await route.ready(page)
+    return problems
+  }
+  const gitlabNote = shopDecisions.find((d) => d.id === 'D280-2')!.url ?? ''
+
+  test('a queue decision ID opens the highlighted card@1280', async ({ page, baseURL }) => {
+    const problems = await openQueue(page, baseURL, true)
+    const link = page.locator('main [data-queue-item]').getByRole('link', { name: 'D280-2' })
+    await expect(link).toHaveAttribute('href', '/projects/team-a/shop/milestones/14?tab=decisions#D280-2')
+    await link.click()
+    await expect(page).toHaveURL(/\/milestones\/14\?tab=decisions#D280-2$/)
+    const card = page.locator('main #D280-2')
+    await expect(card).toHaveClass(/linked/)
+    await expect(card).toBeInViewport()
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+
+  test('without the history feature a queue decision ID links to GitLab@1280', async ({ page, baseURL }) => {
+    const problems = await openQueue(page, baseURL, false)
+    const link = page.locator('main [data-queue-item]').getByRole('link', { name: 'D280-2' })
+    await expect(link).toHaveAttribute('href', gitlabNote)
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+
+  // The project tab: all milestones, each group naming its milestone; the
+  // select narrows to one and keeps it in ?milestone=.
+  test('the project tab and its milestone select@1280', async ({ page, baseURL }) => {
+    const route = routes.find((r) => r.name === 'stream-project-decisions')!
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    const asked: string[] = []
+    page.on('request', (r) => {
+      const u = new URL(r.url())
+      if (u.pathname === '/api/v1/projects/team-a/shop/decisions') asked.push(u.search)
+    })
+    await page.setViewportSize(widths[2]!)
+    await page.clock.setFixedTime(now)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, route, problems)
+    await page.goto(route.path)
+    await route.ready(page)
+
+    const main = page.locator('main')
+    const tabs = page.getByRole('navigation', { name: 'View' }).locator(':scope > a')
+    await expect(tabs.nth(0)).toHaveText('Stream')
+    await expect(tabs.nth(1)).toHaveText('Decisions')
+    await expect(tabs.nth(1)).toHaveAttribute('aria-current', 'page')
+    await expect(main.locator('[data-decision]')).toHaveCount(4)
+    await expect(main.locator('[data-decision-milestone]').first()).toHaveText(paymentsMilestone.title)
+    expect(asked.at(-1)).toBe('')
+
+    await main.locator('[data-decisions-milestone]').click()
+    await page.getByRole('option', { name: paymentsMilestone.title, exact: true }).click()
+    await expect(page).toHaveURL(/[?&]milestone=14(&|$)/)
+    await expect.poll(() => asked.at(-1)).toBe('?milestone=14')
+    await expect(main.locator('[data-decision]')).toHaveCount(4)
+    await expect(main.locator('[data-decision-milestone]')).toHaveCount(0)
+
+    // Kept over a reload, and the search keeps the milestone.
+    await page.reload()
+    await expect(main.locator('[data-decisions-milestone]')).toContainText(paymentsMilestone.title)
+    await main.getByRole('searchbox', { name: 'Search decisions' }).fill('currency')
+    await expect(page).toHaveURL(/milestone=14.*q=currency|q=currency.*milestone=14/)
+
+    await main.locator('[data-decisions-milestone]').click()
+    await page.getByRole('option', { name: 'All milestones', exact: true }).click()
+    await expect(page).not.toHaveURL(/milestone=/)
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
   })
 })

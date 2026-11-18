@@ -12,6 +12,8 @@ import {
   groupByIssue,
   issueStateLabel,
   kindLabel,
+  milestoneFromQuery,
+  milestoneLabel,
   optionsOf,
   revisitAction,
   searchFromQuery,
@@ -103,6 +105,29 @@ test('decisionsQuery: sets the search and state, keeps the tab, drops empty and 
   assert.deepEqual(decisionsQuery({ tab: 'decisions', q: 'x', state: 'active' }, { q: '' }), { tab: 'decisions', state: 'active' })
   assert.deepEqual(decisionsQuery({ tab: 'decisions', state: 'superseded' }, { state: 'all' }), { tab: 'decisions' })
   assert.deepEqual(decisionsQuery({ tab: 'decisions', state: 'bogus' }, {}), { tab: 'decisions' })
+})
+
+test('decisionsQuery: the project tab milestone, kept unless patched; 0 drops it', () => {
+  assert.deepEqual(decisionsQuery({ tab: 'decisions' }, { milestone: 14 }), { tab: 'decisions', milestone: '14' })
+  assert.deepEqual(decisionsQuery({ tab: 'decisions', milestone: '14' }, { q: 'x' }), { tab: 'decisions', milestone: '14', q: 'x' })
+  assert.deepEqual(decisionsQuery({ tab: 'decisions', milestone: '14', q: 'x' }, { milestone: 0 }), { tab: 'decisions', q: 'x' })
+})
+
+test('milestoneFromQuery: a positive iid, else 0 (all)', () => {
+  assert.equal(milestoneFromQuery('14'), 14)
+  assert.equal(milestoneFromQuery(['15', '14']), 15)
+  assert.equal(milestoneFromQuery(undefined), 0)
+  assert.equal(milestoneFromQuery(''), 0)
+  assert.equal(milestoneFromQuery('all'), 0)
+  assert.equal(milestoneFromQuery('-3'), 0)
+  assert.equal(milestoneFromQuery('1.5'), 0)
+})
+
+test('milestoneLabel: the title, else %iid', () => {
+  const ms = [{ iid: 14, title: 'Payments' }, { iid: 15, title: '' }]
+  assert.equal(milestoneLabel(14, ms), 'Payments')
+  assert.equal(milestoneLabel(15, ms), '%15')
+  assert.equal(milestoneLabel(16), '%16')
 })
 
 test('decisionsSearch: the API query, empty without filters', () => {

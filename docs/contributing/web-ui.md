@@ -946,6 +946,57 @@ one line, the column alignment from desktop width, the stacking below it and
 the link heights on a phone (`milestone-issues@<width>.png`); the route checks cover
 `stream-milestone-issues` at the three widths.
 
+### Milestone Decisions
+
+The Decisions tab of a milestone (`?tab=decisions` on `stream-milestone`,
+also on stored milestones) and of a project (on `stream-project`, right
+after *Stream*) is Tailwind utilities and Nuxt UI, without scoped CSS. It
+reads `GET …/decisions` from the history database only, never GitLab.
+
+- `MilestoneDecisions.vue` is the tab: `milestone` is the IID, 0 for the
+  whole project. The search (`?q=`, written 300 ms after the last key) and
+  the *All / Active / Superseded* chips (`?state=`) live in the URL; the
+  server filters. It groups the cards by issue in the server's order
+  (`groupByIssue`); with milestone 0 each group header names its milestone
+  (`milestoneLabel` over the `milestones` prop) and links to its tab. The
+  `controls` slot takes more filters: `Stream.vue` puts the project's
+  milestone select there (*All milestones* or one, `?milestone=<iid>`,
+  `milestoneFromQuery`; one missing from the project's list shows as
+  `%<iid>`). A `#<id>` hash scrolls to its card once the data is there and
+  highlights it for two seconds, also on a later hash change. Without the
+  database (`available: false`) it says "Decisions need the history
+  database." and shows no controls.
+- `DecisionCard.vue` is one decision with the anchor `#<id>`: title, ID,
+  the *Plan* or *Implementation* chip (`kindLabel`), the question, the
+  options with *Chosen* first (`optionsOf`), why, the run and the time,
+  and *on GitLab*. Agent text goes through the markdown component without
+  HTML. A superseded card is muted and links to its successor's card. On a
+  phone it stacks without sideways scroll.
+- `DecisionChain.vue` renders `chainOf`: per request the requester, the
+  instruction, the comment or follow-up (`followUpLabel`) with its state,
+  then the decision that replaced it, through the successors.
+- `DecisionRevisit.vue` shows the server's `revisit.text` and the action
+  `revisitAction` picks for `revisit.mode`: *Revisit* (the pilot command,
+  as the queue sends it), a text box with *Comment* (`commentBody`, posted
+  to the implement task's notes in the user's name), the command to copy,
+  or nothing.
+- `decisions.ts` holds the pure parts: the URL state (`stateFromQuery`,
+  `searchFromQuery`, `milestoneFromQuery`, `decisionsQuery`), the API
+  query (`decisionsSearch`), the grouping, the card's options and the chain.
+
+The queue's decision IDs (`QueueList.vue`, on the Issues tab and in the
+context panel) link through `decisionHref` (`milestoneQueue.ts`): with the
+`history` feature to the milestone page's `?tab=decisions#<id>` as a
+RouterLink, else to the GitLab comment. The Revisit button stays.
+
+The e2e cases `milestone decisions › …` (fixture
+`e2e/fixtures/decisions.ts`) cover the cards, search and chips, the
+`#<id>` highlight, the chain, each revisit mode, the empty and
+no-database states, a queue ID opening the highlighted card (and linking to
+GitLab without the feature) and the project tab's milestone select; the
+route checks cover `stream-milestone-decisions` and
+`stream-project-decisions` at the three widths.
+
 ### Milestone Pilot
 
 The milestone's Pilot tab (`web/src/components/MilestonePilot.vue`) and
@@ -1528,7 +1579,7 @@ describe in plain words. The endpoints are in [design.md](design.md#desk-api).
 - **Project** (`/projects/<namespace>/<name>`) and **milestone**
   (`…/milestones/<iid>`): the view tab is kept in `?tab=`; the default
   (*Stream* on a project, *Issues* on a milestone) is left out. A project
-  has *Stream | Board | Spend*, plus *Plans* with the feature `plans`
+  has *Stream | Decisions | Board | Spend*, plus *Plans* with the feature `plans`
   (`?tab=plans` without it opens *Stream*); a milestone has no *Plans*. Old
   `…/milestones/3?tab=stream` links still open the stream; a milestone link
   with a `#prompt-Q<n>` hash and no `?tab=` opens *Pilot*. The view tabs are
