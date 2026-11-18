@@ -20,7 +20,9 @@ var oneOffWaits = []time.Duration{10 * time.Second, 30 * time.Second}
 func retryOneOff(ctx context.Context, log logr.Logger, what string, transient func(error) bool, fn func() error) error {
 	for attempt := 1; ; attempt++ {
 		err := fn()
-		if err == nil || attempt > len(oneOffWaits) || !transient(err) {
+		// A done ctx is checked before the wait: select picks at random
+		// when the wait is over as well (a zero wait in tests).
+		if err == nil || attempt > len(oneOffWaits) || !transient(err) || ctx.Err() != nil {
 			return err
 		}
 		log.Info("one-off error, trying again", "what", what, "attempt", attempt, "wait", oneOffWaits[attempt-1].String(), "error", err.Error())
