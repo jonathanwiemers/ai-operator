@@ -252,6 +252,7 @@ func (r *AgentProjectReconciler) milestonesChanged(ctx context.Context, project 
 	if err != nil {
 		return false, err
 	}
+	defer countGitLabRequests(project.Name, gl)
 	milestones, err := gl.ListMilestones(ctx, spec.GitLab.Project)
 	if err != nil {
 		return false, fmt.Errorf("listing milestones: %w", err)
@@ -322,6 +323,7 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 	if err != nil {
 		return err
 	}
+	defer countGitLabRequests(project.Name, gl)
 	if c, ok := gl.(interface{ Stats() gitlab.Stats }); ok {
 		// What a poll costs GitLab; retries mean it pushed back.
 		defer func() {

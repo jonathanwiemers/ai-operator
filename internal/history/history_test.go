@@ -877,3 +877,19 @@ func TestDifferReleases(t *testing.T) {
 		t.Errorf("owner actor %+v", es[0])
 	}
 }
+
+type statsGitLab struct{ fakeGitLab }
+
+func (statsGitLab) Stats() gitlab.Stats { return gitlab.Stats{Requests: 7, GraphQL: 2} }
+
+// The wrapper keeps the request counts of the client visible.
+func TestWrapGitLabKeepsStats(t *testing.T) {
+	r := NewRecorder(nil, time.Hour, clock.RealClock{}, testLogger(t))
+	s, ok := r.WrapGitLab(statsGitLab{}, Project{}).(interface{ Stats() gitlab.Stats })
+	if !ok || s.Stats().Requests != 7 {
+		t.Fatalf("stats lost: %v", ok)
+	}
+	if _, ok := r.WrapGitLab(fakeGitLab{}, Project{}).(interface{ Stats() gitlab.Stats }); ok {
+		t.Fatal("stats invented")
+	}
+}

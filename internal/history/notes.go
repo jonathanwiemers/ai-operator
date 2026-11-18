@@ -50,8 +50,20 @@ func (r *Recorder) WrapGitLab(api gitlab.API, p Project) gitlab.API {
 	if r == nil {
 		return api
 	}
-	return &notesAPI{API: api, r: r, p: p}
+	n := &notesAPI{API: api, r: r, p: p}
+	if s, ok := api.(interface{ Stats() gitlab.Stats }); ok {
+		return &notesStatsAPI{notesAPI: n, stats: s}
+	}
+	return n
 }
+
+// notesStatsAPI keeps the inner client's request counts visible.
+type notesStatsAPI struct {
+	*notesAPI
+	stats interface{ Stats() gitlab.Stats }
+}
+
+func (n *notesStatsAPI) Stats() gitlab.Stats { return n.stats.Stats() }
 
 type notesAPI struct {
 	gitlab.API

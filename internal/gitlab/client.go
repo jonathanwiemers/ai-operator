@@ -499,17 +499,21 @@ type Client struct {
 	http  *http.Client
 
 	requests, retries atomic.Int64
+	// graphql counts the GraphQL requests; they are part of requests too.
+	graphql atomic.Int64
 }
 
-// Stats counts the requests a client sent, retries included, and how many of
-// them were retries.
+// Stats counts the requests a client sent (REST and GraphQL), retries
+// included, how many of them were retries, and how many were GraphQL.
 type Stats struct {
 	Requests, Retries int64
+	// GraphQL is the GraphQL subset of Requests.
+	GraphQL int64
 }
 
 // Stats returns the client's request counts so far.
 func (c *Client) Stats() Stats {
-	return Stats{Requests: c.requests.Load(), Retries: c.retries.Load()}
+	return Stats{Requests: c.requests.Load(), Retries: c.retries.Load(), GraphQL: c.graphql.Load()}
 }
 
 var _ API = (*Client)(nil)

@@ -1,12 +1,22 @@
 package controller
 
 import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/go-logr/logr"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/clock"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/history"
 )
 
 func TestTaskStalledGauge(t *testing.T) {
@@ -87,5 +97,69 @@ func TestSyncTaskStalledMetric(t *testing.T) {
 	syncTaskStalledMetric(task)
 	if taskStalled.DeleteLabelValues(task.Namespace, task.Name, junk) {
 		t.Fatal("unknown Stalled reason must clear, not export, the series")
+	}
+}
+
+type statsSource struct{ st gitlab.Stats }
+
+func (s statsSource) Stats() gitlab.Stats { return s.st }
+
+func TestCountGitLabRequests(t *testing.T) {
+	const a, b = "metric-req-a", "metric-req-b"
+	t.Cleanup(func() {
+		gitlabRequests.DeletePartialMatch(prometheus.Labels{"owner": a})
+		gitlabRequests.DeletePartialMatch(prometheus.Labels{"owner": b})
+	})
+	val := func(kind, owner string) float64 {
+		return testutil.ToFloat64(gitlabRequests.WithLabelValues(kind, owner))
+	}
+
+	before := testutil.CollectAndCount(gitlabRequests)
+	countGitLabRequests(a, statsSource{})
+	countGitLabRequests(a, "not a client")
+	countGitLabRequests(a, nil)
+	if n := testutil.CollectAndCount(gitlabRequests); n != before {
+		t.Fatalf("series = %d, want %d: nothing was sent", n, before)
+	}
+
+	countGitLabRequests(a, statsSource{gitlab.Stats{Requests: 5, GraphQL: 2}})
+	if val("rest", a) != 3 || val("graphql", a) != 2 {
+		t.Fatalf("a: rest %v graphql %v, want 3 and 2", val("rest", a), val("graphql", a))
+	}
+	countGitLabRequests(b, statsSource{gitlab.Stats{Requests: 4}})
+	if val("rest", b) != 4 || val("rest", a) != 3 {
+		t.Fatalf("owners mixed: a %v, b %v", val("rest", a), val("rest", b))
+	}
+	if n := testutil.CollectAndCount(gitlabRequests); n != before+3 {
+		t.Fatalf("series = %d, want %d: no graphql series for b", n, before+3)
+	}
+}
+
+// A poll counts every request the real client sent to the server.
+func TestPollCountsGitLabRequests(t *testing.T) {
+	e := newProjectEnv(t)
+	t.Cleanup(func() { gitlabRequests.DeletePartialMatch(prometheus.Labels{"owner": "shop"}) })
+	var seen atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seen.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		if strings.HasSuffix(r.URL.Path, "/user") {
+			_, _ = w.Write([]byte(`{"id":1,"username":"bot"}`))
+			return
+		}
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	t.Cleanup(srv.Close)
+	e.r.NewGitLab = func(_, token string) gitlab.API { return gitlab.New(srv.URL, token) }
+	e.r.History = history.NewRecorder(nil, time.Hour, clock.RealClock{}, logr.Discard())
+
+	before := testutil.ToFloat64(gitlabRequests.WithLabelValues("rest", "shop"))
+	e.reconcileFailing()
+	got := testutil.ToFloat64(gitlabRequests.WithLabelValues("rest", "shop")) - before
+	if seen.Load() == 0 || got != float64(seen.Load()) {
+		t.Fatalf("counter grew by %v, the server saw %d requests", got, seen.Load())
+	}
+	if n := testutil.CollectAndCount(gitlabRequests, "ai_operator_gitlab_requests_total"); n < 1 {
+		t.Fatalf("no series")
 	}
 }

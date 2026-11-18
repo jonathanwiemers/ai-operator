@@ -34,6 +34,7 @@ func (r *AgentProjectReconciler) backfill(ctx context.Context, project *aiv1.Age
 		log.FromContext(ctx).V(1).Info("backfill skipped", "error", err.Error())
 		return
 	}
+	defer countGitLabRequests(project.Name, gl)
 	if r.Requirements != nil {
 		r.requirements.record(ctx, r.Requirements, gl, store.ProjectKey{Namespace: project.Namespace, Name: project.Name}, spec.GitLab.Project)
 	}

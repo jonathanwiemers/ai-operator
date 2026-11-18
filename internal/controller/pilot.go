@@ -518,6 +518,7 @@ func (r *AgentProjectReconciler) writeFailed(ctx context.Context, task *aiv1.Age
 	if gerr != nil {
 		log.FromContext(ctx).Error(gerr, "no GitLab client for the rejected status write", "source", source)
 	}
+	defer countGitLabRequests(project.Name, gl)
 	if rerr := writefail.Report(ctx, r.Client, gl, spec.GitLab.Project, task, writefail.Tracking(task), "operator/"+source, err); rerr != nil {
 		log.FromContext(ctx).Error(rerr, "reporting a rejected status write", "source", source)
 	}
