@@ -24,6 +24,7 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/history"
 	"github.com/jonathanwiemers/ai-operator/internal/notify"
 	"github.com/jonathanwiemers/ai-operator/internal/pricing"
+	"github.com/jonathanwiemers/ai-operator/internal/projectglob"
 	"github.com/jonathanwiemers/ai-operator/internal/research"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 	"github.com/jonathanwiemers/ai-operator/internal/webhook"
@@ -46,9 +47,9 @@ func main() {
 	var defaultOwners string
 	flag.StringVar(&defaultOwners, "default-owners", "", "Comma separated GitLab usernames mentioned when a task needs a human, for AgentProjects that do not set spec.notify.users.")
 	var crossRepoAllowed string
-	flag.StringVar(&crossRepoAllowed, "cross-repo-allowed-projects", "", "Comma separated full paths of the GitLab projects AgentProjects may name as companion repositories (spec.crossRepo.targets). Empty: cross-repo changes are off.")
+	flag.StringVar(&crossRepoAllowed, "cross-repo-allowed-projects", "", "Comma separated GitLab projects AgentProjects may name as companion repositories (spec.crossRepo.targets): full paths or globs ('*' within a segment, '**' across segments, e.g. my-group/**). Empty: cross-repo changes are off.")
 	var crossRepoNever string
-	flag.StringVar(&crossRepoNever, "cross-repo-never-projects", "", "Comma separated full paths of the GitLab projects that are never a companion repository, even when --cross-repo-allowed-projects names them: their content must stay out of agent pods.")
+	flag.StringVar(&crossRepoNever, "cross-repo-never-projects", "", "Comma separated GitLab projects that are never a companion repository, even when --cross-repo-allowed-projects names them: full paths or globs ('*' within a segment, '**' across segments). Their content must stay out of agent pods.")
 	var selfProject string
 	flag.StringVar(&selfProject, "self-project", "", "Full path of the GitLab project this operator is built from (e.g. my-group/ai-operator). A companion of one of its merge requests lands once this operator runs a release that contains the merge. Empty: that project's companions follow the tag rule like any other.")
 	var agentLogLevel string
@@ -89,6 +90,17 @@ func main() {
 	if err := planCfg.Validate(); err != nil {
 		setupLog.Error(err, "invalid plan configuration (--plan-idle-timeout, --plan-retention, --plan-max-budget-usd)")
 		os.Exit(1)
+	}
+	for _, f := range []struct{ name, value string }{
+		{"--cross-repo-allowed-projects", crossRepoAllowed},
+		{"--cross-repo-never-projects", crossRepoNever},
+	} {
+		for _, p := range projectList(f.value) {
+			if err := projectglob.Validate(p); err != nil {
+				setupLog.Error(err, "invalid project glob in "+f.name, "flag", f.name, "pattern", p)
+				os.Exit(1)
+			}
+		}
 	}
 	switch aiv1.LogLevel(agentLogLevel) {
 	case aiv1.LogLevelDebug, aiv1.LogLevelInfo, aiv1.LogLevelError:

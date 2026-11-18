@@ -9,6 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/jonathanwiemers/ai-operator/internal/pathspec"
+	"github.com/jonathanwiemers/ai-operator/internal/projectglob"
 )
 
 // CrossRepoSpec lets the project's issues change a companion repository in
@@ -81,12 +82,13 @@ func NormalizeProject(p string) string {
 // project. allowed is the cluster's allow-list: empty, every target is
 // invalid (the feature is off). never is the cluster's never-list: the
 // projects whose content must stay out of agent pods, invalid even when
-// allowed.
+// allowed. Entries of both lists are full paths or project globs
+// (internal/projectglob); an invalid glob is compared as an exact path.
 func ValidateCrossRepo(spec AgentProjectSpec, allowed, never []string) (valid []CrossRepoTarget, problems []string) {
 	if spec.CrossRepo == nil {
 		return nil, nil
 	}
-	allow, deny := projectSet(allowed), projectSet(never)
+	off := !anyProject(allowed)
 	home := NormalizeProject(spec.GitLab.Project)
 	seen := map[string]bool{}
 	for _, t := range spec.CrossRepo.Targets {
@@ -95,15 +97,15 @@ func ValidateCrossRepo(spec AgentProjectSpec, allowed, never []string) (valid []
 		switch {
 		case project == "":
 			reasons = append(reasons, "the project is empty")
-		case len(allow) == 0:
+		case off:
 			reasons = append(reasons, "cross-repo changes are off in this cluster (--cross-repo-allowed-projects is empty)")
-		case !allow[project]:
+		case !projectglob.MatchAny(allowed, project):
 			reasons = append(reasons, "not in the cluster's allow-list (--cross-repo-allowed-projects)")
 		}
 		if project != "" && project == home {
 			reasons = append(reasons, "is the home project")
 		}
-		if project != "" && deny[project] {
+		if project != "" && projectglob.MatchAny(never, project) {
 			reasons = append(reasons, "is never a valid target (--cross-repo-never-projects)")
 		}
 		if project != "" && seen[project] {
@@ -122,16 +124,14 @@ func ValidateCrossRepo(spec AgentProjectSpec, allowed, never []string) (valid []
 	return valid, problems
 }
 
-// projectSet is the set of the projects' normalized forms, without empty
-// ones.
-func projectSet(projects []string) map[string]bool {
-	out := map[string]bool{}
+// anyProject reports whether the list has an entry that is not empty.
+func anyProject(projects []string) bool {
 	for _, p := range projects {
-		if p = NormalizeProject(p); p != "" {
-			out[p] = true
+		if NormalizeProject(p) != "" {
+			return true
 		}
 	}
-	return out
+	return false
 }
 
 // crossRepoPathProblems checks a target's paths: non-empty, each pattern

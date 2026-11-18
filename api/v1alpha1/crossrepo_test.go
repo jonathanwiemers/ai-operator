@@ -90,6 +90,41 @@ func TestValidateCrossRepoNeverListIsClusterConfig(t *testing.T) {
 	}
 }
 
+func TestValidateCrossRepoGlobs(t *testing.T) {
+	paths := []string{"clusters/"}
+	target := func(p string) CrossRepoTarget { return CrossRepoTarget{Project: p, Paths: paths} }
+	for _, tc := range []struct {
+		name           string
+		target         string
+		allowed, never []string
+		want           string // a part of the problem; empty: valid
+	}{
+		{name: "allow glob", target: "jo.wiemers/infra/cluster", allowed: []string{"jo.wiemers/**"}},
+		{name: "allow glob, case", target: "JO.Wiemers/Infra/Cluster", allowed: []string{"jo.wiemers/**"}},
+		{name: "allow glob is anchored", target: "other/jo.wiemers/x", allowed: []string{"jo.wiemers/**"}, want: "not in the cluster's allow-list"},
+		{name: "allow glob, not the group", target: "jo.wiemers", allowed: []string{"jo.wiemers/**"}, want: "not in the cluster's allow-list"},
+		{name: "segment glob", target: "jo.wiemers/infra/cluster", allowed: []string{"jo.wiemers/*"}, want: "not in the cluster's allow-list"},
+		{name: "never glob wins", target: "jo.wiemers/secrets", allowed: []string{"jo.wiemers/**"}, never: []string{"jo.wiemers/secret*"}, want: "is never a valid target"},
+		{name: "never glob wins over exact allow", target: "jo.wiemers/secrets", allowed: []string{"jo.wiemers/secrets"}, never: []string{"jo.wiemers/**"}, want: "is never a valid target"},
+		{name: "never glob leaves others", target: "jo.wiemers/infra/cluster", allowed: []string{"jo.wiemers/**"}, never: []string{"jo.wiemers/secret*"}},
+		{name: "exact entries", target: "jo.wiemers/infra/cluster", allowed: []string{"jo.wiemers/ai-operator", "jo.wiemers/infra/cluster"}, never: []string{"jo.wiemers/secrets"}},
+		{name: "invalid glob is exact", target: "jo.wiemers/infra/cluster", allowed: []string{"jo.wiemers/infra/cluster?"}, want: "not in the cluster's allow-list"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			valid, problems := ValidateCrossRepo(crossRepoSpec(target(tc.target)), tc.allowed, tc.never)
+			if tc.want == "" {
+				if len(valid) != 1 || problems != nil {
+					t.Errorf("valid %v, problems %q, want the target valid", valid, problems)
+				}
+				return
+			}
+			if len(valid) != 0 || len(problems) != 1 || !strings.Contains(problems[0], tc.want) {
+				t.Errorf("valid %v, problems %q, want one problem with %q", valid, problems, tc.want)
+			}
+		})
+	}
+}
+
 func TestValidateCrossRepoUnset(t *testing.T) {
 	valid, problems := ValidateCrossRepo(AgentProjectSpec{GitLab: GitLabSpec{Project: "a/b"}}, []string{"a/c"}, never)
 	if valid != nil || problems != nil {

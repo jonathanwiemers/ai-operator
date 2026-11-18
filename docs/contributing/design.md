@@ -3319,7 +3319,11 @@ dropped target counts for no milestone line, label, token or guard
 permission. The companion token goes into the runner only, as
 `GITLAB_COMPANION_TOKEN`. The cluster lists are the operator flags
 `--cross-repo-allowed-projects` and `--cross-repo-never-projects` (comma
-separated), set from the chart's `crossRepo.*`.
+separated), set from the chart's `crossRepo.*`. Their entries are full paths or
+globs of `internal/projectglob` (`*` within a segment, `**` across segments,
+anchored, case-insensitive), matched by `ValidateCrossRepo`; the operator
+refuses to start on an invalid glob, and an invalid entry that still reaches
+`ValidateCrossRepo` is compared as an exact path.
 
 **The build version.** The operator knows its release from the build: the
 Dockerfile's `ARG VERSION` (default `dev`) is linked in as `main.version`
