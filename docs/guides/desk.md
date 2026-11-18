@@ -242,10 +242,10 @@ works on the issue, and the issue's own stream.
 ![Needs you tab with the pause card, its ways out and an open question](../assets/screenshots/milestone-pilot.webp)
 
 What waits for the milestone's owners. While something is open, the tab
-reads *Needs you · n*: n problems and proposals. *Open* has one card per
-stuck issue (its pause or hold, open questions and folded history), a
-*Milestone* card for a budget pause, then proposals with *Accept* and *Reject*.
-*Handled* lists one problem per issue, and one for the milestone: the
+reads *Needs you · n*: n problems and proposals. *Open* has one
+[problem card](../concepts/glossary.md#problem-card) per stuck issue (see
+[the card](pilot.md#the-problem-card)), a *Milestone* card for a budget pause,
+then proposals. *Handled* lists one problem per issue, and one for the milestone: the
 questions about it, what the pilot did on its own and the pauses, newest
 first, with "Pilot attempts: 2 of 2" for the pilot's tries on the issue's
 current head. Open problems come first. Click a closed question to see its

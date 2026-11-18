@@ -64,6 +64,24 @@ To turn checkpoints off, set `checkpoint.disabled: true`. A cut-off run then
 loses its uncommitted work. See
 [Lifecycle and CI](../reference/lifecycle-and-ci.md#speccheckpoint).
 
+## When a run fails
+
+A failed implementer run saves its work too, whatever the reason, for example
+an answer the operator could not read. If the workspace holds uncommitted
+lines, the runner commits them as a checkpoint with the reason `run-failed`
+before it posts the failure note. The
+[problem card](pilot.md#the-problem-card) shows "348 lines saved as WIP
+commit `80cd646`", and a retry starts from that commit, not from a clean
+checkout.
+
+One-off errors on push and on opening the merge request are retried up to
+three times with a short wait: timeouts, connection resets, DNS errors, HTTP
+5xx and 429. Other errors, such as a 403, fail at once.
+
+Every failed run records its cause, also when the issue is blocked. The
+cause is the line on the card and in the hold: "#558 needs input: the run
+failed: decoding implementer answer: no JSON object in agent result".
+
 ## Usage limits
 
 Subscriptions have usage windows, and APIs have rate limits. When an agent
@@ -173,6 +191,8 @@ them.
 ## Next
 
 - [When autopilot pauses](pauses.md): the problems that need you.
+- [The problem card](pilot.md#the-problem-card): facts, options and the
+  pilot chat.
 - [Restart a stuck run](../reference/commands.md#restart-a-stuck-run): when
   a run hangs.
 - [Lifecycle and CI](../reference/lifecycle-and-ci.md): the times and limits

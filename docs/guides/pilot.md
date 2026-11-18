@@ -38,9 +38,9 @@ inert: no mentions besides the owners', no quick actions.
 
 ## Talk to it in the Desk
 
-Open the milestone's *Pilot* tab. From top to bottom it shows the pause card,
-the hold cards, the pilot's prompts with its autonomy and cost, and *Message the
-pilot*, the message box. Type your question there; the answer comes in the
+Open the milestone's *Pilot* tab. From top to bottom it shows the pilot's
+prompts with its autonomy and cost, and *Message the pilot*, the message box.
+Stuck issues have their [problem card](#the-problem-card) on *Needs you*. Type your question there; the answer comes in the
 same thread.
 
 ![Pause card on the milestone's Needs you tab: why it paused, the ways out and the pilot's question](../assets/screenshots/milestone-pilot.webp)
@@ -56,6 +56,37 @@ with the `chat` grant may message the pilot. With only the `steer` grant
 your message goes out as a `/pilot` comment in your name; with neither you
 see the tab but cannot write in it. See
 [Owners and pings](owners-and-pings.md).
+
+## The problem card
+
+When an issue is stuck, the milestone's *Needs you* tab shows one **problem
+card** for it, not a pause, a hold and several questions side by side. It
+starts with the [problem facts](../concepts/glossary.md#problem-facts), which
+the operator collects, not the pilot:
+
+- the issue, and the merge request with its head, the commits ahead of the
+  base and the last push;
+- the pipeline and its failed jobs;
+- the failed run with its error, its note and its log;
+- saved work, such as "348 lines saved as WIP commit `80cd646`";
+- what waits on the issue, such as `#558 → #559 → #560`.
+
+Under the facts is one line with the cause, for example "the run failed:
+decoding implementer answer: no JSON object in agent result". Then come the
+options. Each says what it does and what it costs or throws away. If a retry
+would lose uncommitted lines, the card warns you, whatever the pilot wrote.
+
+Under the options are a text box and the pilot chat. What you write goes to
+the pilot as `problem: #558`, in the same thread as the *Pilot* tab. If you
+clearly ask for an action ("rerun it with a hint to answer in JSON"), the
+pilot runs it. Otherwise it asks back. Every action shows in the card's
+history.
+
+The pilot stays up while a problem is open, so it answers within seconds.
+Opening a card wakes it if it is asleep, for owners only. The longest it stays
+up is set by
+[`problemWarmMax`](../reference/lifecycle-and-ci.md#speclifecycle). An idle
+pod costs no tokens.
 
 ## Talk to it in GitLab
 

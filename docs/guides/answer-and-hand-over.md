@@ -46,7 +46,8 @@ instead.
 ### Answer on Needs you
 
 The pilot's and the operator's questions about a milestone wait on the
-milestone's [*Needs you* tab](desk.md#needs-you), under *Open*. Click an
+milestone's [*Needs you* tab](desk.md#needs-you), under *Open*, on the issue's
+[problem card](pilot.md#the-problem-card). Click an
 option or write your answer, then send it. The buttons and the text box
 go at once and the card shows "✓ your answer · sending…". If the Desk
 refuses the answer, they come back with the error.

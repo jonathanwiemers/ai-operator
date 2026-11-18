@@ -168,6 +168,19 @@ decision, and writes the [retrospective](#retrospective). See
 The agent that turns a milestone [spec](#spec) into
 [sub-issues](#sub-issue). See [Roles](roles.md#planner).
 
+### Problem card
+
+The one card on a milestone's *Needs you* tab for a stuck issue. It shows the
+[problem facts](#problem-facts), one cause line, options with their cost and
+the pilot chat. See [The problem card](../guides/pilot.md#the-problem-card).
+
+### Problem facts
+
+What the operator collected about a stuck issue from task status and GitLab:
+the merge request, the pipeline, the failed run, saved work and what waits on
+the issue. The pilot gets the same facts. See
+[The problem card](../guides/pilot.md#the-problem-card).
+
 ### Profile
 
 A named implementer setup, with its own engine, model and effort, that an

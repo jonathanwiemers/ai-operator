@@ -120,6 +120,7 @@ the [glossary](../concepts/glossary.md#task).
 | `GET /api/v1/projects/{namespace}/{name}/tasks/{task}/logs` | Raw log of the task's pod. `?container=runner` or `agent`, `?tail=`, `?follow=1`. | `steer`, owner subject |
 | `GET /api/v1/projects/{namespace}/{name}/tasks/{task}/chat` | The task's chat, newest first. Bodies only with `conversation`. | see, research database |
 | `POST /api/v1/projects/{namespace}/{name}/tasks/{task}/chat` | Send a message, an interrupt or a command (retry, pause, answer, revisit, restart, …). | Desk chat, `chat`, `agents.chat` on the project; owner subject for `merge`, `start`, `unstart`, `endmilestone`, `parallel`, `restart`, `answer`, `accept`, `reject`, `draft`, `revisit` |
+| `POST /api/v1/projects/{namespace}/{name}/tasks/{task}/warm` | Wake the milestone's pilot without a message, so it answers fast. The Desk calls it when you open a problem card. | owner subject |
 | `GET /api/v1/projects/{namespace}/{name}/tasks/{task}/thread` | The comments of the task's issue, merge request and tracking issue. | see, GitLab connected |
 | `POST /api/v1/projects/{namespace}/{name}/tasks/{task}/notes` | Post a comment to the issue, the merge request or the tracking issue. | `steer`, GitLab connected |
 
