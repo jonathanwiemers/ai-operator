@@ -1,0 +1,14 @@
+# Toolchains for work on this repository: the agent image installs them (mise),
+# and CI runs on an image with them baked in (devops/ci mise component).
+# go must equal the go directive in go.mod; node must equal the Node major of
+# .github/workflows/ci.yml, .gitlab-ci.yml and the Dockerfiles (node:22);
+# helm must equal the helm-lint image in .gitlab-ci.yml.
+# mise.lock pins exact versions, URLs and checksums for linux-x64,
+# linux-arm64 and macos-arm64: `mise lock --platform linux-x64,linux-arm64,macos-arm64`.
+[settings]
+lockfile = true
+
+[tools]
+go = "1.26.0"
+node = "22"
+"aqua:helm/helm" = "3.17.3"
