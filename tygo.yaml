@@ -17,6 +17,7 @@ packages:
     enum_style: union
     include_files:
       - agentplan_types.go
+      - agentprojectset_types.go
       - agentproject_types.go
       - agentresearch_types.go
       - agenttask_types.go
@@ -36,6 +37,7 @@ packages:
       corev1.ResourceRequirements: unknown
       corev1.SecretKeySelector: unknown
       corev1.Toleration: unknown
+      runtime.RawExtension: unknown
       # time.Duration constants, in nanoseconds like Go.
       time.Hour: "3_600_000_000_000"
       time.Minute: "60_000_000_000"
@@ -101,6 +103,7 @@ packages:
       - pause_exits.go
       - plans.go
       - plans_all.go
+      - projectsets.go
       - prompt.go
       - queue.go
       - release.go
@@ -139,6 +142,8 @@ packages:
       aiv1.PromptClosedReason: aiv1.PromptClosedReason
       aiv1.PromptKind: aiv1.PromptKind
       aiv1.PromptState: aiv1.PromptState
+      aiv1.ProjectSetCounts: aiv1.ProjectSetCounts
+      aiv1.ProjectSetEntry: aiv1.ProjectSetEntry
       aiv1.ReleaseBy: aiv1.ReleaseBy
       aiv1.ReleaseState: aiv1.ReleaseState
       aiv1.ResearchAgent: aiv1.ResearchAgent

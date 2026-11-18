@@ -1224,6 +1224,27 @@ export interface PlanProject {
 }
 
 //////////
+// source: projectsets.go
+
+/**
+ * ProjectSetSummary is an AgentProjectSet with the result of its last
+ * discovery.
+ */
+export interface ProjectSetSummary {
+  namespace: string;
+  name: string;
+  group: string;
+  include: string[];
+  exclude?: string[];
+  pollInterval: string;
+  lastDiscoveryTime?: string;
+  counts: aiv1.ProjectSetCounts;
+  projects: aiv1.ProjectSetEntry[];
+  droppedTargets?: string[];
+  conditions?: aiv1.Condition[];
+}
+
+//////////
 // source: prompt.go
 
 /**
@@ -1911,6 +1932,11 @@ export interface ProjectSummary extends Cost {
   stages: { [key in Stage]?: number };
   createdAt: string;
   autopilots?: AutopilotOverview[];
+  /**
+   * Set is the AgentProjectSet the project is a child of, empty for an
+   * explicit AgentProject.
+   */
+  set?: string;
 }
 /**
  * AutopilotOverview is the state of one autopilot milestone.

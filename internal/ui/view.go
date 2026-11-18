@@ -7,6 +7,7 @@ import (
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 )
@@ -114,6 +115,9 @@ type ProjectSummary struct {
 	Stages            map[Stage]int       `json:"stages" tstype:"{ [key in Stage]?: number }"`
 	CreatedAt         metav1.Time         `json:"createdAt"`
 	Autopilots        []AutopilotOverview `json:"autopilots,omitempty"`
+	// Set is the AgentProjectSet the project is a child of, empty for an
+	// explicit AgentProject.
+	Set string `json:"set,omitempty"`
 
 	// Cost sums the tasks here; the project endpoint takes it from
 	// agent_calls when the history database is connected.
@@ -270,6 +274,24 @@ func taskView(t *aiv1.AgentTask, p *aiv1.AgentProject, now time.Time) Task {
 	}
 }
 
+// setOf is the name of the AgentProjectSet p is a child of: the set label
+// counts only with a controller reference to that set, so a hand-set label
+// does not make an explicit AgentProject look like a child.
+func setOf(p *aiv1.AgentProject) string {
+	name := p.Labels[aiv1.LabelProjectSet]
+	if name == "" {
+		return ""
+	}
+	ref := metav1.GetControllerOf(p)
+	if ref == nil || ref.Kind != "AgentProjectSet" || ref.Name != name {
+		return ""
+	}
+	if gv, err := schema.ParseGroupVersion(ref.APIVersion); err != nil || gv.Group != aiv1.GroupVersion.Group {
+		return ""
+	}
+	return name
+}
+
 // summarize builds the summary of p from its tasks.
 func summarize(p *aiv1.AgentProject, tasks []aiv1.AgentTask, now time.Time) ProjectSummary {
 	s := ProjectSummary{
@@ -286,6 +308,7 @@ func summarize(p *aiv1.AgentProject, tasks []aiv1.AgentTask, now time.Time) Proj
 		Tasks:             len(tasks),
 		Stages:            map[Stage]int{},
 		CreatedAt:         p.CreationTimestamp,
+		Set:               setOf(p),
 	}
 	var cost float64
 	for i := range tasks {

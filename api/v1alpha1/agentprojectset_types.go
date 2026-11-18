@@ -218,6 +218,9 @@ const (
 	AnnotationRemoving = "ai.wiemers.me/removing"
 )
 
+// The AgentProjectSet conditions and their reasons. One block: tygo would
+// turn a block of only Condition* constants into a TypeScript union named
+// Condition, which clashes with the Condition interface.
 const (
 	// ConditionReady is the AgentProjectSet condition that tells whether the
 	// spec and template are usable and the query fits the complexity limit.
@@ -225,10 +228,7 @@ const (
 	// ConditionDiscovered is the AgentProjectSet condition that tells
 	// whether the last discovery succeeded.
 	ConditionDiscovered = "Discovered"
-)
 
-// Reasons of the AgentProjectSet conditions.
-const (
 	ReasonInvalidSpec     = "InvalidSpec"
 	ReasonInvalidTemplate = "InvalidTemplate"
 	ReasonWebhookRequired = "WebhookRequired"

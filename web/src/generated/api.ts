@@ -2012,6 +2012,296 @@ export interface AgentProjectList extends metav1.TypeMeta {
 }
 
 //////////
+// source: agentprojectset_types.go
+
+/**
+ * AgentProjectSetSpec makes the operator work in every project of a GitLab
+ * group that the include globs match and the exclude globs do not: the set
+ * writes one child AgentProject per active project from its template.
+ */
+export interface AgentProjectSetSpec {
+  /**
+   * GitLab is the instance, token and root group the set discovers
+   * projects in.
+   */
+  gitlab: ProjectSetGitLab;
+  /**
+   * Include are path globs of the projects the set works in, e.g.
+   * "my-group/**": `*` matches within one path segment, `**` across
+   * segments, case-insensitive.
+   * +kubebuilder:validation:MinItems=1
+   */
+  include: string[];
+  /**
+   * Exclude are path globs of projects the set never works in, whatever
+   * Include says, e.g. "my-group/archived/**".
+   * +optional
+   */
+  exclude?: string[];
+  /**
+   * Template is the spec of every child AgentProject: any AgentProject
+   * spec field except gitlab, which the set fills in from its own gitlab
+   * and the project's path. Unknown fields make the set Ready=False,
+   * reason InvalidTemplate. The template needs webhook.enabled,
+   * webhook.secretRef and webhook.url (reason WebhookRequired).
+   * +kubebuilder:validation:Schemaless
+   * +kubebuilder:pruning:PreserveUnknownFields
+   * +kubebuilder:validation:Type=object
+   * +optional
+   */
+  template?: unknown;
+  /**
+   * PollInterval is how often the set discovers the group's projects.
+   * +kubebuilder:default="2m"
+   * +optional
+   */
+  pollInterval?: string;
+  /**
+   * DormantAfter is how long a child stays without work (no milestone
+   * with the spec marker, no ready issue, no AgentTask) before the set
+   * removes it.
+   * +kubebuilder:default="168h"
+   * +optional
+   */
+  dormantAfter?: string;
+}
+/**
+ * ProjectSetGitLab describes how the set reaches GitLab.
+ */
+export interface ProjectSetGitLab {
+  /**
+   * URL of the GitLab instance, e.g. https://gitlab.com.
+   * +kubebuilder:default="https://gitlab.com"
+   * +optional
+   */
+  url?: string;
+  /**
+   * TokenSecretRef points to an access token with the api and
+   * write_repository scopes in every project of the group. The set's
+   * children use it too.
+   */
+  tokenSecretRef: unknown;
+  /**
+   * Group is the full path of the root group, e.g. "my-group". The set
+   * discovers the projects of the group and its subgroups.
+   * +kubebuilder:validation:MinLength=1
+   */
+  group: string;
+}
+/**
+ * ProjectSetState is what the set does with a matched project.
+ * +kubebuilder:validation:Enum=active;dormant;excluded;explicit;nameTaken
+ */
+export type ProjectSetState = string;
+/**
+ * ProjectSetActive: the project has work and a child AgentProject.
+ */
+export const ProjectSetActive: ProjectSetState = "active";
+/**
+ * ProjectSetDormant: the project has no work; its child, if any, is
+ * removed once it has been inactive for dormantAfter.
+ */
+export const ProjectSetDormant: ProjectSetState = "dormant";
+/**
+ * ProjectSetExcluded: exclude matches the project, or it is archived.
+ */
+export const ProjectSetExcluded: ProjectSetState = "excluded";
+/**
+ * ProjectSetExplicit: an AgentProject the set does not own watches the
+ * project; that one wins.
+ */
+export const ProjectSetExplicit: ProjectSetState = "explicit";
+/**
+ * ProjectSetNameTaken: the child's name belongs to an object the set
+ * does not own.
+ */
+export const ProjectSetNameTaken: ProjectSetState = "nameTaken";
+/**
+ * ProjectSetEntry is one project the set's include matched.
+ */
+export interface ProjectSetEntry {
+  /**
+   * Path is the project's full path.
+   */
+  path: string;
+  state: ProjectSetState;
+  /**
+   * Child is the name of the child AgentProject, if there is one.
+   * +optional
+   */
+  child?: string;
+  /**
+   * Reason says why the project is in its state, e.g. "archived",
+   * "matches exclude my-group/archived/**" or "watched by AgentProject
+   * agents/foo".
+   * +optional
+   */
+  reason?: string;
+  /**
+   * LastActiveTime is when the set last saw work in the project.
+   * +optional
+   */
+  lastActiveTime?: string;
+  /**
+   * Milestones is a hash of the project's active milestones (iid, title,
+   * updatedAt): a change wakes the child.
+   * +optional
+   */
+  milestones?: string;
+}
+/**
+ * ProjectSetCounts counts the set's projects by state.
+ */
+export interface ProjectSetCounts {
+  /**
+   * +optional
+   */
+  active: number /* int32 */;
+  /**
+   * +optional
+   */
+  dormant: number /* int32 */;
+  /**
+   * +optional
+   */
+  excluded: number /* int32 */;
+  /**
+   * +optional
+   */
+  explicit: number /* int32 */;
+  /**
+   * +optional
+   */
+  nameTaken: number /* int32 */;
+}
+/**
+ * ProjectSetComplexity is the GraphQL query complexity of the last
+ * discovery: the set is Ready=False, reason TooComplex, near the limit.
+ */
+export interface ProjectSetComplexity {
+  score: number /* int32 */;
+  limit: number /* int32 */;
+}
+/**
+ * AgentProjectSetStatus is what the set's last discovery found.
+ */
+export interface AgentProjectSetStatus {
+  /**
+   * +optional
+   */
+  observedGeneration?: number /* int64 */;
+  /**
+   * LastDiscoveryTime is when the set last listed the group's projects.
+   * +optional
+   */
+  lastDiscoveryTime?: string;
+  /**
+   * +optional
+   */
+  counts?: ProjectSetCounts;
+  /**
+   * Projects are the projects include matched, with their state.
+   * +optional
+   */
+  projects?: ProjectSetEntry[];
+  /**
+   * DroppedTargets are template crossRepo targets the set's exclude
+   * matches: the set drops them from its children.
+   * +optional
+   */
+  droppedTargets?: string[];
+  /**
+   * +optional
+   */
+  complexity?: ProjectSetComplexity;
+  /**
+   * +listType=map
+   * +listMapKey=type
+   * +optional
+   */
+  conditions?: Condition[];
+}
+/**
+ * AgentProjectSet makes the operator work in the projects of a GitLab group.
+ */
+export interface AgentProjectSet extends metav1.TypeMeta {
+  metadata?: ObjectMeta;
+  spec: AgentProjectSetSpec;
+  status?: AgentProjectSetStatus;
+}
+/**
+ * AgentProjectSetList contains a list of AgentProjectSet.
+ */
+export interface AgentProjectSetList extends metav1.TypeMeta {
+  metadata?: ListMeta;
+  items: AgentProjectSet[];
+}
+/**
+ * LabelProjectSet is the label on a set's child AgentProjects: the set's
+ * name.
+ */
+export const LabelProjectSet = "ai.wiemers.me/project-set";
+/**
+ * AnnotationTemplateHash is the hash of the template a child was last
+ * written from.
+ */
+export const AnnotationTemplateHash = "ai.wiemers.me/template-hash";
+/**
+ * AnnotationRemoving marks a dormant child the set is removing: its
+ * webhook is switched off, and it is deleted once the hook is gone.
+ */
+export const AnnotationRemoving = "ai.wiemers.me/removing";
+/**
+ * ConditionReady is the AgentProjectSet condition that tells whether the
+ * spec and template are usable and the query fits the complexity limit.
+ */
+export const ConditionReady = "Ready";
+/**
+ * ConditionDiscovered is the AgentProjectSet condition that tells
+ * whether the last discovery succeeded.
+ */
+export const ConditionDiscovered = "Discovered";
+/**
+ * The AgentProjectSet conditions and their reasons. One block: tygo would
+ * turn a block of only Condition* constants into a TypeScript union named
+ * Condition, which clashes with the Condition interface.
+ */
+export const ReasonInvalidSpec = "InvalidSpec";
+/**
+ * The AgentProjectSet conditions and their reasons. One block: tygo would
+ * turn a block of only Condition* constants into a TypeScript union named
+ * Condition, which clashes with the Condition interface.
+ */
+export const ReasonInvalidTemplate = "InvalidTemplate";
+/**
+ * The AgentProjectSet conditions and their reasons. One block: tygo would
+ * turn a block of only Condition* constants into a TypeScript union named
+ * Condition, which clashes with the Condition interface.
+ */
+export const ReasonWebhookRequired = "WebhookRequired";
+/**
+ * The AgentProjectSet conditions and their reasons. One block: tygo would
+ * turn a block of only Condition* constants into a TypeScript union named
+ * Condition, which clashes with the Condition interface.
+ */
+export const ReasonTooComplex = "TooComplex";
+/**
+ * The AgentProjectSet conditions and their reasons. One block: tygo would
+ * turn a block of only Condition* constants into a TypeScript union named
+ * Condition, which clashes with the Condition interface.
+ */
+export const ReasonDiscoveryFailed = "DiscoveryFailed";
+/**
+ * The AgentProjectSet conditions and their reasons. One block: tygo would
+ * turn a block of only Condition* constants into a TypeScript union named
+ * Condition, which clashes with the Condition interface.
+ */
+export const ReasonReady = "Ready";
+export const DefaultProjectSetPollInterval = 2 * 60_000_000_000;
+export const DefaultProjectSetDormantAfter = 168 * 3_600_000_000_000;
+export type DefaultProjectSet = typeof DefaultProjectSetPollInterval | typeof DefaultProjectSetDormantAfter;
+
+//////////
 // source: agentresearch_types.go
 
 /**

@@ -18,7 +18,7 @@ metadata:
     {{- include "ai-operator.ui.labels" . | nindent 4 }}
 rules:
   - apiGroups: ["ai.wiemers.me"]
-    resources: ["agentprojects", "agenttasks"]
+    resources: ["agentprojects", "agentprojectsets", "agenttasks"]
     verbs: ["get", "list", "watch"]
   {{- if .Values.research.database.host }}
   # The Research section (shown only to roles with a research rule) and the

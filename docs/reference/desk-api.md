@@ -79,7 +79,8 @@ and leave out the cookie:
 
 | Method and path | Purpose | Needs |
 |-----------------|---------|-------|
-| `GET /api/v1/projects` | Your projects, with task counts and cost. | see |
+| `GET /api/v1/projects` | Your projects, with task counts and cost. A project an AgentProjectSet created has `set`, the set's name. | see |
+| `GET /api/v1/projectsets` | Your AgentProjectSets: group, `include` and `exclude`, the last discovery, the counts (`active`, `dormant`, `excluded`, `explicit`, `nameTaken`) and each matched project with its state and reason. An empty list on a cluster without the AgentProjectSet resource. | see, on the set's name |
 | `GET /api/v1/overview` | The dashboard: what is running, paused and waiting, what needs you, spend today and this week. | see |
 | `GET /api/v1/milestones` | The milestones of your projects. `?state=open` (default), `done` or `all`; `?project=`, `?limit=`. | see |
 | `GET /api/v1/search?q=` | Find tasks by `#issue`, `!merge request` or a part of the title. | see |
