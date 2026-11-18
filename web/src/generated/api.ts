@@ -6284,13 +6284,17 @@ export const MaxPromptContext = 8 << 10;
 export const MaxPromptOptionLabel = 200;
 export const MaxPromptOptionDetail = 1000;
 /**
+ * MaxPromptOptionConsequence bounds what an option costs or throws away.
+ */
+export const MaxPromptOptionConsequence = 160;
+/**
  * MaxPromptText bounds an answer's free text and outcome.
  */
 export const MaxPromptText = 4000;
 /**
  * Bounds of a prompt; the status keeps the newest MaxPrompts.
  */
-export type MaxPrompt = typeof MaxPrompts | typeof MaxPromptQuestion | typeof MaxPromptContext | typeof MaxPromptOptionLabel | typeof MaxPromptOptionDetail | typeof MaxPromptText;
+export type MaxPrompt = typeof MaxPrompts | typeof MaxPromptQuestion | typeof MaxPromptContext | typeof MaxPromptOptionLabel | typeof MaxPromptOptionDetail | typeof MaxPromptOptionConsequence | typeof MaxPromptText;
 /**
  * PromptSource is what a prompt is about and who made it.
  */
@@ -6344,6 +6348,13 @@ export interface PromptOption {
    * +optional
    */
   detail?: string;
+  /**
+   * Consequence says, in one line, what the option costs or throws away.
+   * Untrusted.
+   * +kubebuilder:validation:MaxLength=160
+   * +optional
+   */
+  consequence?: string;
   /**
    * Actions run when an owner chooses it, validated like an accepted
    * proposal's; none: the "do nothing" option.

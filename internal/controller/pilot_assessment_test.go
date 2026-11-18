@@ -47,7 +47,7 @@ func TestPilotAssessmentOptionsBecomeAPrompt(t *testing.T) {
 	e := newProposalEnv(t)
 	before := e.toolEffect()
 	e.assess("event/stuck/1/sha1@1",
-		aiv1.PromptOption{Label: "Retry #1", Detail: "a new run", Recommended: true, Actions: []aiv1.PilotAction{{Tool: "retry", IssueIID: 1}}},
+		aiv1.PromptOption{Label: "Retry #1", Detail: "a new run", Consequence: "starts a new run, about $0.50", Recommended: true, Actions: []aiv1.PilotAction{{Tool: "retry", IssueIID: 1}}},
 		aiv1.PromptOption{Label: "Merge it", Actions: []aiv1.PilotAction{{Tool: "merge", IssueIID: 1}}},
 		aiv1.PromptOption{Label: "Do nothing"})
 	e.reconcile()
@@ -58,6 +58,9 @@ func TestPilotAssessmentOptionsBecomeAPrompt(t *testing.T) {
 	}
 	if got := optionLabels(q); got != "A:Retry #1* B:Do nothing" {
 		t.Fatalf("the option the operator would not run is dropped: %s", got)
+	}
+	if c := q.Options[0].Consequence; c != "starts a new run, about $0.50" {
+		t.Fatalf("the option keeps what it costs: %q", c)
 	}
 	if ps := e.pilot().Status.Pilot; len(ps.Proposed) != 0 {
 		t.Fatalf("the operator takes it out: %+v", ps.Proposed)

@@ -17,6 +17,7 @@ import (
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/command"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/problem"
 	"github.com/jonathanwiemers/ai-operator/internal/rules"
 	"github.com/jonathanwiemers/ai-operator/internal/writefail"
 )
@@ -78,7 +79,7 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 		return out, refineErr
 	}
 	s := r.step(ctx, "read milestone state", "messages", len(msgs))
-	state, stateOf, err := r.pilotState(ctx, gl, task, project, spec)
+	state, stateOf, factsOf, err := r.pilotState(ctx, gl, task, project, spec)
 	if err != nil {
 		// The run's request is done either way: say so instead of dropping
 		// the messages.
@@ -86,7 +87,7 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 			r.pilotReply(ctx, gl, spec, m, "The pilot could not read the milestone's state, so it cannot answer; ask again in a moment.")
 		}
 		// The events' own data is still worth an assessment.
-		aerr := r.assessEvents(ctx, gl, task, spec, project.Status.BotUserID, fmt.Sprintf("(the milestone's state could not be read: %v)", err), nil, out, events, &st)
+		aerr := r.assessEvents(ctx, gl, task, spec, project.Status.BotUserID, fmt.Sprintf("(the milestone's state could not be read: %v)", err), nil, nil, out, events, &st)
 		if _, limited := AsUsageLimit(aerr); limited {
 			return out, aerr
 		}
@@ -155,7 +156,7 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 			r.log().Error(err, "saving the pilot's session")
 		}
 	}
-	err = r.assessEvents(ctx, gl, task, spec, project.Status.BotUserID, state, stateOf, out, events, &st)
+	err = r.assessEvents(ctx, gl, task, spec, project.Status.BotUserID, state, stateOf, factsOf, out, events, &st)
 	out.Summary = fmt.Sprintf("answered %d messages, assessed %d events, refined %d answers", len(msgs), len(events), len(refines))
 	if _, limited := AsUsageLimit(err); limited || failed == nil {
 		return out, err
@@ -263,20 +264,21 @@ func pilotReleases(recs []aiv1.ReleaseRecord) []pilotRelease {
 // pilotState renders the milestone's state as JSON: the spec, autopilot,
 // the issues with their tasks, the default branch's health and the last
 // comments of the tracking issue.
-// It also returns the state proposals are made on (aiv1.PilotState).
-func (r *Runner) pilotState(ctx context.Context, gl gitlab.API, task *aiv1.AgentTask, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec) (string, stateFunc, error) {
+// It also returns the state proposals are made on (aiv1.PilotState) and the
+// events' problem facts.
+func (r *Runner) pilotState(ctx context.Context, gl gitlab.API, task *aiv1.AgentTask, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec) (string, stateFunc, factsFunc, error) {
 	glProject := spec.GitLab.Project
 	m, err := gl.GetMilestone(ctx, glProject, task.Spec.Milestone.ID)
 	if err != nil {
-		return "", nil, fmt.Errorf("getting milestone: %w", err)
+		return "", nil, nil, fmt.Errorf("getting milestone: %w", err)
 	}
 	issues, err := gl.ListIssues(ctx, glProject, gitlab.ListIssuesOptions{Milestone: m.Title, State: "all"})
 	if err != nil {
-		return "", nil, fmt.Errorf("listing milestone issues: %w", err)
+		return "", nil, nil, fmt.Errorf("listing milestone issues: %w", err)
 	}
 	var tasks aiv1.AgentTaskList
 	if err := r.K8s.List(ctx, &tasks, client.InNamespace(r.Namespace), client.MatchingLabels{labelProject: project.Name}); err != nil {
-		return "", nil, fmt.Errorf("listing tasks: %w", err)
+		return "", nil, nil, fmt.Errorf("listing tasks: %w", err)
 	}
 	var specTask *aiv1.AgentTask
 	var v struct {
@@ -319,6 +321,7 @@ func (r *Runner) pilotState(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 		short.Releases = nil
 		v.Autopilot = &short
 	}
+	open, known := map[int64]bool{}, map[int64]problem.IssueFacts{}
 	for _, is := range issues {
 		pi := pilotIssue{IID: is.IID, Title: is.Title, State: is.State, Labels: is.Labels}
 		if t := byIID[is.IID]; t != nil {
@@ -326,6 +329,7 @@ func (r *Runner) pilotState(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 			pi.Checkpoint = t.Status.Run.Checkpoint
 		}
 		v.Issues = append(v.Issues, pi)
+		open[is.IID], known[is.IID] = is.State == "opened", problem.IssueFacts{IID: is.IID, Title: is.Title, URL: is.WebURL, Labels: is.Labels}
 	}
 	v.Companions = pilotCompanions(project, byIID, m.IID)
 	var items []aiv1.AutopilotItem
@@ -336,7 +340,7 @@ func (r *Runner) pilotState(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 	if task.Spec.Issue != nil {
 		notes, err := gl.ListIssueNotes(ctx, glProject, task.Spec.Issue.IID)
 		if err != nil {
-			return "", nil, fmt.Errorf("listing notes of the tracking issue #%d: %w", task.Spec.Issue.IID, err)
+			return "", nil, nil, fmt.Errorf("listing notes of the tracking issue #%d: %w", task.Spec.Issue.IID, err)
 		}
 		for _, n := range notes[max(0, len(notes)-pilotComments):] {
 			if !n.System {
@@ -354,8 +358,25 @@ func (r *Runner) pilotState(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 		}
 		return aiv1.PilotState(specTask, byIID, a)
 	}
-	return string(b), stateOf, err
+	factsOf := func(e aiv1.PilotEvent) string {
+		iid := e.IssueIID
+		if iid == 0 && (strings.HasPrefix(e.Key, "pause-") || aiv1.StalledEvent(e)) {
+			iid = aiv1.ProblemIssue(v.Autopilot) // a pause over one held issue is its problem
+		}
+		is, ok := known[iid]
+		if !ok {
+			return ""
+		}
+		fb, _ := json.MarshalIndent(problem.Build(is, byIID[iid], v.Plan, open), "", "  ")
+		return string(fb)
+	}
+	return string(b), stateOf, factsOf, err
 }
+
+// factsFunc is the problem facts (problem.Facts) of an event's issue as
+// JSON: its own, or for a pause without one the single held issue's; "" for
+// none or an issue outside the milestone.
+type factsFunc func(aiv1.PilotEvent) string
 
 // pilotEngines is what the pilot knows about the engines: the usage limits
 // in force and, per role and profile, where it runs and its fallback, so a

@@ -205,7 +205,7 @@ func (r *Runner) chatTurn(ctx context.Context, task *aiv1.AgentTask, project *ai
 		// The pilot answers from the milestone as it is now, not as its
 		// session last saw it. Read before the interrupt watcher starts, so an
 		// interrupt cannot cancel a prompt that has not started yet.
-		state, _, serr := r.pilotState(ctx, r.guardedGitLab(spec, task), task, project, spec)
+		state, _, _, serr := r.pilotState(ctx, r.guardedGitLab(spec, task), task, project, spec)
 		if serr != nil {
 			r.Log.Info("pilot chat without the milestone state", "error", serr.Error())
 		}

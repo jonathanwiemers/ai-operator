@@ -789,6 +789,12 @@ spec:
                                   - tool
                                   type: object
                                 type: array
+                              consequence:
+                                description: |-
+                                  Consequence says, in one line, what the option costs or throws away.
+                                  Untrusted.
+                                maxLength: 160
+                                type: string
                               detail:
                                 description: Detail says what the option does. Untrusted.
                                 type: string
@@ -2338,6 +2344,12 @@ spec:
                                   - tool
                                   type: object
                                 type: array
+                              consequence:
+                                description: |-
+                                  Consequence says, in one line, what the option costs or throws away.
+                                  Untrusted.
+                                maxLength: 160
+                                type: string
                               detail:
                                 description: Detail says what the option does. Untrusted.
                                 type: string
@@ -2823,6 +2835,12 @@ spec:
                                   - tool
                                   type: object
                                 type: array
+                              consequence:
+                                description: |-
+                                  Consequence says, in one line, what the option costs or throws away.
+                                  Untrusted.
+                                maxLength: 160
+                                type: string
                               detail:
                                 description: Detail says what the option does. Untrusted.
                                 type: string
@@ -3070,6 +3088,12 @@ spec:
                                   - tool
                                   type: object
                                 type: array
+                              consequence:
+                                description: |-
+                                  Consequence says, in one line, what the option costs or throws away.
+                                  Untrusted.
+                                maxLength: 160
+                                type: string
                               detail:
                                 description: Detail says what the option does. Untrusted.
                                 type: string
@@ -3236,6 +3260,12 @@ spec:
                                 - tool
                                 type: object
                               type: array
+                            consequence:
+                              description: |-
+                                Consequence says, in one line, what the option costs or throws away.
+                                Untrusted.
+                              maxLength: 160
+                              type: string
                             detail:
                               description: Detail says what the option does. Untrusted.
                               type: string
@@ -3608,6 +3638,12 @@ spec:
                               - tool
                               type: object
                             type: array
+                          consequence:
+                            description: |-
+                              Consequence says, in one line, what the option costs or throws away.
+                              Untrusted.
+                            maxLength: 160
+                            type: string
                           detail:
                             description: Detail says what the option does. Untrusted.
                             type: string
@@ -4336,6 +4372,12 @@ spec:
                                   - tool
                                   type: object
                                 type: array
+                              consequence:
+                                description: |-
+                                  Consequence says, in one line, what the option costs or throws away.
+                                  Untrusted.
+                                maxLength: 160
+                                type: string
                               detail:
                                 description: Detail says what the option does. Untrusted.
                                 type: string

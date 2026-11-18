@@ -64,11 +64,12 @@ func TestPromptValidate(t *testing.T) {
 		"option id":    {with(promptOf(PromptProposal, rec, none), func(p *Prompt) { p.Options[1].ID = "C" }), `id "C", want B`},
 		"option id lc": {with(promptOf(PromptProposal, rec, none), func(p *Prompt) { p.Options[0].ID = "a" }), `want A`},
 
-		"long question": {with(promptOf(PromptProposal, rec, none), func(p *Prompt) { p.Question = long(MaxPromptQuestion) }), "question is longer"},
-		"long context":  {with(promptOf(PromptProposal, rec, none), func(p *Prompt) { p.Context = long(MaxPromptContext) }), "context is longer"},
-		"long label":    {with(promptOf(PromptProposal, rec, none), func(p *Prompt) { p.Options[0].Label = long(MaxPromptOptionLabel) }), "label is longer"},
-		"long detail":   {with(promptOf(PromptProposal, rec, none), func(p *Prompt) { p.Options[1].Detail = long(MaxPromptOptionDetail) }), "detail is longer"},
-		"long text":     {with(promptOf(PromptProposal, rec, none), func(p *Prompt) { p.Answer = &PromptAnswer{Text: long(MaxPromptText)} }), "text is longer"},
+		"long question":    {with(promptOf(PromptProposal, rec, none), func(p *Prompt) { p.Question = long(MaxPromptQuestion) }), "question is longer"},
+		"long context":     {with(promptOf(PromptProposal, rec, none), func(p *Prompt) { p.Context = long(MaxPromptContext) }), "context is longer"},
+		"long label":       {with(promptOf(PromptProposal, rec, none), func(p *Prompt) { p.Options[0].Label = long(MaxPromptOptionLabel) }), "label is longer"},
+		"long detail":      {with(promptOf(PromptProposal, rec, none), func(p *Prompt) { p.Options[1].Detail = long(MaxPromptOptionDetail) }), "detail is longer"},
+		"long consequence": {with(promptOf(PromptProposal, rec, none), func(p *Prompt) { p.Options[1].Consequence = long(MaxPromptOptionConsequence) }), "consequence is longer"},
+		"long text":        {with(promptOf(PromptProposal, rec, none), func(p *Prompt) { p.Answer = &PromptAnswer{Text: long(MaxPromptText)} }), "text is longer"},
 		"long outcome": {with(promptOf(PromptProposal, rec, none), func(p *Prompt) {
 			p.Answer = &PromptAnswer{OptionID: "A", Outcome: long(MaxPromptText)}
 		}), "outcome is longer"},
@@ -85,6 +86,7 @@ func TestPromptValidate(t *testing.T) {
 	p := promptOf(PromptProposal, rec, none)
 	p.Question, p.Context = strings.Repeat("x", MaxPromptQuestion), strings.Repeat("x", MaxPromptContext)
 	p.Options[0].Label, p.Options[0].Detail = strings.Repeat("x", MaxPromptOptionLabel), strings.Repeat("x", MaxPromptOptionDetail)
+	p.Options[0].Consequence = strings.Repeat("x", MaxPromptOptionConsequence)
 	p.Answer = &PromptAnswer{Text: strings.Repeat("x", MaxPromptText)}
 	if err := p.Validate(); err != nil {
 		t.Errorf("at the bounds: %v", err)

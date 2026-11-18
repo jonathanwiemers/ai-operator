@@ -94,6 +94,8 @@ const (
 	MaxPromptContext      = 8 << 10
 	MaxPromptOptionLabel  = 200
 	MaxPromptOptionDetail = 1000
+	// MaxPromptOptionConsequence bounds what an option costs or throws away.
+	MaxPromptOptionConsequence = 160
 	// MaxPromptText bounds an answer's free text and outcome.
 	MaxPromptText = 4000
 )
@@ -134,6 +136,11 @@ type PromptOption struct {
 	// Detail says what the option does. Untrusted.
 	// +optional
 	Detail string `json:"detail,omitempty"`
+	// Consequence says, in one line, what the option costs or throws away.
+	// Untrusted.
+	// +kubebuilder:validation:MaxLength=160
+	// +optional
+	Consequence string `json:"consequence,omitempty"`
 	// Actions run when an owner chooses it, validated like an accepted
 	// proposal's; none: the "do nothing" option.
 	// +optional
@@ -367,6 +374,8 @@ func (p Prompt) Validate() error {
 			return fmt.Errorf("option %s: label is longer than %d bytes", o.ID, MaxPromptOptionLabel)
 		case len(o.Detail) > MaxPromptOptionDetail:
 			return fmt.Errorf("option %s: detail is longer than %d bytes", o.ID, MaxPromptOptionDetail)
+		case len(o.Consequence) > MaxPromptOptionConsequence:
+			return fmt.Errorf("option %s: consequence is longer than %d bytes", o.ID, MaxPromptOptionConsequence)
 		case fromAnswer > 0:
 			return fmt.Errorf("option %s follows the option from the owner's answer", o.ID)
 		case o.FromAnswer && len(o.Actions) == 0:

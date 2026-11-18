@@ -225,7 +225,7 @@ func TestPilotStateHasThePauseExits(t *testing.T) {
 		t.Fatal(err)
 	}
 	pilot := e.task(t)
-	state, _, err := e.r.pilotState(context.Background(), e.gl, &pilot, &project, project.Spec)
+	state, _, _, err := e.r.pilotState(context.Background(), e.gl, &pilot, &project, project.Spec)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,7 +252,7 @@ func TestPilotStateHasTheCheckpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	pilot := e.task(t)
-	state, _, err := e.r.pilotState(ctx, e.gl, &pilot, &project, project.Spec)
+	state, _, _, err := e.r.pilotState(ctx, e.gl, &pilot, &project, project.Spec)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +296,7 @@ func TestPilotStateHasTheCompanions(t *testing.T) {
 	if err := e.k8s.Get(ctx, types.NamespacedName{Namespace: "agents", Name: "shop"}, &project); err != nil {
 		t.Fatal(err)
 	}
-	state, _, err := e.r.pilotState(ctx, e.gl, ptr(e.task(t)), &project, project.Spec)
+	state, _, _, err := e.r.pilotState(ctx, e.gl, ptr(e.task(t)), &project, project.Spec)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +308,7 @@ func TestPilotStateHasTheCompanions(t *testing.T) {
 		{HomeIssueIID: 1, MilestoneIID: 3, Project: "acme/infra", MRIID: 8, State: aiv1.LandingWaitingRelease, Reason: "no tag contains abc yet"},
 		{HomeIssueIID: 9, MilestoneIID: 4, Project: "acme/infra", MRIID: 9, State: aiv1.LandingReady},
 	}
-	state, _, err = e.r.pilotState(ctx, e.gl, ptr(e.task(t)), &project, project.Spec)
+	state, _, _, err = e.r.pilotState(ctx, e.gl, ptr(e.task(t)), &project, project.Spec)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -576,7 +576,7 @@ func TestReferencesIgnoreAGitLabError(t *testing.T) {
 		t.Fatal(err)
 	}
 	pilot := e.task(t)
-	state, _, err := e.r.pilotState(context.Background(), e.gl, &pilot, &project, project.Spec)
+	state, _, _, err := e.r.pilotState(context.Background(), e.gl, &pilot, &project, project.Spec)
 	if err != nil {
 		t.Fatalf("a GitLab error of the references must not fail the run: %v", err)
 	}
