@@ -4,6 +4,7 @@
 package problem
 
 import (
+	"slices"
 	"strings"
 	"time"
 
@@ -70,9 +71,10 @@ type SavedFacts struct {
 	UncommittedLines int64  `json:"uncommittedLines,omitempty"`
 }
 
-// Build is the facts of issue from its task (nil without one).
-func Build(issue IssueFacts, task *aiv1.AgentTask) Facts {
-	f := Facts{IID: issue.IID, Issue: issue}
+// Build is the facts of issue from its task (nil without one); plan and
+// open, the IIDs not merged or done, give the issues blocked on it.
+func Build(issue IssueFacts, task *aiv1.AgentTask, plan []aiv1.PlannedIssue, open map[int64]bool) Facts {
+	f := Facts{IID: issue.IID, Issue: issue, Blocked: blocked(issue.IID, plan, open)}
 	if task == nil {
 		return f
 	}
@@ -96,5 +98,62 @@ func Build(issue IssueFacts, task *aiv1.AgentTask) Facts {
 			f.Run.Error = textutil.Truncate(strings.Join(strings.Fields(run.Summary), " "), MaxError-1)
 		}
 	}
+	if ci := task.Status.CI; ci != nil && ci.PipelineID != 0 {
+		f.Pipeline = &PipelineFacts{ID: ci.PipelineID, URL: ci.PipelineURL, Status: string(ci.State)}
+		for _, j := range ci.FailedJobs { // status keeps no job IDs: link the failures page
+			f.Pipeline.FailedJobs = append(f.Pipeline.FailedJobs, JobFacts{Name: j, URL: ci.PipelineURL + "/failures"})
+		}
+	}
+	if cp := run.Checkpoint; cp != nil || run.UncommittedLines > 0 {
+		f.Saved = &SavedFacts{UncommittedLines: run.UncommittedLines}
+		if cp != nil {
+			f.Saved.SHA, f.Saved.Lines = cp.SHA, cp.Added+cp.Deleted
+		}
+	}
 	return f
+}
+
+// blocked lists the open issues that depend on iid, directly or not,
+// breadth-first and then by IID.
+func blocked(iid int64, plan []aiv1.PlannedIssue, open map[int64]bool) []int64 {
+	var out []int64
+	seen := map[int64]bool{iid: true}
+	for level := []int64{iid}; len(level) > 0; {
+		var next []int64
+		for _, p := range plan {
+			if !seen[p.IID] && open[p.IID] && slices.ContainsFunc(p.DependsOn, func(d int64) bool { return slices.Contains(level, d) }) {
+				seen[p.IID] = true
+				next = append(next, p.IID)
+			}
+		}
+		slices.Sort(next)
+		out, level = append(out, next...), next
+	}
+	return out
+}
+
+// IIDs are the issues of st's milestone with an open problem: held items,
+// the issue of a pause, and those of open assessment prompts; sorted, unique.
+func IIDs(st *aiv1.AgentTask) []int64 {
+	if st == nil {
+		return nil
+	}
+	var out []int64
+	if ap := st.Status.Autopilot; ap != nil {
+		for _, it := range ap.Items {
+			if it.State == aiv1.AutopilotItemActive && it.Hold != nil {
+				out = append(out, it.IID)
+			}
+		}
+		if iid := aiv1.ProblemIssue(ap); iid != 0 {
+			out = append(out, iid)
+		}
+	}
+	for _, p := range st.Status.Prompts {
+		if p.Source.Kind == aiv1.PromptAssessment && p.State == aiv1.PromptOpen && p.Source.IssueIID != 0 {
+			out = append(out, p.Source.IssueIID)
+		}
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
 }
