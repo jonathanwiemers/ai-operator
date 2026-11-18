@@ -3,7 +3,7 @@
 // default and is left out.
 //
 // Project pages: Stream | Board | Spend, and Plans with the plans feature
-// (R13). Milestone pages: Issues | Needs you |
+// (R13). Milestone pages: Issues | Needs you | Decisions (R11, D546-P1) |
 // Pilot | Retrospective | Stream | Board | Spend (decision 7, R12), so an old
 // milestone link with ?tab=stream still opens the stream. The dashboard
 // at /: Overview | Stream (decision 3). The task page (and the issue page
@@ -12,7 +12,7 @@
 // BaseTab: the tabs project and milestone pages share.
 export type BaseTab = 'stream' | 'board' | 'spend'
 export type StreamTab = BaseTab | 'plans'
-export type MilestoneTab = 'issues' | 'needs' | 'pilot' | 'retrospective' | BaseTab
+export type MilestoneTab = 'issues' | 'needs' | 'decisions' | 'pilot' | 'retrospective' | BaseTab
 export type DashboardTab = 'overview' | 'stream'
 export type TaskTab = 'overview' | 'chat' | 'live' | 'logs' | 'calls' | 'details'
 // A plan's tabs on phones; desktop shows both columns.
@@ -42,13 +42,14 @@ export function projectTabsFor(plans: boolean): Tab<StreamTab>[] {
 export const milestoneTabs: Tab<MilestoneTab>[] = [
   { id: 'issues', label: 'Issues' },
   { id: 'needs', label: 'Needs you' },
+  { id: 'decisions', label: 'Decisions' },
   { id: 'pilot', label: 'Pilot' },
   { id: 'retrospective', label: 'Retrospective' },
   ...streamBaseTabs,
 ]
 
 // storedMilestoneTabs are a milestone's tabs once its tasks are gone: the
-// Board needs them.
+// Board needs them. Decisions stays, it reads the history database.
 export const storedMilestoneTabs: Tab<MilestoneTab>[] = milestoneTabs.filter((t) => t.id !== 'board')
 
 export const dashboardTabs: Tab<DashboardTab>[] = [

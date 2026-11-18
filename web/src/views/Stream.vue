@@ -16,6 +16,7 @@ import ProjectBoards from '../components/ProjectBoards.vue'
 import SpendPanel from '../components/SpendPanel.vue'
 import Composer from '../components/Composer.vue'
 import EventCard from '../components/stream/EventCard.vue'
+import MilestoneDecisions from '../components/MilestoneDecisions.vue'
 import MilestoneIssues from '../components/MilestoneIssues.vue'
 import MilestoneNeeds from '../components/MilestoneNeeds.vue'
 import MilestonePilot from '../components/MilestonePilot.vue'
@@ -65,7 +66,7 @@ const everything = computed(() => !props.namespace || !props.name)
 const milestoneIID = computed(() => (props.iid ? Number(props.iid) : undefined))
 
 // tab: Stream, Board, Spend or Plans (feature plans) on project streams, Issues (the default),
-// Needs you, Pilot, Retrospective, Stream, Board or Spend on milestones, kept in ?tab= so it can be
+// Needs you, Decisions, Pilot, Retrospective, Stream, Board or Spend on milestones, kept in ?tab= so it can be
 // linked to (a #prompt-Q<n> link without it opens Needs you); Everything has no
 // tabs. A stored milestone has no tasks, so no Board. The Needs you tab's
 // label carries the count of its Open items ("Needs you · n", D530-P1).
@@ -601,6 +602,10 @@ function showDay(i: number): string | null {
         />
         <div v-else-if="milestoneFailed" class="banner danger">The milestone could not be loaded.</div>
         <div v-else class="empty">Loading…</div>
+      </div>
+      <div v-else-if="tab === 'decisions'" class="scroll board">
+        <!-- From the history database, so also on stored milestones. -->
+        <MilestoneDecisions v-if="namespace && name && milestoneIID" :namespace="namespace" :name="name" :milestone="milestoneIID" />
       </div>
       <div v-else-if="tab === 'pilot'" class="scroll board">
         <MilestonePilot

@@ -211,7 +211,7 @@ tablet the *Context* button opens it.
 
 ## A milestone
 
-A milestone page has the tabs *Issues*, *Needs you*, *Pilot*,
+A milestone page has the tabs *Issues*, *Needs you*, *Decisions*, *Pilot*,
 *Retrospective*, *Stream*, *Board* and *Spend*. The tab is part of the address, so you can
 send a link to it.
 
@@ -249,6 +249,15 @@ first, with "Pilot attempts: 2 of 2" for the pilot's tries on the issue's
 current head. Open problems come first. Click a closed question to see its
 full card. The last line sums up the pauses. A link to a question
 (`#prompt-Q3`) or a problem (`#problem-280`) opens this tab there.
+
+### Decisions
+
+Every [decision](../concepts/glossary.md#decision) of the milestone's
+issues, grouped by issue. A card shows the question, the option chosen
+(*Chosen*), the alternatives, why, the run and a link to the comment on
+GitLab. The tab needs the history database. A replaced decision is muted and links
+to the one that replaced it. Search the ID or text, or pick *Active* or
+*Superseded*. A link ending in `#D42-3` opens that card.
 
 ### Pilot
 

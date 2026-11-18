@@ -44,6 +44,7 @@ const projectReady = {
 const milestoneReady = {
   issues: 'Document the refund flow for support',
   needs: 'Split across captures',
+  decisions: 'Refund in the order currency',
   pilot: 'Message the pilot',
   retrospective: 'Retry the registry push in the release job',
   stream: 'Run 2 needs input',
@@ -132,7 +133,7 @@ const routes: Route[] = [
     colorScheme: 'dark',
     ready: (page) => expect(page.locator('[data-finishing-entry]').first()).toBeVisible(),
   },
-  ...(['issues', 'needs', 'pilot', 'retrospective', 'stream', 'board', 'spend'] as const).map(
+  ...(['issues', 'needs', 'decisions', 'pilot', 'retrospective', 'stream', 'board', 'spend'] as const).map(
     (tab): Route => ({
       name: `stream-milestone-${tab}`,
       path: `/projects/team-a/shop/milestones/14?tab=${tab}`,
@@ -2387,6 +2388,153 @@ test.describe('milestone issues', () => {
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })
   }
+})
+
+// The milestone's Decisions tab (MilestoneDecisions.vue, DecisionCard.vue,
+// R11, R12; e2e/fixtures/decisions.ts): cards grouped by issue, Chosen first,
+// agent text as markdown without HTML, a muted superseded card linking to
+// its successor. The search and the state chips live in the URL and survive
+// a reload; a #<id> link scrolls to its card and highlights it. On a phone
+// the cards stack without sideways scroll and taps are 44 px high.
+test.describe('milestone decisions', () => {
+  const path = '/projects/team-a/shop/milestones/14?tab=decisions'
+
+  async function open(page: Page, baseURL: string | undefined, size: { width: number; height: number }, at = path) {
+    const route = routes.find((r) => r.name === 'stream-milestone-decisions')!
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await page.setViewportSize(size)
+    await page.clock.setFixedTime(now)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, route, problems)
+    await page.goto(at)
+    await route.ready(page)
+    return problems
+  }
+
+  async function sideways(page: Page) {
+    return page.evaluate(() => {
+      const doc = document.scrollingElement ?? document.documentElement
+      const main = document.querySelector('main')!
+      return { page: doc.scrollWidth - doc.clientWidth, pane: main.scrollWidth - main.clientWidth }
+    })
+  }
+
+  for (const size of widths) {
+    const phone = size.width < 760
+
+    test(`cards, search and state chips@${size.width}`, async ({ page, baseURL }, testInfo) => {
+      const problems = await open(page, baseURL, size)
+      const main = page.locator('main')
+      const cards = main.locator('[data-decision]')
+      const groups = main.locator('[data-decision-group]')
+      await expect(groups).toHaveCount(2)
+      await expect(groups.nth(0).locator('h3')).toContainText('Provider SDK 4 with refund support')
+      await expect(groups.nth(0).locator('h3')).toContainText('#280')
+      await expect(groups.nth(0).locator('h3')).toContainText('closed')
+      await expect(groups.nth(0).locator('h3 a')).toHaveAttribute('href', '/projects/team-a/shop/milestones/14/issues/280')
+      await expect(groups.nth(1).locator('h3')).toContainText('open')
+      expect(await cards.evaluateAll((els) => els.map((e) => e.id))).toEqual(['D280-1', 'D281-P1', 'D281-2'])
+
+      // Chosen first, then the alternatives; markdown without HTML.
+      const old = main.locator('#D280-1')
+      const options = old.locator('[data-options] li')
+      await expect(options).toHaveCount(3)
+      await expect(options.nth(0)).toHaveAttribute('data-chosen', 'true')
+      await expect(options.nth(0)).toContainText('Chosen')
+      await expect(options.nth(0).locator('strong')).toHaveText('settlement')
+      await expect(options.nth(1)).toHaveText('The order currency')
+      await expect(options.nth(2)).toHaveText('Ask the support agent per refund')
+      await expect(old.locator('[data-decision-why] strong')).toHaveText('only')
+      await expect(old.locator('[data-decision-why]')).toContainText('<span onclick="alert(1)">raw</span> stays text.')
+      await expect(old.locator('[data-decision-why] [onclick]')).toHaveCount(0)
+      await expect(old.getByRole('link', { name: 'on GitLab' })).toHaveAttribute('href', /\/issues\/280#note_9101$/)
+      await expect(old).toContainText('run shop-280-implement#2')
+      // Superseded: muted, linking to its successor.
+      await expect(old).toHaveClass(/superseded/)
+      await expect(old.locator('[data-superseded]')).toHaveText('Superseded by D281-2')
+      await expect(main.locator('#D281-2')).not.toHaveClass(/superseded/)
+      await expect(main.locator('#D281-P1')).toContainText('Plan')
+      await expect(main.locator('#D281-2')).toContainText('Implementation')
+      await expect(main.locator('#D281-P1 [data-options] li')).toHaveCount(1)
+
+      expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
+      if (phone) {
+        const taps = await main
+          .locator('[data-decisions] button, [data-decision-group] h3 a, [data-decision] footer a')
+          .evaluateAll((els) => els.map((e) => e.getBoundingClientRect().height))
+        for (const h of taps) expect(h, 'tap height on a phone').toBeGreaterThanOrEqual(44)
+      }
+      const shot = join(testInfo.project.outputDir, '..', 'screenshots', `milestone-decisions@${size.width}.png`)
+      await page.screenshot({ path: shot, fullPage: true })
+      await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
+
+      // The search, debounced into ?q=.
+      const search = main.getByRole('searchbox', { name: 'Search decisions' })
+      await search.fill('settlement')
+      await expect(page).toHaveURL(/[?&]q=settlement(&|$)/)
+      await expect(cards).toHaveCount(2)
+      // A chip into ?state=.
+      const superseded = main.getByRole('button', { name: 'Superseded', exact: true })
+      await superseded.click()
+      await expect(page).toHaveURL(/[?&]state=superseded(&|$)/)
+      await expect(superseded).toHaveAttribute('aria-pressed', 'true')
+      await expect(cards).toHaveCount(1)
+      // Both survive a reload.
+      await page.reload()
+      await expect(search).toHaveValue('settlement')
+      await expect(superseded).toHaveAttribute('aria-pressed', 'true')
+      await expect(cards).toHaveCount(1)
+      await expect(cards.first()).toHaveAttribute('id', 'D280-1')
+      // A filter that excludes everything does not say nothing is recorded.
+      await search.fill('no such decision')
+      await expect(main.getByText('No decisions match.')).toBeVisible()
+      // All drops the parameter.
+      await main.getByRole('button', { name: 'All', exact: true }).click()
+      await expect(page).not.toHaveURL(/state=/)
+      await search.fill('')
+      await expect(page).not.toHaveURL(/[?&]q=/)
+      await expect(cards).toHaveCount(3)
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+
+    test(`a #id link scrolls to and highlights its card@${size.width}`, async ({ page, baseURL }) => {
+      const problems = await open(page, baseURL, size, `${path}#D280-1`)
+      const old = page.locator('main #D280-1')
+      await expect(old).toHaveClass(/linked/)
+      await expect(old).toBeInViewport()
+      // Briefly.
+      await expect(old).not.toHaveClass(/linked/, { timeout: 5000 })
+
+      // A hash change: the superseded card's link to its successor.
+      const card = page.locator('main #D281-2')
+      await expect(card).not.toHaveClass(/linked/)
+      await old.locator('[data-superseded] a').click()
+      await expect(page).toHaveURL(/tab=decisions#D281-2$/)
+      await expect(card).toHaveClass(/linked/)
+      await expect(card).toBeInViewport()
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+  }
+
+  test('empty and without the history database@1280', async ({ page, baseURL }) => {
+    let body: unknown = { available: true, decisions: [] }
+    const route = routes.find((r) => r.name === 'stream-milestone-decisions')!
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await page.setViewportSize(widths[2]!)
+    await page.clock.setFixedTime(now)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, route, problems)
+    // Registered after mockAPI, so it answers first.
+    await page.route('**/api/v1/projects/team-a/shop/decisions*', (r) => r.fulfill({ status: 200, json: body }))
+    await page.goto(path)
+    await expect(page.locator('main').getByText('No decisions recorded yet.')).toBeVisible()
+
+    body = { available: false, decisions: [] }
+    await page.reload()
+    await expect(page.locator('main').getByText('Decisions need the history database.')).toBeVisible()
+    await expect(page.locator('main').getByRole('searchbox', { name: 'Search decisions' })).toHaveCount(0)
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
 })
 
 // The milestone's Pilot tab (MilestonePilot.vue) and the queue

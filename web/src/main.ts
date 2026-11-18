@@ -74,8 +74,15 @@ const router = createRouter({
   // A prompt link scrolls to its card: the card scrolls itself into view
   // when it mounts, which the jump to the top would undo on an in-app
   // navigation (the window scrolls on phones). A missing card leaves the
-  // scroll to the card once it loads.
-  scrollBehavior: (to, _from, saved) => saved ?? (to.hash.startsWith('#prompt-') ? { el: to.hash, top: 12 } : { top: 0 }),
+  // scroll to the card once it loads. A new hash on the same page (a
+  // decision card's link to its successor) does not scroll: the card the
+  // hash names scrolls itself into view (MilestoneDecisions.vue).
+  scrollBehavior: (to, from, saved) => {
+    if (saved) return saved
+    if (to.hash.startsWith('#prompt-')) return { el: to.hash, top: 12 }
+    if (to.hash && to.hash !== from.hash && to.fullPath.split('#')[0] === from.fullPath.split('#')[0]) return false
+    return { top: 0 }
+  },
 })
 
 // Research pages exist only with the research feature; without it they are

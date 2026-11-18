@@ -9,6 +9,7 @@ import type {
   ChatPage,
   ChatPostResponse,
   CostsTopView,
+  DecisionsResponse,
   CostsView,
   EstimateView,
   Feature,
@@ -41,6 +42,7 @@ import type {
   ThreadResponse,
 } from './generated/views'
 import type { ResearchAgent, ResearchDepth, ResearchView } from './generated/api'
+import { decisionsSearch, type DecisionParams } from './decisions'
 import { draftConflictFrom, DraftConflict } from './planDraft'
 import { plansPath } from './plansPath'
 import type { ChatKind } from './types'
@@ -235,6 +237,13 @@ export function getProject(namespace: string, name: string): Promise<ProjectDeta
 export function getProjectHistory(namespace: string, name: string, days: number, tz: string): Promise<HistoryResponse> {
   const q = new URLSearchParams({ days: String(days), tz })
   return get<HistoryResponse>(`${projectPath(namespace, name)}/history?${q}`)
+}
+
+// getDecisions: GET /projects/{namespace}/{name}/decisions, the stored
+// decisions of one milestone (0: the whole project), filtered by search
+// and state (Decisions tab, R11).
+export function getDecisions(namespace: string, name: string, params: DecisionParams): Promise<DecisionsResponse> {
+  return get<DecisionsResponse>(`${projectPath(namespace, name)}/decisions${decisionsSearch(params)}`)
 }
 
 // getStream: GET /stream, a page of events. The query (project, milestone,

@@ -121,7 +121,7 @@ for (const size of widths) {
     const problems = await open(page, baseURL, `${milestonePath}?tab=needs`, size, running)
     await expect(tab(page, /^Needs you/)).toHaveText('Needs you · 1')
     const tabs = await strip(page).getByRole('link').allTextContents()
-    expect(tabs.map((t) => t.trim())).toEqual(['Issues', 'Needs you · 1', 'Pilot', 'Retrospective', 'Stream', 'Board', 'Spend'])
+    expect(tabs.map((t) => t.trim())).toEqual(['Issues', 'Needs you · 1', 'Decisions', 'Pilot', 'Retrospective', 'Stream', 'Board', 'Spend'])
     await expect(page.locator('[data-needs-open] [data-prompt="Q3"]')).toHaveCount(1)
     await expect(page.locator('[data-prompt="Q3"]')).toHaveCount(1)
     await expect(page.getByRole('button', { name: 'Release SDK 4 first', exact: true })).toHaveCount(1)

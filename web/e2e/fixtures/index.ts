@@ -3,6 +3,7 @@
 // that asked for it, so add a fixture when a view starts asking for more.
 // Fixtures live in one module per API area, typed with the generated views.
 import { costs, costsMetrics, costsTop } from './costs'
+import { answerDecisions } from './decisions'
 import { doneMilestones, openMilestones, overview } from './overview'
 import { shopPlanOverview } from './plans'
 import { inbox, projects, researches } from './rail'
@@ -39,6 +40,7 @@ export const api: Record<string, Fixture> = {
   '/plans': shopPlanOverview,
   [shopPath]: shopDetail,
   [`${shopPath}/history`]: shopHistory,
+  [`${shopPath}/decisions`]: answerDecisions,
   ...Object.fromEntries(Object.entries(milestones).map(([iid, m]) => [`${shopPath}/milestones/${iid}`, m])),
   [`${shopPath}/milestones/14/issues/281`]: refundsIssue,
   [refundsPath]: refundsResponse,
