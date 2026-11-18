@@ -5,14 +5,16 @@
 // pilot's actions and its pauses; Open (#581) shows one card per open
 // problem with its pause, hold and prompts; the card starts with the cause
 // line and the operator's facts (#582), shown on the #558 incident, and its
-// options with their consequences and the retry warning (#583).
+// options with their consequences and the retry warning (#583), then the
+// pilot's chat, whose box writes "problem: #N" to the pilot and which wakes
+// the pilot when the card opens (#586).
 // Run with npm run e2e (built UI, Chromium).
 import { join } from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
 import { answer, now } from './fixtures'
 import { incident558, incident558Dirty, incidentError } from './fixtures/problem'
 import { paymentsMilestone } from './fixtures/stream'
-import { refundsPrompt, refundsTitle } from './fixtures/task'
+import { pilotChat, refundsPrompt, refundsTitle } from './fixtures/task'
 import type { MilestoneView, PromptView } from '../src/types'
 
 const widths = [
@@ -21,6 +23,8 @@ const widths = [
 ]
 
 const milestonePath = '/projects/team-a/shop/milestones/14'
+const pilotPath = '/projects/team-a/shop/tasks/shop-m14-pilot'
+const pilotChatPath = `${pilotPath}/chat`
 const q3 = paymentsMilestone.prompts!.find((p) => p.id === 'Q3')!
 
 // openQ3: Q3 open again, without its answer and close fields.
@@ -104,8 +108,9 @@ const stored: MilestoneView = { ...paymentsMilestone, state: 'done', stored: tru
 const quiet: MilestoneView = { ...running, prompts: [], pilot: { ...running.pilot!, acted: [], interventions: [] }, pauses: undefined }
 
 // open shows path with the API answered from the fixtures (GET only), the
-// milestone's view replaced by milestone when given.
-async function open(page: Page, baseURL: string | undefined, path: string, size: { width: number; height: number }, milestone?: MilestoneView) {
+// milestone's view replaced by milestone when given. A problem card's warm
+// POST (#586) is answered with 204 and its path recorded in warms.
+async function open(page: Page, baseURL: string | undefined, path: string, size: { width: number; height: number }, milestone?: MilestoneView, warms: string[] = []) {
   const origin = new URL(baseURL ?? '').origin
   const problems: string[] = []
   await page.setViewportSize(size)
@@ -121,6 +126,10 @@ async function open(page: Page, baseURL: string | undefined, path: string, size:
     const p = url.pathname.slice('/api/v1'.length)
     if (p === '/events' && req.method() === 'GET') {
       return r.fulfill({ status: 200, contentType: 'text/event-stream', body: 'retry: 3600000\n\n' })
+    }
+    if (req.method() === 'POST' && p.endsWith('/warm')) {
+      warms.push(p)
+      return r.fulfill({ status: 204 })
     }
     const body = req.method() !== 'GET' ? undefined : milestone && p === milestonePath ? milestone : answer(p, url.searchParams)
     if (body === undefined) {
@@ -248,6 +257,85 @@ for (const size of widths) {
     await expect(card.locator('[data-prompt="Q1"] li').filter({ hasText: 'Skip #558' }).locator('[data-retry-warning]')).toHaveCount(0)
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
     expect(overflow).toBeLessThanOrEqual(0)
+    expect(problems).toEqual([])
+  })
+
+  test(`the card's box writes to the pilot about the problem@${size.width}`, async ({ page, baseURL }) => {
+    const warms: string[] = []
+    const problems = await open(page, baseURL, `${milestonePath}?tab=needs`, size, incident558, warms)
+    const posts: unknown[] = []
+    const text = 'rerun it with a hint to answer in JSON'
+    const sent = { id: 530, at: now.toISOString(), role: 'user', kind: 'message', author: 'jo', authorName: 'Jo', body: `problem: #558\n\n${text}`, state: 'answered' }
+    const reply = { id: 531, at: now.toISOString(), role: 'agent', kind: 'message', authorName: 'pilot', body: 'Rerunning #558 with the hint.', replyTo: 530 }
+    // Registered after the fixtures, so it answers first: the POST, then
+    // the thread with the new turn.
+    await page.route(
+      (url) => url.pathname === `/api/v1${pilotChatPath}`,
+      async (r) => {
+        if (r.request().method() === 'POST') {
+          posts.push(r.request().postDataJSON())
+          return r.fulfill({ status: 200, json: { id: 530 } })
+        }
+        if (!posts.length) return r.fallback()
+        return r.fulfill({ status: 200, json: { messages: [reply, sent, ...pilotChat.messages] } })
+      },
+    )
+    const chat = page.locator('[data-needs-open] #problem-558 [data-problem-chat]')
+    // The older message about #283 is there, and the card woke the pilot once.
+    await expect(chat).toContainText('Is #283 small enough')
+    await expect.poll(() => warms).toEqual([`${pilotPath}/warm`])
+    await chat.getByRole('textbox').fill(text)
+    await chat.getByRole('button', { name: 'Send' }).click()
+    await expect(chat).toContainText('Rerunning #558 with the hint.')
+    expect(posts).toEqual([{ body: `problem: #558\n\n${text}`, clientKey: expect.any(String), kind: 'message' }])
+    // The problem's thread is first, the rest stays below.
+    await expect(chat.locator('.turn').first()).toContainText(text)
+    await expect(chat.locator('.turn').last()).toContainText('Is #283 small enough')
+    await expect(chat.getByRole('textbox')).toHaveValue('')
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+    expect(overflow).toBeLessThanOrEqual(0)
+
+    // The Pilot tab shows the same thread in time order and sends plain text.
+    await tab(page, /^Pilot$/).click()
+    // The chat card, not its composer (also .chat).
+    const pilot = page.locator('main .card.chat')
+    await expect(pilot).toContainText('Rerunning #558 with the hint.')
+    await expect(pilot.locator('.turn').first()).toContainText('Is #283 small enough')
+    await pilot.getByRole('textbox').fill('How is #559?')
+    await pilot.getByRole('button', { name: 'Send' }).click()
+    await expect.poll(() => posts.length).toBe(2)
+    expect(posts[1]).toEqual({ body: 'How is #559?', clientKey: expect.any(String), kind: 'message' })
+    expect(warms).toHaveLength(1)
+    expect(problems).toEqual([])
+  })
+
+  test(`a milestone problem writes as problem: milestone@${size.width}`, async ({ page, baseURL }) => {
+    const warms: string[] = []
+    const problems = await open(page, baseURL, `${milestonePath}?tab=needs`, size, mainRed, warms)
+    const posts: unknown[] = []
+    await page.route(
+      (url) => url.pathname === `/api/v1${pilotChatPath}`,
+      async (r) => {
+        if (r.request().method() !== 'POST') return r.fallback()
+        posts.push(r.request().postDataJSON())
+        return r.fulfill({ status: 200, json: { id: 530 } })
+      },
+    )
+    const chat = page.locator('[data-needs-open] #problem-0 [data-problem-chat]')
+    await chat.getByRole('textbox').fill('revert it')
+    await chat.getByRole('button', { name: 'Send' }).click()
+    await expect.poll(() => posts).toEqual([{ body: 'problem: milestone\n\nrevert it', clientKey: expect.any(String), kind: 'message' }])
+    expect(warms).toEqual([`${pilotPath}/warm`])
+    expect(problems).toEqual([])
+  })
+
+  test(`without chat rights a card has no box and wakes no pilot@${size.width}`, async ({ page, baseURL }) => {
+    const warms: string[] = []
+    const readOnly: MilestoneView = { ...incident558, permissions: { ...incident558.permissions!, chat: false } }
+    const problems = await open(page, baseURL, `${milestonePath}?tab=needs`, size, readOnly, warms)
+    await expect(page.locator('[data-needs-open] #problem-558 [data-problem-cause]')).toBeVisible()
+    await expect(page.locator('[data-problem-chat]')).toHaveCount(0)
+    expect(warms).toEqual([])
     expect(problems).toEqual([])
   })
 

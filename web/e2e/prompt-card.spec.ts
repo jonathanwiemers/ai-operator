@@ -49,6 +49,8 @@ async function open(
     if (p === '/events' && req.method() === 'GET') {
       return r.fulfill({ status: 200, contentType: 'text/event-stream', body: 'retry: 3600000\n\n' })
     }
+    // A problem card wakes the pilot (#586).
+    if (req.method() === 'POST' && p.endsWith('/warm')) return r.fulfill({ status: 204 })
     const body = req.method() === 'GET' ? answer(p, url.searchParams) : undefined
     if (body === undefined) {
       problems.unknownAPI.push(`${req.method()} ${url.pathname}${url.search}`)

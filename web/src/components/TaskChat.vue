@@ -7,6 +7,8 @@ import {
   agentTurnPending,
   chatDraftKey,
   chatEfforts,
+  chatWithPrefix,
+  focusTurns,
   chatPostBody,
   chatTurns,
   chatWaiting,
@@ -39,6 +41,10 @@ const props = defineProps<{
   autopilotPhase?: AutopilotPhase
   autopilotItems?: AutopilotItem[]
   proposals?: ProposalView[]
+  // focus lists the threads whose message starts with it first;
+  // messagePrefix goes before every message sent (a problem card, R9).
+  focus?: string
+  messagePrefix?: string
 }>()
 
 const messages = ref<ChatMessage[]>([])
@@ -53,7 +59,7 @@ let pollTimer: number | undefined
 const grouped = computed(() => chatTurns(messages.value))
 const chronological = computed(() => grouped.value.chronological)
 const repliesByParent = computed(() => grouped.value.repliesByParent)
-const turns = computed(() => grouped.value.turns)
+const turns = computed(() => focusTurns(grouped.value.turns, props.focus))
 const newestUser = computed(() => grouped.value.newestUser)
 
 const waiting = computed(() => {
@@ -193,7 +199,7 @@ const sending = ref(false)
 const sendError = ref('')
 const clientKey = ref('')
 const pendingKind = ref<ChatKind | null>(null)
-keepThroughSignIn(() => `chat:${props.namespace}/${props.name}/${props.task}`, body)
+keepThroughSignIn(() => `chat:${props.namespace}/${props.name}/${props.task}${props.messagePrefix ? `#${props.messagePrefix}` : ''}`, body)
 // Model… form (Implement) and Skip… (Spec autopilot).
 const modelOpen = ref(false)
 const useEngine = ref<'claude' | 'cursor'>('claude')
@@ -206,7 +212,7 @@ const cmds = 'mb-2 flex flex-wrap items-center gap-1.5'
 const chip = { color: 'neutral', variant: 'outline', size: 'sm' } as const
 const field = 'rounded-[7px] border border-(--border-strong) bg-(--surface) px-2 py-1 font-[inherit] text-[13px] text-(--text)'
 
-const draftKey = () => chatDraftKey(props.namespace, props.name, props.task)
+const draftKey = () => chatDraftKey(props.namespace, props.name, props.task, props.messagePrefix)
 
 function restoreDraft() {
   const d = readChatDraft(draftKey())
@@ -247,7 +253,8 @@ async function post(kind: ChatKind, text: string) {
   sending.value = true
   sendError.value = ''
   try {
-    await postTaskChat(props.namespace, props.name, props.task, { body: trimmed, clientKey: clientKey.value, kind })
+    const sent = kind === 'command' ? trimmed : chatWithPrefix(trimmed, props.messagePrefix)
+    await postTaskChat(props.namespace, props.name, props.task, { body: sent, clientKey: clientKey.value, kind })
     writeChatDraft(key, null)
     if (key !== draftKey()) return
     if (kind !== 'command') body.value = ''
@@ -318,7 +325,7 @@ onUnmounted(() => {
         v-if="canPost"
         v-model="body"
         mode="chat"
-        placeholder="Message the agent…"
+        :placeholder="messagePrefix ? 'Write to the pilot about this problem…' : 'Message the agent…'"
         hint="Enter+Ctrl/Cmd to send"
         :busy="sending"
         :disabled="sending"

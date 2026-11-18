@@ -31,6 +31,8 @@ async function open(page: Page, baseURL: string | undefined, path: string, size:
     if (p === '/events' && req.method() === 'GET') {
       return r.fulfill({ status: 200, contentType: 'text/event-stream', body: 'retry: 3600000\n\n' })
     }
+    // A problem card wakes the pilot (#586).
+    if (req.method() === 'POST' && p.endsWith('/warm')) return r.fulfill({ status: 204 })
     const body = req.method() !== 'GET' ? undefined : inboxBody && p === '/inbox' ? inboxBody : answer(p, url.searchParams)
     if (body === undefined) {
       problems.push(`${req.method()} ${url.pathname}${url.search}`)

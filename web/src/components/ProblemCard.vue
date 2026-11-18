@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { problemChatRef } from '../chatState'
+import { warmTask } from '../client'
 import { problemAnchor } from '../needsCases'
 import type { OpenProblem } from '../needsOpen'
 import type { MilestoneView } from '../types'
 import { hidesReason, problemCause } from '../problemFacts'
+import AskPilot from './AskPilot.vue'
 import NeedsEntries from './NeedsEntries.vue'
 import PauseCard from './PauseCard.vue'
 import ProblemFacts from './ProblemFacts.vue'
@@ -17,6 +20,9 @@ import PromptCard from './PromptCard.vue'
 // without anchors: Handled has them). The card carries #problem-<iid>.
 // First come the cause line and the facts strip (R8, problemFacts.ts): the
 // cause replaces the generic reason of a needs-input pause or hold.
+// Under the options is the pilot's chat (R9): the Pilot tab's thread, this
+// problem's messages first; its composer is the free-text box, and what it
+// sends starts with "problem: #N". A mounted card wakes the pilot (warm).
 //
 // Utilities only (docs/contributing/web-ui.md, "Needs you tab"): on phones
 // the history's fold is 44 px high.
@@ -32,6 +38,11 @@ const heading = computed(() => [`#${props.problem.iid}`, props.problem.title].fi
 
 const facts = computed(() => props.milestone.problems?.find((f) => f.iid === props.problem.iid))
 const cause = computed(() => problemCause(facts.value))
+const chatRef = computed(() => problemChatRef(props.problem.iid))
+const chats = computed(() => !!props.milestone.pilot && !!props.milestone.permissions?.chat)
+onMounted(() => {
+  if (chats.value) void warmTask(props.namespace, props.name, props.milestone.pilot!.task)
+})
 
 const route = useRoute()
 const el = ref<HTMLElement | null>(null)
@@ -64,6 +75,10 @@ const chevron = 'inline-block text-(--text-3) transition-transform motion-reduce
     <PauseCard v-if="problem.paused" :namespace="namespace" :name="name" :milestone="milestone" :no-reason="hidesReason(cause, milestone.autopilot?.pauseKind)" :facts="facts" />
     <PauseCard v-if="problem.hold" :namespace="namespace" :name="name" :milestone="milestone" :hold="problem.hold" :no-reason="hidesReason(cause, problem.hold.kind)" :facts="facts" />
     <PromptCard v-for="p in problem.prompts" :key="p.id" :namespace="namespace" :name="name" :prompt="p" :facts="facts" />
+    <div v-if="chats" class="grid min-w-0 gap-1.5" data-problem-chat>
+      <span :class="quiet">Pilot chat</span>
+      <AskPilot :namespace="namespace" :name="name" :milestone="milestone" :focus="chatRef" :message-prefix="chatRef" />
+    </div>
     <details v-if="problem.entries.length" class="group/history min-w-0" data-problem-history>
       <summary class="flex min-h-11 cursor-pointer items-center gap-2 tablet:min-h-0" :class="quiet">
         <span aria-hidden="true" :class="[chevron, 'group-open/history:rotate-90']">▸</span>

@@ -244,6 +244,8 @@ async function mockAPI(page: Page, route: Route, problems: Problems): Promise<vo
       // reconnecting during the check.
       return r.fulfill({ status: 200, contentType: 'text/event-stream', body: 'retry: 3600000\n\n' })
     }
+    // A problem card wakes the pilot (#586).
+    if (req.method() === 'POST' && path.endsWith('/warm')) return r.fulfill({ status: 204 })
     const body = req.method() === 'GET' ? answer(path, url.searchParams) : undefined
     if (body === undefined) {
       problems.unknownAPI.push(`${req.method()} ${url.pathname}${url.search}`)

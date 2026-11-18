@@ -248,8 +248,30 @@ export interface ChatDraft {
   kind: ChatKind
 }
 
-export function chatDraftKey(namespace: string, name: string, task: string): string {
-  return `desk-chat:${namespace}/${name}/${task}`
+// chatDraftKey: a composer with a prefix (a problem card's) keeps its own
+// draft, apart from the Pilot tab's on the same task.
+export function chatDraftKey(namespace: string, name: string, task: string, prefix?: string): string {
+  return `desk-chat:${namespace}/${name}/${task}${prefix ? `#${prefix}` : ''}`
+}
+
+// problemChatRef is a problem card's chat prefix (R9): "problem: #558", or
+// "problem: milestone" for the milestone's own problem (iid 0).
+export function problemChatRef(iid: number): string {
+  return iid ? `problem: #${iid}` : 'problem: milestone'
+}
+
+// chatWithPrefix is what a composer with a prefix sends: "<prefix>\n\n<body>".
+export function chatWithPrefix(body: string, prefix?: string): string {
+  return prefix ? `${prefix}\n\n${body}` : body
+}
+
+// focusTurns lists the turns whose user message starts with focus (the
+// whole prefix: "problem: #55" is not "problem: #558") first, then the
+// rest, each in its order (D586-P2).
+export function focusTurns(turns: ChatMessage[], focus?: string): ChatMessage[] {
+  if (!focus) return turns
+  const about = (m: ChatMessage) => m.role === 'user' && !!m.body?.startsWith(focus) && !/^\S/.test(m.body.slice(focus.length))
+  return [...turns.filter(about), ...turns.filter((m) => !about(m))]
 }
 
 export function planChatDraftKey(namespace: string, name: string, plan: string): string {

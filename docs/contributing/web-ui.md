@@ -1070,6 +1070,13 @@ utilities only) sits between Issues and Pilot. `needsOpen`
   `#prompt-<id>` anchors, which stay under *Handled*). The card carries
   `#problem-<iid>`; the problem's *Handled* block then has no id. The
   tab's label is *Needs you · n*, n the problems and proposals under *Open*.
+  With the `chat` grant and a pilot, the card ends its options with the
+  pilot's chat (`AskPilot`, the Pilot tab's thread): `TaskChat`'s `focus`
+  lists the threads that start with `problem: #N` (`problem: milestone`
+  for IID 0, `problemChatRef`) first, the rest below (`focusTurns`), and
+  its composer, the free-text box, puts `messagePrefix` and a blank line
+  before what it sends (`chatWithPrefix`), with a draft of its own. A
+  mounted card wakes the pilot once (`warmTask`, `POST …/warm`).
 - *Handled*: one block per problem (`web/src/components/NeedsProblem.vue`)
   from `needsCases` (`web/src/needsCases.ts`): an issue, or the milestone,
   with its prompts, the pilot's actions (`pilot.acted`) and its pauses,
@@ -1094,7 +1101,9 @@ The e2e cases in `web/e2e/needs-you.spec.ts` at 375 and 1280 px check that
 a prompt link opens this tab at the card, that an open prompt shows once
 and is counted in the label, that a pause card's own prompt is not listed
 again, that a pause, a hold and two prompts on one issue are one card and
-a budget pause a card of its own, that the Pilot tab has no questions and no pause history, and that
+a budget pause a card of its own, that the card's box posts
+`problem: #558` and the text, lists that thread first and wakes the pilot
+once, that the Pilot tab has no questions and no pause history, and that
 *Handled* lists one problem per issue, open ones first, with its entries
 newest first, the attempts, unfolding rows and problem links; the
 route checks cover `stream-milestone-needs` at the three widths.
