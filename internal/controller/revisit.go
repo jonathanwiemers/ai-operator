@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/jonathanwiemers/ai-operator/internal/textutil"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -287,4 +288,31 @@ func renderFollowUp(id, section, instruction string, n gitlab.Note, target *gitl
 		"decision with `supersedes` set to `%s`. Comment `%s …` here to steer the work.\n\n", target.IID, id, prefix)
 	fmt.Fprintf(&b, "<!-- ai-operator:revisit=%s -->\n", id)
 	return b.String()
+}
+
+// followUpBy is renderFollowUp's first line: groups 1 the revisited issue,
+// 2 the requester ("jo", "jo via the Desk").
+var followUpBy = regexp.MustCompile(`(?m)^Follow-up of #(\d+) to revisit decision \*\*D\d+-P?\d+\*\*, requested by @(.+)\.$`)
+
+// parseFollowUp reads the requester and the requested change back from a
+// description renderFollowUp wrote, as written there (the instruction
+// cleaned, or the placeholder when none was given). Both are empty when the
+// description does not have renderFollowUp's first line.
+func parseFollowUp(description string) (requestedBy, instruction string) {
+	m := followUpBy.FindStringSubmatch(description)
+	if m == nil {
+		return "", ""
+	}
+	_, rest, ok := strings.Cut(description, "\n### Requested change\n\n")
+	if !ok {
+		return m[2], ""
+	}
+	end := strings.Index(rest, "\n\n#"+m[1]+" is closed and its change is on the default branch.")
+	if end < 0 {
+		end = strings.Index(rest, "<!-- ai-operator:revisit=")
+	}
+	if end < 0 {
+		end = len(rest)
+	}
+	return m[2], strings.TrimSpace(rest[:end])
 }

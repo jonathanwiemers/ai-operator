@@ -4,10 +4,12 @@ import (
 	"errors"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-logr/logr"
 	"k8s.io/apimachinery/pkg/types"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
@@ -103,8 +105,8 @@ func TestSyncDecisionsBackfillThenIncremental(t *testing.T) {
 	e := newDecisionsEnv(t)
 	e.reconcile()
 	read, got := e.read()
-	if !slices.Equal(read, []int64{1, 2, 3}) {
-		t.Fatalf("the backfill read %v, want #1, #2 and #3 (not the tracking issue)", read)
+	if !slices.Equal(read, []int64{1, 2, 3, 4}) {
+		t.Fatalf("the backfill read %v, want #1 to #4", read)
 	}
 	w := e.watermark()
 	if w.IsZero() {
@@ -252,5 +254,166 @@ func TestSyncDecisionsErrorKeepsWatermark(t *testing.T) {
 	}
 	if !e.watermark().Equal(w) {
 		t.Error("synced without a database")
+	}
+}
+
+// revisitsOf returns the revisit requests recorded for issue iid.
+func revisitsOf(t *testing.T, got map[int64]store.IssueDecisions, iid int64) []store.RevisitRequestRow {
+	t.Helper()
+	d, ok := got[iid]
+	if !ok {
+		t.Fatalf("#%d was not read", iid)
+	}
+	return d.Revisits
+}
+
+// Human revisit commands are recorded from the issue they are on, the
+// tracking issue included; the bot's, other prefixes and ones without an ID
+// are not.
+func TestSyncDecisionsRecordsRevisitComments(t *testing.T) {
+	e := newDecisionsEnv(t)
+	e.reconcile()
+	e.read()
+
+	owner := gitlab.User{ID: 1, Username: "jonathan"}
+	n := e.gl.AddNote(2, owner, "/agent revisit d2-p1   use a list  ")
+	e.gl.AddNote(2, owner, "/agent revisit later, the layout")
+	e.gl.AddNote(2, owner, "/bot revisit D2-P1 use cards")
+	e.gl.AddNote(2, owner, "/agents revisit D2-P1 use cards")
+	e.gl.AddNote(2, e.gl.Bot, "/agent revisit D2-P1 use a table")
+	tn := e.gl.AddNote(4, owner, "/agent revisit D1-1: use gRPC")
+	e.reconcile()
+	_, got := e.read()
+
+	want := []store.RevisitRequestRow{{DecisionID: "D2-P1", Source: store.RevisitComment, RequestedBy: "jonathan",
+		Instruction: "use a list", URL: e.gl.Issues[2].WebURL + "#note_" + strconv.FormatInt(n.ID, 10), At: *n.CreatedAt}}
+	if rs := revisitsOf(t, got, 2); !reflect.DeepEqual(rs, want) {
+		t.Errorf("#2 revisits =\n%+v\nwant\n%+v", rs, want)
+	}
+	if !slices.Equal(ids(got[2]), []string{"D2-P1", "D2-P2", "D2-P9"}) {
+		t.Errorf("#2 decisions = %v, want them kept next to the revisits", ids(got[2]))
+	}
+	tracking := got[4]
+	if len(tracking.Decisions) != 0 || len(tracking.Revisits) != 1 || tracking.Revisits[0].DecisionID != "D1-1" ||
+		tracking.Revisits[0].Instruction != "use gRPC" || !tracking.Revisits[0].At.Equal(*tn.CreatedAt) {
+		t.Errorf("tracking issue = %+v, want the revisit of D1-1 only", tracking)
+	}
+}
+
+// A follow-up the bot created for a revisit is recorded with the requester
+// and the instruction its description names and its state; the issue whose
+// decision it revisits is read in the same sweep, once.
+func TestSyncDecisionsRecordsFollowUps(t *testing.T) {
+	e := newDecisionsEnv(t)
+	e.reconcile()
+	e.read()
+
+	api := e.gl.Issues[1]
+	followUp := func(iid int64, by, instruction string) *gitlab.Issue {
+		section := marker.DecisionSection(decisionComment, "D1-1")
+		is := e.gl.AddIssue(iid, "Revisit D1-1: Protocol")
+		is.Milestone, is.Author = api.Milestone, e.gl.Bot
+		is.Description = renderFollowUp("D1-1", section, instruction, gitlab.Note{Author: gitlab.User{Username: by}}, api, "/agent")
+		return is
+	}
+	fu := followUp(57, "jonathan", "use gRPC")
+	e.reconcile()
+	read, got := e.read()
+	if !slices.Equal(read, []int64{57, 1}) {
+		t.Fatalf("read %v, want the follow-up #57, then #1 it revisits", read)
+	}
+	want := []store.RevisitRequestRow{{DecisionID: "D1-1", Source: store.RevisitFollowUp, RequestedBy: "jonathan",
+		Instruction: "use gRPC", URL: fu.WebURL, FollowUpIID: 57, FollowUpState: "opened", At: *fu.CreatedAt}}
+	if rs := revisitsOf(t, got, 57); !reflect.DeepEqual(rs, want) {
+		t.Errorf("#57 revisits =\n%+v\nwant\n%+v", rs, want)
+	}
+	if !slices.Equal(ids(got[1]), []string{"D1-1"}) {
+		t.Errorf("#1 re-read = %v", ids(got[1]))
+	}
+
+	// Both updated: #1 is read once. A Desk request keeps "via the Desk".
+	e.age(57)
+	desk := followUp(58, "jonathan"+viaDesk, "use GraphQL")
+	desk.State = "closed"
+	now := e.gl.Clock
+	api.UpdatedAt = &now
+	e.reconcile()
+	read, got = e.read()
+	if !slices.Equal(read, []int64{1, 58}) {
+		t.Fatalf("read %v, want #1 and #58 once each", read)
+	}
+	if rs := revisitsOf(t, got, 58); len(rs) != 1 || rs[0].RequestedBy != "jonathan via the Desk" ||
+		rs[0].Instruction != "use GraphQL" || rs[0].FollowUpState != "closed" {
+		t.Errorf("#58 revisits = %+v, want the Desk request", rs)
+	}
+
+	// A human's issue with the marker is no follow-up; a revisited issue of
+	// another milestone is not read.
+	e.age(1, 58)
+	human := followUp(59, "jonathan", "x")
+	human.Author = gitlab.User{ID: 1, Username: "jonathan"}
+	other := followUp(60, "jonathan", "x")
+	other.Description = strings.ReplaceAll(other.Description, "D1-1", "D3-P1")
+	e.gl.Issues[3].Milestone = &gitlab.Milestone{ID: 12, IID: 4, Title: "Later"}
+	e.reconcile()
+	read, got = e.read()
+	if !slices.Equal(read, []int64{59, 60}) || len(got[59].Revisits) != 0 || len(got[60].Revisits) != 1 {
+		t.Errorf("read %v (%+v, %+v), want #59 without a request and #60 alone", read, got[59].Revisits, got[60].Revisits)
+	}
+}
+
+// parseFollowUp reads back what renderFollowUp wrote.
+func TestParseFollowUpRoundTrip(t *testing.T) {
+	target := &gitlab.Issue{IID: 42}
+	section := marker.DecisionSection(decisionComment, "D1-1")
+	for _, tc := range []struct{ by, instruction, want string }{
+		{"jo", "use EUR", "use EUR"},
+		{"jo.wiemers via the Desk", "use EUR\n\nand round to cents", "use EUR\n\nand round to cents"},
+		{"jo via the pilot", " <b>bold</b> ping @ann ", marker.Clean("<b>bold</b> ping @ann")},
+		{"jo", "", "(no instruction given; see the comments on #42)"},
+	} {
+		desc := renderFollowUp("D42-3", section, tc.instruction, gitlab.Note{Author: gitlab.User{Username: tc.by}}, target, "/agent")
+		if by, instruction := parseFollowUp(desc); by != tc.by || instruction != tc.want {
+			t.Errorf("parseFollowUp(%q) = %q, %q; want %q, %q", desc, by, instruction, tc.by, tc.want)
+		}
+	}
+	if by, instruction := parseFollowUp("Build the API.\n<!-- ai-operator:revisit=D1-1 -->"); by != "" || instruction != "" {
+		t.Errorf("a description renderFollowUp did not write = %q, %q", by, instruction)
+	}
+}
+
+// With a Desk URL the tracking issue's Decisions section starts with a link
+// to the milestone's Decisions tab; without one it is unchanged.
+func TestTrackingDecisionsLinkTheDesk(t *testing.T) {
+	st := &aiv1.AgentTask{Spec: aiv1.AgentTaskSpec{Type: aiv1.TaskTypeSpec, ProjectRef: "shop", Milestone: &aiv1.MilestoneRef{IID: 9, Title: "M9"}}}
+	st.Namespace = ns
+	ap := &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning, Items: []aiv1.AutopilotItem{{IID: 1, State: aiv1.AutopilotItemMerged,
+		Decisions: []aiv1.DecisionRef{{ID: "D1-1", Title: "Protocol", URL: "https://gitlab.example/group/app/-/issues/1#note_50"}}}}}
+	render := func(r *AgentProjectReconciler, ap *aiv1.AutopilotStatus) string {
+		a := &autopilot{r: r, st: st, ap: ap, log: logr.Discard(), spec: aiv1.AgentProjectSpec{Workflow: aiv1.WorkflowSpec{CommandPrefix: "/agent"}}}
+		body := a.renderTracking()
+		_, section, _ := strings.Cut(body, "\n### Decisions\n\n")
+		return section
+	}
+	link := "[All decisions on the Desk](https://desk.example/projects/agents/shop/milestones/9?tab=decisions)\n\n"
+	list := "- [D1-1](https://gitlab.example/group/app/-/issues/1#note_50) Protocol (#1)\n"
+	placeholder := "_Listed here once an issue is merged; until then they are on the issue._\n"
+	desk := &AgentProjectReconciler{DeskURL: "https://desk.example"}
+	for _, tc := range []struct {
+		name string
+		r    *AgentProjectReconciler
+		ap   *aiv1.AutopilotStatus
+		want string
+	}{
+		{"list with the Desk", desk, ap, link + list},
+		{"placeholder with the Desk", desk, &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning}, link + placeholder},
+		{"list without the Desk", &AgentProjectReconciler{}, ap, list},
+		{"placeholder without a reconciler", nil, &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning}, placeholder},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := render(tc.r, tc.ap); !strings.HasPrefix(got, tc.want) {
+				t.Errorf("Decisions section =\n%s\nwant it to start with\n%s", got, tc.want)
+			}
+		})
 	}
 }

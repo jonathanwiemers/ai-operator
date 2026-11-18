@@ -21,6 +21,7 @@ import (
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/chatcmd"
 	"github.com/jonathanwiemers/ai-operator/internal/conventional"
+	"github.com/jonathanwiemers/ai-operator/internal/desklink"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
 	"github.com/jonathanwiemers/ai-operator/internal/notify"
@@ -2809,6 +2810,11 @@ func (a *autopilot) renderTracking() string {
 	}
 	b.WriteString(rulesSection(a.st))
 	b.WriteString("\n### Decisions\n\n")
+	if a.r != nil {
+		if u := desklink.Milestone(a.r.DeskURL, a.st.Namespace, a.st.Spec.ProjectRef, a.st.Spec.Milestone.IID); u != "" {
+			fmt.Fprintf(&b, "[All decisions on the Desk](%s?tab=decisions)\n\n", u)
+		}
+	}
 	if len(decisions) == 0 {
 		b.WriteString("_Listed here once an issue is merged; until then they are on the issue._\n")
 	} else {
