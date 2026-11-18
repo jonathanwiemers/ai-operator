@@ -4046,6 +4046,13 @@ spec:
                       a human asked for.
                     format: int32
                     type: integer
+                  commitsAhead:
+                    description: |-
+                      CommitsAhead is the number of commits on the agent's branch beyond
+                      origin/<base> when the last run ended, the empty start commit and
+                      checkpoints included.
+                    format: int32
+                    type: integer
                   companion:
                     description: |-
                       Companion is the companion repository's side of the run

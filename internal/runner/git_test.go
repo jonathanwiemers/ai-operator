@@ -50,6 +50,24 @@ func remoteRefs(t *testing.T, origin string) string {
 	return gitCmd(t, filepath.Dir(origin), "--git-dir", origin, "for-each-ref", "--format=%(refname) %(objectname)")
 }
 
+func TestMirrorCommitsAhead(t *testing.T) {
+	m, _, _ := guardedMirror(t)
+	ctx := context.Background()
+	// The branch of the seed sits on main; the mirror's head holds one more.
+	if n, err := m.CommitsAhead(ctx, "main", "agent/42-x"); err != nil || n != 1 {
+		t.Fatalf("ahead = %d, %v, want 1", n, err)
+	}
+	if _, err := m.StartBranch(ctx, "agent/43-y", "main", "Start work on #43"); err != nil {
+		t.Fatal(err)
+	}
+	if n, err := m.CommitsAhead(ctx, "main", "agent/43-y"); err != nil || n != 1 {
+		t.Fatalf("ahead of the start commit = %d, %v, want 1", n, err)
+	}
+	if _, err := m.CommitsAhead(ctx, "main", "agent/none"); err == nil {
+		t.Fatal("a missing branch counts as an error")
+	}
+}
+
 func TestMirrorPushesAgentBranch(t *testing.T) {
 	m, origin, log := guardedMirror(t)
 	ctx := context.Background()

@@ -190,7 +190,7 @@ func (run *implementRun) syncBranch(ctx context.Context) error {
 	if branch == "" {
 		branch = naming.Branch(issue.IID, issue.Title)
 	}
-	run.branch, out.Branch = branch, branch
+	run.branch, out.Branch, out.Base = branch, branch, base
 
 	if err := r.syncWorkspace(ctx, run.proj.HTTPURLToRepo, branch, base, run.checkpointLostAttempt); err != nil {
 		return err

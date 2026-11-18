@@ -145,8 +145,10 @@ type Outcome struct {
 	Summary string
 	CostUSD float64
 	Branch  string
-	MRIID   int64
-	MRURL   string
+	// Base is the default branch the work branch started from.
+	Base  string
+	MRIID int64
+	MRURL string
 	// PushedSHA is set when the run pushed; CIRound goes with it.
 	PushedSHA string
 	CIRound   int32
@@ -690,7 +692,19 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 			log.Error(err, "recording the plan")
 		}
 	}
+	ahead := -1
+	if task.Spec.Type == aiv1.TaskTypeImplement && out.Branch != "" && out.Base != "" {
+		n, err := r.Mirror.CommitsAhead(ctx, out.Base, out.Branch)
+		if err != nil {
+			log.Error(err, "counting the commits ahead of the base")
+		} else {
+			ahead = n
+		}
+	}
 	return true, r.patchRunWithCalls(ctx, func(s *aiv1.RunStatus) {
+		if ahead >= 0 {
+			s.CommitsAhead = int32(ahead)
+		}
 		s.ObservedRunRequest = request
 		s.CurrentStep = ""
 		s.CurrentStepSince = nil

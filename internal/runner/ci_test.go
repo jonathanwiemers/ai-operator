@@ -200,3 +200,15 @@ func (c *companionFixEngine) Run(ctx context.Context, inv Invocation) (*Result, 
 	b, _ := json.Marshal(ImplementAnswer{Status: "done", Summary: "Fixed the kustomization.", CommitMessage: "Fix the kustomization", Handoff: "Fixed."})
 	return &Result{SessionID: "sess-impl", Structured: b}, nil
 }
+
+// TestRunRecordsCommitsAhead: the status keeps the commits of the branch
+// beyond the base, the start commit included.
+func TestRunRecordsCommitsAhead(t *testing.T) {
+	e := newLimitEnv(t, &(&ciFixEngine{}).scriptedEngine)
+	if !e.step() {
+		t.Fatal("first run should happen")
+	}
+	if got := e.task().Status.Run.CommitsAhead; got != 3 {
+		t.Fatalf("commitsAhead = %d, want 3 (start commit and two steps)", got)
+	}
+}

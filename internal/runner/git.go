@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -401,6 +402,21 @@ func (m *Mirror) StartBranch(ctx context.Context, branch, base, message string) 
 		return "", err
 	}
 	return sha, nil
+}
+
+// CommitsAhead counts the commits on branch beyond origin/<base>. It reads
+// refs/heads/<branch> when the mirror has it (an imported or pushed head, as
+// publish does), else origin/<branch>.
+func (m *Mirror) CommitsAhead(ctx context.Context, base, branch string) (int, error) {
+	head := "refs/remotes/origin/" + branch
+	if _, ok := m.resolve(ctx, "refs/heads/"+branch); ok {
+		head = "refs/heads/" + branch
+	}
+	out, err := m.run(ctx, false, "rev-list", "--count", "refs/remotes/origin/"+base+".."+head)
+	if err != nil {
+		return 0, err
+	}
+	return strconv.Atoi(strings.TrimSpace(out))
 }
 
 // HasChanges reports whether head changes anything compared with where it

@@ -4520,6 +4520,13 @@ export interface RunStatus {
    */
   pushedAt?: string;
   /**
+   * CommitsAhead is the number of commits on the agent's branch beyond
+   * origin/<base> when the last run ended, the empty start commit and
+   * checkpoints included.
+   * +optional
+   */
+  commitsAhead?: number /* int32 */;
+  /**
    * CIRound counts the CI fix runs since the last push a human asked for.
    * +optional
    */
