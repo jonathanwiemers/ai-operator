@@ -7,6 +7,11 @@ include:
   - project: jo.wiemers/devops/ci
     ref: v0.2.55
     file: ci-templates/build.yml
+  # toolchain:image (.pre) bakes mise.toml/mise.lock into ci-toolchain:p-<pipeline>,
+  # for amd64 and arm64 (the multiarch runner); .mise-task jobs run `mise run <task>` on it.
+  - component: $CI_SERVER_FQDN/jo.wiemers/devops/ci/mise@v0.5.8
+    inputs:
+      platforms: linux/amd64,linux/arm64
 
 # Tag pipelines build releases: the operator (or a human) creates the tag.
 # A newer pipeline cancels only interruptible jobs. With the default
@@ -53,11 +58,10 @@ default:
     - when: on_success
 
 .go:
-  extends: .check
-  image: ${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}/golang:1.26
+  extends: [.check, .mise-task]
   # The multiarch runner (infra/cluster gitlab-runner) prefers native arm64 (mac-ci-arm) and
-  # falls back to amd64 nodes when the Mac is off. golang, postgres and node are multi-arch;
-  # the release job (amd64 images) and ui-e2e (Chromium) stay on the default runner.
+  # falls back to amd64 nodes when the Mac is off. The toolchain image and postgres are
+  # multi-arch; the release job (amd64 images) and ui-e2e (Chromium) stay on the default runner.
   tags: [multiarch]
   variables:
     GOMODCACHE: $CI_PROJECT_DIR/.cache/go-mod
@@ -69,36 +73,23 @@ default:
 
 # No cache: controller-gen's paths=./... also walks .cache and trips over
 # go.work files inside the module cache. So every run downloads controller-gen
-# and all modules from proxy.golang.org, which now and then breaks off
-# ("stream error ... INTERNAL_ERROR"). The downloads are retried first, on
-# their own, so a real drift below still fails at once.
+# and all modules (the drift task retries those downloads).
 drift:
   extends: .go
   variables:
-    GOMODCACHE: /go/pkg/mod
-    GOCACHE: /root/.cache/go-build
+    MISE_TASK: drift
+    GOMODCACHE: /tmp/go-mod
+    GOCACHE: /tmp/go-build
   cache: []
-  script:
-    - |
-      for i in 1 2 3; do
-        make "$CI_PROJECT_DIR/bin/controller-gen" && go mod download && break
-        [ "$i" = 3 ] && { echo "downloading the Go tools and modules failed 3 times"; exit 1; }
-        echo "download failed (attempt $i), retrying in 15 s"
-        sleep 15
-      done
-    - make generate manifests ts-types
-    - git diff --exit-code
 
 gofmt:
   extends: .go
+  variables: { MISE_TASK: gofmt }
   cache: []
-  script:
-    - test -z "$(gofmt -l api cmd internal)"
 
 vet:
   extends: .go
-  script:
-    - go vet ./...
+  variables: { MISE_TASK: vet }
 
 # The research store tests need a real Postgres; with
 # AI_TEST_REQUIRE_DATABASE they fail instead of skipping without one.
@@ -112,6 +103,7 @@ test:
       # runner ("pg_ctl: server does not shut down").
       command: ["postgres", "-c", "fsync=off", "-c", "synchronous_commit=off", "-c", "full_page_writes=off"]
   variables:
+    MISE_TASK: test
     POSTGRES_INITDB_ARGS: --no-sync
     POSTGRES_PASSWORD: postgres
     POSTGRES_DB: ai_operator_test
@@ -119,36 +111,27 @@ test:
     AI_TEST_REQUIRE_DATABASE: "1"
     # Prints the service's own log into the job log, e.g. why it did not start.
     CI_DEBUG_SERVICES: "true"
-  script:
-    # Fail fast, with the service log above, when Postgres does not come up,
-    # instead of a 30 s timeout in every store test.
-    - |
-      for i in $(seq 1 60); do
-        bash -c "echo > /dev/tcp/postgres/5432" 2>/dev/null && break
-        [ "$i" = 60 ] && { echo "postgres service is not listening on postgres:5432 after 120 s"; exit 1; }
-        sleep 2
-      done
-    - go test -race ./...
 
 # web/dist/.gitkeep is committed, so go:embed compiles without the ui job's
 # output; this job checks the Go build, the ui job the web build.
 build:
   extends: .go
-  script:
-    - make build
+  variables: { MISE_TASK: build }
 
+# make ui also regenerates the UI types (ts-types), so it shares the Go cache.
 ui:
-  extends: .check
-  image: ${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}/node:22-bookworm
-  tags: [multiarch]
+  extends: .go
   variables:
+    MISE_TASK: ui
     npm_config_cache: $CI_PROJECT_DIR/.cache/npm
   cache:
-    key:
-      files: [web/package-lock.json]
-    paths: [.cache/npm]
-  script:
-    - make ui
+    - key:
+        files: [go.sum]
+        prefix: ui
+      paths: [.cache/go-mod, .cache/go-build]
+    - key:
+        files: [web/package-lock.json]
+      paths: [.cache/npm]
 
 # Browser checks of the built Desk (docs/contributing/web-ui.md "Checks"): every route at
 # 375, 768 and 1280 px with the server's CSP and a mocked API. The
@@ -179,13 +162,8 @@ ui-e2e:
     paths: [web/e2e-results/]
 
 helm-lint:
-  extends: .check
-  image:
-    name: ${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}/alpine/helm:3.17.3
-    entrypoint: [""]
-  script:
-    - apk add --no-cache make
-    - make helm-lint
+  extends: [.check, .mise-task]
+  variables: { MISE_TASK: helm-lint }
 
 # A release is a decision, not a side effect of a merge (docs/contributing/releasing.md):
 # pushes to main run the checks only. A release is a tag YEAR.MONTH.N on main

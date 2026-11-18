@@ -12,3 +12,51 @@ lockfile = true
 go = "1.26.0"
 node = "22"
 "aqua:helm/helm" = "3.17.3"
+
+# CI jobs run these (.gitlab-ci.yml, `extends: .mise-task`); locally `mise run <task>`.
+[tasks.drift]
+description = "Generated code, manifests and UI types match the sources"
+shell = "bash -euo pipefail -c"
+# controller-gen and the modules come from proxy.golang.org, which now and
+# then breaks off ("stream error ... INTERNAL_ERROR"): retry the downloads
+# first, so a real drift below still fails at once.
+run = """
+for i in 1 2 3; do
+  make "$PWD/bin/controller-gen" && go mod download && break
+  [ "$i" = 3 ] && { echo "downloading the Go tools and modules failed 3 times"; exit 1; }
+  echo "download failed (attempt $i), retrying in 15 s"; sleep 15
+done
+make generate manifests ts-types
+git diff --exit-code
+"""
+
+[tasks.gofmt]
+run = 'test -z "$(gofmt -l api cmd internal)"'
+
+[tasks.vet]
+run = "go vet ./..."
+
+[tasks.test]
+description = "Go tests with the race detector; in CI first waits for the postgres service"
+shell = "bash -euo pipefail -c"
+# Fail fast, with the service log above it, when Postgres does not come up,
+# instead of a 30 s timeout in every store test.
+run = """
+if [ -n "${CI:-}" ]; then
+  for i in $(seq 1 60); do
+    (echo > /dev/tcp/postgres/5432) 2>/dev/null && break
+    [ "$i" = 60 ] && { echo "postgres service is not listening on postgres:5432 after 120 s"; exit 1; }
+    sleep 2
+  done
+fi
+go test -race ./...
+"""
+
+[tasks.build]
+run = "make build"
+
+[tasks.ui]
+run = "make ui"
+
+[tasks.helm-lint]
+run = "make helm-lint"
