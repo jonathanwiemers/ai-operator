@@ -40,6 +40,7 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/milestoneorder"
 	"github.com/jonathanwiemers/ai-operator/internal/naming"
 	"github.com/jonathanwiemers/ai-operator/internal/notify"
+	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 	"github.com/jonathanwiemers/ai-operator/internal/rules"
 	"github.com/jonathanwiemers/ai-operator/internal/webhook"
 )
@@ -81,8 +82,11 @@ type AgentProjectReconciler struct {
 	// for a project; while they arrive, the project is polled lightly.
 	Deliveries *webhook.Deliveries
 	// History, set with a research database, records the comments the
-	// project's GitLab client lists.
+	// project's GitLab client lists, and the milestones' decisions.
 	History *history.Recorder
+	// recordDecisions, when set, records decisions instead of History
+	// (tests).
+	recordDecisions func(store.IssueDecisions)
 	// Research, set with a research database, adds the usage readings and
 	// limits of the project's AgentResearch runs to its status.
 	Research bool

@@ -358,6 +358,9 @@ func (ph autopilotPhase) run(ctx context.Context) {
 		if err := r.syncRevisits(ctx, gl, gate, project, spec, st); err != nil {
 			ph.errs = append(ph.errs, fmt.Errorf("revisits of milestone %q: %w", st.Spec.Milestone.Title, err))
 		}
+		if err := r.syncDecisions(ctx, gl, project, spec, st); err != nil {
+			ph.errs = append(ph.errs, fmt.Errorf("decisions of milestone %q: %w", st.Spec.Milestone.Title, err))
+		}
 	}
 	// Follow-ups taken over by a milestone's followup-of line, before
 	// their milestone's autopilot decides whether it can close.

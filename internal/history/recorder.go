@@ -62,6 +62,11 @@ type Recorder struct {
 	// existingSnaps returns the snapshots of every spec task, queued when
 	// the recorder starts (Watch sets it).
 	existingSnaps func(context.Context) ([]store.MilestoneSnapshot, error)
+	// decs is the decision queue: the newest decisions per issue, written
+	// after the snapshots.
+	decMu       sync.Mutex
+	decs        map[decKey]store.IssueDecisions
+	droppedDecs atomic.Int64
 	// Pricing estimates the cost of calls the engine reported none for;
 	// nil estimates none.
 	Pricing *pricing.Table
@@ -71,7 +76,7 @@ type Recorder struct {
 func NewRecorder(db Database, retention time.Duration, clk clock.Clock, log logr.Logger) *Recorder {
 	return &Recorder{db: db, retention: retention, clock: clk, log: log,
 		queue: make(chan store.Event, queueSize), calls: make(chan store.Call, queueSize), notes: newSeenNotes(),
-		snaps: map[snapKey]snapOp{}}
+		snaps: map[snapKey]snapOp{}, decs: map[decKey]store.IssueDecisions{}}
 }
 
 // NeedLeaderElection makes it a leader-only runnable.
@@ -152,6 +157,7 @@ func (r *Recorder) Start(ctx context.Context) error {
 			calls = calls[:0]
 		}
 		r.writeSnapshots(ctx)
+		r.writeDecisions(ctx)
 		if n := r.dropped.Swap(0); n > 0 {
 			r.log.Info("history queue full, events dropped", "events", n)
 		}
