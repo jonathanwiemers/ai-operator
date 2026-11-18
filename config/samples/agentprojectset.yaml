@@ -1,0 +1,42 @@
+apiVersion: ai.wiemers.me/v1alpha1
+kind: AgentProjectSet
+metadata:
+  name: my-group
+  namespace: agents
+spec:
+  gitlab:
+    url: https://gitlab.com
+    # The root group: the set discovers its projects and those of its
+    # subgroups.
+    group: my-group
+    # An access token with the api and write_repository scopes in every
+    # project of the group (Maintainer, to register the project hooks).
+    tokenSecretRef:
+      name: gitlab
+      key: token
+  # Path globs: `*` within one path segment, `**` across segments.
+  include:
+    - "my-group/**"
+  # Exclude wins over include. Archived projects are always skipped.
+  exclude:
+    - "my-group/archived/**"
+  # How often the set lists the group's projects (one GraphQL request per
+  # 100 projects), and how long a child stays without work before the set
+  # removes it.
+  pollInterval: 2m
+  dormantAfter: 168h
+  # The spec of every child AgentProject: any AgentProject field except
+  # gitlab, which the set fills in. Children need an enabled webhook.
+  template:
+    milestones:
+      specMarker: "/agent spec"
+    workflow:
+      readyLabel: "agent::ready"
+    pollInterval: 2m
+    maxConcurrentRuns: 1
+    webhook:
+      enabled: true
+      url: https://ai-operator.example.com/hooks/gitlab
+      secretRef:
+        name: gitlab-webhook
+        key: token

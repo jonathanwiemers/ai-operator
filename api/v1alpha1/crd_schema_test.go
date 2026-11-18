@@ -692,3 +692,97 @@ func TestDecisionSyncWatermarkAdmitted(t *testing.T) {
 		t.Fatalf("checkedAt not stored: %v", got)
 	}
 }
+
+func TestProjectSetCRD(t *testing.T) {
+	data, err := os.ReadFile("../../config/crd/bases/ai.wiemers.me_agentprojectsets.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var crd apiextensionsv1.CustomResourceDefinition
+	if err := yaml.Unmarshal(data, &crd); err != nil {
+		t.Fatal(err)
+	}
+	if crd.Spec.Scope != apiextensionsv1.NamespaceScoped || crd.Spec.Names.Kind != "AgentProjectSet" || len(crd.Spec.Names.ShortNames) != 1 || crd.Spec.Names.ShortNames[0] != "aps" {
+		t.Errorf("names %+v, scope %s", crd.Spec.Names, crd.Spec.Scope)
+	}
+	v := crd.Spec.Versions[0]
+	if v.Subresources == nil || v.Subresources.Status == nil {
+		t.Error("no status subresource")
+	}
+	s := v.Schema.OpenAPIV3Schema.Properties["spec"]
+	if tmpl := s.Properties["template"]; tmpl.XPreserveUnknownFields == nil || !*tmpl.XPreserveUnknownFields || tmpl.Type != "object" {
+		t.Errorf("spec.template %+v", tmpl)
+	}
+	if inc := s.Properties["include"]; inc.MinItems == nil || *inc.MinItems != 1 {
+		t.Errorf("spec.include %+v", inc)
+	}
+	for field, want := range map[string]string{"pollInterval": `"2m"`, "dormantAfter": `"168h"`} {
+		if d := s.Properties[field].Default; d == nil || string(d.Raw) != want {
+			t.Errorf("spec.%s default %v, want %s", field, d, want)
+		}
+	}
+	if _, err := os.Stat("../../charts/ai-operator/files/crds/ai.wiemers.me_agentprojectsets.yaml"); err != nil {
+		t.Errorf("chart lacks the CRD: %v", err)
+	}
+}
+
+func TestProjectSetSampleAdmitted(t *testing.T) {
+	for _, path := range []string{
+		"../../config/crd/bases/ai.wiemers.me_agentprojectsets.yaml",
+		"../../charts/ai-operator/files/crds/ai.wiemers.me_agentprojectsets.yaml",
+	} {
+		crd := loadCRDFile(t, path)
+		obj, errs := crd.admit(readSample(t, "agentprojectset.yaml", func(s string) string {
+			return s + "    agents:\n      custom: {deep: [1, {x: y}]}\n"
+		}))
+		if len(errs) > 0 {
+			t.Fatalf("%s: sample rejected: %v", path, errs)
+		}
+		tmpl := spec(obj)["template"].(map[string]any)
+		if tmpl["maxConcurrentRuns"] != int64(1) && tmpl["maxConcurrentRuns"] != float64(1) {
+			t.Errorf("template %v", tmpl)
+		}
+		if deep := tmpl["agents"].(map[string]any)["custom"].(map[string]any)["deep"]; deep == nil {
+			t.Errorf("template lost nested fields: %v", tmpl)
+		}
+
+		obj, errs = crd.admit(map[string]any{"spec": map[string]any{
+			"gitlab":  map[string]any{"group": "g", "tokenSecretRef": map[string]any{"name": "gitlab", "key": "token"}},
+			"include": []any{"g/**"},
+		}})
+		if len(errs) > 0 {
+			t.Fatalf("minimal set rejected: %v", errs)
+		}
+		if s := spec(obj); s["pollInterval"] != "2m" || s["dormantAfter"] != "168h" || s["gitlab"].(map[string]any)["url"] != "https://gitlab.com" {
+			t.Errorf("defaults not applied: %v", s)
+		}
+	}
+}
+
+func TestProjectSetSchemaRejects(t *testing.T) {
+	crd := loadCRD(t, "agentprojectsets")
+	ref := map[string]any{"name": "gitlab", "key": "token"}
+	for _, tc := range []struct {
+		name string
+		spec map[string]any
+		want string
+	}{
+		{"no include", map[string]any{"gitlab": map[string]any{"group": "g", "tokenSecretRef": ref}}, "spec.include in body is required"},
+		{"empty include", map[string]any{"gitlab": map[string]any{"group": "g", "tokenSecretRef": ref}, "include": []any{}}, "spec.include in body should have at least 1 items"},
+		{"no group", map[string]any{"gitlab": map[string]any{"tokenSecretRef": ref}, "include": []any{"g/**"}}, "spec.gitlab.group in body is required"},
+		{"empty group", map[string]any{"gitlab": map[string]any{"group": "", "tokenSecretRef": ref}, "include": []any{"g/**"}}, "spec.gitlab.group in body should be at least 1 chars long"},
+		{"no token", map[string]any{"gitlab": map[string]any{"group": "g"}, "include": []any{"g/**"}}, "spec.gitlab.tokenSecretRef in body is required"},
+		{"template not an object", map[string]any{"gitlab": map[string]any{"group": "g", "tokenSecretRef": ref}, "include": []any{"g/**"}, "template": "x"}, "spec.template in body must be of type object"},
+	} {
+		if _, errs := crd.admit(map[string]any{"spec": tc.spec}); !strings.Contains(strings.Join(errs, "\n"), tc.want) {
+			t.Errorf("%s: errors %v, want %q", tc.name, errs, tc.want)
+		}
+	}
+	if _, errs := crd.admit(map[string]any{"metadata": map[string]any{"name": "x"}}); !strings.Contains(strings.Join(errs, "\n"), "spec in body is required") {
+		t.Errorf("set without spec admitted: %v", errs)
+	}
+	obj := map[string]any{"status": map[string]any{"projects": []any{map[string]any{"path": "g/p", "state": "lost"}}}}
+	if _, errs := crd.admit(obj); !strings.Contains(strings.Join(errs, "\n"), "status.projects[0].state") {
+		t.Errorf("unknown state admitted: %v", errs)
+	}
+}
