@@ -587,14 +587,3 @@ func (r *AgentProjectReconciler) patchCI(ctx context.Context, task *aiv1.AgentTa
 	task.Status.CI = ci
 	return client.IgnoreNotFound(r.Status().Patch(ctx, task, client.MergeFrom(orig)))
 }
-
-func jobList(jobs []string) string {
-	if len(jobs) == 0 {
-		return "(none reported)"
-	}
-	quoted := make([]string, len(jobs))
-	for i, j := range jobs {
-		quoted[i] = "`" + j + "`"
-	}
-	return strings.Join(quoted, ", ")
-}
