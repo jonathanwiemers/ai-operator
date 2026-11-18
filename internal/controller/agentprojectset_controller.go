@@ -34,6 +34,9 @@ const maxProjectSetComplexity = 200
 type AgentProjectSetReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+	// APIReader reads uncached: the live task check before a child is
+	// deleted.
+	APIReader client.Reader
 	// NewDiscoverer creates the GraphQL discovery client; replaced in tests.
 	NewDiscoverer func(baseURL, token string) gitlab.Discoverer
 	Now           func() time.Time
@@ -115,6 +118,7 @@ func (r *AgentProjectSetReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			plan.nameTaken(child.Name)
 		}
 	}
+	r.removeChildren(ctx, &set, &plan, existing, counts, now)
 
 	stamp := metav1.NewTime(now)
 	set.Status.Projects = plan.Entries
@@ -194,10 +198,14 @@ func (r *AgentProjectSetReconciler) applyChild(ctx context.Context, set *aiv1.Ag
 	if !metav1.IsControlledBy(cur, set) {
 		return true, nil // the planner skips these; a guard all the same
 	}
-	if cur.Annotations[aiv1.AnnotationTemplateHash] == c.Hash && cur.Labels[aiv1.LabelProjectSet] == set.Name {
+	// A removal in progress leaves the hash but switches the webhook off: the
+	// planned child is revived.
+	if cur.Annotations[aiv1.AnnotationTemplateHash] == c.Hash && cur.Labels[aiv1.LabelProjectSet] == set.Name &&
+		cur.Annotations[aiv1.AnnotationRemoving] == "" && cur.Spec.Webhook.Enabled == c.Spec.Webhook.Enabled {
 		return false, nil
 	}
 	cur.Spec = c.Spec
+	delete(cur.Annotations, aiv1.AnnotationRemoving)
 	metav1.SetMetaDataAnnotation(&cur.ObjectMeta, aiv1.AnnotationTemplateHash, c.Hash)
 	metav1.SetMetaDataLabel(&cur.ObjectMeta, aiv1.LabelProjectSet, set.Name)
 	return false, r.Update(ctx, cur)

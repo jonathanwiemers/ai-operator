@@ -86,7 +86,7 @@ func newSetEnv(t *testing.T, mutate func(*aiv1.AgentProjectSet), objs ...client.
 		WithStatusSubresource(&aiv1.AgentProjectSet{}, &aiv1.AgentProject{}).
 		Build()
 	e := &setEnv{t: t, c: c, disc: &fakeDiscoverer{disc: &gitlab.GroupDiscovery{}}, now: planNow}
-	e.r = &AgentProjectSetReconciler{Client: c, Scheme: s, Now: func() time.Time { return e.now },
+	e.r = &AgentProjectSetReconciler{Client: c, APIReader: c, Scheme: s, Now: func() time.Time { return e.now },
 		NewDiscoverer: func(url, token string) gitlab.Discoverer {
 			e.disc.url, e.disc.token = url, token
 			return e.disc

@@ -220,8 +220,9 @@ func main() {
 		os.Exit(1)
 	}
 	if err := (&controller.AgentProjectSetReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:    mgr.GetClient(),
+		Scheme:    mgr.GetScheme(),
+		APIReader: mgr.GetAPIReader(),
 		NewDiscoverer: func(baseURL, token string) gitlab.Discoverer {
 			return gitlab.New(baseURL, token)
 		},

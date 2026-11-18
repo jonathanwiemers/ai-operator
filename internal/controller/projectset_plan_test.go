@@ -172,12 +172,11 @@ func TestProjectSetPlanStates(t *testing.T) {
 			wantChild: []string{"shop"},
 		},
 		{
-			name:      "inactive child after dormantAfter is dormant with its child",
-			projects:  []gitlab.DiscoveredProject{{FullPath: "jo.wiemers/shop"}},
-			existing:  []aiv1.AgentProject{agentProject("agents", "shop", "jo.wiemers/shop", set)},
-			prev:      []aiv1.ProjectSetEntry{{Path: "jo.wiemers/shop", State: aiv1.ProjectSetActive, Child: "shop", LastActiveTime: ago(168 * time.Hour)}},
-			want:      map[string]want{"jo.wiemers/shop": {aiv1.ProjectSetDormant, "shop", "no work for 168h"}},
-			wantChild: []string{"shop"},
+			name:     "inactive child after dormantAfter is dormant with its child, not planned",
+			projects: []gitlab.DiscoveredProject{{FullPath: "jo.wiemers/shop"}},
+			existing: []aiv1.AgentProject{agentProject("agents", "shop", "jo.wiemers/shop", set)},
+			prev:     []aiv1.ProjectSetEntry{{Path: "jo.wiemers/shop", State: aiv1.ProjectSetActive, Child: "shop", LastActiveTime: ago(168 * time.Hour)}},
+			want:     map[string]want{"jo.wiemers/shop": {aiv1.ProjectSetDormant, "shop", "no work for 168h"}},
 		},
 		{
 			name:      "inactive child without a previous entry counts as active now",

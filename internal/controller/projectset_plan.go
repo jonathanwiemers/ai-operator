@@ -165,7 +165,9 @@ func planProjectSet(in projectSetInput) projectSetPlan {
 		default:
 			e.State, e.Reason = aiv1.ProjectSetDormant, "no milestone with the spec marker, ready issue or task"
 		}
-		if e.Child != "" {
+		// A dormant child is not planned: the set removes it, or revives it
+		// with the planned spec once the project is active again.
+		if e.Child != "" && e.State == aiv1.ProjectSetActive {
 			planned[e.Child] = path
 			plan.Children = append(plan.Children, planChild(name, dp.FullPath, tmpl, spec))
 		}
