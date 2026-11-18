@@ -2,14 +2,18 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
+  chainOf,
+  commentBody,
   decisionFromHash,
   decisionsQuery,
   decisionsSearch,
   filtered,
+  followUpLabel,
   groupByIssue,
   issueStateLabel,
   kindLabel,
   optionsOf,
+  revisitAction,
   searchFromQuery,
   stateFromQuery,
 } from '../src/decisions.ts'
@@ -128,4 +132,98 @@ test('decisionFromHash: the decoded ID, "" for none', () => {
   assert.equal(decisionFromHash(''), '')
   assert.equal(decisionFromHash('#'), '')
   assert.equal(decisionFromHash('#%E0%A4%A'), '')
+})
+
+function request(at, extra = {}) {
+  return { source: 'comment', requestedBy: 'jo', instruction: 'Use X', at, applied: false, ...extra }
+}
+
+const ids = (steps) => steps.map((s) => [s.decision, s.request.at, s.successor ?? '', s.successorTitle ?? ''])
+
+test('chainOf: one applied request and the decision that replaced it', () => {
+  const old = decision('D42-3', 28, 42, {
+    superseded: true,
+    supersededBy: 'D57-1',
+    revisits: [request('2026-11-15T10:00:00Z', { source: 'followUp', followUpIID: 57, followUpState: 'closed', applied: true })],
+  })
+  const next = decision('D57-1', 28, 57, { title: 'Order currency', supersedes: 'D42-3' })
+  const byID = new Map([old, next].map((d) => [d.id, d]))
+  assert.deepEqual(ids(chainOf(old, byID)), [['D42-3', '2026-11-15T10:00:00Z', 'D57-1', 'Order currency']])
+  assert.equal(chainOf(old, byID)[0].request.followUpIID, 57)
+  // The successor is linked without its title when it is not loaded.
+  assert.deepEqual(ids(chainOf(old, new Map())), [['D42-3', '2026-11-15T10:00:00Z', 'D57-1', '']])
+})
+
+test('chainOf: two steps through the successor, requests oldest first', () => {
+  const a = decision('D42-3', 28, 42, {
+    superseded: true,
+    supersededBy: 'D57-1',
+    revisits: [
+      request('2026-11-15T12:00:00Z', { source: 'followUp', followUpIID: 57, applied: true }),
+      request('2026-11-15T11:00:00Z'),
+    ],
+  })
+  const b = decision('D57-1', 28, 57, {
+    superseded: true,
+    supersededBy: 'D60-1',
+    revisits: [request('2026-11-16T09:00:00Z', { source: 'followUp', followUpIID: 60, applied: true })],
+  })
+  const c = decision('D60-1', 28, 60, { title: 'Ask per refund' })
+  const byID = new Map([a, b, c].map((d) => [d.id, d]))
+  assert.deepEqual(ids(chainOf(a, byID)), [
+    ['D42-3', '2026-11-15T11:00:00Z', '', ''],
+    ['D42-3', '2026-11-15T12:00:00Z', 'D57-1', 'D57-1'],
+    ['D57-1', '2026-11-16T09:00:00Z', 'D60-1', 'Ask per refund'],
+  ])
+  // The successor's own card starts at its own requests.
+  assert.deepEqual(ids(chainOf(b, byID)), [['D57-1', '2026-11-16T09:00:00Z', 'D60-1', 'Ask per refund']])
+  // A missing successor stops the walk after its step.
+  const partial = new Map([a].map((d) => [d.id, d]))
+  assert.equal(chainOf(a, partial).length, 2)
+})
+
+test('chainOf: an unapplied request has no successor; no requests, no chain', () => {
+  const open = decision('D42-3', 28, 42, { revisits: [request('2026-11-15T10:00:00Z', { source: 'followUp', followUpIID: 57, followUpState: 'opened' })] })
+  assert.deepEqual(ids(chainOf(open, new Map([[open.id, open]]))), [['D42-3', '2026-11-15T10:00:00Z', '', '']])
+  assert.deepEqual(chainOf(decision('D1-1', 28, 1, { superseded: true, supersededBy: 'D2-1' }), new Map()), [])
+  assert.deepEqual(chainOf(decision('D1-1', 28, 1, { revisits: null }), new Map()), [])
+})
+
+test('chainOf: a cycle stops', () => {
+  const a = decision('D1-1', 28, 1, { supersededBy: 'D2-1', revisits: [request('2026-11-15T10:00:00Z', { applied: true })] })
+  const b = decision('D2-1', 28, 2, { supersededBy: 'D1-1', revisits: [request('2026-11-15T11:00:00Z', { applied: true })] })
+  const steps = chainOf(a, new Map([a, b].map((d) => [d.id, d])))
+  assert.deepEqual(ids(steps), [
+    ['D1-1', '2026-11-15T10:00:00Z', 'D2-1', 'D2-1'],
+    ['D2-1', '2026-11-15T11:00:00Z', 'D1-1', 'D1-1'],
+  ])
+  const self = decision('D3-1', 28, 3, { supersededBy: 'D3-1', revisits: [request('2026-11-15T10:00:00Z', { applied: true })] })
+  assert.equal(chainOf(self, new Map([[self.id, self]])).length, 1)
+})
+
+test('commentBody: the command and the instruction, "" without either', () => {
+  assert.equal(commentBody('/agent revisit D42-3 ', ' Use the order currency '), '/agent revisit D42-3 Use the order currency')
+  assert.equal(commentBody('/bot revisit D42-3', 'x'), '/bot revisit D42-3 x')
+  assert.equal(commentBody('/agent revisit D42-3 ', '   '), '')
+  assert.equal(commentBody(undefined, 'x'), '')
+  assert.equal(commentBody(' ', 'x'), '')
+})
+
+test('revisitAction: one action per mode, none without what it needs', () => {
+  const r = (revisit) => revisitAction({ revisit: { text: 'line', ...revisit } })
+  assert.equal(r({ mode: 'prompt', task: 'shop-m14-pilot' }), 'button')
+  assert.equal(r({ mode: 'comment', task: 'shop-281-implement', command: '/agent revisit D281-2 ' }), 'comment')
+  assert.equal(r({ mode: 'command', command: '/agent revisit D281-2 ' }), 'copy')
+  assert.equal(r({ mode: 'none' }), null)
+  // A user who may not revisit: the text, no action.
+  assert.equal(r({ mode: '', command: '/agent revisit D281-2 ' }), null)
+  assert.equal(r({ mode: 'prompt' }), null)
+  assert.equal(r({ mode: 'comment', task: 'shop-281-implement' }), null)
+  assert.equal(r({ mode: 'command', command: ' ' }), null)
+})
+
+test('followUpLabel: the follow-up issue, "" for a comment', () => {
+  assert.equal(followUpLabel({ source: 'followUp', followUpIID: 57 }), '#57')
+  assert.equal(followUpLabel({ source: 'comment' }), '')
+  assert.equal(followUpLabel({ source: 'followUp', followUpIID: 0 }), '')
 })

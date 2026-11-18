@@ -2,6 +2,8 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import Badge from './Badge.vue'
+import DecisionChain from './DecisionChain.vue'
+import DecisionRevisit from './DecisionRevisit.vue'
 import ExtLink from './ExtLink.vue'
 import Markdown from './Markdown.vue'
 import RelTime from './RelTime.vue'
@@ -14,8 +16,15 @@ import type { DecisionView } from '../generated/views'
 // comment. A superseded card is muted and links to its successor's card on
 // the same page. Title, question, options and why are agent text: markdown
 // without HTML (Markdown.vue). linked highlights the card a #<id> link
-// opened. The default slot is for the chain and the revisit actions (R13).
-const props = defineProps<{ decision: DecisionView; linked?: boolean }>()
+// opened. Below come the chain of a revisited decision and the revisit
+// block (R13); byID is the loaded list the chain follows successors in.
+const props = defineProps<{
+  namespace: string
+  name: string
+  decision: DecisionView
+  byID: ReadonlyMap<string, DecisionView>
+  linked?: boolean
+}>()
 
 const route = useRoute()
 const options = computed(() => optionsOf(props.decision))
@@ -64,7 +73,8 @@ const successorTo = computed(() => ({ query: route.query, hash: `#${props.decisi
       <RelTime :time="decision.postedAt" />
       <ExtLink v-if="decision.url" :href="decision.url" class="min-h-11 tablet:min-h-0">on GitLab</ExtLink>
     </footer>
-    <slot />
+    <DecisionChain :namespace="namespace" :name="name" :decision="decision" :byID="byID" />
+    <DecisionRevisit :namespace="namespace" :name="name" :decision="decision" />
   </article>
 </template>
 

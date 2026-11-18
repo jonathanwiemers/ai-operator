@@ -400,8 +400,8 @@ export interface RevisitRequestView {
  * RevisitView is what the Desk's Revisit of a decision does (Mode, a
  * RevisitMode constant, "" for a user who may not revisit) and the line that
  * says so. Task is the task to send it to: the pilot for prompt, the
- * implement task for comment. Command is the command to comment, for
- * command.
+ * implement task for comment. Command is the command to comment without the
+ * instruction ("<prefix> revisit <id> "), for comment and command.
  */
 export interface RevisitView {
   mode: RevisitMode | '';

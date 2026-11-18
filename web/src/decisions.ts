@@ -1,7 +1,7 @@
 // The Decisions tab (R11, R12): grouping a milestone's or project's stored
 // decisions by issue, the card's option list, and the tab's URL state
 // (?q= search, ?state= chips) and the API query it loads.
-import type { DecisionIssueView, DecisionView } from './generated/views'
+import type { DecisionIssueView, DecisionView, RevisitRequestView } from './generated/views'
 
 export type DecisionState = 'all' | 'active' | 'superseded'
 
@@ -129,4 +129,70 @@ export function decisionFromHash(hash: string): string {
   } catch {
     return ''
   }
+}
+
+// ChainStep is one step of a revisited decision's chain (R13): a request
+// to revisit decision (its ID), and, once applied, the decision that
+// replaced it (successor; its title when it is in the loaded list).
+export interface ChainStep {
+  decision: string
+  request: RevisitRequestView
+  successor?: string
+  successorTitle?: string
+}
+
+const atTime = (r: RevisitRequestView) => Date.parse(r.at) || 0
+
+// chainOf is the chain below d: the requests of d, oldest first, each with
+// the decision that replaced it when applied, then the same for that
+// successor and its successors (D42-3 → D57-1 → D60-1). byID is the loaded
+// list; the walk stops at a decision that is not in it or seen before. A
+// decision without requests has no chain.
+export function chainOf(d: DecisionView, byID: ReadonlyMap<string, DecisionView>): ChainStep[] {
+  const steps: ChainStep[] = []
+  if (!d.revisits?.length) return steps
+  const seen = new Set<string>()
+  for (let cur: DecisionView | undefined = d; cur && !seen.has(cur.id); cur = byID.get(cur.supersededBy ?? '')) {
+    seen.add(cur.id)
+    const next = cur.supersededBy
+    for (const request of [...(cur.revisits ?? [])].sort((a, b) => atTime(a) - atTime(b))) {
+      const step: ChainStep = { decision: cur.id, request }
+      if (request.applied && next) {
+        step.successor = next
+        const title = byID.get(next)?.title
+        if (title) step.successorTitle = title
+      }
+      steps.push(step)
+    }
+    if (!next) break
+  }
+  return steps
+}
+
+// commentBody is the revisit comment of the comment mode: the server's
+// command ("<prefix> revisit <id> ") and the instruction; "" without one.
+export function commentBody(command: string | undefined, text: string): string {
+  const what = text.trim()
+  const cmd = (command ?? '').trim()
+  return what && cmd ? `${cmd} ${what}` : ''
+}
+
+export type RevisitAction = 'button' | 'comment' | 'copy'
+
+// revisitAction is the action a card shows for its revisit mode, which the
+// server decides: the Revisit button (prompt, to the pilot), the comment box
+// (comment, on the open issue), the command to copy (command); none for
+// none, a user who may not revisit (""), or a mode without what it needs.
+export function revisitAction(d: Pick<DecisionView, 'revisit'>): RevisitAction | null {
+  const r = d.revisit
+  if (r.mode === 'prompt' && r.task) return 'button'
+  if (r.mode === 'comment' && r.task && r.command?.trim()) return 'comment'
+  if (r.mode === 'command' && r.command?.trim()) return 'copy'
+  return null
+}
+
+// followUpLabel is a chain step's follow-up issue ("#57"), "" for a
+// request from a comment (or a follow-up without its issue).
+export function followUpLabel(r: Pick<RevisitRequestView, 'source' | 'followUpIID'>): string {
+  return r.source === 'followUp' && r.followUpIID ? `#${r.followUpIID}` : ''
 }

@@ -259,6 +259,11 @@ GitLab. The tab needs the history database. A replaced decision is muted and lin
 to the one that replaced it. Search the ID or text, or pick *Active* or
 *Superseded*. A link ending in `#D42-3` opens that card.
 
+A revisited decision shows its chain: who asked, what for, the comment or
+follow-up issue, and the decision that replaced it. A line says what a
+revisit does. Owners get *Revisit* (opens the prompt in *Needs you*),
+*Comment* (on an open issue, in your GitLab name) or a command to copy.
+
 ### Pilot
 
 The pilot's autonomy and cost, *Message the pilot*, and the pilot's events

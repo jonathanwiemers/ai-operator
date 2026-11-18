@@ -12,6 +12,7 @@ import {
   resumeCommand,
   revisitCommand,
   revisitPromptID,
+  sentLine,
   waitingForTurn,
   waitingLabel,
   waveChip,
@@ -170,4 +171,13 @@ test('queueHeld: counts the Active items with a hold', () => {
   ]
   assert.equal(queueHeld(items), 2)
   assert.equal(queueHeld([]), 0)
+})
+
+test('sentLine: pending and sent per command', () => {
+  assert.equal(sentLine('revisit', 'D42-3', true), 'Revisiting D42-3…')
+  assert.equal(sentLine('revisit', 'D42-3', false), 'Revisit of D42-3 opened.')
+  assert.equal(sentLine('parallel', '3', true), 'Setting the limit to 3…')
+  assert.equal(sentLine('parallel', '3', false), 'Limit 3 sent.')
+  assert.equal(sentLine('resume', '#42', true), 'Resuming #42…')
+  assert.equal(sentLine('resume', '#42', false), 'Resume #42 sent.')
 })

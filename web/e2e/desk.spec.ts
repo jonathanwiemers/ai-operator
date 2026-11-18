@@ -8,6 +8,7 @@ import { inbox } from './fixtures/rail'
 import { features } from './fixtures/session'
 import { overview } from './fixtures/overview'
 import { paymentsMilestone } from './fixtures/stream'
+import { shopDecisions } from './fixtures/decisions'
 import { refundsPrompt, refundsResponse } from './fixtures/task'
 import { taskTabs, type TaskTab } from '../src/streamTabs'
 import type { Feature } from '../src/types'
@@ -2433,7 +2434,7 @@ test.describe('milestone decisions', () => {
       await expect(groups.nth(0).locator('h3')).toContainText('closed')
       await expect(groups.nth(0).locator('h3 a')).toHaveAttribute('href', '/projects/team-a/shop/milestones/14/issues/280')
       await expect(groups.nth(1).locator('h3')).toContainText('open')
-      expect(await cards.evaluateAll((els) => els.map((e) => e.id))).toEqual(['D280-1', 'D281-P1', 'D281-2'])
+      expect(await cards.evaluateAll((els) => els.map((e) => e.id))).toEqual(['D280-1', 'D280-2', 'D281-P1', 'D281-2'])
 
       // Chosen first, then the alternatives; markdown without HTML.
       const old = main.locator('#D280-1')
@@ -2460,7 +2461,7 @@ test.describe('milestone decisions', () => {
       expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
       if (phone) {
         const taps = await main
-          .locator('[data-decisions] button, [data-decision-group] h3 a, [data-decision] footer a')
+          .locator('[data-decisions] button, [data-decision-group] h3 a, [data-decision] footer a, [data-chain] a, [data-revisit] a')
           .evaluateAll((els) => els.map((e) => e.getBoundingClientRect().height))
         for (const h of taps) expect(h, 'tap height on a phone').toBeGreaterThanOrEqual(44)
       }
@@ -2493,7 +2494,7 @@ test.describe('milestone decisions', () => {
       await expect(page).not.toHaveURL(/state=/)
       await search.fill('')
       await expect(page).not.toHaveURL(/[?&]q=/)
-      await expect(cards).toHaveCount(3)
+      await expect(cards).toHaveCount(4)
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })
 
@@ -2514,7 +2515,158 @@ test.describe('milestone decisions', () => {
       await expect(card).toBeInViewport()
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })
+
+    // R13: D280-1 was revisited twice, through its successor D281-2.
+    test(`the chain of a revisited decision@${size.width}`, async ({ page, baseURL }) => {
+      const problems = await open(page, baseURL, size)
+      const old = page.locator('main #D280-1')
+      const steps = old.locator('[data-chain-step]')
+      await expect(steps).toHaveCount(2)
+      // A follow-up from the Desk, applied by D281-2.
+      const first = steps.nth(0)
+      await expect(first.locator('[data-requested-by]')).toHaveText('Jo via the Desk')
+      await expect(first).toContainText('asked to revisit D280-1')
+      await expect(first.locator('[data-instruction] strong')).toHaveText('order')
+      await expect(first.locator('[data-instruction]')).toContainText('<img src=x onerror="alert(1)">')
+      await expect(first.locator('[data-instruction] img')).toHaveCount(0)
+      await expect(first.locator('[data-follow-up]')).toHaveText('#281')
+      await expect(first.locator('[data-follow-up]')).toHaveAttribute('href', '/projects/team-a/shop/milestones/14/issues/281')
+      await expect(first.locator('[data-follow-up-state]')).toHaveText('open')
+      await expect(first.locator('[data-replaced-by]')).toContainText('Replaced by D281-2 · Refund in the order currency')
+      // A comment on D281-2, not applied yet.
+      const second = steps.nth(1)
+      await expect(second.locator('[data-requested-by]')).toHaveText('sam')
+      await expect(second).toContainText('asked to revisit D281-2')
+      await expect(second.locator('[data-comment]')).toHaveAttribute('href', /\/issues\/281#note_9200$/)
+      await expect(second.locator('[data-follow-up]')).toHaveCount(0)
+      await expect(second.locator('[data-replaced-by]')).toHaveCount(0)
+      // The successor's card starts at its own request.
+      await expect(page.locator('main #D281-2 [data-chain-step]')).toHaveCount(1)
+      await expect(page.locator('main #D280-2 [data-chain]')).toHaveCount(0)
+
+      // Superseded: the line and the successor, no action.
+      const block = old.locator('[data-revisit]')
+      await expect(block).toHaveAttribute('data-mode', 'none')
+      await expect(block.locator('[data-revisit-text]')).toHaveText('Already replaced by D281-2.')
+      await expect(block.locator('button, textarea')).toHaveCount(0)
+      await block.locator('[data-revisit-link]').click()
+      await expect(page).toHaveURL(/tab=decisions#D281-2$/)
+      await expect(page.locator('main #D281-2')).toHaveClass(/linked/)
+      expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
   }
+
+  // prompt: Revisit sends the revisit command to the pilot, as the queue
+  // does, and shows the pending line, then the operator's reply with a
+  // link to the prompt in Needs you.
+  test('prompt: Revisit sends the command and shows the reply@1280', async ({ page, baseURL }) => {
+    const problems = await open(page, baseURL, widths[2]!)
+    const chatPath = '/api/v1/projects/team-a/shop/tasks/shop-m14-pilot/chat'
+    const posts: unknown[] = []
+    let release = () => {}
+    const gate = new Promise<void>((resolve) => (release = resolve))
+    await page.route(
+      (url) => url.pathname === chatPath,
+      async (r) => {
+        if (r.request().method() === 'POST') {
+          posts.push(r.request().postDataJSON())
+          return r.fulfill({ status: 200, json: { id: 99 } })
+        }
+        await gate
+        const reply = { id: 100, at: now.toISOString(), role: 'agent', kind: 'message', body: 'Q9 opened for D280-2.', replyTo: 99 }
+        return r.fulfill({ status: 200, json: { messages: [reply] } })
+      },
+    )
+    const card = page.locator('main #D280-2')
+    const block = card.locator('[data-revisit]')
+    await expect(block).toHaveAttribute('data-mode', 'prompt')
+    await expect(block.locator('[data-revisit-text]')).toContainText('queued after the planned issues')
+    await block.getByRole('button', { name: 'Revisit D280-2' }).click()
+    await expect(block.getByRole('status')).toHaveText('Revisiting D280-2…')
+    expect(posts).toEqual([{ body: JSON.stringify({ cmd: 'revisit', decision: 'D280-2' }), clientKey: expect.any(String), kind: 'command' }])
+    release()
+    await expect(block.getByRole('status')).toContainText('Q9 opened for D280-2.')
+    const go = block.getByRole('link', { name: 'Go to Q9' })
+    await expect(go).toHaveAttribute('href', '/projects/team-a/shop/milestones/14?tab=needs#prompt-Q9')
+    // The other cards keep their own state.
+    await expect(page.locator('main #D281-2 [role=status]')).toHaveCount(0)
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+
+  // comment: the box comments `<prefix> revisit <id> <text>` on the open
+  // issue through the task's notes, and shows the outcome.
+  test('comment: Comment posts the revisit comment on the issue@375', async ({ page, baseURL }) => {
+    const problems = await open(page, baseURL, widths[0]!)
+    const notesPath = '/api/v1/projects/team-a/shop/tasks/shop-281-implement/notes'
+    const posts: unknown[] = []
+    let fail = false
+    await page.route(
+      (url) => url.pathname === notesPath,
+      async (r) => {
+        if (r.request().method() !== 'POST') return r.fallback()
+        posts.push(r.request().postDataJSON())
+        if (fail) return r.fulfill({ status: 502, json: { error: 'GitLab is not reachable.' } })
+        return r.fulfill({ status: 200, json: { id: 1, author: 'jo', body: '', createdAt: now.toISOString() } })
+      },
+    )
+    const block = page.locator('main #D281-2 [data-revisit]')
+    await expect(block).toHaveAttribute('data-mode', 'comment')
+    await expect(block.locator('[data-revisit-text]')).toHaveText(
+      'Comments on #281. Its next run changes the code and posts a decision that supersedes D281-2.',
+    )
+    const text = block.getByRole('textbox', { name: 'What you want instead of D281-2' })
+    const send = block.getByRole('button', { name: 'Comment' })
+    await expect(send).toBeDisabled()
+    await text.fill('   ')
+    await expect(send).toBeDisabled()
+    await text.fill(' Ask support per refund ')
+    await send.click()
+    await expect(block.getByRole('status')).toHaveText('Commented on #281.')
+    await expect(text).toHaveValue('')
+    expect(posts).toEqual([{ target: 'issue', body: '/agent revisit D281-2 Ask support per refund' }])
+
+    fail = true
+    await text.fill('Again')
+    await send.click()
+    await expect(block.getByRole('alert')).toHaveText('GitLab is not reachable.')
+    await expect(text).toHaveValue('Again')
+    expect(posts).toHaveLength(2)
+    expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+
+  // command and a user who may not revisit: the command to copy with the
+  // GitLab link; the text without an action.
+  test('command: the command to copy; no action for a non-owner@375', async ({ page, baseURL, context }) => {
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    const route = routes.find((r) => r.name === 'stream-milestone-decisions')!
+    await page.setViewportSize(widths[0]!)
+    await page.clock.setFixedTime(now)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, route, problems)
+    const command = { mode: 'command', text: 'Comment this command on #280 or the tracking issue.', command: '/agent revisit D280-2 ' }
+    const decisions = shopDecisions.map((d) =>
+      d.id === 'D280-2' ? { ...d, revisit: command } : d.id === 'D281-2' ? { ...d, revisit: { ...d.revisit, mode: '', task: undefined } } : d,
+    )
+    await page.route('**/api/v1/projects/team-a/shop/decisions*', (r) => r.fulfill({ status: 200, json: { available: true, decisions } }))
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'])
+    await page.goto(path)
+    await route.ready(page)
+
+    const block = page.locator('main #D280-2 [data-revisit]')
+    await expect(block.locator('[data-revisit-command]')).toHaveText('/agent revisit D280-2 <what you want instead>')
+    await expect(block.getByRole('link', { name: 'Comment on GitLab' })).toHaveAttribute('href', /\/issues\/280#note_9102$/)
+    await block.getByRole('button', { name: 'Copy' }).click()
+    await expect(block.getByRole('button', { name: 'Copied' })).toBeVisible()
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('/agent revisit D280-2 <what you want instead>')
+
+    const viewer = page.locator('main #D281-2 [data-revisit]')
+    await expect(viewer.locator('[data-revisit-text]')).toContainText('Comments on #281.')
+    await expect(viewer.locator('button, textarea, a')).toHaveCount(0)
+    expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
 
   test('empty and without the history database@1280', async ({ page, baseURL }) => {
     let body: unknown = { available: true, decisions: [] }

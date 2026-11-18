@@ -137,3 +137,12 @@ export function wavesLabel(items: readonly Pick<QueueItem, 'wave'>[]): string {
   const n = Math.max(0, ...items.map((i) => i.wave ?? 0))
   return n > 1 ? `${n} waves` : ''
 }
+
+// sentLine is the status line of the last command a queue or card sent,
+// pending or sent (an answer the viewer may not read): key is the
+// decision, the issue ("#42") or the limit.
+export function sentLine(kind: ChatCommand['cmd'], key: string, pending: boolean): string {
+  if (kind === 'revisit') return pending ? `Revisiting ${key}…` : `Revisit of ${key} opened.`
+  if (kind === 'parallel') return pending ? `Setting the limit to ${key}…` : `Limit ${key} sent.`
+  return pending ? `Resuming ${key}…` : `Resume ${key} sent.`
+}

@@ -1,11 +1,7 @@
 <script setup lang="ts">
 import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, ref, watch } from 'vue'
-import { chatPostError } from '../api'
-import type { ChatCommand } from '../chatState'
-import { getTaskChat, postTaskChat } from '../client'
 import { companionOf } from '../companion'
-import { live } from '../live'
 import {
   canRevisit,
   laneGroups,
@@ -16,15 +12,15 @@ import {
   queueTone,
   resumeCommand,
   revisitCommand,
-  revisitPromptID,
   waitingLabel,
   waveChip,
   wavesLabel,
 } from '../milestoneQueue'
-import { commandAnswer, type CommandAnswer } from '../pauseCard'
 import type { MilestoneView } from '../types'
 import Truncated from '../ui/Truncated.vue'
+import { useCommandSend } from '../useCommandSend'
 import Badge from './Badge.vue'
+import CommandStatus from './CommandStatus.vue'
 import CompanionChip from './CompanionChip.vue'
 import ExtLink from './ExtLink.vue'
 
@@ -60,33 +56,7 @@ const groups = computed(() => {
 // follows the last one sent.
 const pilotTask = computed(() => props.milestone.pilot?.task)
 const canResume = computed(() => !!props.milestone.permissions?.chat)
-const sending = ref('')
-const error = ref('')
-type Sent = { id: number; task: string; key: string; kind: ChatCommand['cmd'] }
-const sent = ref<Sent | null>(null)
-const answer = ref<CommandAnswer>({ state: 'pending' })
-const promptID = computed(() =>
-  sent.value?.kind === 'revisit' && answer.value.state === 'answered' ? revisitPromptID(answer.value.text) : '',
-)
-
-async function send(task: string | undefined, cmd: ChatCommand, key: string): Promise<boolean> {
-  if (!task || sending.value) return false
-  sending.value = key
-  error.value = ''
-  try {
-    const body = JSON.stringify(cmd)
-    const r = await postTaskChat(props.namespace, props.name, task, { body, clientKey: crypto.randomUUID(), kind: 'command' })
-    sent.value = { id: r.id, task, key, kind: cmd.cmd }
-    answer.value = { state: 'pending' }
-    void loadAnswer()
-    return true
-  } catch (e) {
-    error.value = chatPostError(e)
-    return false
-  } finally {
-    sending.value = ''
-  }
-}
+const { sending, error, sent, answer, promptID, send } = useCommandSend(() => props)
 
 const revisit = (decision: string) => send(pilotTask.value, revisitCommand(decision), decision)
 const resume = (iid: number) => send(props.milestone.spec.name, resumeCommand(iid), `#${iid}`)
@@ -113,30 +83,8 @@ async function step(by: 1 | -1) {
   pendingLimit.value = cmd.parallel
   if (!(await send(props.milestone.spec.name, cmd, String(cmd.parallel)))) pendingLimit.value = before
 }
-// sentLine is the status line of the last command, pending or sent (an
-// answer the viewer may not read).
-function sentLine(s: Sent, a: CommandAnswer): string {
-  const pending = a.state === 'pending'
-  if (s.kind === 'revisit') return pending ? `Revisiting ${s.key}…` : `Revisit of ${s.key} opened.`
-  if (s.kind === 'parallel') return pending ? `Setting the limit to ${s.key}…` : `Limit ${s.key} sent.`
-  return pending ? `Resuming ${s.key}…` : `Resume ${s.key} sent.`
-}
-
 // waves: "N waves" for a plan of several layers (display only).
 const waves = computed(() => wavesLabel(props.milestone.autopilot?.items ?? []))
-
-async function loadAnswer() {
-  const s = sent.value
-  if (!s || answer.value.state !== 'pending') return
-  try {
-    const page = await getTaskChat(props.namespace, props.name, s.task, { limit: 50 })
-    if (sent.value !== s) return
-    answer.value = commandAnswer(page.messages, s.id)
-  } catch {
-    /* best-effort; the next live update tries again */
-  }
-}
-watch(() => live.version, () => void loadAnswer())
 
 // companion: the issue's companion merge request, if it has one.
 const companion = (iid: number) => companionOf(props.milestone.companions, iid)
@@ -257,15 +205,6 @@ const laneHead = 'm-0 mb-1 px-1.5 text-xs font-semibold text-(--text-2)'
       </li>
     </ol>
   </template>
-  <div v-if="error" :class="note" role="alert">{{ error }}</div>
-  <div v-else-if="sent" :class="note" role="status">
-    <template v-if="answer.state === 'pending'">{{ sentLine(sent, answer) }}</template>
-    <template v-else-if="answer.state === 'failed'">{{ answer.reason }}</template>
-    <template v-else-if="answer.redacted">{{ sentLine(sent, answer) }}</template>
-    <template v-else>
-      {{ answer.text }}
-      <a v-if="promptID" :href="`#prompt-${promptID}`" :class="tap">Go to {{ promptID }}</a>
-    </template>
-  </div>
+  <CommandStatus :sent="sent" :answer="answer" :error="error" :prompt="promptID" />
   <div v-if="!rows.length" :class="note">The queue is empty.</div>
 </template>

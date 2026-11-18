@@ -2,13 +2,24 @@ import type { DecisionsResponse, DecisionView } from '../../src/generated/views'
 import { ago } from './clock'
 import { payments, refundsTitle, shopURL } from './task'
 
-// GET /projects/team-a/shop/decisions (the Decisions tab, R11): milestone
-// %14 has an implementer decision of merged #280 that #281's D281-2
-// replaced, and two active decisions of #281, one from the plan. The answer
-// filters by ?q= and ?state= as the server does; other milestones have none.
+// GET /projects/team-a/shop/decisions (the Decisions tab, R11-R13):
+// milestone %14 has two implementer decisions of merged #280 and two
+// active decisions of #281, one from the plan. D280-1 was revisited twice:
+// the follow-up #281 (open) applied the first request with D281-2, and a
+// comment on #281 asks to revisit D281-2 (not applied yet), so D280-1's
+// chain has two steps. The revisit modes as the server sets them for an
+// owner: D280-1 none (replaced), D280-2 prompt (a closed issue, to the
+// pilot), #281's comment (an open issue with its implement task). The
+// answer filters by ?q= and ?state= as the server does; other milestones
+// have none.
 
 const noteURL = (issue: number, note: number) => `${shopURL}/-/issues/${issue}#note_${note}`
-const noRevisit = { mode: '' as const, text: '' }
+const comment = (id: string) => ({
+  mode: 'comment' as const,
+  text: `Comments on #281. Its next run changes the code and posts a decision that supersedes ${id}.`,
+  task: 'shop-281-implement',
+  command: `/agent revisit ${id} `,
+})
 
 const issue280 = { iid: 280, title: 'Provider SDK 4 with refund support', state: 'closed' }
 const issue281 = { iid: 281, title: refundsTitle, state: 'opened', task: 'shop-281-implement' }
@@ -29,8 +40,42 @@ export const shopDecisions: DecisionView[] = [
     issue: issue280,
     superseded: true,
     supersededBy: 'D281-2',
+    revisits: [
+      {
+        source: 'followUp',
+        requestedBy: 'Jo via the Desk',
+        instruction: 'Refund in the **order** currency <img src=x onerror="alert(1)">',
+        followUpIID: 281,
+        followUpState: 'opened',
+        at: ago(60 * 5),
+        applied: true,
+      },
+    ],
+    revisit: { mode: 'none', text: 'Already replaced by D281-2.' },
+  },
+  {
+    id: 'D280-2',
+    kind: 'implementer',
+    title: 'Refund retries',
+    question: 'How often does a failed refund call retry?',
+    choice: 'Three times with backoff',
+    why: 'The provider limits refund calls per minute.',
+    alternatives: ['Once', 'Until it succeeds'],
+    runID: 'shop-280-implement#2',
+    url: noteURL(280, 9102),
+    postedAt: ago(60 * 26),
+    milestoneIID: payments.iid,
+    issue: issue280,
+    superseded: false,
     revisits: [],
-    revisit: noRevisit,
+    revisit: {
+      mode: 'prompt',
+      text:
+        'Opens a revisit prompt. Your choice creates a follow-up issue in this milestone, queued after the planned issues. ' +
+        'D280-2 is marked superseded when the follow-up posts its new decision.',
+      task: 'shop-m14-pilot',
+      command: '/agent revisit D280-2 ',
+    },
   },
   {
     id: 'D281-P1',
@@ -47,7 +92,7 @@ export const shopDecisions: DecisionView[] = [
     issue: issue281,
     superseded: false,
     revisits: [],
-    revisit: noRevisit,
+    revisit: comment('D281-P1'),
   },
   {
     id: 'D281-2',
@@ -64,8 +109,17 @@ export const shopDecisions: DecisionView[] = [
     issue: issue281,
     supersedes: 'D280-1',
     superseded: false,
-    revisits: [],
-    revisit: noRevisit,
+    revisits: [
+      {
+        source: 'comment',
+        requestedBy: 'sam',
+        instruction: 'Ask support when the provider cannot convert back',
+        url: noteURL(281, 9200),
+        at: ago(30),
+        applied: false,
+      },
+    ],
+    revisit: comment('D281-2'),
   },
 ]
 

@@ -84,8 +84,8 @@ type RevisitRequestView struct {
 // RevisitView is what the Desk's Revisit of a decision does (Mode, a
 // RevisitMode constant, "" for a user who may not revisit) and the line that
 // says so. Task is the task to send it to: the pilot for prompt, the
-// implement task for comment. Command is the command to comment, for
-// command.
+// implement task for comment. Command is the command to comment without the
+// instruction ("<prefix> revisit <id> "), for comment and command.
 type RevisitView struct {
 	Mode    string `json:"mode" tstype:"RevisitMode | ''"`
 	Text    string `json:"text"`
@@ -219,6 +219,7 @@ func revisitOf(d store.DecisionResult, mt milestoneTaskSet, owner, steer bool) R
 		}
 	}
 	var v RevisitView
+	command := mt.prefix + " revisit " + d.ID + " "
 	switch {
 	case d.IssueState == "closed" && mt.pilot != nil:
 		v = RevisitView{Mode: RevisitModePrompt, Task: mt.pilot.Name}
@@ -230,10 +231,10 @@ func revisitOf(d store.DecisionResult, mt milestoneTaskSet, owner, steer bool) R
 				mt.ready + "). " + d.ID + " is marked superseded when the follow-up posts its new decision."
 		}
 	case d.IssueState == "opened" && mt.implement != nil && steer:
-		v = RevisitView{Mode: RevisitModeComment, Task: mt.implement.Name,
+		v = RevisitView{Mode: RevisitModeComment, Task: mt.implement.Name, Command: command,
 			Text: fmt.Sprintf("Comments on #%d. Its next run changes the code and posts a decision that supersedes %s.", d.IssueIID, d.ID)}
 	default:
-		v = RevisitView{Mode: RevisitModeCommand, Command: mt.prefix + " revisit " + d.ID + " ",
+		v = RevisitView{Mode: RevisitModeCommand, Command: command,
 			Text: fmt.Sprintf("Comment this command on #%d or the tracking issue.", d.IssueIID)}
 	}
 	if !owner {

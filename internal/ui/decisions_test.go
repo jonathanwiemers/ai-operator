@@ -101,7 +101,7 @@ func TestDecisionsOwnerGetsTheMode(t *testing.T) {
 		if code := env.get(t, shopDecisions+"?milestone=3", &got); code != http.StatusOK || len(got.Decisions) != 1 {
 			t.Fatalf("steer %v: status %d, %+v", steer, code, got)
 		}
-		want := RevisitView{Mode: RevisitModeComment, Task: "shop-42-add-paypal",
+		want := RevisitView{Mode: RevisitModeComment, Task: "shop-42-add-paypal", Command: "/agent revisit D42-1 ",
 			Text: "Comments on #42. Its next run changes the code and posts a decision that supersedes D42-1."}
 		if !steer {
 			want = RevisitView{Mode: RevisitModeCommand, Command: "/agent revisit D42-1 ",
@@ -184,7 +184,7 @@ func TestRevisitOf(t *testing.T) {
 
 	command := RevisitView{Mode: RevisitModeCommand, Command: "/bot revisit D42-3 ",
 		Text: "Comment this command on #42 or the tracking issue."}
-	comment := RevisitView{Mode: RevisitModeComment, Task: impl.Name,
+	comment := RevisitView{Mode: RevisitModeComment, Task: impl.Name, Command: "/bot revisit D42-3 ",
 		Text: "Comments on #42. Its next run changes the code and posts a decision that supersedes D42-3."}
 	cases := []struct {
 		name         string
@@ -217,7 +217,7 @@ func TestRevisitOf(t *testing.T) {
 		{"stored milestone", base("closed"), stored, true, true, command},
 		{"non-owner prompt", base("closed"), ms, false, true, RevisitView{Text: "Opens a revisit prompt. Your choice creates a follow-up issue in this milestone, " +
 			"queued after the planned issues. D42-3 is marked superseded when the follow-up posts its new decision."}},
-		{"non-owner comment", base("opened"), ms, false, true, RevisitView{Text: comment.Text}},
+		{"non-owner comment", base("opened"), ms, false, true, RevisitView{Text: comment.Text, Command: comment.Command}},
 		{"non-owner command", base("opened"), ms, false, false, RevisitView{Text: command.Text, Command: command.Command}},
 	}
 	for _, tc := range cases {

@@ -41,6 +41,7 @@ const { data, error, loading } = useResource(() => {
 }, ['task'])
 
 const groups = computed(() => groupByIssue(data.value?.decisions ?? []))
+const byID = computed(() => new Map((data.value?.decisions ?? []).map((d) => [d.id, d])))
 const emptyText = computed(() =>
   filtered({ q: q.value, state: state.value }) ? 'No decisions match.' : 'No decisions recorded yet.',
 )
@@ -149,7 +150,15 @@ const sectionHead = 'm-0 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 t
               {{ issueStateLabel(g.issue.state) }}
             </Badge>
           </h3>
-          <DecisionCard v-for="d in g.decisions" :key="d.id" :decision="d" :linked="linked === d.id" />
+          <DecisionCard
+            v-for="d in g.decisions"
+            :key="d.id"
+            :namespace="namespace"
+            :name="name"
+            :decision="d"
+            :byID="byID"
+            :linked="linked === d.id"
+          />
         </div>
       </template>
     </template>
