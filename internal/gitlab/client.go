@@ -634,8 +634,27 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 			return nil, err
 		}
 	}
+	return c.call(ctx, request{method: method, url: u, path: path, payload: payload, safe: method == http.MethodGet}, out)
+}
+
+// request is one HTTP request with its retries: method to the full URL url,
+// path naming it in errors. safe marks a request that may be repeated after a
+// server error or a broken connection (a read); graphql counts its attempts as
+// GraphQL requests.
+type request struct {
+	method, url, path string
+	payload           []byte
+	safe, graphql     bool
+}
+
+// call sends r, retrying as retryWait says, and decodes a 2xx body into out.
+func (c *Client) call(ctx context.Context, r request, out any) (*http.Response, error) {
+	method, path := r.method, r.path
 	for attempt := 1; ; attempt++ {
-		resp, data, err := c.send(ctx, method, u, payload)
+		if r.graphql {
+			c.graphql.Add(1)
+		}
+		resp, data, err := c.send(ctx, method, r.url, r.payload)
 		if err == nil && (resp.StatusCode < 200 || resp.StatusCode > 299) {
 			msg := string(data)
 			if len(msg) > 512 {
@@ -644,7 +663,7 @@ func (c *Client) do(ctx context.Context, method, path string, query url.Values, 
 			err = &Error{StatusCode: resp.StatusCode, Method: method, Path: path, Body: msg}
 		}
 		if err != nil {
-			wait, ok := retryWait(method, resp, err, attempt)
+			wait, ok := retryWait(r.safe, resp, err, attempt)
 			if !ok || attempt >= maxAttempts || ctx.Err() != nil {
 				return resp, err
 			}
@@ -736,8 +755,9 @@ func backoffAfter(attempt int) time.Duration {
 	return b + time.Duration(rand.Int64N(int64(b)/2+1))
 }
 
-// retryWait says whether a failed attempt is retried, and after how long.
-func retryWait(method string, resp *http.Response, err error, attempt int) (time.Duration, bool) {
+// retryWait says whether a failed attempt is retried, and after how long;
+// safe marks a request that may run twice (a read).
+func retryWait(safe bool, resp *http.Response, err error, attempt int) (time.Duration, bool) {
 	backoff := backoffAfter(attempt)
 	var ge *Error
 	switch {
@@ -746,7 +766,7 @@ func retryWait(method string, resp *http.Response, err error, attempt int) (time
 			return wait, wait <= maxRetryWait
 		}
 		return backoff, true
-	case method != http.MethodGet:
+	case !safe:
 		return 0, false
 	case ge != nil:
 		return backoff, ge.StatusCode >= 500
