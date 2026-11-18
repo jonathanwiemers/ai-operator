@@ -289,6 +289,7 @@ export const paymentsMilestone: MilestoneView = {
     pausedReason,
     pauseKind: 'needsInput',
     pausedFor: 281,
+    pauseIssue: 281,
     head: '4f1c9e2a7b3d5f60812a4c6e8b0d2f4a6c8e0b1d',
     exits: [
       {

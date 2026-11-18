@@ -64,6 +64,11 @@ test('a held issue and a paused milestone are open', () => {
   assert.deepEqual(paused.map((p) => [p.iid, p.open]), [[0, true]])
 })
 
+test('a pause is open on its pauseIssue, not on the milestone', () => {
+  const ps = needsCases(view({ autopilot: { phase: 'Paused', pauseKind: 'cycle', pauseIssue: 13, holds: [{ iid: 13 }] } }))
+  assert.deepEqual(ps.map((p) => [p.iid, p.open]), [[13, true]])
+})
+
 test('a stale head shows 0 of max; a missing entry takes max from another', () => {
   const ps = needsCases(view({
     prompts: [prompt('Q1', { issueIID: 12, closedAt: at(1) }), prompt('Q2', { issueIID: 13, closedAt: at(2) })],

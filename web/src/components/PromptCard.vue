@@ -46,6 +46,8 @@ const props = defineProps<{
   compact?: boolean
   // to: where "more…" of the compact card leads.
   to?: RouteLocationRaw
+  // unanchored: a copy of a card shown elsewhere with the anchor.
+  unanchored?: boolean
 }>()
 
 const anchor = computed(() => promptAnchor(props.prompt.id))
@@ -91,7 +93,7 @@ async function sendText() {
 const route = useRoute()
 const el = ref<HTMLElement | null>(null)
 function scrollIfLinked() {
-  if (!props.compact && route.hash === `#${anchor.value}`) {
+  if (!props.compact && !props.unanchored && route.hash === `#${anchor.value}`) {
     void nextTick(() => el.value?.scrollIntoView({ block: 'start' }))
   }
 }
@@ -110,7 +112,7 @@ const err = 'm-0 text-[13px] text-(--tone-danger-fg)'
 
 <template>
   <section
-    :id="compact ? undefined : anchor"
+    :id="compact || unanchored ? undefined : anchor"
     ref="el"
     :data-prompt="prompt.id"
     class="card flex min-w-0 scroll-mt-3 flex-col border-l-3 [&>p]:m-0"

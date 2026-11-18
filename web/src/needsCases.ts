@@ -66,7 +66,8 @@ export function needsCases(m: MilestoneView): Problem[] {
   }
 
   const ap = m.autopilot
-  if (ap?.phase === 'Paused') get(ap.pausedFor ?? 0).open = true
+  // A pause belongs to its issue's problem (pauseIssue), else the milestone.
+  if (ap?.phase === 'Paused') get(ap.pauseIssue ?? ap.pausedFor ?? 0).open = true
   for (const h of ap?.holds ?? []) get(h.iid).open = true
 
   const interventions = m.pilot?.interventions ?? []

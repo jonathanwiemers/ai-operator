@@ -2,12 +2,13 @@
 // prompt shows once, the pause card's own prompt is not listed again, and
 // the Pilot tab keeps only the pilot line, the composer and its events.
 // Handled (#531: R14) lists one problem per issue with its prompts, the
-// pilot's actions and its pauses.
+// pilot's actions and its pauses; Open (#581) shows one card per open
+// problem with its pause, hold and prompts.
 // Run with npm run e2e (built UI, Chromium).
 import { expect, test, type Page } from '@playwright/test'
 import { answer, now } from './fixtures'
 import { paymentsMilestone } from './fixtures/stream'
-import { refundsPrompt } from './fixtures/task'
+import { refundsPrompt, refundsTitle } from './fixtures/task'
 import type { MilestoneView, PromptView } from '../src/types'
 
 const widths = [
@@ -56,9 +57,33 @@ const q5: PromptView = {
 }
 const mainRed: MilestoneView = {
   ...paymentsMilestone,
-  autopilot: { ...paymentsMilestone.autopilot!, holds: [], pauseKind: 'mainRed', pausedFor: undefined, exits: [] },
+  autopilot: { ...paymentsMilestone.autopilot!, holds: [], pauseKind: 'mainRed', pausedFor: undefined, pauseIssue: undefined, exits: [] },
   pilot: { ...paymentsMilestone.pilot!, proposals: [] },
   prompts: [q5, openQ3],
+}
+
+// stuck: milestone 14 paused for #281 (a cycle) while #281 is held, with
+// two open pilot prompts about it: one problem (Decision 1).
+const stuckPrompt = (id: string): PromptView => ({ ...openQ3, id, issueIID: 281, kind: 'assessment', question: `${id}: rerun #281?` })
+const stuck: MilestoneView = {
+  ...paymentsMilestone,
+  autopilot: {
+    ...paymentsMilestone.autopilot!,
+    pauseKind: 'stuck',
+    pausedFor: undefined,
+    pauseIssue: 281,
+    holds: [{ ...paymentsMilestone.autopilot!.holds![0]!, iid: 281, title: refundsTitle, kind: 'needsInput' }],
+  },
+  pilot: { ...paymentsMilestone.pilot!, proposals: [] },
+  prompts: [stuckPrompt('Q8'), stuckPrompt('Q9')],
+}
+
+// budget: milestone 14 paused on its budget (no single issue) while #284
+// is held: two problems, the milestone's and #284's.
+const budget: MilestoneView = {
+  ...paymentsMilestone,
+  autopilot: { ...paymentsMilestone.autopilot!, pauseKind: 'budget', pausedFor: undefined, pauseIssue: undefined },
+  pilot: { ...paymentsMilestone.pilot!, proposals: [] },
 }
 
 // staleHead: #280 got a new push, so the pilot's count starts over.
@@ -131,12 +156,51 @@ for (const size of widths) {
   test(`a paused milestone lists the pause card's prompt once@${size.width}`, async ({ page, baseURL }) => {
     const problems = await open(page, baseURL, `${milestonePath}?tab=needs`, size, mainRed)
     const needs = page.locator('[data-needs-open]')
+    await expect(needs.locator('[data-open-problem]')).toHaveCount(1)
+    await expect(needs.locator('#problem-0 [data-problem-head]')).toContainText('Milestone')
     await expect(needs.locator('[data-pause-card]')).toHaveCount(1)
     await expect(page.locator('[data-prompt="Q5"]')).toHaveCount(1)
     await expect(needs.locator('[data-pause-card] [data-prompt="Q5"]')).toHaveCount(1)
     await expect(page.locator('[data-prompt="Q3"]')).toHaveCount(1)
-    // The pause card and Q3.
-    await expect(tab(page, /^Needs you/)).toHaveText('Needs you · 2')
+    // The pause card and Q3 are the milestone's one problem.
+    await expect(needs.locator('#problem-0 [data-prompt="Q3"]')).toHaveCount(1)
+    await expect(tab(page, /^Needs you/)).toHaveText('Needs you · 1')
+    expect(problems).toEqual([])
+  })
+
+  test(`a pause, a hold and two prompts on one issue are one card@${size.width}`, async ({ page, baseURL }) => {
+    const problems = await open(page, baseURL, `${milestonePath}?tab=needs`, size, stuck)
+    const needs = page.locator('[data-needs-open]')
+    await expect(tab(page, /^Needs you/)).toHaveText('Needs you · 1')
+    await expect(needs.locator('[data-open-problem]')).toHaveCount(1)
+    const card = needs.locator('#problem-281')
+    await expect(card.locator('[data-problem-head]')).toContainText(`#281 ${refundsTitle}`)
+    // The pause and the hold, then both prompts, each once on the page.
+    await expect(card.locator('[data-pause-card]')).toHaveCount(2)
+    await expect(card.locator('[data-prompt]')).toHaveCount(2)
+    await expect(page.locator('[data-prompt="Q8"]')).toHaveCount(1)
+    await expect(page.locator('[data-prompt="Q9"]')).toHaveCount(1)
+    // The history is folded; Handled still lists the problem, without the anchor.
+    const history = card.locator('[data-problem-history]')
+    await expect(history.locator('[data-entry]').first()).toBeHidden()
+    await history.locator('summary').click()
+    await expect(history.locator('[data-entry="prompt"]')).toHaveCount(2)
+    await expect(page.locator('[data-needs-handled] [data-problem="281"]')).not.toHaveAttribute('id')
+    await expect(page.locator('#problem-281')).toHaveCount(1)
+    expect(problems).toEqual([])
+  })
+
+  test(`a budget pause is a card of its own@${size.width}`, async ({ page, baseURL }) => {
+    const problems = await open(page, baseURL, `${milestonePath}?tab=needs`, size, budget)
+    const needs = page.locator('[data-needs-open]')
+    // The milestone's pause, #284's hold and #281's open question.
+    const ids = await needs.locator('[data-open-problem]').evaluateAll((es) => es.map((e) => e.id).sort())
+    expect(ids).toEqual(['problem-0', 'problem-281', 'problem-284'])
+    await expect(needs.locator('#problem-0 [data-problem-head]')).toContainText('Milestone')
+    await expect(needs.locator('#problem-0 [data-pause-card]')).toHaveCount(1)
+    await expect(needs.locator('#problem-284 [data-pause-card]')).toHaveCount(1)
+    await expect(needs.locator('#problem-281 [data-pause-card]')).toHaveCount(0)
+    await expect(tab(page, /^Needs you/)).toHaveText('Needs you · 3')
     expect(problems).toEqual([])
   })
 
@@ -154,8 +218,8 @@ for (const size of widths) {
 
   test(`the open older proposal sits on Needs you, not in the pilot chat@${size.width}`, async ({ page, baseURL }) => {
     const problems = await open(page, baseURL, `${milestonePath}?tab=needs`, size)
-    // The pause card, #284's hold, #281's question and P7.
-    await expect(tab(page, /^Needs you/)).toHaveText('Needs you · 4')
+    // #281 (its pause and question), #284's hold and P7.
+    await expect(tab(page, /^Needs you/)).toHaveText('Needs you · 3')
     const p7 = page.locator('[data-needs-open] [data-proposal="7"]')
     await expect(p7).toContainText('P7')
     await expect(p7.getByRole('button', { name: 'Accept', exact: true })).toBeVisible()
@@ -174,10 +238,13 @@ for (const size of widths) {
     // #281 waits for an answer and #284 is held; the milestone's newest
     // entry is newer than #280's.
     await expect(handled.locator('[data-problem]')).toHaveCount(4)
-    const ids = await handled.locator('[data-problem]').evaluateAll((es) => es.map((e) => e.id))
-    expect(ids).toEqual(['problem-281', 'problem-284', 'problem-0', 'problem-280'])
+    const ids = await handled.locator('[data-problem]').evaluateAll((es) => es.map((e) => e.getAttribute('data-problem')))
+    expect(ids).toEqual(['281', '284', '0', '280'])
+    // The open ones' anchors are on their cards under Open.
+    await expect(page.locator('[data-needs-open] #problem-281')).toHaveCount(1)
+    await expect(page.locator('[data-needs-open] #problem-284')).toHaveCount(1)
 
-    const p281 = handled.locator('#problem-281')
+    const p281 = handled.locator('[data-problem="281"]')
     await expect(p281).toHaveAttribute('data-open', '')
     await expect(p281.locator('[data-problem-head]')).toContainText('Open')
     await expect(p281.locator('[data-attempts]')).toHaveText('Pilot attempts: 0 of 2')

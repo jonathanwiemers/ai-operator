@@ -10,15 +10,14 @@ import { needsOpen } from '../needsOpen'
 import { pausesLine, pausesSummary } from '../pauses'
 import type { MilestoneView } from '../types'
 import Markdown from './Markdown.vue'
-import PauseCard from './PauseCard.vue'
 import NeedsProblem from './NeedsProblem.vue'
-import PromptCard from './PromptCard.vue'
+import ProblemCard from './ProblemCard.vue'
 import RelTime from './RelTime.vue'
 
 // MilestoneNeeds is a milestone's Needs you tab (R12). Open (live
-// milestones only): the full pause card while paused, one card per held
-// issue, the open prompts without the pause card's own, and the pilot's
-// open older proposals (P-n) with Accept and Reject. Handled (R14): one
+// milestones only): one ProblemCard per open problem (its pause, hold and
+// prompts), and the pilot's open older proposals (P-n) with Accept and
+// Reject. Handled (R14): one
 // block per problem from needsCases (open ones first), then the pause
 // totals on one line. A stored milestone shows only Handled.
 const props = defineProps<{ namespace: string; name: string; milestone: MilestoneView }>()
@@ -26,6 +25,7 @@ const props = defineProps<{ namespace: string; name: string; milestone: Mileston
 const open = computed(() => needsOpen(props.milestone))
 const active = computed(() => !props.milestone.stored)
 const problems = computed(() => needsCases(props.milestone))
+const inOpen = computed(() => new Set(open.value.problems.map((p) => p.iid)))
 // A Desk link to a problem, or to a prompt of one, unfolds that problem.
 const route = useRoute()
 const linked = computed(() => linkedProblem(problems.value, route.hash))
@@ -72,16 +72,14 @@ const chip = { color: 'neutral', variant: 'outline', size: 'sm' } as const
       </h3>
       <div class="grid gap-2.5">
         <div v-if="!open.count" :class="quiet">Nothing needs you.</div>
-        <PauseCard v-if="open.paused" :key="milestone.iid" :namespace="namespace" :name="name" :milestone="milestone" />
-        <PauseCard
-          v-for="h in open.holds"
-          :key="`${milestone.iid}/${h.iid}`"
+        <ProblemCard
+          v-for="p in open.problems"
+          :key="`${milestone.iid}/${p.iid}`"
           :namespace="namespace"
           :name="name"
           :milestone="milestone"
-          :hold="h"
+          :problem="p"
         />
-        <PromptCard v-for="p in open.prompts" :key="p.id" :namespace="namespace" :name="name" :prompt="p" />
         <div
           v-for="p in open.proposals"
           :key="`P${p.id}`"
@@ -115,6 +113,7 @@ const chip = { color: 'neutral', variant: 'outline', size: 'sm' } as const
           :milestone="milestone.iid"
           :problem="p"
           :linked="linked === p.iid"
+          :in-open="inOpen.has(p.iid)"
         />
         <div v-if="pauses" :class="quiet" data-pauses>Pauses: {{ pausesLine(pauses) }}</div>
       </div>
