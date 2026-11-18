@@ -357,8 +357,9 @@ func TestMirrorRemoteCommandsTimeOut(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("want %q, got %v", tc.want, err)
 			}
-			// The timeout plus the wait for the pipes, with slack.
-			if took := time.Since(start); took > 10*time.Second {
+			// The timeout plus the wait for the pipes, with slack; a plain
+			// push tries three times (retryOneOff).
+			if took := time.Since(start); took > 20*time.Second {
 				t.Fatalf("took %s", took)
 			}
 		})

@@ -1167,7 +1167,20 @@ func (r *Runner) openMergeRequest(ctx context.Context, gl gitlab.API, glProject 
 	if issue.Milestone != nil {
 		opts.MilestoneID = issue.Milestone.ID
 	}
-	mr, err := gl.CreateMergeRequest(ctx, glProject, opts)
+	// A create that failed with a 5xx or timed out may have landed: before
+	// trying again, an open MR of the branch is taken as the result.
+	var mr *gitlab.MergeRequest
+	tried := false
+	err := retryOneOff(ctx, s.log, "create merge request", gitlab.IsTransient, func() (err error) {
+		if tried {
+			if mr, err = gl.FindOpenMergeRequest(ctx, glProject, branch); err != nil || mr != nil {
+				return err
+			}
+		}
+		tried = true
+		mr, err = gl.CreateMergeRequest(ctx, glProject, opts)
+		return err
+	})
 	if err != nil {
 		return nil, s.fail(fmt.Errorf("creating merge request: %w", err))
 	}

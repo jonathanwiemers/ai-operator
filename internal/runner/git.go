@@ -314,11 +314,15 @@ func (m *Mirror) Push(ctx context.Context, branch string, skipCI bool) error {
 
 // push pushes src to dst, with ci.skip if skipCI. A remote that takes no
 // push options gets a plain push. The policy is checked first (checkPush).
+// A one-off network error is tried again (retryOneOff): pushing the same
+// commit again after a push that landed changes nothing.
 func (m *Mirror) push(ctx context.Context, src, dst string, skipCI bool) error {
 	if err := m.checkPush(ctx, src, dst); err != nil {
 		return err
 	}
-	return m.pushArgs(ctx, skipCI, src+":"+dst)
+	return retryOneOff(ctx, m.Log, "push "+dst, gitTransient, func() error {
+		return m.pushArgs(ctx, skipCI, src+":"+dst)
+	})
 }
 
 // pushArgs runs git push origin args, with ci.skip if skipCI and without

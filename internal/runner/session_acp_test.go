@@ -26,6 +26,8 @@ func TestMain(m *testing.M) {
 		runACPFake()
 		os.Exit(0)
 	}
+	// No test waits for a one-off error to pass (retryOneOff).
+	oneOffWaits = []time.Duration{0, 0}
 	os.Exit(m.Run())
 }
 
