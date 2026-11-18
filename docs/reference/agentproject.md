@@ -374,6 +374,10 @@ files.
 The cluster's side is set in the chart: `crossRepo.allowedProjects` (empty
 turns cross-repo changes off), `crossRepo.neverProjects` and `selfProject`,
 see the [chart values](../../charts/ai-operator/README.md#values).
+The two lists (the operator's `--cross-repo-allowed-projects` and
+`--cross-repo-never-projects` flags) take full paths or globs, `*` within a
+path segment and `**` across segments, like the `include` of an
+[AgentProjectSet](agentprojectset.md); the never-list wins.
 
 ## Other `spec` fields
 

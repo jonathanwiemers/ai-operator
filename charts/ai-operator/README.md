@@ -111,6 +111,13 @@ on full syncs, so up to `fallbackInterval` late while deliveries arrive. The
 Only the leader serves the receiver. With `replicaCount` above 1, a delivery
 that reaches a non-leader pod fails and GitLab's own retry covers it.
 
+### Project sets
+
+One `AgentProjectSet` ([Project sets](../../docs/guides/project-sets.md)) makes
+the operator work in every project of a GitLab group. The chart installs the
+`AgentProjectSet` CRD with the others (`crds.install`) and the Desk's service
+account may read sets. Fields: [AgentProjectSet](../../docs/reference/agentprojectset.md).
+
 ### Research
 
 Research runs (`AgentResearch`, see [Research](../../docs/guides/research.md))

@@ -168,6 +168,8 @@ a [retrospective](../concepts/glossary.md#retrospective) on the
 - [Run a milestone on autopilot](../guides/autopilot.md): what happens
   from plan to last merge, and [the pilot](../guides/pilot.md) that
   handles what goes wrong.
+- [Project sets](../guides/project-sets.md): one `AgentProjectSet` instead of an
+  `AgentProject` per repository, for a whole GitLab group.
 - [Guides](../guides/README.md): answering, iterating and the other tasks.
   [Steer from the Desk](../guides/steer-from-the-desk.md) shows what you
   can do in the Desk.

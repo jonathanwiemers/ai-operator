@@ -49,6 +49,8 @@ In the order you need them for a milestone:
     or a pod is lost.
 18. [Research](research.md): news flashes and one-off reports, turning
     research on, choosing agents, retention and troubleshooting.
+19. [Project sets](project-sets.md): one AgentProjectSet for a whole GitLab
+    group, active and dormant projects, globs and the request budget.
 
 ## Next
 

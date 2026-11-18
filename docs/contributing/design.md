@@ -3426,6 +3426,46 @@ leaves out, from the old usage page:
   the milestone's companions with merge request, state, release and who
   merged them.
 
+## Project sets
+
+An `AgentProjectSet` makes the operator work in a whole GitLab group. The
+milestone spec is [specs/group-projects.spec.md](../specs/group-projects.spec.md);
+how it is used: [Project sets](../guides/project-sets.md).
+
+**Planner and reconciler.** `AgentProjectSetReconciler` discovers the group
+every `pollInterval` with one GraphQL query per 100 projects
+(`internal/gitlab`, projects with their active milestones, plus the group's
+ready issues). A pure planner (`projectset_plan.go`) turns the discovery, the
+decoded template, all AgentProjects and the AgentTask counts into one entry
+per matched project: `active`, `dormant`, `excluded`, `explicit` or
+`nameTaken`. The reconciler then creates or updates the children, writes the
+status and sets `Ready` and `Discovered`. The glob matcher
+(`internal/projectglob`) is shared with the cross-repo flags.
+
+**Removal sequence.** Deleting an AgentProject leaves its GitLab hook
+behind, so a dormant child goes in three steps over later polls: the set sets
+`webhook.enabled=false` and the `ai.wiemers.me/removing` annotation, the
+child's next full sync deletes the hook and clears `WebhookRegistered`, and
+only then the set deletes the child, after a live check that it has no
+AgentTask. A hook that cannot be deleted keeps the child without a timeout.
+A child with a task is kept. A child whose project left the set's scope is
+removed without waiting for `dormantAfter`.
+
+**Polling through the set.** A set child skips the light poll. While the
+set's `lastDiscoveryTime` is younger than twice its `pollInterval`, the child
+counts as receiving deliveries (`WebhookDeliveries`, reason `ViaProjectSet`)
+and full-syncs on a delivery, a wake and every `webhook.fallbackInterval`. A
+stale discovery returns it to its own polling.
+
+**Delivery-store reuse.** The set keeps a hash of each project's milestones
+(iid, title, `updatedAt`) in its status. When it changes, the set records a
+delivery for the child in the store the webhook receiver uses and wakes it
+through the same waker, so the child takes the path a real delivery takes.
+
+**Requests.** Both the REST and the GraphQL client count their requests;
+`ai_operator_gitlab_requests_total{kind, owner}` exports them. The set is
+`Ready=False` (`TooComplex`) when the query's score passes 200.
+
 ## Security
 
 The threat model: the model can do anything a shell in the agent container

@@ -247,3 +247,39 @@ R1 → R2 → R3 → R4 → R5 → R5b → R6 → R7 → R8 → R10 → R9 (afte
 - 2026-11-16: drafted. The `/agent owner-subjects` line is added only in
   the GitLab milestone description: it carries an e-mail address, and
   this repository is mirrored publicly.
+- Status: implemented. Every R is a merge request below, by its commit
+  subject, or a line here.
+- R1 (`3e151d6`): `ai_operator_gitlab_requests_total{kind, owner}` as
+  specified.
+- R3 (`3868624`): the matcher is `internal/projectglob`, shared by the set
+  and the cross-repo flags. Existing exact-path values keep working.
+- R4 (`e88739c`): the GraphQL client as specified (two pages, an error
+  page, a 429 with `Retry-After`).
+- R2 (`a41e1ea`): the webhook URL is required too, not only `enabled` and
+  `secretRef`: a child that cannot register its hook would never be woken.
+  `WebhookRequired` names what is missing.
+- R5 was split into two merge requests, the planner (`689e906`, a pure
+  function: active rule, explicit wins, exclude, name taken) and the
+  reconciler (`98b72cf`: discovery, children, status, conditions).
+- R5: a child whose project leaves the set's scope (edited `include` or
+  `exclude`, archived) is removed without the `dormantAfter` wait. The
+  status gains the count `nameTaken`, which the spec left out of the list.
+- R5b (`6ce59db`): a hook that cannot be deleted keeps the child, without a
+  timeout; the reason in the status says why. An AgentProject that a human
+  deletes still leaves its GitLab hook, as before.
+- R6 (`c7a162f`): as specified. A child skips the light poll while the
+  set's discovery is younger than twice its `pollInterval`.
+- R7 (`d55d03d`): `GET /api/v1/projectsets` and the set name on each
+  project, as specified.
+- R8 (`61aa49d`): the Desk's set line leaves out zero counts except
+  `active`.
+- R9: stays in the infra repository, after the release that carries R2 to
+  R6. The 14 explicit AgentProjects stay (Decision 2). The infra
+  cross-repo allow-list is kept explicit: it lists the companions by full
+  path and does not use the new globs, so a companion is a decision per
+  project and the set's reach does not widen it.
+- R10 (#559): `docs/usage.md` and `docs/projectsets.md` predate the docs
+  layout. The guide is `docs/guides/project-sets.md`, the fields are
+  `docs/reference/agentprojectset.md`, and the links come from the
+  guides, reference and getting-started pages, the glossary, the design
+  page and the chart README.

@@ -67,6 +67,13 @@ answer [prompts](#prompt), revisit decisions, and watch runs, CI and costs.
 See [How it works](how-it-works.md#steering-it) and the guides
 [The Desk](../guides/desk.md) and [Steer from the Desk](../guides/steer-from-the-desk.md).
 
+### Dormant project
+
+A project that a [project set](#project-set) matches but that has no work: no
+milestone with the spec marker, no ready issue and no task. It has no
+[set child](#set-child), or loses it after `dormantAfter`. See
+[Project sets](../guides/project-sets.md#active-and-dormant).
+
 ### Engine
 
 The coding agent CLI a role runs on: Claude Code (`claude`) or Cursor
@@ -167,6 +174,13 @@ A named implementer setup, with its own engine, model and effort, that an
 issue selects with an `agent-profile::<name>` label. The planner picks one
 per issue; see [Roles](roles.md#implementer).
 
+### Project set
+
+An `AgentProjectSet`: one resource that makes the operator work in every
+project of a GitLab group that its globs match, writing a [set child](#set-child)
+for each project with work. See [Project sets](../guides/project-sets.md) and
+the [reference](../reference/agentprojectset.md).
+
 ### Prompt
 
 A question to the owners with two to four options, one of them
@@ -228,6 +242,13 @@ GitLab and pushes; it never runs the model's code. See
 
 An optional subagent that searches and reads for a role on a cheap model.
 See [Roles](roles.md#scout-and-writer).
+
+### Set child
+
+An [AgentProject](#agentproject) that a [project set](#project-set) wrote for
+an active project and owns. It polls through its set and goes when the
+project is [dormant](#dormant-project). See
+[Project sets](../guides/project-sets.md#active-and-dormant).
 
 ### Spec
 

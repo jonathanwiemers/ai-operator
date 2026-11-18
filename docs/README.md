@@ -30,14 +30,16 @@ watch [budgets and spend](guides/budgets-and-spend.md), try
 [cost levers](guides/cost-levers.md), ship
 [releases](guides/releases.md), make
 [cross-repo changes](guides/cross-repo-changes.md),
-[watch from Kubernetes](guides/watch-from-kubernetes.md) and run
+[watch from Kubernetes](guides/watch-from-kubernetes.md), cover a group with
+[project sets](guides/project-sets.md) and run
 [research](guides/research.md).
 
 ## Reference
 
 **[reference/](reference/README.md)**: every `/agent` command in
 [commands](reference/commands.md), the [labels](reference/labels.md), the
-[`AgentProject` fields](reference/agentproject.md) with
+[`AgentProject` fields](reference/agentproject.md), the
+[`AgentProjectSet` fields](reference/agentprojectset.md) with
 [agents and models](reference/agents-and-models.md),
 [lifecycle and CI](reference/lifecycle-and-ci.md) and the
 [agent image](reference/agent-image.md), the

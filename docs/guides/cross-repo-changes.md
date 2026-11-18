@@ -56,7 +56,8 @@ All three must agree, and no model decides any of them:
 
 1. **The cluster** allows the project with the chart value
    `crossRepo.allowedProjects`, by full path or by glob (`my-group/**` is
-   every project below `my-group`). It is empty by default, which turns
+   every project below `my-group`, `*` stays within one path segment).
+   `crossRepo.neverProjects` takes the same globs and wins. It is empty by default, which turns
    cross-repo changes off. See the
    [chart values](../../charts/ai-operator/README.md#values).
 2. **The `AgentProject`** names it in `spec.crossRepo.targets`, with the
