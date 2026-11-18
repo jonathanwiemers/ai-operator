@@ -52,6 +52,7 @@ rules:
   resources:
   - agentplans/status
   - agentprojects/status
+  - agentprojectsets/status
   - agentresearches/status
   - agenttasks/status
   verbs:
@@ -62,15 +63,10 @@ rules:
   - ai.wiemers.me
   resources:
   - agentprojects
+  - agenttasks
   verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - ai.wiemers.me
-  resources:
-  - agentresearches
-  verbs:
+  - create
+  - delete
   - get
   - list
   - patch
@@ -79,10 +75,9 @@ rules:
 - apiGroups:
   - ai.wiemers.me
   resources:
-  - agenttasks
+  - agentprojectsets
+  - agentresearches
   verbs:
-  - create
-  - delete
   - get
   - list
   - patch

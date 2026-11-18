@@ -219,6 +219,16 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "AgentProject")
 		os.Exit(1)
 	}
+	if err := (&controller.AgentProjectSetReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+		NewDiscoverer: func(baseURL, token string) gitlab.Discoverer {
+			return gitlab.New(baseURL, token)
+		},
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "AgentProjectSet")
+		os.Exit(1)
+	}
 	if err := (&controller.AgentTaskReconciler{
 		Client:               mgr.GetClient(),
 		Scheme:               mgr.GetScheme(),
