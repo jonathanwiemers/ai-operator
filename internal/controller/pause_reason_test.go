@@ -177,3 +177,29 @@ func TestPilotEventNamesTheNeedsInputCause(t *testing.T) {
 		})
 	}
 }
+
+// A run that failed on the block path records its cause: the blocked event
+// links the failure note; a block without a failed run does not.
+func TestPilotEventLinksTheFailureOfABlockedRun(t *testing.T) {
+	spec := testProject().Spec.WithDefaults()
+	m := &gitlab.Milestone{IID: 3}
+	st := &aiv1.AgentTask{Spec: aiv1.AgentTaskSpec{Milestone: &aiv1.MilestoneRef{IID: 3}}, Status: aiv1.AgentTaskStatus{Plan: []aiv1.PlannedIssue{{IID: 2}}}}
+	issues := map[int64]gitlab.Issue{2: {IID: 2, Milestone: m, Labels: []string{"agent::blocked"}}}
+	blocked := &aiv1.BlockedStatus{Reason: aiv1.BlockInfra, Message: "pod lost"}
+	for _, tc := range []struct {
+		name string
+		run  aiv1.RunStatus
+		want string
+	}{
+		{"runFailed", aiv1.RunStatus{NeedsInputCause: aiv1.NeedsInputRunFailed, NeedsInputURL: testNoteURL}, "#2 is blocked (infra): pod lost (" + testNoteURL + ")"},
+		{"no cause", aiv1.RunStatus{NeedsInputURL: testNoteURL}, "#2 is blocked (infra): pod lost"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.run.PushedSHA = "sha2"
+			evs := pilotEvents(spec, nil, st, issues, map[int64]*aiv1.AgentTask{2: {Status: aiv1.AgentTaskStatus{Run: tc.run, Blocked: blocked}}}, true, nil, time.Time{})
+			if len(evs) != 1 || evs[0].IssueIID != 2 || evs[0].Text != tc.want {
+				t.Fatalf("got %+v, want the text %q", evs, tc.want)
+			}
+		})
+	}
+}

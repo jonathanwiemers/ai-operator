@@ -1511,6 +1511,10 @@ func (a *autopilot) gateCheck(it *aiv1.AutopilotItem, is gitlab.Issue, task *aiv
 	// An owner's merge override skips the review checks for its head.
 	reviewed := !a.overridden(it, run.PushedSHA, run)
 	switch {
+	case run.LastResult != aiv1.RunResultSucceeded && run.NeedsInputCause == aiv1.NeedsInputRunFailed:
+		// A failed run records its cause, also a blocked one a human lifted.
+		reason, _ := needsInputReason(it.IID, task)
+		return failed(true, aiv1.PauseRunFailed, "%s", reason)
 	case run.LastResult != aiv1.RunResultSucceeded:
 		return failed(true, aiv1.PauseRunFailed, "the last run of #%d ended with %q", it.IID, run.LastResult)
 	case reviewed && run.BlockingFindings > 0:

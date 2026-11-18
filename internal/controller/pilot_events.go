@@ -101,7 +101,11 @@ func pilotEvents(spec aiv1.AgentProjectSpec, mh *aiv1.MainHealthStatus, st *aiv1
 		}
 		switch b := t.Status.Blocked; {
 		case b != nil && (b.Reason == aiv1.BlockInfra || b.Reason == aiv1.BlockQuota):
-			add(string(b.Reason), iid, fmt.Sprintf("#%d is blocked (%s): %s", iid, b.Reason, b.Message))
+			text := fmt.Sprintf("#%d is blocked (%s): %s", iid, b.Reason, b.Message)
+			if t.Status.Run.NeedsInputCause == aiv1.NeedsInputRunFailed {
+				text += linked(t.Status.Run.NeedsInputURL) // the failure note
+			}
+			add(string(b.Reason), iid, text)
 		case is.HasLabel(spec.Workflow.NeedsInputLabel):
 			if reason, ok := needsInputReason(iid, t); ok {
 				add("stuck", iid, reason)

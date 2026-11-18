@@ -64,15 +64,27 @@ func TestRunFailureRecordsItsCauseBeforeTheLabel(t *testing.T) {
 	}
 }
 
-func TestBlockedFailureRecordsNoCause(t *testing.T) {
+func TestBlockedFailureRecordsItsCauseButNoLabel(t *testing.T) {
 	e := newImplementEnv(t)
-	r := newTestRunner(t, e.tmp, e.k8s, e.gl, &describingEngine{}, e.task.Name)
+	e.configure(t, func(*aiv1.AgentProjectSpec) {}, func(s *aiv1.AgentTaskSpec) { s.Issue.WebURL = issueURL })
+	gl := &causeAtLabel{Fake: e.gl, k8s: e.k8s, task: e.task.Name}
+	r := newTestRunner(t, e.tmp, e.k8s, gl, &describingEngine{}, e.task.Name)
 	out := &Outcome{}
 	r.run = newRunLog(r.Log, e.task)
 	task := e.task.DeepCopy()
-	r.reportFailure(context.Background(), e.gl, e.k8sProjectSpec(t), task, out, errors.New("pod lost"), aiv1.BlockInfra)
-	if out.NeedsInputCause != "" || e.runStatus(t).NeedsInputCause != "" {
-		t.Fatalf("a blocked issue does not need input: %+v", out)
+	task.Spec.Issue.WebURL = issueURL
+	task.Spec.Source.InfraRetry = task.Spec.RunRequest // the automatic retry is used up
+	r.reportFailure(context.Background(), gl, e.k8sProjectSpec(t), task, out, errors.New("pod lost"), aiv1.BlockInfra)
+	notes := e.gl.IssueNotes[42]
+	want := fmt.Sprintf("%s#note_%d", issueURL, notes[len(notes)-1].ID)
+	if out.NeedsInputCause != aiv1.NeedsInputRunFailed || out.NeedsInputURL != want {
+		t.Fatalf("a blocked run records its cause for the final patch: %+v", out)
+	}
+	if run := e.runStatus(t); run.NeedsInputCause != aiv1.NeedsInputRunFailed || run.NeedsInputURL != want {
+		t.Fatalf("a blocked run records its cause: %q %q", run.NeedsInputCause, run.NeedsInputURL)
+	}
+	if len(gl.seen) != 0 {
+		t.Fatalf("a blocked issue gets no needs-input label: %q", gl.seen)
 	}
 }
 

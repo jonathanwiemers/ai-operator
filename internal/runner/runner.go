@@ -1059,16 +1059,17 @@ func (r *Runner) reportFailure(ctx context.Context, gl gitlab.API, spec aiv1.Age
 	if err != nil {
 		r.log().Error(err, "posting failure note")
 	}
-	if block != "" {
-		return
-	}
-	// The cause goes before the label, so the operator never sees the label
-	// without it; the final patch writes it again.
+	// Every failed run records its cause, also a blocked one, so a hold
+	// names it. The cause goes before the label, so the operator never sees
+	// the label without it; the final patch writes it again.
 	out.NeedsInputCause, out.NeedsInputURL = aiv1.NeedsInputRunFailed, noteURL(task.Spec.Issue.WebURL, note)
 	if err := r.patchRun(ctx, func(s *aiv1.RunStatus) {
 		s.NeedsInputCause, s.NeedsInputURL = out.NeedsInputCause, out.NeedsInputURL
 	}); err != nil {
 		r.log().Error(err, "recording the needs-input cause")
+	}
+	if block != "" {
+		return
 	}
 	if _, err := gl.UpdateIssue(ctx, spec.GitLab.Project, task.Spec.Issue.IID, gitlab.UpdateIssueOptions{
 		AddLabels: []string{wf.NeedsInputLabel}, RemoveLabels: []string{wf.WorkingLabel},

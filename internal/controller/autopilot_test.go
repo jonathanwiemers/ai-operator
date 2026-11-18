@@ -434,6 +434,10 @@ func TestAutopilotMergeGate(t *testing.T) {
 		}, reason: "the last review saw none", kind: aiv1.PauseNotReviewed},
 		{name: "findings", run: func(r *aiv1.RunStatus) { r.BlockingFindings = 1 }, reason: "blocking review findings", kind: aiv1.PauseFindings},
 		{name: "run failed", run: func(r *aiv1.RunStatus) { r.LastResult = aiv1.RunResultFailed }, reason: "ended with", kind: aiv1.PauseRunFailed},
+		{name: "run failed with its cause", run: func(r *aiv1.RunStatus) {
+			r.LastResult, r.Summary = aiv1.RunResultFailed, "decoding implementer answer: no JSON object"
+			r.NeedsInputCause, r.NeedsInputURL = aiv1.NeedsInputRunFailed, testNoteURL
+		}, reason: "#1 needs input: the run failed: decoding implementer answer: no JSON object (" + testNoteURL + ")", kind: aiv1.PauseRunFailed},
 		{name: "head moved", mr: func(m *gitlab.MergeRequest) { m.SHA = "someone-else" }, reason: "someone pushed", kind: aiv1.PauseMergeRequest},
 		{name: "approval", mr: func(m *gitlab.MergeRequest) { m.DetailedMergeStatus, m.Draft = "not_approved", false }, reason: "needs an approval", kind: aiv1.PauseMergeRequest},
 		{name: "canceled", ci: &aiv1.CIStatus{SHA: "sha-api", State: aiv1.CIStateCanceled}, reason: "was canceled", kind: aiv1.PauseCICanceled},
