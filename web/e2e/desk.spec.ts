@@ -4,7 +4,7 @@
 import { join } from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
 import { answer, now } from './fixtures'
-import { inbox } from './fixtures/rail'
+import { inbox, withSet, withSetProjects } from './fixtures/rail'
 import { features } from './fixtures/session'
 import { overview } from './fixtures/overview'
 import { paymentsMilestone } from './fixtures/stream'
@@ -3770,6 +3770,68 @@ test.describe('search palette', () => {
       await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
       expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
       await noProblems(page, problems)
+    })
+  }
+})
+
+// Set children grouped under their set in the rail (R8, src/projectSets.ts):
+// explicit projects first, then the set's header with its counts and last
+// discovery, then its three children. Screenshots light, dark and 375 px.
+test.describe('project sets in the rail', () => {
+  const start = routes.find((r) => r.name === 'overview')!
+  const cases = [
+    { id: 'light@1280', size: { width: 1280, height: 800 }, colorScheme: 'light' as const },
+    { id: 'dark@1280', size: { width: 1280, height: 800 }, colorScheme: 'dark' as const },
+    { id: 'light@375', size: { width: 375, height: 812 }, colorScheme: 'light' as const },
+  ]
+  for (const c of cases) {
+    test(`groups the children under their set ${c.id}`, async ({ page, baseURL }, testInfo) => {
+      const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+      await page.setViewportSize(c.size)
+      await page.emulateMedia({ colorScheme: c.colorScheme })
+      await page.clock.setFixedTime(now)
+      await watch(page, new URL(baseURL ?? '').origin, problems)
+      await mockAPI(page, start, problems)
+      // Registered last, so they answer before the fixtures.
+      await page.route((u) => u.pathname === '/api/v1/projects', (r) => r.fulfill({ status: 200, json: withSetProjects }))
+      await page.route((u) => u.pathname === '/api/v1/projectsets', (r) => r.fulfill({ status: 200, json: withSet }))
+      await page.goto(start.path)
+      await start.ready(page)
+
+      let rail = page.locator('aside.rail')
+      if (c.size.width < 760) {
+        await page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Projects' }).click()
+        rail = page.getByRole('dialog')
+        await expect(rail).toBeVisible()
+        await rail.evaluate((e) => Promise.all(e.getAnimations().map((a) => a.finished)))
+      }
+      const head = rail.locator('[data-rail-set]')
+      await expect(head).toHaveCount(1)
+      await expect(head).toContainText('team-a-group')
+      await expect(head.locator('[data-set-counts]')).toHaveText('3 active · 12 dormant · 2 excluded · 1 explicit')
+      await expect(head).toContainText('discovered')
+
+      // The order: explicit projects, the header, the children by name.
+      const order = await rail
+        .locator('nav')
+        .locator('[data-rail-set], a.item[href^="/projects/"]')
+        .evaluateAll((els) => els.map((e) => (e.hasAttribute('data-rail-set') ? 'set' : e.getAttribute('href'))))
+      expect(order).toEqual([
+        '/projects/team-a/shop',
+        '/projects/team-b/a-project-with-a-rather-long-name.example',
+        'set',
+        '/projects/team-a/docs',
+        '/projects/team-a/infra-cluster',
+        '/projects/team-a/tools-pnpm',
+      ])
+      if (c.size.width < 760) {
+        expect(await rail.evaluate((e) => e.scrollWidth - e.clientWidth)).toBeLessThanOrEqual(0)
+      }
+
+      const shot = join(testInfo.project.outputDir, '..', 'screenshots', `rail-sets-${c.id}.png`)
+      await page.screenshot({ path: shot })
+      await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })
   }
 })

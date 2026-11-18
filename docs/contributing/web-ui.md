@@ -1663,6 +1663,15 @@ view has loaded titles; they cost no extra request. On narrow screens the
 middle crumbs fold behind `…`. The Spend tab keeps its own drill-down
 crumbs.
 
+The rail lists the explicit projects first, then each AgentProjectSet
+(`GET /api/v1/projectsets`, loaded with the projects) as a header with
+its counts (active always, dormant, excluded and explicit when not zero)
+and last discovery, its children indented below it (`src/projectSets.ts`).
+The header takes the warning tone, with the reason as title, while its
+`Ready` or `Discovered` condition is False. Groups are always expanded. A
+child whose set is not loaded stays in the flat list; when the request
+fails, the rail shows the flat list.
+
 The phone's bottom bar (`App.vue`, under 760 px) is 56 px high; the item
 of the section shown has `aria-current="page"`. It keeps clear of the
 bottom safe-area inset, and the content pane has as much bottom padding.

@@ -28,6 +28,7 @@ import type {
   PlanOverview,
   PlanView,
   ProjectDetail,
+  ProjectSetSummary,
   ProjectSummary,
   ResearchCreated,
   ResearchForm,
@@ -138,6 +139,11 @@ export function getAbout(): Promise<About> {
 // getProjects: GET /projects, the projects the user may see.
 export function getProjects(): Promise<ProjectSummary[]> {
   return get<ProjectSummary[]>('/projects')
+}
+
+// getProjectSets: GET /projectsets, the AgentProjectSets the user may see.
+export function getProjectSets(): Promise<ProjectSetSummary[]> {
+  return get<ProjectSetSummary[]>('/projectsets')
 }
 
 // getInbox: GET /inbox. The envelope is kept: the views read items and

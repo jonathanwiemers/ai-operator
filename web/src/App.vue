@@ -2,7 +2,7 @@
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { hasFeature, isResearchPath, session, setFeatures } from './api'
-import { getAbout, getFeatures, getInbox, getMe, getProjects, getResearches, LoginRequiredError } from './client'
+import { getAbout, getFeatures, getInbox, getMe, getProjects, getProjectSets, getResearches, LoginRequiredError } from './client'
 import { deskTitle } from './format'
 import { inboxKey, newNotifications, notificationText } from './inboxNotify'
 import { inboxRoute } from './inboxRoute'
@@ -23,6 +23,7 @@ const SearchPalette = defineAsyncComponent(() => import('./components/SearchPale
 // 30 kB gzipped to the initial bundle (docs/contributing/web-ui.md, "Bundle budget").
 const USlideover = defineAsyncComponent(() => import('@nuxt/ui/components/Slideover.vue'))
 import type { InboxItem, ProjectSummary, ResearchSummary } from './types'
+import type { ProjectSetSummary } from './generated/views'
 
 async function loadMe(delay = 2000): Promise<void> {
   try {
@@ -64,6 +65,8 @@ function onKey(e: KeyboardEvent) {
   paletteOpen.value = !paletteOpen.value
 }
 const projects = ref<ProjectSummary[] | null>(null)
+// null until loaded and after a failed request: the rail shows the flat list.
+const projectSets = ref<ProjectSetSummary[] | null>(null)
 const researches = ref<ResearchSummary[] | null>(null)
 const inboxCount = ref(0)
 const baseTitle = document.title
@@ -111,6 +114,13 @@ async function loadRail() {
           projects.value = p
         })
         .catch(() => undefined),
+      getProjectSets()
+        .then((s) => {
+          projectSets.value = s
+        })
+        .catch(() => {
+          projectSets.value = null
+        }),
       getInbox()
         .then((r) => onInbox(r.items ?? []))
         .catch(() => undefined),
@@ -275,7 +285,7 @@ watch(notifyActive, (on) => {
             <UIcon name="i-lucide-search" class="size-4" />
           </button>
         </div>
-        <RailNav :projects="projects" :researches="researches" :inbox-count="inboxCount" />
+        <RailNav :projects="projects" :project-sets="projectSets" :researches="researches" :inbox-count="inboxCount" />
       </aside>
 
       <!-- Phones: the rail as a sheet from the left (docs/contributing/web-ui.md, "Sheets").
@@ -300,7 +310,7 @@ watch(notifyActive, (on) => {
         }"
       >
         <template #body>
-          <RailNav :projects="projects" :researches="researches" :inbox-count="inboxCount" @navigate="railOpen = false" />
+          <RailNav :projects="projects" :project-sets="projectSets" :researches="researches" :inbox-count="inboxCount" @navigate="railOpen = false" />
         </template>
       </USlideover>
 

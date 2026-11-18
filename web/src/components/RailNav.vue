@@ -11,10 +11,15 @@ import { loginLasts, windowLabel } from '../format'
 import { live } from '../live'
 import { projectDot, projectNeedsYou, projectStateLine } from '../stream'
 import type { EngineUsage, ProjectSummary, ResearchSummary } from '../types'
+import type { ProjectSetSummary } from '../generated/views'
+import { groupProjects, setCountsLine, setProblem } from '../projectSets'
 import Truncated from '../ui/Truncated.vue'
+import RelTime from './RelTime.vue'
 
 const props = defineProps<{
   projects: ProjectSummary[] | null
+  // null when not loaded or the request failed: the flat list as before.
+  projectSets?: ProjectSetSummary[] | null
   researches: ResearchSummary[] | null
   inboxCount: number
 }>()
@@ -41,6 +46,22 @@ const engineMeters = computed(() => {
   }
   return [...byEngine.values()]
 })
+
+// The project rows: explicit projects first, then each set's header and its
+// children (D558-P1); always expanded (D558-P3).
+type ProjectRow =
+  | { kind: 'project'; p: ProjectSummary; child: boolean }
+  | { kind: 'set'; set: ProjectSetSummary; counts: string; problem: string | null }
+const projectRows = computed<ProjectRow[]>(() => {
+  const g = groupProjects(props.projects ?? [], props.projectSets ?? [])
+  const rows: ProjectRow[] = g.ungrouped.map((p) => ({ kind: 'project', p, child: false }))
+  for (const { set, children } of g.sets) {
+    rows.push({ kind: 'set', set, counts: setCountsLine(set.counts), problem: setProblem(set) })
+    for (const p of children) rows.push({ kind: 'project', p, child: true })
+  }
+  return rows
+})
+const rowKey = (r: ProjectRow) => (r.kind === 'set' ? `set:${r.set.namespace}/${r.set.name}` : `${r.p.namespace}/${r.p.name}`)
 
 function researchSub(r: ResearchSummary): string {
   if (r.phase === 'Running') return 'running'
@@ -76,28 +97,46 @@ function projectActive(namespace: string, name: string) {
       </RouterLink>
 
       <div class="sect"><span>Projects</span></div>
-      <RouterLink
-        v-for="p in projects ?? []"
-        :key="p.namespace + '/' + p.name"
-        :to="{ name: 'stream-project', params: { namespace: p.namespace, name: p.name } }"
-        class="item"
-        :class="{ active: projectActive(p.namespace, p.name) }"
-        active-class=""
-      >
-        <span
-          class="dot"
-          :class="{
-            run: projectDot(p.stages) === 'running',
-            warn: projectDot(p.stages) === 'needs-you',
-            ok: projectDot(p.stages) === 'idle',
-          }"
-        />
-        <span class="name">
-          {{ p.name }}
-          <span class="sub">{{ projectStateLine(p.stages, p.autopilots) }}</span>
-        </span>
-        <span v-if="projectNeedsYou(p.stages)" class="count">{{ projectNeedsYou(p.stages) }}</span>
-      </RouterLink>
+      <template v-for="r in projectRows" :key="rowKey(r)">
+        <!-- A set's header: name, counts and last discovery; warning tone
+             with the reason as title when Ready or Discovered is False. -->
+        <div
+          v-if="r.kind === 'set'"
+          class="sethead"
+          :class="{ warn: r.problem }"
+          :title="r.problem ?? undefined"
+          data-rail-set
+        >
+          <span class="setname">{{ r.set.name }}</span>
+          <span class="setmeta">
+            <span data-set-counts>{{ r.counts }}</span>
+            <span v-if="r.set.lastDiscoveryTime"> · discovered <RelTime :time="r.set.lastDiscoveryTime" /></span>
+            <span v-else> · not discovered yet</span>
+          </span>
+          <span v-if="r.problem" class="sr-only">{{ r.problem }}</span>
+        </div>
+        <RouterLink
+          v-else
+          :to="{ name: 'stream-project', params: { namespace: r.p.namespace, name: r.p.name } }"
+          class="item"
+          :class="{ active: projectActive(r.p.namespace, r.p.name), child: r.child }"
+          active-class=""
+        >
+          <span
+            class="dot"
+            :class="{
+              run: projectDot(r.p.stages) === 'running',
+              warn: projectDot(r.p.stages) === 'needs-you',
+              ok: projectDot(r.p.stages) === 'idle',
+            }"
+          />
+          <span class="name">
+            {{ r.p.name }}
+            <span class="sub">{{ projectStateLine(r.p.stages, r.p.autopilots) }}</span>
+          </span>
+          <span v-if="projectNeedsYou(r.p.stages)" class="count">{{ projectNeedsYou(r.p.stages) }}</span>
+        </RouterLink>
+      </template>
       <div v-if="projects && !projects.length" class="empty-rail">No projects</div>
 
       <template v-if="hasFeature('research')">
@@ -196,6 +235,32 @@ nav {
   background: var(--surface-3);
   color: var(--text);
   font-weight: 600;
+}
+.item.child {
+  margin-left: 12px;
+}
+/* A set's header: the counts wrap under the name when the rail is narrow. */
+.sethead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 8px;
+  padding: 10px 8px 4px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.sethead .setname {
+  font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.sethead .setmeta {
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+.sethead.warn,
+.sethead.warn .setmeta {
+  color: var(--tone-warning-fg);
 }
 .item.soft {
   font-size: 12.5px;

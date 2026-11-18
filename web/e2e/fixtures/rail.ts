@@ -1,5 +1,5 @@
 import type { ProjectSummary, ResearchSummary } from '../../src/types'
-import type { InboxResponse } from '../../src/generated/views'
+import type { InboxResponse, ProjectSetSummary } from '../../src/generated/views'
 import { ago, cost } from './clock'
 
 // GET /api/v1/projects: the rail's projects.
@@ -47,6 +47,51 @@ export const projects: ProjectSummary[] = [
     tasks: 1,
     stages: { planned: 1 },
     createdAt: ago(60 * 24 * 3),
+  },
+]
+
+// GET /api/v1/projectsets: none, so the rail is the flat list. The check
+// "project sets in the rail" answers withSet and withSetProjects instead.
+export const projectSets: ProjectSetSummary[] = []
+
+const child = (name: string, path: string, stages: ProjectSummary['stages']): ProjectSummary => ({
+  ...cost('0.90', 120_000),
+  namespace: 'team-a',
+  name,
+  gitlab: { url: 'https://gitlab.example.com', project: path, webURL: `https://gitlab.example.com/${path}` },
+  suspend: false,
+  maxConcurrentRuns: 1,
+  pollInterval: '2m',
+  lastSyncTime: ago(3),
+  tasks: 1,
+  stages,
+  createdAt: ago(60 * 24 * 2),
+  set: 'team-a-group',
+})
+
+// One set in team-a with three children, for the check of the set group.
+export const withSetProjects: ProjectSummary[] = [
+  ...projects,
+  child('tools-pnpm', 'team-a/tools/pnpm', { working: 1 }),
+  child('docs', 'team-a/docs', { 'needs-input': 1 }),
+  child('infra-cluster', 'team-a/infra/cluster', {}),
+]
+
+export const withSet: ProjectSetSummary[] = [
+  {
+    namespace: 'team-a',
+    name: 'team-a-group',
+    group: 'team-a',
+    include: ['team-a/**'],
+    exclude: ['team-a/archived/**'],
+    pollInterval: '2m',
+    lastDiscoveryTime: ago(1),
+    counts: { active: 3, dormant: 12, excluded: 2, explicit: 1, nameTaken: 0 },
+    projects: [],
+    conditions: [
+      { type: 'Ready', status: 'True', lastTransitionTime: ago(60), reason: 'Discovered', message: '' },
+      { type: 'Discovered', status: 'True', lastTransitionTime: ago(60), reason: 'Discovered', message: '' },
+    ],
   },
 ]
 
