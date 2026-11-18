@@ -17,6 +17,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -121,6 +122,7 @@ type AgentProjectReconciler struct {
 // +kubebuilder:rbac:groups=ai.wiemers.me,resources=agentprojects/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=ai.wiemers.me,resources=agenttasks,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=ai.wiemers.me,resources=agentresearches,verbs=get;list;watch
+// +kubebuilder:rbac:groups=ai.wiemers.me,resources=agentprojectsets,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
@@ -147,6 +149,14 @@ func (r *AgentProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	}
 	started := r.now()
 	lastDelivery, receiving := r.webhookDeliveries(&project, spec, started)
+	// A set child's milestones are watched by its set, which records a
+	// delivery and wakes the child when they change.
+	viaSet := ""
+	if spec.Webhook.SecretRef != nil {
+		if name, current := r.setDiscoveryCurrent(ctx, &project, started); current {
+			viaSet, receiving = name, true
+		}
+	}
 	// While deliveries arrive, they tell of every change but the milestones'.
 	// Steps that only time advances (infra retries, auto-resume, the main
 	// health interval, the hook recheck) run on full syncs, so at most
@@ -157,7 +167,9 @@ func (r *AgentProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	// client's retries stop at this deadline, and the next poll goes on.
 	sctx, cancel := context.WithTimeout(ctx, max(spec.PollInterval.Duration, syncTimeout))
 	var syncErr error
-	if !full {
+	if !full && viaSet != "" {
+		logger.V(1).Info("Set watches the milestones: poll skipped", "set", viaSet)
+	} else if !full {
 		full, syncErr = r.milestonesChanged(sctx, &project, spec)
 		if syncErr == nil && !full {
 			logger.V(1).Info("Light poll: no milestone changed, full sync skipped")
@@ -193,7 +205,7 @@ func (r *AgentProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		})
 	}
 	// After the sync, which may replace status.webhook.
-	reportDeliveries(&project, spec, prevDelivery, lastDelivery, receiving)
+	reportDeliveries(&project, spec, prevDelivery, lastDelivery, receiving, viaSet)
 	reportFallbacks(&project, spec)
 	reportExperiment(&project, spec)
 	r.reportCrossRepo(&project, spec)
@@ -228,6 +240,29 @@ func (r *AgentProjectReconciler) covered(n types.NamespacedName, delivery time.T
 		r.synced = map[types.NamespacedName]time.Time{}
 	}
 	r.synced[n] = delivery
+}
+
+// setDiscoveryCurrent returns the name of the AgentProjectSet that controls
+// the project, and whether that set discovered its group within twice its
+// pollInterval: then the set watches the project's milestones. A missing or
+// unreadable set is not current, and the project polls on its own.
+func (r *AgentProjectReconciler) setDiscoveryCurrent(ctx context.Context, project *aiv1.AgentProject, now time.Time) (string, bool) {
+	ref := metav1.GetControllerOf(project)
+	if ref == nil || ref.Kind != "AgentProjectSet" || !strings.HasPrefix(ref.APIVersion, aiv1.GroupVersion.Group+"/") {
+		return "", false
+	}
+	var set aiv1.AgentProjectSet
+	if err := r.Get(ctx, types.NamespacedName{Namespace: project.Namespace, Name: ref.Name}, &set); err != nil {
+		if !apierrors.IsNotFound(err) {
+			log.FromContext(ctx).V(1).Info("Reading the project's set failed, polling on its own", "set", ref.Name, "error", err.Error())
+		}
+		return ref.Name, false
+	}
+	last := set.Status.LastDiscoveryTime
+	if set.UID != ref.UID || last == nil {
+		return ref.Name, false
+	}
+	return ref.Name, now.Sub(last.Time) < 2*set.Spec.WithDefaults().PollInterval.Duration
 }
 
 // milestonesChanged is the light poll between full syncs while deliveries

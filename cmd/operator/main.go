@@ -198,17 +198,15 @@ func main() {
 		projects.Backfill = history.NewBackfill(researchSetup, historyRetention, clock.RealClock{}, ctrl.Log.WithName("backfill"))
 		researchSetup.SetHistoryRetention(historyRetention)
 	}
-	// Desk chat commands and GitLab webhooks both wake the project
-	// reconciler; create the waker whenever either path runs.
-	var waker *webhook.Waker
-	if webhookAddr != "" || researchSetup != nil {
-		waker = webhook.NewWaker(5*time.Second, 100, clock.RealClock{})
-		projects.Wakes = waker.Events()
-	}
+	// Desk chat commands, GitLab webhooks and project sets wake the project
+	// reconciler, and the receiver and the sets record deliveries. Without
+	// any of them nothing wakes or records, and the projects poll as before.
+	// The bot's own writes cause deliveries too: one sync per project per
+	// 5 s, with a trailing one for the last delivery.
+	waker := webhook.NewWaker(5*time.Second, 100, clock.RealClock{})
+	projects.Wakes = waker.Events()
+	projects.Deliveries = webhook.NewDeliveries(clock.RealClock{})
 	if webhookAddr != "" {
-		// The bot's own writes cause deliveries too: one sync per project
-		// per 5 s, with a trailing one for the last delivery.
-		projects.Deliveries = webhook.NewDeliveries(clock.RealClock{})
 		utilruntime.Must(mgr.Add(&webhook.Server{
 			Addr: webhookAddr,
 			Handler: &webhook.Receiver{Reader: mgr.GetClient(), Wake: waker.Wake, Deliveries: projects.Deliveries,
@@ -226,6 +224,8 @@ func main() {
 		NewDiscoverer: func(baseURL, token string) gitlab.Discoverer {
 			return gitlab.New(baseURL, token)
 		},
+		Deliveries: projects.Deliveries,
+		Wake:       waker.Wake,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "AgentProjectSet")
 		os.Exit(1)

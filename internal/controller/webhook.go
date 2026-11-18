@@ -143,8 +143,9 @@ func (r *AgentProjectReconciler) webhookDeliveries(project *aiv1.AgentProject, s
 // reportDeliveries mirrors the last delivery into status.webhook and sets the
 // WebhookDeliveries condition. prev is the last delivery the status showed
 // before this poll; it stays when the operator has seen none since it
-// started. Without a secretRef both are removed.
-func reportDeliveries(project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, prev *metav1.Time, last time.Time, receiving bool) {
+// started. viaSet names the set that watches the project's milestones while
+// its discovery is current. Without a secretRef both are removed.
+func reportDeliveries(project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, prev *metav1.Time, last time.Time, receiving bool, viaSet string) {
 	if spec.Webhook.SecretRef == nil {
 		if st := project.Status.Webhook; st != nil {
 			st.LastDeliveryTime = nil
@@ -167,7 +168,11 @@ func reportDeliveries(project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, pr
 	}
 	cond := metav1.Condition{Type: aiv1.ConditionWebhookDeliveries, Status: metav1.ConditionTrue, Reason: "Receiving",
 		Message: fmt.Sprintf("deliveries arrive: full sync every %s, milestones every pollInterval", spec.Webhook.FallbackInterval.Duration)}
-	if !receiving {
+	switch {
+	case viaSet != "":
+		cond.Reason = "ViaProjectSet"
+		cond.Message = fmt.Sprintf("set %s watches the milestones: full sync on deliveries and every %s", viaSet, spec.Webhook.FallbackInterval.Duration)
+	case !receiving:
 		cond.Status, cond.Reason = metav1.ConditionFalse, "Silent"
 		cond.Message = fmt.Sprintf("no delivery within %s: full sync every pollInterval", spec.Webhook.SilenceThreshold.Duration)
 		if last.IsZero() {

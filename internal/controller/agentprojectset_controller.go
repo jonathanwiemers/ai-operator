@@ -22,6 +22,7 @@ import (
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/textutil"
+	"github.com/jonathanwiemers/ai-operator/internal/webhook"
 )
 
 // maxProjectSetComplexity is the discovery query score above which a set is
@@ -40,6 +41,11 @@ type AgentProjectSetReconciler struct {
 	// NewDiscoverer creates the GraphQL discovery client; replaced in tests.
 	NewDiscoverer func(baseURL, token string) gitlab.Discoverer
 	Now           func() time.Time
+	// Deliveries and Wake are the webhook receiver's delivery store and
+	// waker: a child whose milestones changed gets a delivery and a wake.
+	// Nil: the children see the change on their next full sync.
+	Deliveries *webhook.Deliveries
+	Wake       func(types.NamespacedName)
 }
 
 // +kubebuilder:rbac:groups=ai.wiemers.me,resources=agentprojectsets,verbs=get;list;watch;update;patch
@@ -119,6 +125,7 @@ func (r *AgentProjectSetReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		}
 	}
 	r.removeChildren(ctx, &set, &plan, existing, counts, now)
+	changed := milestoneChanges(&set, &plan, disc, existing)
 
 	stamp := metav1.NewTime(now)
 	set.Status.Projects = plan.Entries
@@ -131,8 +138,14 @@ func (r *AgentProjectSetReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		fmt.Sprintf("%d projects in %d queries", len(disc.Projects), disc.Posts))
 	setProjectSetReady(&set)
 	logger.V(1).Info("Group discovered", "projects", len(disc.Projects), "queries", disc.Posts,
-		"active", plan.Counts.Active, "complexity", disc.Complexity.Score)
-	return r.patchStatus(ctx, &set, orig, poll)
+		"active", plan.Counts.Active, "complexity", disc.Complexity.Score, "woken", len(changed))
+	res, err := r.patchStatus(ctx, &set, orig, poll)
+	if err == nil {
+		// Once the new hashes are stored: a failed patch wakes them on the
+		// next poll instead, not twice.
+		r.wakeChildren(changed)
+	}
+	return res, err
 }
 
 // checkProjectSet decodes the template, or says why the set cannot use its

@@ -1315,6 +1315,19 @@ sequenceDiagram
   the main health interval, the hourly hook check) run on full syncs, so at
   most `fallbackInterval` late while receiving. After a restart nothing is
   receiving until the next delivery.
+* **Set children poll through their set.** A child of an AgentProjectSet
+  (controller reference, same set UID) with a `secretRef` counts as
+  receiving while the set's `status.lastDiscoveryTime` is younger than twice
+  its `pollInterval`, and skips the milestone listing: between full syncs
+  its polls send no GitLab request (`WebhookDeliveries` `ViaProjectSet`).
+  The set's discovery hashes each child's active milestones (iid, title,
+  `updatedAt`, sorted by iid) into `status.projects[].milestones`; when the
+  hash changes it records a delivery for the child and wakes it, after the
+  status is stored, through the receiver's `webhook.Deliveries` and
+  `Waker`, which `cmd/operator` always creates. An entry without a stored
+  hash (first discovery, lost status) stores it and wakes nothing, so a
+  restart does not sync every child at once. A stale discovery or a missing
+  set lets the child poll like any AgentProject.
 
 **Settings behind `spec.webhook`** (user side in
 [`spec.webhook`](../reference/agentproject.md#specwebhook)). A delivery
@@ -1326,7 +1339,7 @@ token; it updates it when the URL or secret changes, checks it hourly
 (restoring a hook deleted or changed by hand), deletes it when switched off
 and leaves other hooks alone. `WebhookRegistered` has the reasons
 `Registered`, `Forbidden`, `Invalid` and `Failed`; `WebhookDeliveries`
-`Receiving` and `Silent`, with `status.webhook.lastDeliveryTime`. Between
+`Receiving`, `ViaProjectSet` and `Silent`, with `status.webhook.lastDeliveryTime`. Between
 full syncs each `pollInterval` lists only the milestones (milestone changes
 send no delivery) and syncs fully when a planned one changed, appeared or
 vanished, or the spec changed. After an operator restart every poll is a

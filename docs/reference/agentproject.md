@@ -325,7 +325,11 @@ poll. See [Webhook](../getting-started/install.md#webhook-optional) for the setu
 While deliveries arrive, steps that only time moves on (infra retries,
 autopilot's auto-resume, the main health check) can be up to
 `fallbackInterval` late. The conditions `WebhookRegistered` and
-`WebhookDeliveries` on the AgentProject say how it goes. The receiver
+`WebhookDeliveries` on the AgentProject say how it goes. On an
+AgentProject that an AgentProjectSet created, `WebhookDeliveries` shows
+`ViaProjectSet` while the set's discovery is current: the set watches the
+milestones and wakes the project when they change, so between full syncs
+its polls send no GitLab request. The receiver
 itself is a chart setting (`webhook.*`, see the
 [chart values](../../charts/ai-operator/README.md#gitlab-webhooks)).
 
