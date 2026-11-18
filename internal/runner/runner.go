@@ -87,6 +87,11 @@ type Runner struct {
 	// cut is where a checkpoint of a cut-off implementer call goes; nil
 	// outside the implementer part of a run.
 	cut *cutTarget
+	// implLeft are the lines the last implementer call left uncommitted, 0
+	// once a checkpoint pushed them; implCut says a cut checkpoint was tried
+	// for it. leftLines are those a failed run left unsaved (endCut).
+	implLeft, leftLines int64
+	implCut             bool
 	// companion is the current implement run's companion once its mirror
 	// and checkout are synced: every push of the home branch checks it
 	// first (publish, checkCompanion). nil without one.
@@ -552,6 +557,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	request := task.Spec.RunRequest
 	r.run = newRunLog(r.Log, task)
 	r.blamedRestarts, r.pushedHead, r.checkpointHead, r.changedPins, r.cut, r.companion = 0, "", "", nil, nil, nil
+	r.implLeft, r.leftLines, r.implCut = 0, 0, false
 	r.foldLease, r.foldCommit = "", ""
 	r.runNumber = int64(task.Status.Run.RunCount) + 1
 	ctx = withRunID(ctx, r.run.id)
@@ -700,6 +706,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 		s.Summary = textutil.Truncate(out.Summary, 2000)
 		s.Questions = out.Questions
 		s.NeedsInputCause, s.NeedsInputURL = out.NeedsInputCause, out.NeedsInputURL
+		s.UncommittedLines = r.leftLines // the next run's Prepare drops older ones
 		s.CostUSD = aiv1.AddCost(s.CostUSD, out.CostUSD)
 		if out.Branch != "" {
 			s.Branch = out.Branch
@@ -913,6 +920,12 @@ func (r *Runner) invokeOn(ctx context.Context, role aiv1.RoleSpec, inv Invocatio
 				}
 				// A call that was never sent is not recorded below.
 				_, cpSHA = r.checkpoint(ctx, cpReason, cpRes, lost != nil && lost.notSent)
+			}
+			if implementerKind(inv.Kind) {
+				r.implLeft, r.implCut = 0, cpReason != ""
+				if res != nil && res.CallUsage != nil && cpSHA == "" {
+					r.implLeft = res.CallUsage.LinesAdded + res.CallUsage.LinesDeleted
+				}
 			}
 			if lost == nil || !lost.notSent {
 				c := r.newCall(role.Engine, inv, res, start)

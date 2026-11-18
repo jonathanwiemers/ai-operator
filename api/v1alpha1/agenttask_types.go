@@ -1447,6 +1447,12 @@ type RunStatus struct {
 	// +optional
 	Checkpoint *CheckpointStatus `json:"checkpoint,omitempty"`
 
+	// UncommittedLines are the lines (added + deleted) a failed run left
+	// uncommitted in the workspace, not saved on the branch: a retry
+	// discards them. Each run's end sets it again.
+	// +optional
+	UncommittedLines int64 `json:"uncommittedLines,omitempty"`
+
 	// RunCheckpoints are the task's pushed checkpoints that no agent call
 	// carries (a budget stop, or a lost pod or OOM kill the next pod saved
 	// the work of), newest last; AppendRunCheckpoint keeps the last
@@ -1509,8 +1515,9 @@ type CheckpointStatus struct {
 	// Branch it was pushed to.
 	Branch string `json:"branch"`
 
-	// Reason the call was cut off: usage-limit, engine-error, timeout or
-	// budget-stop.
+	// Reason the call was cut off: usage-limit, engine-error, timeout,
+	// budget-stop, container-restart, pod-lost, oom-kill, or run-failed (the
+	// run failed after its call, e.g. its answer did not decode).
 	Reason string `json:"reason"`
 
 	// Run is the run (status.run.runCount after it) and Step the
@@ -1541,8 +1548,8 @@ type CheckpointStatus struct {
 // RunCheckpoint is a pushed checkpoint no agent call carries
 // (RunStatus.RunCheckpoints).
 type RunCheckpoint struct {
-	// Reason the work was cut off: budget-stop, pod-lost, oom-kill or
-	// container-restart.
+	// Reason the work was cut off: budget-stop, pod-lost, oom-kill,
+	// container-restart or run-failed.
 	Reason string `json:"reason"`
 
 	// SHA is the checkpoint commit.

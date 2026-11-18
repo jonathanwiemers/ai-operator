@@ -4578,6 +4578,13 @@ export interface RunStatus {
    */
   checkpoint?: CheckpointStatus;
   /**
+   * UncommittedLines are the lines (added + deleted) a failed run left
+   * uncommitted in the workspace, not saved on the branch: a retry
+   * discards them. Each run's end sets it again.
+   * +optional
+   */
+  uncommittedLines?: number /* int64 */;
+  /**
    * RunCheckpoints are the task's pushed checkpoints that no agent call
    * carries (a budget stop, or a lost pod or OOM kill the next pod saved
    * the work of), newest last; AppendRunCheckpoint keeps the last
@@ -4661,8 +4668,9 @@ export interface CheckpointStatus {
    */
   branch: string;
   /**
-   * Reason the call was cut off: usage-limit, engine-error, timeout or
-   * budget-stop.
+   * Reason the call was cut off: usage-limit, engine-error, timeout,
+   * budget-stop, container-restart, pod-lost, oom-kill, or run-failed (the
+   * run failed after its call, e.g. its answer did not decode).
    */
   reason: string;
   /**
@@ -4706,8 +4714,8 @@ export interface CheckpointStatus {
  */
 export interface RunCheckpoint {
   /**
-   * Reason the work was cut off: budget-stop, pod-lost, oom-kill or
-   * container-restart.
+   * Reason the work was cut off: budget-stop, pod-lost, oom-kill,
+   * container-restart or run-failed.
    */
   reason: string;
   /**

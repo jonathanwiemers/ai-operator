@@ -412,6 +412,7 @@ func TestEndCutKeepsInFlightForALostAgent(t *testing.T) {
 		st := &state{}
 		r.cut = &cutTarget{st: st, branch: cpBranch}
 		r.setInFlight(st, mark)
+		r.implCut = true // the call's cut tried its checkpoint: none for run-failed
 		r.endCut(ctx, tc.err)
 		disk, _ := r.loadState()
 		if r.cut != nil || (disk.InFlight != nil) != tc.keep || (st.InFlight != nil) != tc.keep {

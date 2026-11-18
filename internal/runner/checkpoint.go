@@ -26,6 +26,8 @@ const (
 	// cutPodLost and cutOOMKill are saved by the next pod (lostAttempt).
 	cutPodLost = "pod-lost"
 	cutOOMKill = "oom-kill"
+	// cutRunFailed: the implementer part failed after its call (endCut).
+	cutRunFailed = "run-failed"
 )
 
 // checkpointTimeout bounds a checkpoint, which also runs when the pod stops.
@@ -194,6 +196,7 @@ func (r *Runner) saveCheckpoint(ctx context.Context, reason string, res *Result,
 	if err := r.patchRun(ctx, func(st *aiv1.RunStatus) {
 		st.Checkpoint = &aiv1.CheckpointStatus{SHA: r.checkpointHead, Branch: cut.branch, Reason: reason, Run: runNo, Step: int32(cut.step),
 			Files: int32(cp.Files), Added: cp.Added, Deleted: cp.Deleted, Skipped: paths, At: at}
+		st.UncommittedLines = 0
 		if noCall {
 			aiv1.AppendRunCheckpoint(st, aiv1.RunCheckpoint{Reason: reason, SHA: r.checkpointHead, Run: runNo, Step: int32(cut.step),
 				Files: int32(cp.Files), Added: cp.Added, Deleted: cp.Deleted, At: at})
@@ -301,16 +304,34 @@ func (r *Runner) setInFlight(st *state, v *inFlight) {
 // endCut ends the implementer part of the run: no more checkpoints, and the
 // in-flight marker goes. It stays when the run ends because the agent
 // container was lost or the pod is stopping: the next attempt saves what
-// the call left in the workspace.
+// the call left in the workspace. When it ends with any other error, the
+// work tree is saved as a run-failed checkpoint before the failure note,
+// unless a usage limit, a budget stop or the call's cut saved it already;
+// lines that stay unsaved go to leftLines.
 func (r *Runner) endCut(ctx context.Context, err error) {
-	cut := r.cut
-	r.cut = nil
+	left, tried := r.implLeft, r.implCut
+	r.implLeft, r.implCut = 0, false
 	var lost *AgentLostError
 	var conn *agentConnError
-	if cut == nil || cut.st == nil || errors.As(err, &lost) || errors.As(err, &conn) || ctx.Err() != nil {
+	if errors.As(err, &lost) || errors.As(err, &conn) || ctx.Err() != nil {
+		r.cut = nil
 		return
 	}
-	r.setInFlight(cut.st, nil)
+	if _, limited := AsUsageLimit(err); err != nil && !limited && !isBudgetStop(err) {
+		if !tried {
+			if cp, sha := r.checkpoint(ctx, cutRunFailed, nil, true); sha != "" {
+				left = 0
+			} else if cp != nil && cp.SHA != "" {
+				left = cp.Added + cp.Deleted // committed, not pushed
+			}
+		}
+		r.leftLines = left
+	}
+	cut := r.cut
+	r.cut = nil
+	if cut != nil && cut.st != nil {
+		r.setInFlight(cut.st, nil)
+	}
 }
 
 // checkpointLostAttempt runs between the mirror's sync and Prepare, which
@@ -411,6 +432,7 @@ var cutWords = map[string]string{
 	cutContainerRestart: "the agent container restarted",
 	cutPodLost:          "the pod was lost",
 	cutOOMKill:          "the agent container ran out of memory",
+	cutRunFailed:        "the run failed",
 }
 
 // checkpointLines renders what the checkpoints of a run did, for the run

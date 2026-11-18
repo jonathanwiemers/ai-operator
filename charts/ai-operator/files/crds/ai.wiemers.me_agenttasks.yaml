@@ -4006,8 +4006,9 @@ spec:
                         type: integer
                       reason:
                         description: |-
-                          Reason the call was cut off: usage-limit, engine-error, timeout or
-                          budget-stop.
+                          Reason the call was cut off: usage-limit, engine-error, timeout,
+                          budget-stop, container-restart, pod-lost, oom-kill, or run-failed (the
+                          run failed after its call, e.g. its answer did not decode).
                         type: string
                       run:
                         description: |-
@@ -4427,8 +4428,8 @@ spec:
                           type: integer
                         reason:
                           description: |-
-                            Reason the work was cut off: budget-stop, pod-lost, oom-kill or
-                            container-restart.
+                            Reason the work was cut off: budget-stop, pod-lost, oom-kill,
+                            container-restart or run-failed.
                           type: string
                         run:
                           description: |-
@@ -4457,6 +4458,13 @@ spec:
                   summary:
                     description: Summary of the most recent run.
                     type: string
+                  uncommittedLines:
+                    description: |-
+                      UncommittedLines are the lines (added + deleted) a failed run left
+                      uncommitted in the workspace, not saved on the branch: a retry
+                      discards them. Each run's end sets it again.
+                    format: int64
+                    type: integer
                   usageLimits:
                     description: |-
                       UsageLimits are the limits this task's runs hit: those they went
