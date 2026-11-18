@@ -23,6 +23,7 @@ const (
 	DefaultPollInterval    = time.Minute
 	DefaultIdleTimeout     = time.Minute
 	DefaultChatIdleTimeout = 15 * time.Minute
+	DefaultProblemWarmMax  = 2 * time.Hour
 	DefaultRetentionPeriod = 7 * 24 * time.Hour
 	DefaultMaxRunsPerTask  = 20
 
@@ -201,6 +202,9 @@ func (l LifecycleSpec) WithDefaults() LifecycleSpec {
 	}
 	if l.ChatIdleTimeout.Duration == 0 {
 		l.ChatIdleTimeout = metav1.Duration{Duration: DefaultChatIdleTimeout}
+	}
+	if l.ProblemWarmMax.Duration == 0 {
+		l.ProblemWarmMax = metav1.Duration{Duration: DefaultProblemWarmMax}
 	}
 	if l.RetentionPeriod.Duration == 0 {
 		l.RetentionPeriod = metav1.Duration{Duration: DefaultRetentionPeriod}

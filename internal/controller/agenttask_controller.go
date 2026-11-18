@@ -146,6 +146,10 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// A run stopped by the budget (spec.budgetStop) waits for it to be
 	// raised without a pod; chat turns still get one.
 	budgetWait := pending && !inProgress && task.Spec.BudgetStop
+	// A warm task (spec.warmUntil, spec.warmRequestedAt) keeps or gets a pod
+	// without a run: the pilot answers at once while a problem is open.
+	warmUntil := task.WarmUntil(lc.ChatIdleTimeout.Duration)
+	warm := now.Before(warmUntil)
 	needsPod := pending && !budgetWait || hasChat
 	// The pilot answers many messages; pilot.maxBudgetUSD bounds it.
 	blocked := pending && !inProgress && task.Status.Run.RunCount >= lc.MaxRunsPerTask && task.Spec.Type != aiv1.TaskTypeCoordinate
@@ -183,7 +187,7 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 
 	var result ctrl.Result
 	switch {
-	case needsPod && !blocked && !waiting && !task.Spec.Suspend:
+	case (needsPod || warm && pod == nil) && !blocked && !waiting && !task.Spec.Suspend:
 		if pvc == nil {
 			pvc = buildWorkspaceClaim(&task, spec)
 			if err := controllerutil.SetControllerReference(&task, pvc, r.Scheme); err != nil {
@@ -211,7 +215,7 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				}
 				// A run that lost its pod keeps its place, and somebody is
 				// waiting for a chat turn: they only need a free slot.
-				if inProgress || hasChat && !pending {
+				if inProgress || (hasChat || warm) && !pending {
 					q.ahead = nil
 				}
 				if !q.admit(int(spec.MaxConcurrentRuns)) {
@@ -233,8 +237,10 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		task.Status.Phase = aiv1.TaskPhaseRunning
 		if pending && !budgetWait {
 			task.Status.Message = fmt.Sprintf("run %d requested", task.Spec.RunRequest)
-		} else {
+		} else if hasChat {
 			task.Status.Message = "answering chat"
+		} else {
+			task.Status.Message = "starting pod, kept warm until " + warmUntil.UTC().Format(time.RFC3339)
 		}
 
 	case pod != nil:
@@ -251,11 +257,11 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 			chatIdleFor = now.Sub(chat.LastTurnTime.Time)
 			chatKeeps = chatIdleFor < chatTimeout
 		}
-		idleExpired := idleFor >= idleTimeout && !chatKeeps
+		idleExpired := idleFor >= idleTimeout && !chatKeeps && !warm
 		if !blocked && !task.Spec.Suspend && idleExpired {
 			// The cache can lag behind a run request or chat message that
 			// came in just now: check the API server before stopping the pod.
-			if fresh, err := r.freshNeedsPod(ctx, &task); err != nil {
+			if fresh, err := r.freshNeedsPod(ctx, &task, now, lc.ChatIdleTimeout.Duration); err != nil {
 				return ctrl.Result{}, err
 			} else if fresh {
 				return ctrl.Result{RequeueAfter: time.Second}, nil
@@ -283,6 +289,10 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 				if d := remaining(chatTimeout, chatIdleFor); idleFor >= idleTimeout || d < result.RequeueAfter {
 					result.RequeueAfter = d
 				}
+			}
+			// Requeue at warmUntil, so the pod hibernates once it passes.
+			if d := warmUntil.Sub(now) + time.Second; warm && (idleFor >= idleTimeout && !chatKeeps || d < result.RequeueAfter) {
+				result.RequeueAfter = d
 			}
 		}
 
@@ -460,7 +470,7 @@ func (r *AgentTaskReconciler) getClaim(ctx context.Context, task *aiv1.AgentTask
 
 // freshNeedsPod reports whether the task, read from the API server, needs its
 // pod for a pending run, an in-progress run, or unanswered chat messages.
-func (r *AgentTaskReconciler) freshNeedsPod(ctx context.Context, task *aiv1.AgentTask) (bool, error) {
+func (r *AgentTaskReconciler) freshNeedsPod(ctx context.Context, task *aiv1.AgentTask, now time.Time, chatIdleTimeout time.Duration) (bool, error) {
 	if r.APIReader == nil {
 		return false, nil
 	}
@@ -470,7 +480,8 @@ func (r *AgentTaskReconciler) freshNeedsPod(ctx context.Context, task *aiv1.Agen
 	}
 	return fresh.RunPending() && !fresh.Spec.BudgetStop ||
 		fresh.Status.Run.ActiveRunRequest > fresh.Status.Run.ObservedRunRequest ||
-		fresh.HasChatTurns(), nil
+		fresh.HasChatTurns() ||
+		now.Before(fresh.WarmUntil(chatIdleTimeout)), nil
 }
 
 // runInProgress checks with the API server whether the runner is in a run;

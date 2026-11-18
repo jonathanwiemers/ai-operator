@@ -1,6 +1,8 @@
 package v1alpha1
 
 import (
+	"time"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -110,6 +112,18 @@ type AgentTaskSpec struct {
 	// waits until the flag is cleared. Desk chat turns still run.
 	// +optional
 	BudgetStop bool `json:"budgetStop,omitempty"`
+
+	// WarmUntil is written by the operator: the pod is kept up, or
+	// started, until this time, also without a run or chat turn. It starts
+	// no run; an idle pod costs no tokens. Suspend wins.
+	// +optional
+	WarmUntil *metav1.Time `json:"warmUntil,omitempty"`
+
+	// WarmRequestedAt is written by the Desk: it keeps the pod up, or
+	// starts it, for lifecycle.chatIdleTimeout from this time, like
+	// WarmUntil.
+	// +optional
+	WarmRequestedAt *metav1.Time `json:"warmRequestedAt,omitempty"`
 
 	// Repos are the milestone's "/agent repo <project> [merge]" lines (spec
 	// tasks), each with the problem that makes the operator ignore it: a
@@ -1825,6 +1839,20 @@ func init() {
 // finished yet.
 func (t *AgentTask) RunPending() bool {
 	return t.Spec.RunRequest > t.Status.Run.ObservedRunRequest
+}
+
+// WarmUntil returns until when the pod is kept warm: the later of
+// spec.warmUntil and spec.warmRequestedAt plus chatIdleTimeout. Zero
+// without either.
+func (t *AgentTask) WarmUntil(chatIdleTimeout time.Duration) time.Time {
+	var until time.Time
+	if w := t.Spec.WarmUntil; w != nil {
+		until = w.Time
+	}
+	if r := t.Spec.WarmRequestedAt; r != nil && r.Add(chatIdleTimeout).After(until) {
+		until = r.Add(chatIdleTimeout)
+	}
+	return until
 }
 
 // HasChatTurns reports whether the task has unanswered Desk chat messages

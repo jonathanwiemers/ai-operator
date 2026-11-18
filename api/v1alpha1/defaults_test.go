@@ -60,6 +60,9 @@ func TestLifecycleDefaults(t *testing.T) {
 	if l.ChatIdleTimeout.Duration != DefaultChatIdleTimeout {
 		t.Fatalf("ChatIdleTimeout = %v", l.ChatIdleTimeout)
 	}
+	if l.ProblemWarmMax.Duration != 2*time.Hour {
+		t.Fatalf("ProblemWarmMax = %v", l.ProblemWarmMax)
+	}
 	if l.StallAfter.Duration != DefaultStallAfter {
 		t.Fatalf("StallAfter = %v", l.StallAfter)
 	}

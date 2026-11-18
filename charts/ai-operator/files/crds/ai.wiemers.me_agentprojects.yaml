@@ -2100,6 +2100,13 @@ spec:
                     default: 1h
                     description: MaxUsageLimitBackoff caps the wait between retries.
                     type: string
+                  problemWarmMax:
+                    default: 2h
+                    description: |-
+                      ProblemWarmMax caps how long the operator keeps a milestone's pilot
+                      pod up while a problem waits for an owner, counted from when the
+                      problem opened. An idle pod costs no tokens, only its resources.
+                    type: string
                   retentionPeriod:
                     default: 168h
                     description: |-

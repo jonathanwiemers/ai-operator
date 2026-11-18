@@ -464,6 +464,12 @@ stateDiagram-v2
   Desk chat turn it waits `lifecycle.chatIdleTimeout` (default 15m) from
   `status.chat.lastTurnTime` instead; unanswered chat turns (not commands)
   keep the pod up like a pending run (see [Desk live chat](#desk-live-chat)).
+  A warm task keeps its pod, or gets one, without a run until the later of
+  `spec.warmUntil` (written by the operator, capped by
+  `lifecycle.problemWarmMax`) and `spec.warmRequestedAt` plus
+  `chatIdleTimeout` (written by the Desk); then the rules above apply.
+  Warmth starts no run, does not count toward `maxRunsPerTask` and loses to
+  `spec.suspend`.
 * **Hibernated**: pod deleted, PVC kept. This is the normal state between
   runs: no CPU or memory is held. Waking up costs a pod start; the checkout,
   build cache and agent session are still there. A warm pod would not keep

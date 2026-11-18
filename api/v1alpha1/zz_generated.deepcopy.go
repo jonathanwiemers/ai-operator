@@ -730,6 +730,14 @@ func (in *AgentTaskSpec) DeepCopyInto(out *AgentTaskSpec) {
 		*out = new(FollowUpOf)
 		(*in).DeepCopyInto(*out)
 	}
+	if in.WarmUntil != nil {
+		in, out := &in.WarmUntil, &out.WarmUntil
+		*out = (*in).DeepCopy()
+	}
+	if in.WarmRequestedAt != nil {
+		in, out := &in.WarmRequestedAt, &out.WarmRequestedAt
+		*out = (*in).DeepCopy()
+	}
 	if in.Repos != nil {
 		in, out := &in.Repos, &out.Repos
 		*out = make([]MilestoneRepo, len(*in))
@@ -1881,6 +1889,7 @@ func (in *LifecycleSpec) DeepCopyInto(out *LifecycleSpec) {
 	*out = *in
 	out.IdleTimeout = in.IdleTimeout
 	out.ChatIdleTimeout = in.ChatIdleTimeout
+	out.ProblemWarmMax = in.ProblemWarmMax
 	out.RetentionPeriod = in.RetentionPeriod
 	out.UsageLimitBackoff = in.UsageLimitBackoff
 	out.MaxUsageLimitBackoff = in.MaxUsageLimitBackoff

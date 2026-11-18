@@ -978,6 +978,13 @@ type LifecycleSpec struct {
 	// +optional
 	ChatIdleTimeout metav1.Duration `json:"chatIdleTimeout,omitempty"`
 
+	// ProblemWarmMax caps how long the operator keeps a milestone's pilot
+	// pod up while a problem waits for an owner, counted from when the
+	// problem opened. An idle pod costs no tokens, only its resources.
+	// +kubebuilder:default="2h"
+	// +optional
+	ProblemWarmMax metav1.Duration `json:"problemWarmMax,omitempty"`
+
 	// RetentionPeriod after the last activity after which the workspace PVC is
 	// deleted as well.
 	// +kubebuilder:default="168h"

@@ -1278,6 +1278,14 @@ export interface LifecycleSpec {
    */
   chatIdleTimeout?: string;
   /**
+   * ProblemWarmMax caps how long the operator keeps a milestone's pilot
+   * pod up while a problem waits for an owner, counted from when the
+   * problem opened. An idle pod costs no tokens, only its resources.
+   * +kubebuilder:default="2h"
+   * +optional
+   */
+  problemWarmMax?: string;
+  /**
    * RetentionPeriod after the last activity after which the workspace PVC is
    * deleted as well.
    * +kubebuilder:default="168h"
@@ -2815,6 +2823,20 @@ export interface AgentTaskSpec {
    * +optional
    */
   budgetStop?: boolean;
+  /**
+   * WarmUntil is written by the operator: the pod is kept up, or
+   * started, until this time, also without a run or chat turn. It starts
+   * no run; an idle pod costs no tokens. Suspend wins.
+   * +optional
+   */
+  warmUntil?: string;
+  /**
+   * WarmRequestedAt is written by the Desk: it keeps the pod up, or
+   * starts it, for lifecycle.chatIdleTimeout from this time, like
+   * WarmUntil.
+   * +optional
+   */
+  warmRequestedAt?: string;
   /**
    * Repos are the milestone's "/agent repo <project> [merge]" lines (spec
    * tasks), each with the problem that makes the operator ignore it: a

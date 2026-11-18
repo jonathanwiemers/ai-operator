@@ -990,6 +990,20 @@ spec:
                 - Implement
                 - Coordinate
                 type: string
+              warmRequestedAt:
+                description: |-
+                  WarmRequestedAt is written by the Desk: it keeps the pod up, or
+                  starts it, for lifecycle.chatIdleTimeout from this time, like
+                  WarmUntil.
+                format: date-time
+                type: string
+              warmUntil:
+                description: |-
+                  WarmUntil is written by the operator: the pod is kept up, or
+                  started, until this time, also without a run or chat turn. It starts
+                  no run; an idle pod costs no tokens. Suspend wins.
+                format: date-time
+                type: string
             required:
             - projectRef
             - type

@@ -35,6 +35,7 @@ between [runs](../concepts/glossary.md#run).
 |-------|---------|---------|
 | `idleTimeout` | After the last run, the pod is stopped; the workspace stays. A longer timeout only saves the pod start. After a failed run the pod stays at least 1h, so you can read its logs. | `1m` |
 | `chatIdleTimeout` | After the last Desk chat turn, how long an idle pod stays. Unanswered chat messages keep the pod up. | `15m` |
+| `problemWarmMax` | While a problem waits for you, the longest time the milestone's pilot pod is kept up, so it answers without a cold start. An idle pod costs no tokens. | `2h` |
 | `retentionPeriod` | After the last run, the workspace is deleted. | `168h` (7 days) |
 | `maxRunsPerTask` | The task is `Blocked` when it reaches this many runs. Runs paused by usage limits do not count. | `20` |
 | `usageLimitBackoff` | First wait after a usage or rate limit that names no reset time. It doubles with each further hit. | `5m` |
