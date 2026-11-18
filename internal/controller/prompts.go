@@ -22,7 +22,8 @@ import (
 // per milestone on the spec task.
 
 // addPrompt gives p the milestone's next id and posts it open on holder,
-// where it supersedes the open prompt of the same source. st is the
+// where it supersedes the open prompt of the same source and, as an
+// assessment of an issue, every open assessment of that issue. st is the
 // milestone's spec task, whose counter the id comes from; nil (an issue
 // without a milestone) takes the holder's own. A holder other than st is a
 // second write: a crash between the two leaves a gap in the ids, no
@@ -45,7 +46,7 @@ func (r *AgentProjectReconciler) addPrompt(ctx context.Context, gl gitlab.API, s
 	var dropped []aiv1.Prompt
 	add := func(list []aiv1.Prompt) []aiv1.Prompt {
 		for i := range list {
-			if q := &list[i]; !q.State.Closed() && p.Source.Key != "" && q.Source.Kind == p.Source.Kind && q.Source.Key == p.Source.Key {
+			if q := &list[i]; !q.State.Closed() && (sameSource(*q, p) || sameProblem(*q, p)) {
 				q.State, q.ClosedAt = aiv1.PromptSuperseded, &now
 				q.ClosedReason, q.ClosedBy, q.ReplacedBy = aiv1.ClosedReplaced, aiv1.ResolvedByOperator, p.ID
 			}
@@ -75,6 +76,18 @@ func (r *AgentProjectReconciler) addPrompt(ctx context.Context, gl gitlab.API, s
 		log.FromContext(ctx).Info("open prompt superseded: the list is full", "task", holder.Name, "prompt", q.ID, "by", p.ID)
 	}
 	return p, nil
+}
+
+// sameSource reports whether p replaces q by its source: same kind and key.
+func sameSource(q, p aiv1.Prompt) bool {
+	return p.Source.Key != "" && q.Source.Kind == p.Source.Kind && q.Source.Key == p.Source.Key
+}
+
+// sameProblem reports whether p replaces q as the one open assessment of an
+// issue's problem, whatever their keys.
+func sameProblem(q, p aiv1.Prompt) bool {
+	return p.Source.Kind == aiv1.PromptAssessment && q.Source.Kind == aiv1.PromptAssessment &&
+		p.Source.IssueIID != 0 && q.Source.IssueIID == p.Source.IssueIID
 }
 
 // boundPrompts keeps the newest aiv1.MaxPrompts of list (newest last),

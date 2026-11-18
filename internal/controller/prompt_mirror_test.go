@@ -72,7 +72,7 @@ func TestPromptIsPostedOnceOnItsSource(t *testing.T) {
 	e.addPrompt(st, st, trackingPrompt())
 	e.addPrompt(st, st, issuePrompt(aiv1.PromptAssessment, 1))
 	mr := issuePrompt(aiv1.PromptAssessment, 1)
-	mr.Source.MRIID, mr.Quiet = 5, true
+	mr.Source.IssueIID, mr.Source.MRIID, mr.Quiet = 0, 5, true // with #1 it would supersede Q2: one per issue
 	e.addPrompt(st, st, mr)
 	e.reconcile()
 	e.reconcile()
@@ -485,7 +485,7 @@ func TestPromptsMirroredBeforeTheOptionsDigest(t *testing.T) {
 	st := e.task(specTaskName)
 	e.addPrompt(st, st, trackingPrompt())
 	mr := issuePrompt(aiv1.PromptAssessment, 1)
-	mr.Source.MRIID = 5
+	mr.Source.IssueIID, mr.Source.MRIID = 0, 5 // with #1 the next one would supersede it: one per issue
 	e.addPrompt(st, st, mr)
 	e.addPrompt(st, st, issuePrompt(aiv1.PromptAssessment, 1))
 	e.reconcile()

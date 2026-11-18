@@ -378,6 +378,11 @@ func (r *AgentProjectReconciler) optionsPrompt(ctx context.Context, gl gitlab.AP
 		Context:  textutil.Truncate(p.Context, aiv1.MaxPromptContext-len("…")),
 		Options:  slices.Clone(p.Options),
 	}
+	// A pause's assessment belongs to the problem of the issue it holds up.
+	if key := strings.TrimPrefix(p.Source, "event/"); q.Source.IssueIID == 0 && q.Source.Kind == aiv1.PromptAssessment &&
+		(strings.HasPrefix(key, "pause-") || strings.HasPrefix(key, aiv1.StalledEventPrefix)) {
+		q.Source.IssueIID = aiv1.ProblemIssue(st.Status.Autopilot)
+	}
 	if _, err := r.validOptions(ctx, gl, project, spec, st, tasks, opened, &q, true); err != nil {
 		log.FromContext(ctx).Info("the pilot's options leave nothing the operator runs", "task", st.Name, "source", p.Source, "error", err.Error())
 		q.Options = []aiv1.PromptOption{{ID: "A", Label: "Look into it myself", Recommended: true}, {ID: "B", Label: "Do nothing"}}

@@ -137,6 +137,90 @@ func TestPromptSupersedesTheOpenPromptOfItsSource(t *testing.T) {
 	}
 }
 
+// assessment is the pilot's assessment of event key about issue iid.
+func assessment(iid int64, key string) aiv1.Prompt {
+	p := mainPrompt(key)
+	p.Source = aiv1.PromptSource{Kind: aiv1.PromptAssessment, IssueIID: iid, Key: key}
+	return p
+}
+
+// One problem, one open assessment: a hold's assessment of an issue
+// supersedes the assessment of the pause over it, whatever its key.
+func TestPromptAssessmentSupersedesTheOpenAssessmentOfItsIssue(t *testing.T) {
+	e := newManagedEnv(t)
+	st := e.task(specTaskName)
+	e.addPrompt(st, st, assessment(558, "event/pause-abc/0/"))                                                        // Q1: the pause, held #558
+	e.addPrompt(st, st, assessment(0, "event/pause-def/0/"))                                                          // Q2: a pause over the milestone
+	e.addPrompt(st, st, assessment(559, "event/stuck/559/"))                                                          // Q3: another issue
+	e.addPrompt(st, st, aiv1.Prompt{Source: aiv1.PromptSource{Kind: aiv1.PromptBudget, IssueIID: 558, Key: "budget"}, // Q4
+		Question: "Raise the budget?", Options: []aiv1.PromptOption{{ID: "A", Label: "Raise", Recommended: true}, {ID: "B", Label: "Stop"}}})
+	e.addPrompt(st, st, assessment(558, "event/stuck/558/sha1")) // Q5: the hold of #558
+	if got := promptStates(e.task(specTaskName)); got != "Q1=superseded Q2=open Q3=open Q4=open Q5=open" {
+		t.Fatalf("only the open assessment of #558 goes: %s", got)
+	}
+	if q := e.task(specTaskName).Status.Prompts[0]; q.ClosedAt == nil ||
+		closeOf(q.ClosedReason, q.ClosedBy, q.ReplacedBy) != closeOf(aiv1.ClosedReplaced, aiv1.ResolvedByOperator, "Q5") {
+		t.Fatalf("the pause's assessment is replaced by the hold's: %+v", q)
+	}
+
+	// A pause without its issue supersedes by key only.
+	st = e.task(specTaskName)
+	e.addPrompt(st, st, assessment(0, "event/pause-ghi/0/"))
+	if got := promptStates(e.task(specTaskName)); got != "Q1=superseded Q2=open Q3=open Q4=open Q5=open Q6=open" {
+		t.Fatalf("an assessment without an issue leaves the others: %s", got)
+	}
+	e.addPrompt(st, st, assessment(0, "event/pause-def/0/"))
+	if got := promptStates(e.task(specTaskName)); got != "Q1=superseded Q2=superseded Q3=open Q4=open Q5=open Q6=open Q7=open" {
+		t.Fatalf("the same pause again replaces its own: %s", got)
+	}
+
+	// An agent's question on the issue's task is no assessment: it stays.
+	impl := e.taskOf(1)
+	e.addPrompt(e.task(specTaskName), e.task(impl), agentQuestion(1))
+	st = e.task(specTaskName)
+	e.addPrompt(st, st, assessment(1, "event/stuck/1/"))
+	if got := promptStates(e.task(impl)); got != "Q8=open" {
+		t.Fatalf("the agent's question stays open: %s", got)
+	}
+}
+
+// The assessment of a pause carries the issue the pause holds up.
+func TestPromptAssessmentOfAPauseCarriesItsIssue(t *testing.T) {
+	e := newManagedEnv(t)
+	var project aiv1.AgentProject
+	if err := e.c.Get(e.ctx, types.NamespacedName{Namespace: ns, Name: "shop"}, &project); err != nil {
+		t.Fatal(err)
+	}
+	st := e.task(specTaskName)
+	tasks, err := e.r.issueTasks(e.ctx, &project, st.Spec.Milestone.IID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	held := aiv1.AutopilotItem{IID: 558, State: aiv1.AutopilotItemActive, Hold: &aiv1.ItemHold{Kind: aiv1.PauseCIRed, Reason: "red"}}
+	options := []aiv1.PromptOption{{Label: "Look", Recommended: true}, {Label: "Do nothing"}}
+	for _, c := range []struct {
+		name, key string
+		kind      aiv1.PromptKind
+		trigger   int64
+		items     []aiv1.AutopilotItem
+		want      int64
+	}{
+		{"a pause with one held issue", "event/pause-abc/0/", aiv1.PromptAssessment, 0, []aiv1.AutopilotItem{held}, 558},
+		{"a stalled pause", "event/" + aiv1.StalledEventPrefix + "1762300000@3", aiv1.PromptAssessment, 0, []aiv1.AutopilotItem{held}, 558},
+		{"a pause with two held issues", "event/pause-abc/0/", aiv1.PromptAssessment, 0, []aiv1.AutopilotItem{held, {IID: 559, State: aiv1.AutopilotItemActive, Hold: held.Hold}}, 0},
+		{"a pause with none held", "event/pause-abc/0/", aiv1.PromptAssessment, 0, nil, 0},
+		{"another event", "event/review-rounds/7/", aiv1.PromptAssessment, 0, []aiv1.AutopilotItem{held}, 0},
+		{"main health", "event/pause-abc/0/", aiv1.PromptMainHealth, 0, []aiv1.AutopilotItem{held}, 0},
+		{"an event with its issue", "event/stuck/1/", aiv1.PromptAssessment, 1, []aiv1.AutopilotItem{held}, 1},
+	} {
+		st.Status.Autopilot = &aiv1.AutopilotStatus{Phase: aiv1.AutopilotPaused, Items: c.items}
+		p := aiv1.PilotProposal{Source: c.key, Trigger: c.trigger, Kind: c.kind, Question: "what now?", Options: options}
+		if q := e.r.optionsPrompt(e.ctx, e.gl, &project, project.Spec, st, tasks, nil, p); q.Source.IssueIID != c.want {
+			t.Errorf("%s: issue %d, want %d", c.name, q.Source.IssueIID, c.want)
+		}
+	}
+}
+
 func TestPromptListIsBounded(t *testing.T) {
 	now := metav1.NewTime(time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC))
 	list := func(states ...aiv1.PromptState) []aiv1.Prompt {
