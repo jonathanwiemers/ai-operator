@@ -1,4 +1,5 @@
 import type { ChatCommand } from './chatState'
+import type { Facts } from './generated/problem'
 import type { PromptOptionView, PromptView } from './types'
 
 // maxAnswerText bounds an answer's free text in bytes (api/v1alpha1
@@ -25,6 +26,16 @@ export function promptOptions(view: PromptView): PromptOptionLine[] {
     if (o.fromAnswer) tags.push('from your answer')
     return { ...o, actions: o.actions || [], tags, chosen: !!chosen && o.id === chosen }
   })
+}
+
+// retryWarning is the Desk's fixed warning on an option that retries while
+// the problem's facts show uncommitted lines (Decision 7: Prepare resets
+// the workspace), whatever the pilot wrote; empty otherwise.
+export function retryWarning(option: Pick<PromptOptionView, 'tools'>, facts?: Pick<Facts, 'saved'>): string {
+  const lines = facts?.saved?.uncommittedLines || 0
+  if (lines <= 0 || !option.tools?.includes('retry')) return ''
+  const what = lines === 1 ? 'line that is not on the branch is' : 'lines that are not on the branch are'
+  return `⚠ Retry resets the workspace: ${lines} uncommitted ${what} lost.`
 }
 
 // closedOptions splits a closed prompt's options for its card: the chosen

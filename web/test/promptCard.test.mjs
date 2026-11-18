@@ -12,6 +12,7 @@ import {
   promptStatus,
   readOnlyText,
   recommendedOption,
+  retryWarning,
   shortStatus,
   splitPrompts,
   textBox,
@@ -297,4 +298,27 @@ test('taskPrompts keeps open needsInput prompts and the newest closed one', asyn
   ])
   assert.deepEqual(got.map((x) => x.id), ['Q4', 'Q5'])
   assert.deepEqual(taskPrompts(undefined), [])
+})
+
+test('retryWarning warns on a retry option when the facts show uncommitted lines', () => {
+  const retry = option('A', 'Rerun #558', { tools: ['instruct', 'retry'] })
+  const facts = (saved) => ({ iid: 558, issue: { iid: 558, title: 'x', url: 'u' }, saved })
+  assert.equal(
+    retryWarning(retry, facts({ uncommittedLines: 348 })),
+    '⚠ Retry resets the workspace: 348 uncommitted lines that are not on the branch are lost.',
+  )
+  assert.equal(
+    retryWarning(retry, facts({ uncommittedLines: 1 })),
+    '⚠ Retry resets the workspace: 1 uncommitted line that is not on the branch is lost.',
+  )
+  // The pilot's consequence does not change it.
+  assert.match(retryWarning({ ...retry, consequence: 'nothing is lost' }, facts({ uncommittedLines: 5 })), /^⚠ Retry resets the workspace: 5 /)
+  // No uncommitted lines: saved work, none at all, no facts.
+  assert.equal(retryWarning(retry, facts({ sha: 'abc1234', lines: 348 })), '')
+  assert.equal(retryWarning(retry, facts({ uncommittedLines: 0 })), '')
+  assert.equal(retryWarning(retry, facts(undefined)), '')
+  assert.equal(retryWarning(retry, undefined), '')
+  // Other tools, or no actions, never warn.
+  assert.equal(retryWarning(option('B', 'Restart', { tools: ['restartRun', 'reReview'] }), facts({ uncommittedLines: 348 })), '')
+  assert.equal(retryWarning(option('C', 'Do nothing'), facts({ uncommittedLines: 348 })), '')
 })

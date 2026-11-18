@@ -4,11 +4,13 @@
 // Handled (#531: R14) lists one problem per issue with its prompts, the
 // pilot's actions and its pauses; Open (#581) shows one card per open
 // problem with its pause, hold and prompts; the card starts with the cause
-// line and the operator's facts (#582), shown on the #558 incident.
+// line and the operator's facts (#582), shown on the #558 incident, and its
+// options with their consequences and the retry warning (#583).
 // Run with npm run e2e (built UI, Chromium).
+import { join } from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
 import { answer, now } from './fixtures'
-import { incident558, incidentError } from './fixtures/problem'
+import { incident558, incident558Dirty, incidentError } from './fixtures/problem'
 import { paymentsMilestone } from './fixtures/stream'
 import { refundsPrompt, refundsTitle } from './fixtures/task'
 import type { MilestoneView, PromptView } from '../src/types'
@@ -221,6 +223,34 @@ for (const size of widths) {
     expect(problems).toEqual([])
   })
 
+  test(`the #558 options show their consequences and the retry warning@${size.width}`, async ({ page, baseURL }) => {
+    const problems = await open(page, baseURL, `${milestonePath}?tab=needs`, size, incident558)
+    const card = page.locator('[data-needs-open] #problem-558')
+    const q1 = card.locator('[data-prompt="Q1"]')
+    await expect(q1.locator('[data-consequence]')).toHaveText([
+      'starts a new run from the saved work, about $0.50',
+      '#559 and #560 wait until you unskip it',
+    ])
+    // The work is saved as a WIP commit: no warning.
+    await expect(card.locator('[data-retry-warning]')).toHaveCount(0)
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+    expect(overflow).toBeLessThanOrEqual(0)
+    expect(problems).toEqual([])
+  })
+
+  test(`a retry warns when the run left uncommitted lines@${size.width}`, async ({ page, baseURL }) => {
+    const problems = await open(page, baseURL, `${milestonePath}?tab=needs`, size, incident558Dirty)
+    const card = page.locator('[data-needs-open] #problem-558')
+    // Both prompts' retry option, not the skip option.
+    const warnings = card.locator('[data-retry-warning]')
+    await expect(warnings).toHaveCount(2)
+    await expect(warnings.first()).toHaveText('⚠ Retry resets the workspace: 348 uncommitted lines that are not on the branch are lost.')
+    await expect(card.locator('[data-prompt="Q1"] li').filter({ hasText: 'Skip #558' }).locator('[data-retry-warning]')).toHaveCount(0)
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+    expect(overflow).toBeLessThanOrEqual(0)
+    expect(problems).toEqual([])
+  })
+
   test(`a budget pause is a card of its own@${size.width}`, async ({ page, baseURL }) => {
     const problems = await open(page, baseURL, `${milestonePath}?tab=needs`, size, budget)
     const needs = page.locator('[data-needs-open]')
@@ -388,6 +418,26 @@ for (const size of widths) {
     const problems = await open(page, baseURL, `${milestonePath}?tab=needs`, size, quiet)
     await expect(page.locator('[data-needs-handled]')).toContainText('Nothing handled yet.')
     await expect(page.locator('[data-problem]')).toHaveCount(0)
+    expect(problems).toEqual([])
+  })
+}
+
+// The full #558 problem card in light, dark and at 375 px (R11), with the
+// retry warning: screenshots/needs-you-problem{,-dark,-375}.png.
+const shots = [
+  { name: 'needs-you-problem', size: widths[1]!, colorScheme: 'light' as const },
+  { name: 'needs-you-problem-dark', size: widths[1]!, colorScheme: 'dark' as const },
+  { name: 'needs-you-problem-375', size: widths[0]!, colorScheme: 'light' as const },
+]
+for (const shot of shots) {
+  test(`screenshot ${shot.name}`, async ({ page, baseURL }, testInfo) => {
+    await page.emulateMedia({ colorScheme: shot.colorScheme })
+    const problems = await open(page, baseURL, `${milestonePath}?tab=needs`, shot.size, incident558Dirty)
+    const card = page.locator('[data-needs-open] #problem-558')
+    await expect(card.locator('[data-retry-warning]').first()).toBeVisible()
+    const path = join(testInfo.project.outputDir, '..', 'screenshots', `${shot.name}.png`)
+    await card.screenshot({ path })
+    await testInfo.attach('screenshot', { path, contentType: 'image/png' })
     expect(problems).toEqual([])
   })
 }

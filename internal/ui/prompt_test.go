@@ -29,7 +29,7 @@ func TestPromptViews(t *testing.T) {
 				Context: "job `test` failed", AllowFreeText: true, PostedAt: &posted,
 				Options: []aiv1.PromptOption{
 					{ID: "A", Label: "Retry the job", Actions: []aiv1.PilotAction{{Tool: "retryPipeline", PipelineID: 9}}},
-					{ID: "B", Label: "Hand #40 to the agent", Detail: "it failed once", Recommended: true, Actions: []aiv1.PilotAction{{Tool: "fixFlaky", IssueIID: 40}}},
+					{ID: "B", Label: "Hand #40 to the agent", Detail: "it failed once", Consequence: "costs one run", Recommended: true, Actions: []aiv1.PilotAction{{Tool: "fixFlaky", IssueIID: 40}}},
 					{ID: "C", Label: "Ignore it"},
 				},
 			}
@@ -66,7 +66,7 @@ func TestPromptViews(t *testing.T) {
 	if !slices.Equal(order, []string{"B", "A", "C"}) {
 		t.Errorf("options %v, want the recommended one first", order)
 	}
-	if b := open.Options[0]; !b.Recommended || b.Detail != "it failed once" ||
+	if b := open.Options[0]; !b.Recommended || b.Detail != "it failed once" || b.Consequence != "costs one run" || !slices.Equal(b.Tools, []string{"fixFlaky"}) ||
 		!slices.Equal(b.Actions, []string{"fixFlaky #40: the flaky issue goes to the agent in this milestone"}) {
 		t.Errorf("option B = %+v", b)
 	}

@@ -24,6 +24,7 @@ import {
   type PauseAction,
   type PauseActionID,
 } from '../pauseCard'
+import type { Facts } from '../generated/problem'
 import type { HoldView, MilestoneView } from '../types'
 import Badge from './Badge.vue'
 import CompanionChip from './CompanionChip.vue'
@@ -45,7 +46,8 @@ import RelTime from './RelTime.vue'
 // With hold, the card is that issue's hold (R9): the kind, issue, reason,
 // head, review errors and exits come from it, and Resume lifts only it.
 // noReason: a problem card's cause line replaces the (generic) reason.
-const props = defineProps<{ namespace: string; name: string; milestone: MilestoneView; hold?: HoldView; noReason?: boolean }>()
+// facts: the problem's facts, for the warnings of its prompt's options.
+const props = defineProps<{ namespace: string; name: string; milestone: MilestoneView; hold?: HoldView; noReason?: boolean; facts?: Facts }>()
 
 const ap = computed(() => props.milestone.autopilot)
 const kind = computed(() => (props.hold ? props.hold.kind : ap.value?.pauseKind))
@@ -338,7 +340,7 @@ const wrap = '[overflow-wrap:anywhere]'
       </ul>
     </div>
 
-    <PromptCard v-if="prompt" :namespace="namespace" :name="name" :prompt="prompt" />
+    <PromptCard v-if="prompt" :namespace="namespace" :name="name" :prompt="prompt" :facts="facts" />
 
     <div v-else-if="shown.length" class="mt-1" :class="stack" data-pause-actions>
       <template v-for="s in shown" :key="s.action.id">

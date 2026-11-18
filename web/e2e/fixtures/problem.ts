@@ -16,6 +16,20 @@ const assess = (id: string): PromptView => ({
   kind: 'assessment',
   issueIID: 558,
   question: `${id}: rerun #558 with a hint to answer in JSON?`,
+  // Option consequences (#583): the retry one gets the Desk's warning when
+  // the facts show uncommitted lines (incident558Dirty).
+  options: [
+    {
+      id: 'A',
+      label: 'Rerun with a hint',
+      consequence: 'starts a new run from the saved work, about $0.50',
+      actions: ['instruct #558: the hint goes to its next run', 'retry #558: a new run starts'],
+      tools: ['instruct', 'retry'],
+      recommended: true,
+      fromAnswer: false,
+    },
+    { id: 'B', label: 'Skip #558', consequence: '#559 and #560 wait until you unskip it', actions: ['skip #558'], tools: ['skip'], recommended: false, fromAnswer: false },
+  ],
   state: 'open',
   answer: undefined,
   closedAt: undefined,
@@ -75,4 +89,11 @@ export const incident558: MilestoneView = {
       blocked: [559, 560],
     },
   ],
+}
+
+// incident558Dirty: the same incident with the run's 348 lines left
+// uncommitted in the workspace, not saved as a WIP commit.
+export const incident558Dirty: MilestoneView = {
+  ...incident558,
+  problems: [{ ...incident558.problems[0]!, saved: { uncommittedLines: 348 } }],
 }

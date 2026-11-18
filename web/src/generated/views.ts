@@ -1308,13 +1308,17 @@ export interface PromptTarget {
 }
 /**
  * PromptOptionView is one answer to a prompt. Actions say in plain text
- * what choosing it does.
+ * what choosing it does, Tools name their tools in the same order (the
+ * Desk warns on a retry that loses work). Consequence is the pilot's line
+ * on what it costs or throws away. Untrusted.
  */
 export interface PromptOptionView {
   id: string;
   label: string;
   detail?: string;
+  consequence?: string;
   actions: string[];
+  tools?: string[];
   recommended: boolean;
   fromAnswer: boolean;
 }

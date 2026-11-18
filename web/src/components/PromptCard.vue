@@ -14,9 +14,11 @@ import {
   promptStatus,
   readOnlyText,
   recommendedOption,
+  retryWarning,
   shortStatus,
   textBox,
 } from '../promptCard'
+import type { Facts } from '../generated/problem'
 import type { PromptView } from '../types'
 import Truncated from '../ui/Truncated.vue'
 import Badge from './Badge.vue'
@@ -48,6 +50,9 @@ const props = defineProps<{
   to?: RouteLocationRaw
   // unanchored: a copy of a card shown elsewhere with the anchor.
   unanchored?: boolean
+  // facts: the problem's facts (ProblemCard); a retry option warns when
+  // they show uncommitted lines (retryWarning).
+  facts?: Facts
 }>()
 
 const anchor = computed(() => promptAnchor(props.prompt.id))
@@ -189,6 +194,10 @@ const err = 'm-0 text-[13px] text-(--tone-danger-fg)'
               {{ o.label }}
             </span>
             <span v-for="(t, i) in o.tags" :key="t" class="text-[11.5px] text-(--text-3)">{{ i ? `· ${t}` : t }}</span>
+            <p v-if="o.consequence" class="m-0 basis-full text-[12.5px] text-(--text-2) wrap-anywhere" data-consequence>{{ o.consequence }}</p>
+            <p v-if="retryWarning(o, facts)" class="m-0 basis-full text-[12.5px] font-medium text-(--tone-warning-fg) wrap-anywhere" data-retry-warning>
+              {{ retryWarning(o, facts) }}
+            </p>
             <Markdown v-if="o.detail" class="basis-full text-[12.5px] text-(--text-2) wrap-anywhere" :text="o.detail" />
             <p v-for="(a, i) in o.actions" :key="i" class="m-0 basis-full text-[12.5px] text-(--text-3) wrap-anywhere">
               → {{ a }}

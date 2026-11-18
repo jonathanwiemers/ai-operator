@@ -52,12 +52,16 @@ type PromptTarget struct {
 }
 
 // PromptOptionView is one answer to a prompt. Actions say in plain text
-// what choosing it does.
+// what choosing it does, Tools name their tools in the same order (the
+// Desk warns on a retry that loses work). Consequence is the pilot's line
+// on what it costs or throws away. Untrusted.
 type PromptOptionView struct {
 	ID          string   `json:"id"`
 	Label       string   `json:"label"`
 	Detail      string   `json:"detail,omitempty"`
+	Consequence string   `json:"consequence,omitempty"`
 	Actions     []string `json:"actions"`
+	Tools       []string `json:"tools,omitempty"`
 	Recommended bool     `json:"recommended"`
 	FromAnswer  bool     `json:"fromAnswer"`
 }
@@ -100,9 +104,10 @@ func promptView(p aiv1.Prompt, owner bool, target PromptTarget) PromptView {
 		AllowFreeText: p.AllowFreeText, State: state, IssueIID: p.Source.IssueIID, MRIID: p.Source.MRIID, Task: p.Source.Task,
 		PostedAt: p.PostedAt, ClosedAt: p.ClosedAt, ClosedReason: p.ClosedReason, ClosedBy: p.ClosedBy, ReplacedBy: p.ReplacedBy, CanAnswer: owner && !state.Closed(), Target: target}
 	for _, o := range p.Options {
-		ov := PromptOptionView{ID: o.ID, Label: o.Label, Detail: o.Detail, Actions: []string{}, Recommended: o.Recommended, FromAnswer: o.FromAnswer}
+		ov := PromptOptionView{ID: o.ID, Label: o.Label, Detail: o.Detail, Consequence: o.Consequence, Actions: []string{}, Recommended: o.Recommended, FromAnswer: o.FromAnswer}
 		for _, a := range o.Actions {
 			ov.Actions = append(ov.Actions, actionText(a))
+			ov.Tools = append(ov.Tools, a.Tool)
 		}
 		v.Options = append(v.Options, ov)
 	}
