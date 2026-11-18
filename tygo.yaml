@@ -116,6 +116,7 @@ packages:
       - view.go
     frontmatter: |
       import type * as aiv1 from "./api";
+      import type * as problem from "./problem";
       import type * as store from "./store";
       // String unions and open shapes (map[string]any, []any) the Go views
       // leave untyped, by hand in types.ts.
@@ -157,6 +158,7 @@ packages:
       aiv1.TaskPhase: aiv1.TaskPhase
       aiv1.TaskType: aiv1.TaskType
       aiv1.UsageLimit: aiv1.UsageLimit
+      problem.Facts: problem.Facts
       store.ChatMessage: store.ChatMessage
       store.FollowUpRow: store.FollowUpRow
       store.IssueFigures: store.IssueFigures
@@ -165,6 +167,15 @@ packages:
       store.Money: store.Money
       store.PauseHistory: store.PauseHistory
       store.SpendTotals: store.SpendTotals
+
+  # The facts of a stuck issue (problem.Facts), as MilestoneView carries
+  # them. Only facts.go: cause.go has functions, no types.
+  - path: github.com/jonathanwiemers/ai-operator/internal/problem
+    output_path: web/src/generated/problem.ts
+    fallback_type: Unmapped
+    enum_style: union
+    include_files:
+      - facts.go
 
   # The store types the views carry as they are (one definition per type):
   # only the files whose types all have JSON tags and map to TypeScript.

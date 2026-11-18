@@ -16,6 +16,7 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/command"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/history"
+	"github.com/jonathanwiemers/ai-operator/internal/problem"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 )
 
@@ -47,6 +48,9 @@ type MilestoneView struct {
 	Prompts []PromptView `json:"prompts"`
 	// Tasks are the implement tasks, by issue IID.
 	Tasks []Task `json:"tasks"`
+	// Problems are the facts of the issues with an open problem
+	// (problem.IIDs), by IID; none for a stored milestone.
+	Problems []problem.Facts `json:"problems"`
 	// Companions are the companion merge requests of the milestone's
 	// issues, by home issue: drafts before the home merge, then their
 	// landing.
@@ -131,6 +135,20 @@ func issueRows(st *aiv1.AgentTask, byIssue map[int64]string, now time.Time) []Mi
 	}
 	setIssueVersions(rows, liveReleases(st))
 	return rows
+}
+
+// milestoneProblems are the facts of st's problems from its implement tasks
+// and issue rows: no GitLab calls.
+func milestoneProblems(web string, st *aiv1.AgentTask, tasks []aiv1.AgentTask, rows []MilestoneIssueRow) []problem.Facts {
+	out, titles, open := []problem.Facts{}, map[int64]string{}, map[int64]bool{}
+	for _, r := range rows {
+		titles[r.IID], open[r.IID] = r.Title, r.State != "merged" && r.State != "skipped" && r.State != "closed"
+	}
+	for _, iid := range problem.IIDs(st) {
+		is := problem.IssueFacts{IID: iid, Title: titles[iid], URL: fmt.Sprintf("%s/-/issues/%d", web, iid)}
+		out = append(out, problem.Build(is, issueTask(tasks, iid), st.Status.Plan, open))
+	}
+	return out
 }
 
 // ReleaseView is one release decision of a milestone (aiv1.ReleaseRecord).
@@ -232,7 +250,7 @@ func timeOrNil(t time.Time) *time.Time {
 func storedMilestoneView(p *aiv1.AgentProject, d store.MilestoneDetail) MilestoneView {
 	web := gitLabRef(p).WebURL
 	v := MilestoneView{IID: d.IID, Title: d.Title, WebURL: cmp.Or(d.WebURL, fmt.Sprintf("%s/-/milestones/%d", web, d.IID)),
-		State: storedMilestoneState(d.MilestoneRow), Stored: true, Issues: []MilestoneIssueRow{}, Prompts: []PromptView{},
+		State: storedMilestoneState(d.MilestoneRow), Stored: true, Issues: []MilestoneIssueRow{}, Problems: []problem.Facts{}, Prompts: []PromptView{},
 		Tasks: []Task{}, Companions: []CompanionView{}, Cost: callsCost(d.Spend), Releases: storedReleases(d.Releases)}
 	for _, f := range d.Issues {
 		v.Issues = append(v.Issues, MilestoneIssueRow{IID: f.IID, Title: f.Title, State: f.State,
@@ -282,8 +300,11 @@ type MilestoneAutopilot struct {
 	// PauseKind and PausedFor say why and over which issue it paused;
 	// Head is that issue's pushed head (what "merge anyway" names) and
 	// ReviewErrors why its reviewers failed.
-	PauseKind     aiv1.PauseKind      `json:"pauseKind,omitempty"`
-	PausedFor     int64               `json:"pausedFor,omitempty"`
+	PauseKind aiv1.PauseKind `json:"pauseKind,omitempty"`
+	PausedFor int64          `json:"pausedFor,omitempty"`
+	// PauseIssue is the issue whose problem the pause belongs to
+	// (aiv1.ProblemIssue), 0 for a pause of the whole milestone.
+	PauseIssue    int64               `json:"pauseIssue,omitempty"`
 	Head          string              `json:"head,omitempty"`
 	ReviewErrors  []aiv1.ReviewError  `json:"reviewErrors,omitempty"`
 	MergeOverride *aiv1.MergeOverride `json:"mergeOverride,omitempty"`
@@ -574,6 +595,7 @@ func milestoneView(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st, coord *aiv1
 	}
 	sortTasks(v.Tasks)
 	v.Issues, v.Releases = issueRows(st, byIssue, now), liveReleases(st)
+	v.Problems = milestoneProblems(web, st, tasks, v.Issues)
 	v.Companions = milestoneCompanions(p, tasks, ms.IID)
 	v.Cost = tasksCost(cost)
 	if ap := st.Status.Autopilot; ap != nil {
@@ -586,7 +608,7 @@ func milestoneView(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st, coord *aiv1
 		}
 		waves := planWaves(st.Status.Plan)
 		a := &MilestoneAutopilot{Phase: ap.Phase, PausedReason: ap.PausedReason, WaitingFor: waitingFor(ap, tasks), PauseKind: ap.PauseKind,
-			PausedFor: ap.PausedFor, MergeOverride: ap.MergeOverride, Holds: []HoldView{}, Items: []QueueItem{}, MaxParallel: ap.MaxParallel, Landing: ap.Landing}
+			PausedFor: ap.PausedFor, PauseIssue: aiv1.ProblemIssue(ap), MergeOverride: ap.MergeOverride, Holds: []HoldView{}, Items: []QueueItem{}, MaxParallel: ap.MaxParallel, Landing: ap.Landing}
 		for i := range tasks {
 			if t := &tasks[i]; ap.Phase == aiv1.AutopilotPaused && ap.PausedFor != 0 && t.Spec.Issue != nil && t.Spec.Issue.IID == ap.PausedFor {
 				a.Head, a.ReviewErrors = t.Status.Run.PushedSHA, t.Status.Run.ReviewErrorKinds

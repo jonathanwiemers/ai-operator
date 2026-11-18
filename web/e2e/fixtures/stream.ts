@@ -473,6 +473,7 @@ export const paymentsMilestone: MilestoneView = {
     },
   ],
   tasks: paymentsTasks,
+  problems: [],
   companions: [
     {
       homeIssueIID: 280,
@@ -593,6 +594,7 @@ export const checkoutMilestone: MilestoneView = {
   pilot: { task: 'shop-m12-pilot', autonomy: 'managed', proposals: [], costUSD: '0.31', phase: 'Idle', acted: [], interventions: [] },
   prompts: [],
   tasks: checkoutTasks,
+  problems: [],
   // One companion, so the project page's context panel shows all four parts.
   companions: [
     {

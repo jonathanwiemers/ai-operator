@@ -19,6 +19,7 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
+	"github.com/jonathanwiemers/ai-operator/internal/problem"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 )
 
@@ -668,6 +669,9 @@ func TestMilestoneIssues(t *testing.T) {
 	if !slices.Equal(m.Issues, want) || m.State != MilestoneStatePaused || m.Stored {
 		t.Errorf("without a database the issues have no figures: %s %v %+v", m.State, m.Stored, m.Issues)
 	}
+	if len(m.Problems) != 1 || m.Problems[0].IID != 42 || m.Problems[0].Issue.Title != "Add PayPal" || m.Autopilot.PauseIssue != 42 {
+		t.Errorf("the paused issue is the one problem: %+v, pause issue %d", m.Problems, m.Autopilot.PauseIssue)
+	}
 
 	fake := &fakeMilestoneDetails{d: map[int64]store.MilestoneDetail{3: {Issues: []store.IssueFigures{paypalFigures()}}}}
 	env.server.milestoneDetails = fake
@@ -1128,5 +1132,97 @@ func TestMilestoneReleases(t *testing.T) {
 	checkReleaseViews(t, m.Releases, at)
 	if len(m.Issues) != 2 || m.Issues[0].Version != "2026.11.3" || m.Issues[1].Version != "" {
 		t.Errorf("stored issue versions: %+v", m.Issues)
+	}
+}
+
+// problemMilestone is milestone 3 with issue 558 held after a failed run,
+// 559 and 560 waiting on it, and 561 held before any merge request (no
+// task with one).
+func problemMilestone() (*aiv1.AgentProject, *aiv1.AgentTask, []aiv1.AgentTask) {
+	p := &aiv1.AgentProject{Spec: aiv1.AgentProjectSpec{GitLab: aiv1.GitLabSpec{URL: "https://gitlab.example.com", Project: "acme/shop"}}}
+	ms := &aiv1.MilestoneRef{ID: 30, IID: 3, Title: "Checkout"}
+	since := metav1.Now()
+	st := &aiv1.AgentTask{
+		ObjectMeta: metav1.ObjectMeta{Name: "shop-spec-m3-checkout"},
+		Spec:       aiv1.AgentTaskSpec{Type: aiv1.TaskTypeSpec, Milestone: ms, Autopilot: true},
+		Status: aiv1.AgentTaskStatus{
+			Plan: []aiv1.PlannedIssue{{Key: "a", IID: 558, Title: "Save work"}, {Key: "b", IID: 559, Title: "Retry", DependsOn: []int64{558}},
+				{Key: "c", IID: 560, Title: "Facts", DependsOn: []int64{559}}, {Key: "d", IID: 561, Title: "Docs"}},
+			Autopilot: &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning, Items: []aiv1.AutopilotItem{
+				{IID: 558, State: aiv1.AutopilotItemActive, Hold: &aiv1.ItemHold{Kind: aiv1.PauseRunFailed, Reason: "run failed", Since: since}},
+				{IID: 559, State: aiv1.AutopilotItemPending}, {IID: 560, State: aiv1.AutopilotItemPending},
+				{IID: 561, State: aiv1.AutopilotItemActive, Hold: &aiv1.ItemHold{Kind: aiv1.PauseRunFailed, Reason: "run failed", Since: since}},
+			}},
+		},
+	}
+	pushed := metav1.NewTime(time.Date(2026, 11, 18, 10, 0, 0, 0, time.UTC))
+	task := func(name string, iid int64, run aiv1.RunStatus, ci *aiv1.CIStatus) aiv1.AgentTask {
+		return aiv1.AgentTask{ObjectMeta: metav1.ObjectMeta{Name: name},
+			Spec:   aiv1.AgentTaskSpec{Type: aiv1.TaskTypeImplement, Milestone: ms, Issue: &aiv1.IssueRef{IID: iid}},
+			Status: aiv1.AgentTaskStatus{Run: run, CI: ci}}
+	}
+	tasks := []aiv1.AgentTask{
+		task("shop-558", 558, aiv1.RunStatus{RunCount: 1, LastResult: aiv1.RunResultFailed, Summary: "decoding implementer answer: no JSON object",
+			MergeRequestIID: 583, MergeRequestURL: "https://gitlab.example.com/acme/shop/-/merge_requests/583", PushedSHA: "1111111", PushedAt: &pushed, CommitsAhead: 2,
+			Checkpoint: &aiv1.CheckpointStatus{SHA: "abc1234", Reason: "run-failed", Added: 348, At: pushed}},
+			&aiv1.CIStatus{State: aiv1.CIStateFailed, PipelineID: 9, PipelineURL: "https://gitlab.example.com/acme/shop/-/pipelines/9", FailedJobs: []string{"test"}}),
+		task("shop-561", 561, aiv1.RunStatus{RunCount: 1, LastResult: aiv1.RunResultFailed, Summary: "engine error", UncommittedLines: 12}, nil),
+	}
+	return p, st, tasks
+}
+
+func TestMilestoneProblems(t *testing.T) {
+	p, st, tasks := problemMilestone()
+	v := milestoneView(p, tasks, st, nil, time.Now())
+	if len(v.Problems) != 2 || v.Problems[0].IID != 558 || v.Problems[1].IID != 561 {
+		t.Fatalf("one problem per held issue, by IID: %+v", v.Problems)
+	}
+	f := v.Problems[0]
+	if !reflect.DeepEqual(f.Issue, problem.IssueFacts{IID: 558, Title: "Save work", URL: "https://gitlab.example.com/acme/shop/-/issues/558"}) {
+		t.Errorf("issue = %+v", f.Issue)
+	}
+	if mr := f.MergeRequest; mr == nil || mr.IID != 583 || mr.HeadSHA != "abc1234" || mr.PushedSHA != "1111111" || mr.CommitsAhead != 2 || mr.PushedAt == nil {
+		t.Errorf("merge request = %+v", f.MergeRequest)
+	}
+	if pl := f.Pipeline; pl == nil || pl.ID != 9 || pl.Status != string(aiv1.CIStateFailed) || len(pl.FailedJobs) != 1 || pl.FailedJobs[0].Name != "test" {
+		t.Errorf("pipeline = %+v", f.Pipeline)
+	}
+	if r := f.Run; r == nil || r.Task != "shop-558" || r.Number != 1 || r.Error != "decoding implementer answer: no JSON object" {
+		t.Errorf("run = %+v", f.Run)
+	}
+	if s := f.Saved; s == nil || s.SHA != "abc1234" || s.Lines != 348 {
+		t.Errorf("saved = %+v", f.Saved)
+	}
+	if !slices.Equal(f.Blocked, []int64{559, 560}) {
+		t.Errorf("blocked = %v", f.Blocked)
+	}
+
+	g := v.Problems[1]
+	if g.MergeRequest != nil || g.Pipeline != nil || g.Blocked != nil || g.Run == nil || g.Run.Error != "engine error" || g.Issue.Title != "Docs" {
+		t.Errorf("without a merge request only issue and run facts: %+v", g)
+	}
+	if g.Saved == nil || g.Saved.UncommittedLines != 12 || g.Saved.SHA != "" {
+		t.Errorf("uncommitted lines = %+v", g.Saved)
+	}
+	if v.Autopilot == nil || v.Autopilot.PauseIssue != 0 {
+		t.Errorf("a running milestone has no pause issue: %+v", v.Autopilot)
+	}
+}
+
+func TestMilestonePauseIssue(t *testing.T) {
+	p, st, tasks := problemMilestone()
+	ap := st.Status.Autopilot
+	ap.Phase, ap.PauseKind, ap.Items = aiv1.AutopilotPaused, aiv1.PauseStuck, ap.Items[:3]
+	v := milestoneView(p, tasks, st, nil, time.Now())
+	if v.Autopilot.PauseIssue != 558 || v.Autopilot.PausedFor != 0 {
+		t.Errorf("a pause with one held issue belongs to it: %+v", v.Autopilot)
+	}
+	if len(v.Problems) != 1 || v.Problems[0].IID != 558 {
+		t.Errorf("problems = %+v", v.Problems)
+	}
+
+	ap.Phase, st.Status.Autopilot.Items = aiv1.AutopilotRunning, nil
+	if v := milestoneView(p, tasks, st, nil, time.Now()); v.Problems == nil || len(v.Problems) != 0 {
+		t.Errorf("no problem is an empty list: %#v", v.Problems)
 	}
 }
