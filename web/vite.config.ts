@@ -39,6 +39,7 @@ export default defineConfig({
     // dist/app/.vite/manifest.json: the chunk graph npm run budget follows
     // for each route's chunk (docs/contributing/web-ui.md, "Bundle budget").
     manifest: true,
+    rollupOptions: { output: { hashCharacters: 'hex' } },
   },
   server: {
     proxy: {

@@ -44,7 +44,8 @@ import RelTime from './RelTime.vue'
 //
 // With hold, the card is that issue's hold (R9): the kind, issue, reason,
 // head, review errors and exits come from it, and Resume lifts only it.
-const props = defineProps<{ namespace: string; name: string; milestone: MilestoneView; hold?: HoldView }>()
+// noReason: a problem card's cause line replaces the (generic) reason.
+const props = defineProps<{ namespace: string; name: string; milestone: MilestoneView; hold?: HoldView; noReason?: boolean }>()
 
 const ap = computed(() => props.milestone.autopilot)
 const kind = computed(() => (props.hold ? props.hold.kind : ap.value?.pauseKind))
@@ -256,7 +257,8 @@ const wrap = '[overflow-wrap:anywhere]'
     :data-hold="hold?.iid"
   >
     <h2 class="m-0">{{ pauseTitle(kind, hold?.iid) }}</h2>
-    <Markdown v-if="reason" :class="wrap" :text="reason" />
+    <template v-if="noReason" />
+    <Markdown v-else-if="reason" :class="wrap" :text="reason" />
     <p v-else-if="!kind" class="muted">Waiting for a human.</p>
     <p v-if="pauseExplain(kind)" class="muted">{{ pauseExplain(kind) }}</p>
 

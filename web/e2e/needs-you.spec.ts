@@ -3,10 +3,12 @@
 // the Pilot tab keeps only the pilot line, the composer and its events.
 // Handled (#531: R14) lists one problem per issue with its prompts, the
 // pilot's actions and its pauses; Open (#581) shows one card per open
-// problem with its pause, hold and prompts.
+// problem with its pause, hold and prompts; the card starts with the cause
+// line and the operator's facts (#582), shown on the #558 incident.
 // Run with npm run e2e (built UI, Chromium).
 import { expect, test, type Page } from '@playwright/test'
 import { answer, now } from './fixtures'
+import { incident558, incidentError } from './fixtures/problem'
 import { paymentsMilestone } from './fixtures/stream'
 import { refundsPrompt, refundsTitle } from './fixtures/task'
 import type { MilestoneView, PromptView } from '../src/types'
@@ -187,6 +189,35 @@ for (const size of widths) {
     await expect(history.locator('[data-entry="prompt"]')).toHaveCount(2)
     await expect(page.locator('[data-needs-handled] [data-problem="281"]')).not.toHaveAttribute('id')
     await expect(page.locator('#problem-281')).toHaveCount(1)
+    expect(problems).toEqual([])
+  })
+
+  test(`the #558 card starts with the cause and the facts@${size.width}`, async ({ page, baseURL }) => {
+    const problems = await open(page, baseURL, `${milestonePath}?tab=needs`, size, incident558)
+    const card = page.locator('[data-needs-open] #problem-558')
+    await expect(page.locator('[data-needs-open] [data-open-problem]')).toHaveCount(1)
+    await expect(card.locator('[data-problem-cause]')).toHaveText(`the run failed: ${incidentError}`)
+    await expect(card).not.toContainText('CI is still red, the run failed or the agent asked a question')
+    // The stuck pause's own reason is not the run's: it stays.
+    await expect(card.locator('[data-pause-card]:not([data-hold])')).toContainText('#560 waits for another pending issue')
+    const facts = card.locator('[data-problem-facts]')
+    await expect(facts.locator('[data-fact]')).toHaveCount(5)
+    await expect(facts.getByRole('link', { name: '#558', exact: true })).toHaveAttribute('href', incident558.problems[0]!.issue.url)
+    await expect(facts.locator('[data-fact="mr"]')).toHaveText(/^!583\s*· 80cd646a · 1 commit ahead · pushed 20 minutes ago$/)
+    await expect(facts.getByRole('link', { name: '!583' })).toHaveAttribute('href', incident558.problems[0]!.mergeRequest!.url)
+    await expect(facts.locator('[data-fact="run"]')).toContainText(`run 1 failed: ${incidentError}`)
+    await expect(facts.getByRole('link', { name: 'failure note' })).toHaveAttribute('href', /#note_4263$/)
+    await expect(facts.getByRole('link', { name: 'log', exact: true })).toHaveAttribute('href', '/projects/team-a/shop/tasks/shop-m14-558?tab=logs')
+    await expect(facts.locator('[data-fact="saved"]')).toHaveText('348 lines saved as WIP commit 80cd646a')
+    await expect(facts.locator('[data-fact="blocked"]')).toHaveText('#558 → #559 → #560')
+    await expect(facts.locator('[data-fact="pipeline"]')).toHaveCount(0)
+    // The cause and the facts come before the pause cards and the prompts.
+    const order = await card.locator('[data-problem-cause], [data-problem-facts], [data-pause-card], [data-prompt]').evaluateAll((es) =>
+      es.map((e) => [...e.attributes].map((a) => a.name).find((n) => n.startsWith('data-problem-') || n === 'data-pause-card' || n === 'data-prompt')),
+    )
+    expect(order.slice(0, 3)).toEqual(['data-problem-cause', 'data-problem-facts', 'data-pause-card'])
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+    expect(overflow).toBeLessThanOrEqual(0)
     expect(problems).toEqual([])
   })
 

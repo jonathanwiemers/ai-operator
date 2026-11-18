@@ -4,8 +4,10 @@ import { useRoute } from 'vue-router'
 import { problemAnchor } from '../needsCases'
 import type { OpenProblem } from '../needsOpen'
 import type { MilestoneView } from '../types'
+import { hidesReason, problemCause } from '../problemFacts'
 import NeedsEntries from './NeedsEntries.vue'
 import PauseCard from './PauseCard.vue'
+import ProblemFacts from './ProblemFacts.vue'
 import PromptCard from './PromptCard.vue'
 
 // ProblemCard is one problem under Open on the Needs you tab (Decision 1):
@@ -13,6 +15,8 @@ import PromptCard from './PromptCard.vue'
 // belongs to it, the issue's hold (both PauseCard, which shows its own
 // prompt), its other open prompts and its history folded (NeedsEntries,
 // without anchors: Handled has them). The card carries #problem-<iid>.
+// First come the cause line and the facts strip (R8, problemFacts.ts): the
+// cause replaces the generic reason of a needs-input pause or hold.
 //
 // Utilities only (docs/contributing/web-ui.md, "Needs you tab"): on phones
 // the history's fold is 44 px high.
@@ -25,6 +29,9 @@ const issueTo = computed(() => ({
 }))
 // heading: "#N title", built in script (see NeedsProblem).
 const heading = computed(() => [`#${props.problem.iid}`, props.problem.title].filter(Boolean).join(' '))
+
+const facts = computed(() => props.milestone.problems?.find((f) => f.iid === props.problem.iid))
+const cause = computed(() => problemCause(facts.value))
 
 const route = useRoute()
 const el = ref<HTMLElement | null>(null)
@@ -52,8 +59,10 @@ const chevron = 'inline-block text-(--text-3) transition-transform motion-reduce
         Pilot attempts: {{ problem.attempts.used }} of {{ problem.attempts.max }}
       </span>
     </div>
-    <PauseCard v-if="problem.paused" :namespace="namespace" :name="name" :milestone="milestone" />
-    <PauseCard v-if="problem.hold" :namespace="namespace" :name="name" :milestone="milestone" :hold="problem.hold" />
+    <p v-if="cause" class="m-0 min-w-0 font-medium wrap-anywhere" data-problem-cause>{{ cause }}</p>
+    <ProblemFacts v-if="facts" :namespace="namespace" :name="name" :facts="facts" />
+    <PauseCard v-if="problem.paused" :namespace="namespace" :name="name" :milestone="milestone" :no-reason="hidesReason(cause, milestone.autopilot?.pauseKind)" />
+    <PauseCard v-if="problem.hold" :namespace="namespace" :name="name" :milestone="milestone" :hold="problem.hold" :no-reason="hidesReason(cause, problem.hold.kind)" />
     <PromptCard v-for="p in problem.prompts" :key="p.id" :namespace="namespace" :name="name" :prompt="p" />
     <details v-if="problem.entries.length" class="group/history min-w-0" data-problem-history>
       <summary class="flex min-h-11 cursor-pointer items-center gap-2 tablet:min-h-0" :class="quiet">
