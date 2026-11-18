@@ -518,10 +518,155 @@ func TestPilotChatTurnCarriesMilestoneState(t *testing.T) {
 }
 
 func TestWithPilotStateWithoutState(t *testing.T) {
-	p := withPilotState("## Chat message\n", "")
+	p := withPilotState("## Chat message\n", "", 0, "")
 	if !strings.Contains(p, "## How to answer") || !strings.Contains(p, "could not be read") ||
-		strings.Contains(p, "## Milestone state") {
+		strings.Contains(p, "## Milestone state") || strings.Contains(p, "pilot-actions") || strings.Contains(p, "Problem facts") {
 		t.Fatalf("prompt:\n%s", p)
+	}
+}
+
+func TestChatProblem(t *testing.T) {
+	for text, want := range map[string]int64{
+		"problem: #558\n\nrerun it":     558,
+		"problem: #558":                 558,
+		"  problem: #7  \r\nwhy?":       7,
+		"see problem: #558\n\nrerun it": 0,
+		"problem: #558 and more":        0,
+		"problem: #abc\n\n":             0,
+		"why is it stuck?":              0,
+	} {
+		if got := chatProblem(text); got != want {
+			t.Errorf("chatProblem(%q) = %d, want %d", text, got, want)
+		}
+	}
+}
+
+func TestCutPilotActions(t *testing.T) {
+	for _, c := range []struct{ in, text, block string }{
+		{"I'll rerun it.\n\n```pilot-actions\n[{\"tool\":\"retry\",\"issue\":1}]\n```\n", "I'll rerun it.", "[{\"tool\":\"retry\",\"issue\":1}]\n"},
+		{"First.\n```pilot-actions\n[1]\n```\nThen.\n```pilot-actions\n[2]\n```", "First.\nThen.", "[1]\n"},
+		{"Cut off.\n```pilot-actions\n[{\"tool\":", "Cut off.", "[{\"tool\":"},
+		{"No block, ```json\n{}\n``` only.", "No block, ```json\n{}\n``` only.", ""},
+	} {
+		if text, block := cutPilotActions(c.in); text != c.text || block != c.block {
+			t.Errorf("cutPilotActions(%q) = %q, %q; want %q, %q", c.in, text, block, c.text, c.block)
+		}
+	}
+}
+
+// problemChatTurn runs one pilot chat turn of message 31 with text, the
+// pilot replying reply; it returns the prompt and the task after it.
+func problemChatTurn(t *testing.T, text, reply string) (string, aiv1.AgentTask) {
+	t.Helper()
+	e := newPilotEnv(t, "")
+	agent := &chatAgent{sessionID: "sess-pilot-chat", cancelled: make(chan struct{}),
+		promptFn: func(string) (*Result, error) { return &Result{Text: reply, SessionID: "sess-pilot-chat"}, nil }}
+	e.r.Agent = agent
+	task := e.task(t)
+	task.Spec.RunRequest = 0
+	task.Spec.Source.ChatMessages = []aiv1.ChatMessage{chatMsg(31, "message", text, "alice")}
+	if err := e.k8s.Update(context.Background(), &task); err != nil {
+		t.Fatal(err)
+	}
+	if did, err := e.r.tick(context.Background(), nil); err != nil || !did {
+		t.Fatalf("did=%v err=%v", did, err)
+	}
+	if len(agent.promptCalls) != 1 {
+		t.Fatalf("prompts: %q", agent.promptCalls)
+	}
+	got := e.task(t)
+	if got.Status.Chat == nil || len(got.Status.Chat.Replies) != 1 || got.Status.Chat.Replies[0].MessageID != 31 {
+		t.Fatalf("replies: %+v", got.Status.Chat)
+	}
+	return agent.promptCalls[0], got
+}
+
+func proposed(task aiv1.AgentTask) []aiv1.PilotProposal {
+	if task.Status.Pilot == nil {
+		return nil
+	}
+	return task.Status.Pilot.Proposed
+}
+
+func TestPilotProblemChatRecordsProposal(t *testing.T) {
+	p, task := problemChatTurn(t, "problem: #1\n\nrerun it with a hint to answer in JSON",
+		"I'll rerun #1.\n\n```pilot-actions\n[{\"tool\": \"instruct\", \"issue\": 1, \"kind\": \"rerun\"}, {\"tool\": \"retry\", \"issue\": 1}]\n```")
+	for _, want := range []string{"rerun it with a hint", "about the problem of #1", "```pilot-actions", "Otherwise ask back",
+		"Never claim an action ran", "## Problem facts (collected by the operator)", `"iid": 1`, "## Milestone state"} {
+		if !strings.Contains(p, want) {
+			t.Fatalf("prompt lacks %q:\n%s", want, p)
+		}
+	}
+	if strings.Contains(p, "This chat cannot act") {
+		t.Fatalf("problem prompt says the chat cannot act:\n%s", p)
+	}
+	if rep := task.Status.Chat.Replies[0]; rep.Text != "I'll rerun #1." || rep.Error != "" {
+		t.Fatalf("reply: %+v", rep)
+	}
+	props := proposed(task)
+	if len(props) != 1 {
+		t.Fatalf("proposed: %+v", props)
+	}
+	got := props[0]
+	if got.Source != "chat/31" || got.Trigger != 1 || got.ChatMessageID != 31 || got.AcceptedBy != "" || got.State == "" ||
+		got.Summary != "From the chat: instruct #1, retry #1" || len(got.Actions) != 2 ||
+		got.Actions[0].Tool != "instruct" || got.Actions[0].Kind != "rerun" || got.Actions[1].IssueIID != 1 ||
+		!strings.Contains(got.Why, "@alice asked in the chat") {
+		t.Fatalf("proposal: %+v", got)
+	}
+}
+
+func TestPilotProblemChatObjectBlock(t *testing.T) {
+	_, task := problemChatTurn(t, "problem: #1\n\nretry it",
+		"Retrying.\n```pilot-actions\n{\"summary\": \"ignored\", \"actions\": [{\"tool\": \"retry\", \"issue\": 1}]}\n```")
+	if props := proposed(task); len(props) != 1 || props[0].Summary != "From the chat: retry #1" {
+		t.Fatalf("proposed: %+v", props)
+	}
+}
+
+func TestPilotProblemChatWithoutBlockRecordsNothing(t *testing.T) {
+	_, task := problemChatTurn(t, "problem: #1\n\nwhat happened?", "The run failed: it answered in prose. Shall I rerun it?")
+	if props := proposed(task); len(props) != 0 {
+		t.Fatalf("proposed: %+v", props)
+	}
+	if rep := task.Status.Chat.Replies[0]; rep.Text != "The run failed: it answered in prose. Shall I rerun it?" {
+		t.Fatalf("reply: %+v", rep)
+	}
+}
+
+func TestPilotProblemChatMalformedBlockDropped(t *testing.T) {
+	_, task := problemChatTurn(t, "problem: #1\n\nretry it", "Retrying.\n\n```pilot-actions\n[{\"tool\": \"retry\", \"issue\": \n```")
+	if props := proposed(task); len(props) != 0 {
+		t.Fatalf("proposed: %+v", props)
+	}
+	if rep := task.Status.Chat.Replies[0]; rep.Text != "Retrying." {
+		t.Fatalf("reply: %+v", rep)
+	}
+}
+
+func TestPilotProblemChatRefusedActionsDropped(t *testing.T) {
+	_, task := problemChatTurn(t, "problem: #1\n\nadd a rule",
+		"Adding it.\n\n```pilot-actions\n[{\"tool\": \"setRule\", \"kind\": \"bogus\", \"note\": \"x\"}]\n```")
+	if props := proposed(task); len(props) != 0 {
+		t.Fatalf("proposed: %+v", props)
+	}
+	if rep := task.Status.Chat.Replies[0]; !strings.HasPrefix(rep.Text, "Adding it.") || !strings.Contains(rep.Text, "Rule not proposed") ||
+		strings.Contains(rep.Text, "pilot-actions") {
+		t.Fatalf("reply: %+v", rep)
+	}
+}
+
+func TestPilotChatWithoutProblemIgnoresBlock(t *testing.T) {
+	reply := "Done.\n\n```pilot-actions\n[{\"tool\": \"retry\", \"issue\": 1}]\n```"
+	p, task := problemChatTurn(t, "retry #1", reply)
+	if !strings.Contains(p, "This chat cannot act") || strings.Contains(p, "Problem facts") || strings.Contains(p, "pilot-actions") {
+		t.Fatalf("prompt:\n%s", p)
+	}
+	if props := proposed(task); len(props) != 0 {
+		t.Fatalf("proposed: %+v", props)
+	}
+	if rep := task.Status.Chat.Replies[0]; !strings.Contains(rep.Text, "pilot-actions") {
+		t.Fatalf("reply: %+v", rep)
 	}
 }
 

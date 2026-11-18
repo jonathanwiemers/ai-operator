@@ -2248,6 +2248,12 @@ spec:
                             - tool
                             type: object
                           type: array
+                        chatMessageID:
+                          description: |-
+                            ChatMessageID is the owner's chat message that asked for it; the
+                            operator checks the message and its author before it runs.
+                          format: int64
+                          type: integer
                         context:
                           type: string
                         id:
@@ -2739,6 +2745,12 @@ spec:
                             - tool
                             type: object
                           type: array
+                        chatMessageID:
+                          description: |-
+                            ChatMessageID is the owner's chat message that asked for it; the
+                            operator checks the message and its author before it runs.
+                          format: int64
+                          type: integer
                         context:
                           type: string
                         id:
@@ -2992,6 +3004,12 @@ spec:
                             - tool
                             type: object
                           type: array
+                        chatMessageID:
+                          description: |-
+                            ChatMessageID is the owner's chat message that asked for it; the
+                            operator checks the message and its author before it runs.
+                          format: int64
+                          type: integer
                         context:
                           type: string
                         id:

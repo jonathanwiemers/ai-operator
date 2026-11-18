@@ -3524,6 +3524,12 @@ export interface PilotProposal {
    */
   trigger?: number /* int64 */;
   /**
+   * ChatMessageID is the owner's chat message that asked for it; the
+   * operator checks the message and its author before it runs.
+   * +optional
+   */
+  chatMessageID?: number /* int64 */;
+  /**
    * Why is the classification and evidence, or the owner's message, it
    * answers, for the audit comment. Untrusted.
    * +optional
