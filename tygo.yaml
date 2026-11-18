@@ -84,6 +84,7 @@ packages:
       - chat.go
       - companion.go
       - cost.go
+      - decisions.go
       - estimate.go
       - costs.go
       - features.go

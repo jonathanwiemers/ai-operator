@@ -317,6 +317,100 @@ export interface CostsTopView {
 }
 
 //////////
+// source: decisions.go
+
+/**
+ * RevisitModeNone: nothing, it was already replaced or a follow-up
+ * already revisits it.
+ */
+export const RevisitModeNone = "none";
+/**
+ * RevisitModePrompt: open the revisit prompt of the milestone's pilot.
+ */
+export const RevisitModePrompt = "prompt";
+/**
+ * RevisitModeComment: comment the revisit on the open issue.
+ */
+export const RevisitModeComment = "comment";
+/**
+ * RevisitModeCommand: copy the command and comment it on GitLab.
+ */
+export const RevisitModeCommand = "command";
+/**
+ * Revisit modes of a decision: what the Desk's Revisit does.
+ */
+export type RevisitMode = typeof RevisitModeNone | typeof RevisitModePrompt | typeof RevisitModeComment | typeof RevisitModeCommand;
+/**
+ * DecisionsResponse is the decisions of a project or one milestone.
+ * Available is false without the history database.
+ */
+export interface DecisionsResponse {
+  available: boolean;
+  decisions: DecisionView[];
+}
+/**
+ * DecisionView is one stored decision with its chain and what revisiting it
+ * does. Kind is planner or implementer; URL is the GitLab comment.
+ */
+export interface DecisionView {
+  id: string;
+  kind: 'planner' | 'implementer';
+  title: string;
+  question: string;
+  choice: string;
+  why: string;
+  alternatives: string[];
+  runID?: string;
+  url?: string;
+  postedAt: string;
+  milestoneIID: number /* int64 */;
+  issue: DecisionIssueView;
+  supersedes?: string;
+  superseded: boolean;
+  supersededBy?: string;
+  revisits: RevisitRequestView[];
+  revisit: RevisitView;
+}
+/**
+ * DecisionIssueView is the issue a decision belongs to. State is opened or
+ * closed; Task is its live implement task, "" without one.
+ */
+export interface DecisionIssueView {
+  iid: number /* int64 */;
+  title: string;
+  state: string;
+  task?: string;
+}
+/**
+ * RevisitRequestView is one request to revisit a decision. Source is
+ * comment or followUp; FollowUpIID the follow-up issue (0 for a comment) and
+ * FollowUpState its state. Applied: a decision supersedes it.
+ */
+export interface RevisitRequestView {
+  source: 'comment' | 'followUp';
+  requestedBy: string;
+  instruction: string;
+  url?: string;
+  followUpIID?: number /* int64 */;
+  followUpState?: string;
+  at: string;
+  applied: boolean;
+}
+/**
+ * RevisitView is what the Desk's Revisit of a decision does (Mode, a
+ * RevisitMode constant, "" for a user who may not revisit) and the line that
+ * says so. Task is the task to send it to: the pilot for prompt, the
+ * implement task for comment. Command is the command to comment, for
+ * command.
+ */
+export interface RevisitView {
+  mode: RevisitMode | '';
+  text: string;
+  task?: string;
+  command?: string;
+}
+
+//////////
 // source: estimate.go
 
 /**

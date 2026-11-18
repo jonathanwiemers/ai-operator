@@ -92,6 +92,7 @@ and leave out the cookie:
 | `POST /api/v1/projects/{namespace}/{name}/milestones/{iid}/followups/dismiss` | Dismiss the retrospective's remaining follow-ups. | `steer`, owner subject, GitLab connected |
 | `POST /api/v1/projects/{namespace}/{name}/milestones/{iid}/issues/{issue}/close` | Close an issue that keeps a done autopilot milestone open. | `steer`, owner subject, GitLab connected |
 | `GET /api/v1/projects/{namespace}/{name}/estimate` | Estimated cost of `?plan=` or `?milestone=`, from the project's last finished milestones. | see, research database; Desk chat with `?plan=` |
+| `GET /api/v1/projects/{namespace}/{name}/decisions` | The agents' decisions with their revisit chain and what *Revisit* does. `?milestone=` (an IID, empty for all), `?q=` (search), `?state=all`, `active` or `superseded`. `available: false` without the history database. | see |
 
 ## Prompts and the pilot's actions
 

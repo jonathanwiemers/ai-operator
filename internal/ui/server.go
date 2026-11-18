@@ -67,6 +67,8 @@ type Server struct {
 	costReads costReader
 	// estimateReads reads the estimates' history instead of research (tests).
 	estimateReads estimateReader
+	// decisionReads reads the stored decisions instead of research (tests).
+	decisionReads decisionReader
 	// chat is the chat writer's store, nil until connected or without
 	// the writer login.
 	chat atomic.Pointer[store.Store]
@@ -178,6 +180,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/v1/inbox", s.authed(s.inbox))
 	mux.Handle("GET /api/v1/projects/{namespace}/{name}/history", s.authed(s.history))
 	mux.Handle("GET /api/v1/projects/{namespace}/{name}/estimate", s.authed(s.estimate))
+	mux.Handle("GET /api/v1/projects/{namespace}/{name}/decisions", s.authed(s.decisions))
 	mux.Handle("GET /api/v1/spend", s.authed(s.spend))
 	mux.Handle("GET /api/v1/costs", s.authed(s.costs))
 	mux.Handle("GET /api/v1/costs/top", s.authed(s.costsTop))
