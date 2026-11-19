@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"testing"
 	"time"
@@ -362,5 +363,126 @@ func TestChatPlanReplyConflictKeepsSpec(t *testing.T) {
 	}
 	if msgs := e.plan(chatPlanName).Spec.ChatMessages; len(msgs) != 0 {
 		t.Fatalf("plan chatMessages = %+v, want none", msgs)
+	}
+}
+
+// setPlanDecisions replaces the plan's status.decisions by list.
+func (e *chatEnv) setPlanDecisions(list ...aiv1.PlanDecision) {
+	e.t.Helper()
+	plan := e.plan(chatPlanName)
+	orig := plan.DeepCopy()
+	plan.Status.Decisions = list
+	if err := e.c.Status().Patch(e.ctx, plan, client.MergeFrom(orig)); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+// planHistory lists the plan's stored decision history as "ID vN: signer, …"
+// lines.
+func (e *chatEnv) planHistory() []string {
+	e.t.Helper()
+	h, err := e.store.PlanDecisionHistory(e.ctx, ns, "shop", chatPlanName)
+	if err != nil {
+		e.t.Fatal(err)
+	}
+	out := []string{}
+	for _, v := range h {
+		line := fmt.Sprintf("%s v%d %s:", v.ID, v.Version, v.DecidedBy)
+		for _, o := range v.SignOffs {
+			line += " " + o.By
+		}
+		out = append(out, line)
+	}
+	return out
+}
+
+// planDecision is version v of decision id, decided by the agent.
+func planDecision(id string, v int64, at time.Time) aiv1.PlanDecision {
+	return aiv1.PlanDecision{
+		ID: id, Title: "Title of " + id, Question: fmt.Sprintf("Question of %s v%d", id, v),
+		Options: []string{"A", "B"}, Recommended: 1, State: aiv1.PlanDecisionLocked,
+		Version: v, DecidedBy: "agent", DecidedAt: metav1.NewTime(at),
+	}
+}
+
+func signedOffBy(d aiv1.PlanDecision, owner string, at time.Time) aiv1.PlanDecision {
+	t := metav1.NewTime(at)
+	d.SignedOffBy, d.SignedOffByName, d.SignedOffAt = owner, "Name of "+owner, &t
+	return d
+}
+
+func TestChatPlanReplyStoresDecisionHistory(t *testing.T) {
+	e, id := planReplyEnv(t, aiv1.ChatReply{Text: "here are my questions"})
+	// Rows expire relative to the clock; the store reads against its own.
+	e.now = time.Now()
+	turn1 := e.now.Add(-time.Hour)
+	e.setPlanDecisions(planDecision("D1", 1, turn1), planDecision("D2", 1, turn1))
+	if err := e.reconcilePlanReply(e.c); err != nil {
+		t.Fatal(err)
+	}
+	if reps := e.planReplies(id); len(reps) != 1 {
+		t.Fatalf("replies = %d, want 1", len(reps))
+	}
+	want := []string{"D1 v1 agent:", "D2 v1 agent:"}
+	if got := e.planHistory(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("after turn 1: history %q, want %q", got, want)
+	}
+
+	// The same status again stores nothing new.
+	if err := e.reconcilePlanReply(e.c); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.planHistory(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("after a second reconcile: history %q, want %q", got, want)
+	}
+
+	// Turn 2: owner-x changed D2 and kept D1. No message is left to drop,
+	// and the decisions are still stored.
+	turn2 := turn1.Add(10 * time.Minute)
+	d2 := planDecision("D2", 2, turn2)
+	d2.DecidedBy = "owner-x"
+	e.setPlanDecisions(signedOffBy(planDecision("D1", 1, turn1), "owner-x", turn2), signedOffBy(d2, "owner-x", turn2))
+	if err := e.reconcilePlanReply(e.c); err != nil {
+		t.Fatal(err)
+	}
+	// Turn 3: owner-y keeps D1, which replaces owner-x in the status.
+	turn3 := turn2.Add(10 * time.Minute)
+	e.setPlanDecisions(signedOffBy(planDecision("D1", 1, turn1), "owner-y", turn3), signedOffBy(d2, "owner-x", turn2))
+	if err := e.reconcilePlanReply(e.c); err != nil {
+		t.Fatal(err)
+	}
+	want = []string{"D1 v1 agent: owner-y owner-x", "D2 v2 owner-x: owner-x", "D2 v1 agent:"}
+	if got := e.planHistory(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("after turn 3: history %q, want %q", got, want)
+	}
+}
+
+func TestChatPlanReplyWithoutDecisionsStoresNone(t *testing.T) {
+	e, _ := planReplyEnv(t, aiv1.ChatReply{Text: "answer"})
+	if err := e.reconcilePlanReply(e.c); err != nil {
+		t.Fatal(err)
+	}
+	if got := e.planHistory(); len(got) != 0 {
+		t.Fatalf("history = %q, want none", got)
+	}
+}
+
+func TestPlanDecisionRows(t *testing.T) {
+	at := metav1.NewTime(t0)
+	d := signedOffBy(planDecision("D3", 2, t0), "owner-x", t0.Add(time.Minute))
+	d.State, d.Why, d.DecidedByName = aiv1.PlanDecisionOpen, "because", "Agent"
+	noTime := planDecision("D4", 1, t0)
+	noTime.SignedOffBy = "owner-x" // without a time: not a sign-off to store
+	got := planDecisionRows([]aiv1.PlanDecision{d, noTime})
+	want := []store.PlanDecisionRow{
+		{PlanDecision: store.PlanDecision{ID: "D3", Version: 2, Title: "Title of D3", Question: "Question of D3 v2",
+			Options: []string{"A", "B"}, Recommended: 1, Why: "because", State: "open", DecidedBy: "agent",
+			DecidedByName: "Agent", DecidedAt: at.Time},
+			SignOff: &store.PlanDecisionSignOff{By: "owner-x", ByName: "Name of owner-x", At: t0.Add(time.Minute)}},
+		{PlanDecision: store.PlanDecision{ID: "D4", Version: 1, Title: "Title of D4", Question: "Question of D4 v1",
+			Options: []string{"A", "B"}, Recommended: 1, State: "locked", DecidedBy: "agent", DecidedAt: t0}},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("planDecisionRows =\n%+v\nwant\n%+v", got, want)
 	}
 }

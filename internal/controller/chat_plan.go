@@ -3,6 +3,7 @@ package controller
 import (
 	"cmp"
 	"context"
+	"fmt"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
@@ -17,7 +18,8 @@ import (
 
 // chatPlanReply is the Chat reply reconciler for AgentPlans: it copies
 // status.chat.replies into chat_messages and drops the answered messages
-// from spec.chatMessages.
+// from spec.chatMessages. It also copies status.decisions into the decision
+// history (new versions and sign-offs only).
 type chatPlanReply struct{ *Chat }
 
 // Reconcile copies the plan's replies like Chat.Reconcile does a task's.
@@ -29,6 +31,14 @@ func (c chatPlanReply) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Re
 	var plan aiv1.AgentPlan
 	if err := c.Get(ctx, req.NamespacedName, &plan); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+	// The history first: a turn's decisions are kept also when no reply is
+	// left to copy.
+	if len(plan.Status.Decisions) > 0 {
+		key := store.PlanKey{Namespace: plan.Namespace, Project: plan.Spec.ProjectRef, Plan: plan.Name}
+		if err := s.SavePlanDecisions(ctx, key, planDecisionRows(plan.Status.Decisions), c.now().Add(c.Retention)); err != nil {
+			return ctrl.Result{}, fmt.Errorf("saving the plan's decisions: %w", err)
+		}
 	}
 	row := store.ChatMessage{Namespace: plan.Namespace, Project: plan.Spec.ProjectRef, Plan: plan.Name}
 	if n := len(plan.Status.Calls); n > 0 {
@@ -42,6 +52,24 @@ func (c chatPlanReply) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Re
 	plan.Spec.ChatMessages = keep
 	// Optimistic lock, as for tasks: never drop a message dispatched meanwhile.
 	return ctrl.Result{}, c.Patch(ctx, &plan, client.MergeFromWithOptions(orig, client.MergeFromWithOptimisticLock{}))
+}
+
+// planDecisionRows converts the plan's current decisions into store rows. A
+// sign-off without a time is not stored, as the time is part of its key.
+func planDecisionRows(list []aiv1.PlanDecision) []store.PlanDecisionRow {
+	rows := make([]store.PlanDecisionRow, 0, len(list))
+	for _, d := range list {
+		r := store.PlanDecisionRow{PlanDecision: store.PlanDecision{
+			ID: d.ID, Version: d.Version, Title: d.Title, Question: d.Question, Options: d.Options,
+			Recommended: int(d.Recommended), Why: d.Why, State: string(d.State),
+			DecidedBy: d.DecidedBy, DecidedByName: d.DecidedByName, DecidedAt: d.DecidedAt.Time,
+		}}
+		if d.SignedOffBy != "" && d.SignedOffAt != nil {
+			r.SignOff = &store.PlanDecisionSignOff{By: d.SignedOffBy, ByName: d.SignedOffByName, At: d.SignedOffAt.Time}
+		}
+		rows = append(rows, r)
+	}
+	return rows
 }
 
 // dispatchPlan hands the plan message m to its AgentPlan's spec and wakes

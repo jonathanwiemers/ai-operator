@@ -148,21 +148,7 @@ func decisionSeq(id string) int {
 // DeleteExpiredDecisions deletes the decisions and revisit requests that
 // expired before now and returns how many rows. It runs as the owner.
 func (s *Store) DeleteExpiredDecisions(ctx context.Context, now time.Time) (int64, error) {
-	var total int64
-	for _, table := range []string{"desk_decisions", "desk_decision_revisits"} {
-		for {
-			tag, err := s.pool.Exec(ctx, `DELETE FROM `+table+` WHERE ctid = ANY(ARRAY(
-				SELECT ctid FROM `+table+` WHERE expires_at < $1 ORDER BY expires_at LIMIT $2))`, now, deleteBatch)
-			if err != nil {
-				return total, err
-			}
-			total += tag.RowsAffected()
-			if tag.RowsAffected() < deleteBatch {
-				break
-			}
-		}
-	}
-	return total, nil
+	return s.deleteExpiredRows(ctx, now, "desk_decisions", "desk_decision_revisits")
 }
 
 // DecisionQuery selects the decisions of Project: of milestone Milestone (0

@@ -233,8 +233,9 @@ and the UI reads: `history_events` and `agent_calls` (see
 snapshot `desk_milestones`, `desk_milestone_issues`, `desk_follow_ups` and
 `desk_milestone_releases` with its backfill records `desk_backfill` and
 `desk_backfill_projects` and the decisions `desk_decisions` and
-`desk_decision_revisits` (see [Desk snapshot](design.md#desk-snapshot)).
-They expire with `research.historyRetention`; a backfill record goes with
+`desk_decision_revisits` (see [Desk snapshot](design.md#desk-snapshot)),
+and the plans' decision history `plan_decision_versions` and
+`plan_decision_signoffs`. They expire with `research.historyRetention`; a backfill record goes with
 its milestone. The chart is set up for the way the Zalando
 postgres-operator provides a database: a host, and one Secret per login
 with the keys `username` and `password` (other key names with `usernameKey`
@@ -268,7 +269,8 @@ database's schema:
   (and `REVOKE` on `history_events`, `chat_messages`, `agent_calls` and the
   Desk snapshot tables `desk_milestones`, `desk_milestone_issues`,
   `desk_follow_ups`, `desk_milestone_releases`, `desk_backfill`,
-  `desk_backfill_projects`, `desk_decisions` and `desk_decision_revisits`);
+  `desk_backfill_projects`, `desk_decisions` and `desk_decision_revisits`,
+  and on `plan_decision_versions` and `plan_decision_signoffs`);
 * `chatWriterRole`: `USAGE` on the schema and `SELECT`, `INSERT` on
   `chat_messages` (row-level policy: user rows in state `queued` only);
 * `ALTER DEFAULT PRIVILEGES` for the reader, so tables of later migrations

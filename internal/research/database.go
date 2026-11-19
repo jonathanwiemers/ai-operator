@@ -145,6 +145,11 @@ func (d *Database) deleteExpired(ctx context.Context) {
 		return
 	}
 	d.log.Info("deleted expired chat messages", "messages", n)
+	if n, err = d.store.DeleteExpiredPlanDecisions(ctx, d.clock.Now()); err != nil {
+		d.log.Error(err, "deleting expired plan decisions")
+		return
+	}
+	d.log.Info("deleted expired plan decisions", "rows", n)
 	if n, err = d.store.DeleteExpiredCalls(ctx, d.clock.Now()); err != nil {
 		d.log.Error(err, "deleting expired agent calls")
 		return
