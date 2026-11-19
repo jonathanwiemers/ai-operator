@@ -88,7 +88,77 @@ type AgentPlanStatus struct {
 	// fails at MaxPlanPodFailures.
 	// +optional
 	PodFailures int32 `json:"podFailures,omitempty"`
+	// Decisions are the plan's current decisions, in the agent's order: the
+	// questions it asks (open) and the decisions in the draft (locked).
+	// +optional
+	// +listType=atomic
+	// +kubebuilder:validation:MaxItems=30
+	Decisions []PlanDecision `json:"decisions,omitempty"`
+	// DecisionSeq is the highest decision number ever issued, so a dropped
+	// decision's ID is never reused.
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	DecisionSeq int32 `json:"decisionSeq,omitempty"`
 }
+
+// PlanDecision is one decision of a plan, at its current version.
+type PlanDecision struct {
+	// ID is stable across versions and never reused: D1, D2, …
+	// +kubebuilder:validation:Pattern=`^D[1-9][0-9]*$`
+	ID string `json:"id"`
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=120
+	Title string `json:"title"`
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=1000
+	Question string `json:"question"`
+	// +listType=atomic
+	// +kubebuilder:validation:MinItems=2
+	// +kubebuilder:validation:MaxItems=5
+	// +kubebuilder:validation:items:MinLength=1
+	// +kubebuilder:validation:items:MaxLength=500
+	Options []string `json:"options"`
+	// Recommended is the 0-based index of the agent's pick in Options.
+	// +kubebuilder:validation:Minimum=0
+	// +kubebuilder:validation:Maximum=4
+	Recommended int32 `json:"recommended"`
+	// Why the agent recommends its pick.
+	// +optional
+	// +kubebuilder:validation:MaxLength=1000
+	Why string `json:"why,omitempty"`
+	// State is open or locked.
+	State PlanDecisionState `json:"state"`
+	// Version rises whenever the title, question, options, recommended
+	// option or state changes.
+	// +kubebuilder:validation:Minimum=1
+	Version int64 `json:"version"`
+	// DecidedBy is "agent" or the OIDC subject of the owner who decided
+	// this version.
+	// +kubebuilder:validation:MinLength=1
+	DecidedBy string `json:"decidedBy"`
+	// +optional
+	DecidedByName string `json:"decidedByName,omitempty"`
+	// DecidedAt is when this version was made.
+	DecidedAt metav1.Time `json:"decidedAt"`
+	// SignedOffBy is the OIDC subject of the owner who last signed this
+	// version off; empty while it is not signed off.
+	// +optional
+	SignedOffBy string `json:"signedOffBy,omitempty"`
+	// +optional
+	SignedOffByName string `json:"signedOffByName,omitempty"`
+	// +optional
+	SignedOffAt *metav1.Time `json:"signedOffAt,omitempty"`
+}
+
+// PlanDecisionState is open for a question the agent asks in its reply,
+// locked for a decision in the draft.
+// +kubebuilder:validation:Enum=open;locked
+type PlanDecisionState string
+
+const (
+	PlanDecisionOpen   PlanDecisionState = "open"
+	PlanDecisionLocked PlanDecisionState = "locked"
+)
 
 // MaxPlanPodFailures is how many pods of a plan may fail in a row before
 // the plan fails.

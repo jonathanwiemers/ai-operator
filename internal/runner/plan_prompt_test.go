@@ -22,6 +22,9 @@ func TestPlanSystemPromptFormatAndHouseRules(t *testing.T) {
 		"- draft: the full current draft whenever you have one.",
 		"empty keeps the current draft.",
 		"- title: the plan's title when the turn asks for one, else empty. At most 80 characters of plain words, no ticket numbers, in the style of a milestone title.",
+		"empty keeps the current list. Keep it in sync with the ## Decisions (locked) section",
+		"Put every question you ask in the reply into the list as an open entry, with options and the one you recommend.",
+		"Keep IDs stable and give a new decision the next free ID (D1, D2, …); never reuse the ID of a dropped decision.",
 	} {
 		if !strings.Contains(flat, want) {
 			t.Errorf("the plan system prompt lacks %q", want)
@@ -37,13 +40,56 @@ func TestPlanTurnSchema(t *testing.T) {
 	if err := json.Unmarshal([]byte(planTurnSchema), &s); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Join(s.Required, ",") != "reply,draft,title" || len(s.Properties) != 3 {
+	if strings.Join(s.Required, ",") != "reply,draft,title,decisions" || len(s.Properties) != 4 {
 		t.Fatalf("schema: %+v", s)
 	}
+	var decisions struct {
+		Items struct {
+			AdditionalProperties *bool                      `json:"additionalProperties"`
+			Required             []string                   `json:"required"`
+			Properties           map[string]json.RawMessage `json:"properties"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(s.Properties["decisions"], &decisions); err != nil {
+		t.Fatal(err)
+	}
+	it := decisions.Items
+	if strings.Join(it.Required, ",") != "id,title,question,options,recommended,why,state" || len(it.Properties) != 7 ||
+		it.AdditionalProperties == nil || *it.AdditionalProperties {
+		t.Fatalf("decision item: %+v", it)
+	}
 	var turn PlanTurn
-	if err := json.Unmarshal([]byte(`{"reply":"Which page?","draft":"","title":"Version in the rail"}`), &turn); err != nil ||
-		turn.Reply != "Which page?" || turn.Draft != "" || turn.Title != "Version in the rail" {
+	if err := json.Unmarshal([]byte(`{"reply":"Which page?","draft":"","title":"Version in the rail","decisions":[`+
+		`{"id":"D1","title":"Where","question":"Which page?","options":["Rail","Footer"],"recommended":1,"why":"Seen","state":"open"}]}`), &turn); err != nil ||
+		turn.Reply != "Which page?" || turn.Draft != "" || turn.Title != "Version in the rail" || len(turn.Decisions) != 1 ||
+		turn.Decisions[0].Options[1] != "Footer" || turn.Decisions[0].Recommended != 1 || turn.Decisions[0].State != "open" {
 		t.Fatalf("turn: %+v %v", turn, err)
+	}
+}
+
+// A plan that has had decisions names their IDs and the next free one.
+func TestPlanPromptDecisionIDs(t *testing.T) {
+	for name, tc := range map[string]struct {
+		ids  []string
+		next int
+		want string
+	}{
+		"current": {ids: []string{"D1", "D2", "D4"}, next: 5,
+			want: "## Decision IDs\n\nThe current decisions are D1, D2, D4. A new decision gets D5; never reuse a dropped ID.\n\n## The owner's message"},
+		"all dropped": {next: 3,
+			want: "## Decision IDs\n\nThe plan has no current decisions. A new decision gets D3; never reuse a dropped ID.\n\n## The owner's message"},
+	} {
+		got := buildPlanPrompt(planTurnInput{Message: "Go on.", Branch: "main", SHA: "ab7d54a", DecisionIDs: tc.ids, NextDecisionID: tc.next})
+		if !strings.Contains(got, tc.want) {
+			t.Errorf("%s: decision IDs:\n%q\nwant\n%q", name, got, tc.want)
+		}
+	}
+	// A plan that never had a decision: the prompt of today.
+	in := planTurnInput{Message: "Go on.", Branch: "main", SHA: "ab7d54a"}
+	without := buildPlanPrompt(in)
+	in.NextDecisionID = 1
+	if got := buildPlanPrompt(in); got != without || strings.Contains(got, "Decision IDs") {
+		t.Fatalf("a plan without decisions names IDs:\n%s", got)
 	}
 }
 

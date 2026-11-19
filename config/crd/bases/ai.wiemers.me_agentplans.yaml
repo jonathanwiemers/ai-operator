@@ -396,6 +396,103 @@ spec:
                 type: integer
               createdMilestoneURL:
                 type: string
+              decisionSeq:
+                description: |-
+                  DecisionSeq is the highest decision number ever issued, so a dropped
+                  decision's ID is never reused.
+                format: int32
+                minimum: 0
+                type: integer
+              decisions:
+                description: |-
+                  Decisions are the plan's current decisions, in the agent's order: the
+                  questions it asks (open) and the decisions in the draft (locked).
+                items:
+                  description: PlanDecision is one decision of a plan, at its current
+                    version.
+                  properties:
+                    decidedAt:
+                      description: DecidedAt is when this version was made.
+                      format: date-time
+                      type: string
+                    decidedBy:
+                      description: |-
+                        DecidedBy is "agent" or the OIDC subject of the owner who decided
+                        this version.
+                      minLength: 1
+                      type: string
+                    decidedByName:
+                      type: string
+                    id:
+                      description: 'ID is stable across versions and never reused:
+                        D1, D2, …'
+                      pattern: ^D[1-9][0-9]*$
+                      type: string
+                    options:
+                      items:
+                        maxLength: 500
+                        minLength: 1
+                        type: string
+                      maxItems: 5
+                      minItems: 2
+                      type: array
+                      x-kubernetes-list-type: atomic
+                    question:
+                      maxLength: 1000
+                      minLength: 1
+                      type: string
+                    recommended:
+                      description: Recommended is the 0-based index of the agent's
+                        pick in Options.
+                      format: int32
+                      maximum: 4
+                      minimum: 0
+                      type: integer
+                    signedOffAt:
+                      format: date-time
+                      type: string
+                    signedOffBy:
+                      description: |-
+                        SignedOffBy is the OIDC subject of the owner who last signed this
+                        version off; empty while it is not signed off.
+                      type: string
+                    signedOffByName:
+                      type: string
+                    state:
+                      description: State is open or locked.
+                      enum:
+                      - open
+                      - locked
+                      type: string
+                    title:
+                      maxLength: 120
+                      minLength: 1
+                      type: string
+                    version:
+                      description: |-
+                        Version rises whenever the title, question, options, recommended
+                        option or state changes.
+                      format: int64
+                      minimum: 1
+                      type: integer
+                    why:
+                      description: Why the agent recommends its pick.
+                      maxLength: 1000
+                      type: string
+                  required:
+                  - decidedAt
+                  - decidedBy
+                  - id
+                  - options
+                  - question
+                  - recommended
+                  - state
+                  - title
+                  - version
+                  type: object
+                maxItems: 30
+                type: array
+                x-kubernetes-list-type: atomic
               draft:
                 description: Draft is the milestone description in markdown.
                 maxLength: 65536

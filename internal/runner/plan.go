@@ -98,21 +98,31 @@ func (p *PlanRun) turn(ctx context.Context, plan *aiv1.AgentPlan, project *aiv1.
 	var also []aiv1.ChatReply
 	at := metav1.Time{Time: p.now()}
 	if guard.finish() {
-		out.Draft, out.Title, errStr, also = "", "", "interrupted", []aiv1.ChatReply{{MessageID: <-by, At: at}}
+		out.Draft, out.Title, out.Decisions, errStr, also = "", "", nil, "interrupted", []aiv1.ChatReply{{MessageID: <-by, At: at}}
 	} else if ctx.Err() != nil {
 		return ctx.Err() // the pod stops: still in flight
 	}
 	base, draft, title := plan.Status.DraftRevision, strings.TrimSpace(out.Draft), planTitleFrom(out.Title)
 	return p.answer(ctx, &st, func(s *aiv1.AgentPlanStatus) []aiv1.ChatReply {
-		text := textutil.Truncate(prose(out.Reply), maxChatReplyBytes-128)
+		text, refused := textutil.Truncate(prose(out.Reply), maxChatReplyBytes-128), true
 		switch {
 		case draft == "" || draft == s.Draft:
+			refused = false
 		case s.DraftRevision != base:
 			text += "\n\n" + planDraftKept
 		case len(draft) > maxPlanDraft:
 			text += "\n\n" + planDraftLarge
 		default:
-			s.Draft, s.DraftRevision, s.DraftBy, s.DraftSHA = draft, base+1, "agent", sha
+			s.Draft, s.DraftRevision, s.DraftBy, s.DraftSHA, refused = draft, base+1, "agent", sha, false
+		}
+		// The list follows the draft: not applied when the draft was refused.
+		if len(out.Decisions) > 0 && !refused {
+			if err := validPlanDecisions(s.Decisions, s.DecisionSeq, out.Decisions); err != nil {
+				p.Log.Info("plan decisions not applied", "error", err.Error())
+				text += "\n\n" + planDecisionsInvalid
+			} else {
+				s.Decisions, s.DecisionSeq = mergePlanDecisions(s.Decisions, s.DecisionSeq, out.Decisions, at.Time)
+			}
 		}
 		if title != "" && s.Title == "" && plan.Spec.Title == "" {
 			s.Title = title // the agent names the plan once
@@ -240,7 +250,8 @@ func (p *PlanRun) ask(ctx context.Context, st *state, plan *aiv1.AgentPlan, spec
 		FirstTurn: inv.Resume == "", Title: plan.Spec.Title, Draft: plan.Status.Draft,
 		Untitled:   plan.Spec.Title == "" && plan.Status.Title == "",
 		Edited:     plan.Status.DraftBy == "owner" && rev > st.PlanSeenRevision,
-		MaxMRLines: spec.MaxMRLines(), Constraints: spec.HouseConstraints()})
+		MaxMRLines: spec.MaxMRLines(), Constraints: spec.HouseConstraints(),
+		DecisionIDs: planDecisionIDs(plan.Status.Decisions), NextDecisionID: int(plan.Status.DecisionSeq) + 1})
 	if st.ChatInFlight != nil && st.ChatInFlight.Resent {
 		inv.Prompt = chatResendPrefix + "\n\n" + inv.Prompt
 	}

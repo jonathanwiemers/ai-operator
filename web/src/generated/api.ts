@@ -158,7 +158,108 @@ export interface AgentPlanStatus {
    * +optional
    */
   podFailures?: number /* int32 */;
+  /**
+   * Decisions are the plan's current decisions, in the agent's order: the
+   * questions it asks (open) and the decisions in the draft (locked).
+   * +optional
+   * +listType=atomic
+   * +kubebuilder:validation:MaxItems=30
+   */
+  decisions?: PlanDecision[];
+  /**
+   * DecisionSeq is the highest decision number ever issued, so a dropped
+   * decision's ID is never reused.
+   * +optional
+   * +kubebuilder:validation:Minimum=0
+   */
+  decisionSeq?: number /* int32 */;
 }
+/**
+ * PlanDecision is one decision of a plan, at its current version.
+ */
+export interface PlanDecision {
+  /**
+   * ID is stable across versions and never reused: D1, D2, …
+   * +kubebuilder:validation:Pattern=`^D[1-9][0-9]*$`
+   */
+  id: string;
+  /**
+   * +kubebuilder:validation:MinLength=1
+   * +kubebuilder:validation:MaxLength=120
+   */
+  title: string;
+  /**
+   * +kubebuilder:validation:MinLength=1
+   * +kubebuilder:validation:MaxLength=1000
+   */
+  question: string;
+  /**
+   * +listType=atomic
+   * +kubebuilder:validation:MinItems=2
+   * +kubebuilder:validation:MaxItems=5
+   * +kubebuilder:validation:items:MinLength=1
+   * +kubebuilder:validation:items:MaxLength=500
+   */
+  options: string[];
+  /**
+   * Recommended is the 0-based index of the agent's pick in Options.
+   * +kubebuilder:validation:Minimum=0
+   * +kubebuilder:validation:Maximum=4
+   */
+  recommended: number /* int32 */;
+  /**
+   * Why the agent recommends its pick.
+   * +optional
+   * +kubebuilder:validation:MaxLength=1000
+   */
+  why?: string;
+  /**
+   * State is open or locked.
+   */
+  state: PlanDecisionState;
+  /**
+   * Version rises whenever the title, question, options, recommended
+   * option or state changes.
+   * +kubebuilder:validation:Minimum=1
+   */
+  version: number /* int64 */;
+  /**
+   * DecidedBy is "agent" or the OIDC subject of the owner who decided
+   * this version.
+   * +kubebuilder:validation:MinLength=1
+   */
+  decidedBy: string;
+  /**
+   * +optional
+   */
+  decidedByName?: string;
+  /**
+   * DecidedAt is when this version was made.
+   */
+  decidedAt: string;
+  /**
+   * SignedOffBy is the OIDC subject of the owner who last signed this
+   * version off; empty while it is not signed off.
+   * +optional
+   */
+  signedOffBy?: string;
+  /**
+   * +optional
+   */
+  signedOffByName?: string;
+  /**
+   * +optional
+   */
+  signedOffAt?: string;
+}
+/**
+ * PlanDecisionState is open for a question the agent asks in its reply,
+ * locked for a decision in the draft.
+ * +kubebuilder:validation:Enum=open;locked
+ */
+export type PlanDecisionState = string;
+export const PlanDecisionOpen: PlanDecisionState = "open";
+export const PlanDecisionLocked: PlanDecisionState = "locked";
 /**
  * MaxPlanPodFailures is how many pods of a plan may fail in a row before
  * the plan fails.

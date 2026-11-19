@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
@@ -338,5 +339,151 @@ func TestPlanInterruptedTurnWritesNoTitle(t *testing.T) {
 	p := e.plan(t)
 	if rep, _ := replyFor(p, 10); rep.Error != "interrupted" || p.Status.Title != "" {
 		t.Fatalf("reply %+v, title %q", rep, p.Status.Title)
+	}
+}
+
+// planDecided answers a plan turn with a decisions list in JSON.
+func planDecided(reply, draft, decisions string) func(Invocation) (*Result, error) {
+	return func(Invocation) (*Result, error) {
+		b, _ := json.Marshal(PlanTurn{Reply: reply, Draft: draft})
+		b = []byte(strings.Replace(string(b), `"decisions":null`, `"decisions":`+decisions, 1))
+		return &Result{SessionID: "s", CostUSD: 0.1, Structured: b}, nil
+	}
+}
+
+// decisionJSON is one decision of the agent's answer.
+func decisionJSON(id, title, state string, recommended int, options ...string) string {
+	b, _ := json.Marshal(planTurnDecision{ID: id, Title: title, Question: title + "?", Options: options,
+		Recommended: recommended, Why: "because", State: state})
+	return string(b)
+}
+
+func decisionsJSON(ds ...string) string { return "[" + strings.Join(ds, ",") + "]" }
+
+func TestPlanTurnStoresDecisions(t *testing.T) {
+	const draft = "## Goal\n\nShow the version.\n\n## Decisions (locked)\n\n1. In the rail."
+	d1 := decisionJSON("D1", "Placement", "locked", 0, "Rail", "Footer")
+	e := newPlanEnv(t,
+		planDecided("Which format?", draft, decisionsJSON(d1, decisionJSON("D2", "Format", "open", 1, "Tag", "Tag and SHA"))),
+		planDecided("Noted.", "", decisionsJSON(strings.Replace(d1, "because", "seen everywhere", 1),
+			decisionJSON("D2", "Format", "locked", 1, "Tag", "Tag and SHA"))),
+		planDecided("Ok.", "", "[]"),
+		planDecided("Dropped D1.", "", decisionsJSON(decisionJSON("D2", "Format", "locked", 1, "Tag", "Tag and SHA"))),
+		planAnswer("s", "Go on.", ""))
+	p := e.turn(t, 10, "show the version")
+	ds := p.Status.Decisions
+	if len(ds) != 2 || p.Status.DecisionSeq != 2 || ds[0].ID != "D1" || ds[0].Version != 1 || ds[0].DecidedBy != "agent" ||
+		ds[0].DecidedAt.IsZero() || ds[1].State != aiv1.PlanDecisionOpen || ds[1].Recommended != 1 || ds[1].Options[1] != "Tag and SHA" {
+		t.Fatalf("first turn: seq %d %+v", p.Status.DecisionSeq, ds)
+	}
+	if rep := lastReply(t, p, 10); rep.Text != "Which format?" {
+		t.Fatalf("reply: %q", rep.Text)
+	}
+	if strings.Contains(e.engine.calls[0].Prompt, "Decision IDs") {
+		t.Fatalf("a plan without decisions names IDs:\n%s", e.engine.calls[0].Prompt)
+	}
+
+	// A changed why alone keeps the version; the answered question is locked: a new version.
+	p = e.turn(t, 11, "tag and SHA")
+	ds = p.Status.Decisions
+	if len(ds) != 2 || ds[0].Version != 1 || ds[0].Why != "seen everywhere" || ds[1].Version != 2 || ds[1].State != aiv1.PlanDecisionLocked {
+		t.Fatalf("second turn: %+v", ds)
+	}
+	if want := "## Decision IDs\n\nThe current decisions are D1, D2. A new decision gets D3; never reuse a dropped ID.\n\n"; !strings.Contains(e.engine.calls[1].Prompt, want) {
+		t.Fatalf("second prompt lacks %q:\n%s", want, e.engine.calls[1].Prompt)
+	}
+
+	// An empty list keeps the current one.
+	if p = e.turn(t, 12, "fine"); len(p.Status.Decisions) != 2 || p.Status.Decisions[1].Version != 2 {
+		t.Fatalf("an empty list changed the decisions: %+v", p.Status.Decisions)
+	}
+	// A left-out decision is dropped; its ID stays issued.
+	if p = e.turn(t, 13, "drop the placement"); len(p.Status.Decisions) != 1 || p.Status.Decisions[0].ID != "D2" || p.Status.DecisionSeq != 2 {
+		t.Fatalf("drop: seq %d %+v", p.Status.DecisionSeq, p.Status.Decisions)
+	}
+	e.turn(t, 14, "go on")
+	if want := "The current decisions are D2. A new decision gets D3;"; !strings.Contains(e.engine.calls[4].Prompt, want) {
+		t.Fatalf("prompt after a drop lacks %q:\n%s", want, e.engine.calls[4].Prompt)
+	}
+}
+
+func TestPlanTurnInvalidDecisionsKeepList(t *testing.T) {
+	d1 := decisionJSON("D1", "Placement", "locked", 0, "Rail", "Footer")
+	d2 := decisionJSON("D2", "Format", "open", 0, "Tag", "SHA")
+	many := make([]string, 31)
+	for i := range many {
+		many[i] = decisionJSON(fmt.Sprintf("D%d", i+1), "Placement", "locked", 0, "Rail", "Footer")
+	}
+	invalid := map[string]string{
+		"31 entries":           decisionsJSON(many...),
+		"one option":           decisionsJSON(decisionJSON("D1", "Placement", "locked", 0, "Rail")),
+		"dropped ID reused":    decisionsJSON(d1, decisionJSON("D2", "Other format", "open", 0, "Tag", "SHA")),
+		"recommended too high": decisionsJSON(decisionJSON("D1", "Placement", "locked", 2, "Rail", "Footer")),
+		"duplicate ID":         decisionsJSON(d1, d1),
+	}
+	answers := []func(Invocation) (*Result, error){
+		planDecided("Two.", "", decisionsJSON(d1, d2)),
+		planDecided("Dropped D2.", "", decisionsJSON(d1)),
+	}
+	var names []string
+	for name, ds := range invalid {
+		names = append(names, name)
+		answers = append(answers, planDecided("Here.", "", ds))
+	}
+	e := newPlanEnv(t, answers...)
+	e.turn(t, 10, "go")
+	want := e.turn(t, 11, "drop the format").Status
+	for i, name := range names {
+		id := int64(20 + i)
+		p := e.turn(t, id, name)
+		if len(p.Status.Decisions) != 1 || p.Status.Decisions[0].ID != "D1" || p.Status.Decisions[0].Version != want.Decisions[0].Version ||
+			p.Status.DecisionSeq != want.DecisionSeq {
+			t.Errorf("%s: the list changed: seq %d %+v", name, p.Status.DecisionSeq, p.Status.Decisions)
+		}
+		if rep := lastReply(t, p, id); rep.Text != "Here.\n\n"+planDecisionsInvalid || rep.Error != "" {
+			t.Errorf("%s: reply %+v", name, rep)
+		}
+	}
+}
+
+// A list whose draft is refused is not applied either (D612-P2).
+func TestPlanTurnDecisionsFollowTheDraft(t *testing.T) {
+	d1 := decisionsJSON(decisionJSON("D1", "Placement", "locked", 0, "Rail", "Footer"))
+	e := newPlanEnv(t, nil, planDecided("Big.", strings.Repeat("x", maxPlanDraft+1), d1))
+	e.engine.answers[0] = func(inv Invocation) (*Result, error) {
+		e.ownerSave(t, "## Goal\n\nOwner's words.") // while the turn runs
+		return planDecided("Here is a draft.", "## Goal\n\nAgent's words.", d1)(inv)
+	}
+	p := e.turn(t, 10, "draft it")
+	if len(p.Status.Decisions) != 0 || p.Status.DecisionSeq != 0 || lastReply(t, p, 10).Text != "Here is a draft.\n\n"+planDraftKept {
+		t.Fatalf("draft kept: reply %q, decisions %+v", lastReply(t, p, 10).Text, p.Status.Decisions)
+	}
+	p = e.turn(t, 11, "more")
+	if len(p.Status.Decisions) != 0 || lastReply(t, p, 11).Text != "Big.\n\n"+planDraftLarge {
+		t.Fatalf("draft too large: reply %q, decisions %+v", lastReply(t, p, 11).Text, p.Status.Decisions)
+	}
+}
+
+// An interrupted turn stores no decisions, even when the engine still answered.
+func TestPlanInterruptedTurnStoresNoDecisions(t *testing.T) {
+	e := newPlanEnv(t, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	e.run.wake = e.run.watchObject(ctx, &aiv1.AgentPlanList{}, "shop-plan-1")
+	e.engine.answers[0] = func(inv Invocation) (*Result, error) {
+		e.engine.mu.Lock()
+		turnCtx := e.engine.ctxs[len(e.engine.ctxs)-1]
+		e.engine.mu.Unlock()
+		e.post(t, chatMsg(11, "interrupt", "stop", "alice"))
+		<-turnCtx.Done()
+		return planDecided("Here.", "", decisionsJSON(decisionJSON("D1", "Placement", "open", 0, "Rail", "Footer")))(inv)
+	}
+	e.post(t, chatMsg(10, "message", "draft it", "alice"))
+	if _, err := e.run.tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	p := e.plan(t)
+	if rep, _ := replyFor(p, 10); rep.Error != "interrupted" || len(p.Status.Decisions) != 0 || p.Status.DecisionSeq != 0 {
+		t.Fatalf("reply %+v, decisions %+v", rep, p.Status.Decisions)
 	}
 }
