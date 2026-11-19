@@ -118,9 +118,25 @@ type ProjectSetEntry struct {
 	LastActiveTime *metav1.Time `json:"lastActiveTime,omitempty"`
 
 	// Milestones is a hash of the project's active milestones (iid, title,
-	// updatedAt): a change wakes the child.
+	// updatedAt): a change wakes the child, or the explicit AgentProject
+	// that watches the project.
 	// +optional
 	Milestones string `json:"milestones,omitempty"`
+
+	// MilestonesTruncated: the project has more active milestones than
+	// discovery reads, so the hash may miss a change and the project's
+	// AgentProject reads its milestones itself.
+	// +optional
+	MilestonesTruncated bool `json:"milestonesTruncated,omitempty"`
+
+	// HookID is the project hook the set registered on a project without
+	// an AgentProject, so a new milestone or ready issue wakes the set.
+	// +optional
+	HookID int64 `json:"hookID,omitempty"`
+
+	// HookCheckedAt is when the set last checked that hook in GitLab.
+	// +optional
+	HookCheckedAt *metav1.Time `json:"hookCheckedAt,omitempty"`
 }
 
 // ProjectSetCounts counts the set's projects by state.

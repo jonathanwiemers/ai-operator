@@ -119,7 +119,8 @@ ready issues too. An idle group of 112 projects costs two requests every two
 minutes, not one sync per project.
 
 Watch it with the metric `ai_operator_gitlab_requests_total`, labelled by
-`kind` (`rest` or `graphql`) and `owner` (the set or project name). GitLab
+`kind` (`rest` or `graphql`), `owner` (the set or project name) and `op`
+(the client call). GitLab
 refuses queries that are too complex. When the query's score passes 200, the
 set is `Ready=False` with the reason `TooComplex`: split the group into two
 sets.

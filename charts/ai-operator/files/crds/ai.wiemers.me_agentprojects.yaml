@@ -3330,6 +3330,18 @@ spec:
                       verification, a hash of the secret), so a change is noticed without
                       asking GitLab.
                     type: string
+                  heartbeatTime:
+                    description: |-
+                      HeartbeatTime is when the operator last asked GitLab for a test
+                      delivery, which keeps a quiet project Receiving.
+                    format: date-time
+                    type: string
+                  heartbeatTrigger:
+                    description: |-
+                      HeartbeatTrigger is the event GitLab sends test deliveries of for
+                      this hook (push_events, issues_events or milestone_events): the first
+                      one GitLab accepted.
+                    type: string
                   hookID:
                     description: HookID is the hook's ID in GitLab.
                     format: int64

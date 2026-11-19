@@ -1209,6 +1209,17 @@ type WebhookStatus struct {
 	// next delivery.
 	// +optional
 	LastDeliveryTime *metav1.Time `json:"lastDeliveryTime,omitempty"`
+
+	// HeartbeatTrigger is the event GitLab sends test deliveries of for
+	// this hook (push_events, issues_events or milestone_events): the first
+	// one GitLab accepted.
+	// +optional
+	HeartbeatTrigger string `json:"heartbeatTrigger,omitempty"`
+
+	// HeartbeatTime is when the operator last asked GitLab for a test
+	// delivery, which keeps a quiet project Receiving.
+	// +optional
+	HeartbeatTime *metav1.Time `json:"heartbeatTime,omitempty"`
 }
 
 // MainHealthState is the health of the default branch.

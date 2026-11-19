@@ -497,7 +497,7 @@ func TestProjectHooks(t *testing.T) {
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		switch r.Method {
 		case http.MethodGet:
-			_, _ = w.Write([]byte(`[{"id":5,"url":"https://op.example/hooks/gitlab","issues_events":true,"note_events":true,"merge_requests_events":true,"pipeline_events":true,"push_events":false,"enable_ssl_verification":true}]`))
+			_, _ = w.Write([]byte(`[{"id":5,"url":"https://op.example/hooks/gitlab","issues_events":true,"note_events":true,"merge_requests_events":true,"pipeline_events":true,"push_events":false,"milestone_events":true,"enable_ssl_verification":true}]`))
 		case http.MethodDelete:
 			w.WriteHeader(http.StatusNoContent)
 		default:
@@ -512,7 +512,7 @@ func TestProjectHooks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := ProjectHook{ID: 5, URL: "https://op.example/hooks/gitlab", IssuesEvents: true, NoteEvents: true, MergeRequestsEvents: true, PipelineEvents: true, EnableSSLVerification: true}
+	want := ProjectHook{ID: 5, URL: "https://op.example/hooks/gitlab", IssuesEvents: true, NoteEvents: true, MergeRequestsEvents: true, PipelineEvents: true, MilestoneEvents: true, EnableSSLVerification: true}
 	if method != http.MethodGet || path != "/api/v4/projects/g%2Fp/hooks" || len(hooks) != 1 || hooks[0] != want {
 		t.Fatalf("list: %s %s %+v", method, path, hooks)
 	}
@@ -520,7 +520,7 @@ func TestProjectHooks(t *testing.T) {
 	// Every field is sent, false ones too, so an edit leaves nothing behind.
 	opts := ProjectHookOptions{URL: "https://op.example/hooks/gitlab", Token: "s3cret", IssuesEvents: true, NoteEvents: true, EnableSSLVerification: true}
 	wantBody := map[string]any{"url": "https://op.example/hooks/gitlab", "token": "s3cret", "issues_events": true, "note_events": true,
-		"merge_requests_events": false, "pipeline_events": false, "push_events": false, "enable_ssl_verification": true}
+		"merge_requests_events": false, "pipeline_events": false, "push_events": false, "milestone_events": false, "enable_ssl_verification": true}
 	h, err := c.AddProjectHook(ctx, "g/p", opts)
 	if err != nil || h.ID != 6 {
 		t.Fatalf("add: %+v %v", h, err)

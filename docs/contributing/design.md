@@ -1299,7 +1299,8 @@ sequenceDiagram
   through `source.Channel`; the existing requeue coalesces a burst.
 * **Self-registration** (`syncWebhook`, right after the bot user in `sync`,
   never fails the sync). With `spec.webhook.enabled` and `url` it hashes the
-  URL, the five events (issues, notes, merge requests, pipelines, pushes),
+  URL, the six events (issues, notes, merge requests, pipelines, pushes,
+  milestones),
   SSL verification and `sha256(token)` into `status.webhook.configHash`.
   Only when that hash changes, or `checkedAt` is an hour old, it lists the
   project hooks, takes its own by `hookID` (else the one with the exact URL,
@@ -1318,7 +1319,7 @@ sequenceDiagram
   delivery the last full sync did not cover (kept in memory, since the
   status has whole seconds only), every `webhook.fallbackInterval`, after a
   failed sync or a generation change; otherwise it lists only the milestones
-  (`milestonesChanged`; milestone events have no hook) and syncs fully when
+  (`milestonesChanged`; milestone edits have no hook) and syncs fully when
   a planned one appeared, vanished or its spec task would change
   (`specTaskCurrent`, also a due spec retry or a waiting milestone's turn).
   The requeue stays
@@ -1339,20 +1340,69 @@ sequenceDiagram
   hash (first discovery, lost status) stores it and wakes nothing, so a
   restart does not sync every child at once. A stale discovery or a missing
   set lets the child poll like any AgentProject.
+* **Explicit projects are covered too.** Without a set ownerRef,
+  `setDiscoveryCurrent` lists the sets of the namespace and takes one whose
+  current discovery has an `explicit` entry for the project's path with a
+  hash. `milestoneChanges` stores hashes for `explicit` entries as well and
+  wakes the AgentProject named in the entry. An entry whose active
+  milestones fill discovery's page (20) is `milestonesTruncated`, keeps no
+  hash and so covers nothing: that project lists its milestones itself.
+  GitLab's milestone hook fires on create, close, reopen and delete, never
+  on update, so the set's `updatedAt` hash is the only edit watcher.
+* **Heartbeat** (`heartbeat.go`). A project that no set covers, with a
+  registered hook, asks GitLab for a test delivery
+  (`POST /projects/:id/hooks/:id/test/:trigger`) once its last delivery, its
+  last heartbeat and the operator's start are all older than
+  `silenceThreshold / 2` plus an fnv jitter of up to an eighth. It tries
+  the stored `status.webhook.heartbeatTrigger` first, then `push_events`,
+  `issues_events` and `milestone_events` on a 4xx (an empty repository
+  cannot test pushes), keeps the first that works and stamps
+  `heartbeatTime` even when all fail. `Deliveries.ExpectHeartbeat` marks
+  it; the first delivery within a minute is `RecordHook`'s heartbeat: it
+  counts for `Last` (receiving) but not for `LastEvent`, so it starts no
+  full sync. Cost: one request per project per 15 minutes by default.
+* **Set hooks on dormant projects** (`projectset_hooks.go`). After
+  discovery, `syncSetHooks` registers one hook (issues and milestone
+  events, the template's URL and trimmed secret) on each `dormant` entry
+  without a child, in `status.projects[].hookID` and `hookCheckedAt`. A
+  budget of 6 requests per reconcile (list + add = 2) and a recheck every
+  hour plus a 15-minute jitter by path keep it off GitLab's rate limit;
+  `hookCheckedAt` is stamped on failure too, which backs off a failing
+  project. When the entry turns active, the child's `syncWebhook` adopts
+  the set's hook by URL: an AgentProject whose `status.webhook.hookID`
+  equals the entry's hands it over and the set forgets it. Otherwise the
+  set deletes it once a watcher reports `WebhookRegistered=True`, or when
+  no AgentProject watches and there is no child (excluded, archived,
+  `nameTaken`). A vanished path stays an `excluded` entry while its delete
+  fails. The finalizer `ai.wiemers.me/project-hooks` deletes the rest on
+  set deletion within the same budget, requeues every 30 s, and gives up
+  on a hook after 3 failures (counted in memory). Token rotation is not
+  detected for these hooks: they get a new token only when created anew.
+* **The receiver wakes sets.** When no AgentProject accepts a delivery, the
+  receiver looks for sets whose status lists the path with a `hookID` and
+  checks the token against the template's secret. A match calls
+  `WakeSet`: the set's own `Waker` (30 s window) and a `woken` mark that
+  makes the next reconcile discover at once instead of waiting for
+  `pollInterval`. Unknown paths and wrong tokens still get `401`.
+* **Metrics.** `ai_operator_gitlab_requests_total{kind, owner, op}` (`op` is
+  the client method, a fixed set), `ai_operator_project_syncs_total
+  {namespace, project, kind}` (`full`, `light`, `skipped`) and
+  `ai_operator_webhook_deliveries_total{event, result}` (`accepted`,
+  `heartbeat`, `set`, `refused`; unknown event headers count as `other`).
 
 **Settings behind `spec.webhook`** (user side in
 [`spec.webhook`](../reference/agentproject.md#specwebhook)). A delivery
 counts only when its `X-Gitlab-Token` matches the secret (constant-time
 compare, surrounding whitespace of the secret ignored), else `401`. With
 `enabled`, the operator registers one hook for `url` with issues, notes,
-merge requests, pipelines and pushes, SSL verification and the secret
+merge requests, pipelines, pushes and milestones, SSL verification and the secret
 token; it updates it when the URL or secret changes, checks it hourly
 (restoring a hook deleted or changed by hand), deletes it when switched off
 and leaves other hooks alone. `WebhookRegistered` has the reasons
 `Registered`, `Forbidden`, `Invalid` and `Failed`; `WebhookDeliveries`
 `Receiving`, `ViaProjectSet` and `Silent`, with `status.webhook.lastDeliveryTime`. Between
-full syncs each `pollInterval` lists only the milestones (milestone changes
-send no delivery) and syncs fully when a planned one changed, appeared or
+full syncs each `pollInterval` lists only the milestones (milestone edits
+send no delivery), unless a set watches them, and syncs fully when a planned one changed, appeared or
 vanished, or the spec changed. After an operator restart every poll is a
 full sync until a delivery arrives. The receiver serves on the leader only.
 
@@ -3497,7 +3547,7 @@ delivery for the child in the store the webhook receiver uses and wakes it
 through the same waker, so the child takes the path a real delivery takes.
 
 **Requests.** Both the REST and the GraphQL client count their requests;
-`ai_operator_gitlab_requests_total{kind, owner}` exports them. The set is
+`ai_operator_gitlab_requests_total{kind, owner, op}` exports them. The set is
 `Ready=False` (`TooComplex`) when the query's score passes 200.
 
 ## Security

@@ -1553,6 +1553,19 @@ export interface WebhookStatus {
    * +optional
    */
   lastDeliveryTime?: string;
+  /**
+   * HeartbeatTrigger is the event GitLab sends test deliveries of for
+   * this hook (push_events, issues_events or milestone_events): the first
+   * one GitLab accepted.
+   * +optional
+   */
+  heartbeatTrigger?: string;
+  /**
+   * HeartbeatTime is when the operator last asked GitLab for a test
+   * delivery, which keeps a quiet project Receiving.
+   * +optional
+   */
+  heartbeatTime?: string;
 }
 /**
  * MainHealthState is the health of the default branch.
@@ -2159,10 +2172,29 @@ export interface ProjectSetEntry {
   lastActiveTime?: string;
   /**
    * Milestones is a hash of the project's active milestones (iid, title,
-   * updatedAt): a change wakes the child.
+   * updatedAt): a change wakes the child, or the explicit AgentProject
+   * that watches the project.
    * +optional
    */
   milestones?: string;
+  /**
+   * MilestonesTruncated: the project has more active milestones than
+   * discovery reads, so the hash may miss a change and the project's
+   * AgentProject reads its milestones itself.
+   * +optional
+   */
+  milestonesTruncated?: boolean;
+  /**
+   * HookID is the project hook the set registered on a project without
+   * an AgentProject, so a new milestone or ready issue wakes the set.
+   * +optional
+   */
+  hookID?: number /* int64 */;
+  /**
+   * HookCheckedAt is when the set last checked that hook in GitLab.
+   * +optional
+   */
+  hookCheckedAt?: string;
 }
 /**
  * ProjectSetCounts counts the set's projects by state.

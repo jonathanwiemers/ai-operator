@@ -162,3 +162,48 @@ func TestProjectSetWakeWithoutStoreOrWaker(t *testing.T) {
 		t.Errorf("entry = %+v", got)
 	}
 }
+
+func TestProjectSetChangedMilestoneWakesTheExplicitAgentProject(t *testing.T) {
+	explicit := agentProject("infra", "my-shop", "Jo.Wiemers/Shop", nil)
+	e := &wakeEnv{setEnv: newSetEnv(t, nil, &explicit)}
+	e.deliveries = webhook.NewDeliveries(clocktesting.NewFakeClock(planNow))
+	e.r.Deliveries = e.deliveries
+	e.r.Wake = func(n types.NamespacedName) { e.woken = append(e.woken, n) }
+	e.disc.disc = &gitlab.GroupDiscovery{Projects: []gitlab.DiscoveredProject{activeProject("jo.wiemers/shop")}}
+	e.reconcile()
+	got := setEntry(e.set(), "jo.wiemers/shop")
+	if got.State != aiv1.ProjectSetExplicit || got.Milestones == "" {
+		t.Fatalf("the explicit entry stores no hash: %+v", got)
+	}
+	e.disc.disc.Projects[0].Milestones[0].Title = "Checkout v2"
+	e.poll()
+	want := types.NamespacedName{Namespace: "infra", Name: "my-shop"}
+	if len(e.woken) != 1 || e.woken[0] != want {
+		t.Fatalf("woken %v, want %v", e.woken, want)
+	}
+	if _, ok := e.deliveries.Last(want); !ok {
+		t.Error("no delivery recorded for the explicit AgentProject")
+	}
+}
+
+func TestProjectSetTruncatedMilestonesStoreNoHash(t *testing.T) {
+	e := newWakeEnv(t)
+	e.reconcile()
+	e.poll()
+	shop := &e.disc.disc.Projects[0]
+	shop.MilestonesTruncated = true
+	shop.Milestones[0].Title = "Checkout v2"
+	e.poll()
+	e.wantWakes(0)
+	got := setEntry(e.set(), "jo.wiemers/shop")
+	if got.Milestones != "" || !got.MilestonesTruncated {
+		t.Fatalf("truncated entry = %+v, want no hash", got)
+	}
+	// Back under the cap: the hash is stored again without a wake.
+	shop.MilestonesTruncated = false
+	e.poll()
+	e.wantWakes(0)
+	if got := setEntry(e.set(), "jo.wiemers/shop"); got.Milestones == "" || got.MilestonesTruncated {
+		t.Fatalf("entry = %+v", got)
+	}
+}

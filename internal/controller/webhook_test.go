@@ -88,7 +88,7 @@ func TestWebhookRegisteredOnce(t *testing.T) {
 	}
 	ours := e.gl.Hooks[1]
 	want := gitlabfake.Hook{ProjectHook: gitlab.ProjectHook{ID: ours.ID, URL: hookURL, IssuesEvents: true, NoteEvents: true,
-		MergeRequestsEvents: true, PipelineEvents: true, PushEvents: true, EnableSSLVerification: true}, Token: "s3cret"}
+		MergeRequestsEvents: true, PipelineEvents: true, PushEvents: true, MilestoneEvents: true, EnableSSLVerification: true}, Token: "s3cret"}
 	if ours != want {
 		t.Fatalf("hook %+v, want %+v", ours, want)
 	}
@@ -155,6 +155,28 @@ func TestWebhookAdoptsTheHookForItsURL(t *testing.T) {
 	if st := e.project().Status.Webhook; st == nil || st.HookID != 7 {
 		t.Fatalf("status %+v", st)
 	}
+}
+
+// A hook registered before milestone events were asked for is edited in
+// place on the next check, keeping its ID: no second hook, no new delivery URL.
+func TestWebhookWithoutMilestoneEventsIsEditedInPlace(t *testing.T) {
+	e, now := newWebhookEnv(t)
+	e.reconcile()
+	id := e.gl.Hooks[0].ID
+	// As an older operator left it: the hook and the hash without them.
+	e.gl.Hooks[0].MilestoneEvents = false
+	p := e.project()
+	p.Status.Webhook.ConfigHash = "registered-by-an-older-release"
+	if err := e.c.Status().Update(e.ctx, &p); err != nil {
+		t.Fatal(err)
+	}
+
+	*now = now.Add(time.Minute)
+	e.reconcile()
+	if len(e.gl.Hooks) != 1 || e.gl.Hooks[0].ID != id || !e.gl.Hooks[0].MilestoneEvents {
+		t.Fatalf("hooks %+v", e.gl.Hooks)
+	}
+	e.wantHookWrites("add "+itoa(id), "edit "+itoa(id))
 }
 
 func TestWebhookDeletedByHandIsRecreatedAfterTheRecheck(t *testing.T) {

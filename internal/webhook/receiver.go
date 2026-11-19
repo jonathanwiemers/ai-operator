@@ -12,12 +12,15 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/go-logr/logr"
+	"github.com/prometheus/client_golang/prometheus"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 )
@@ -30,16 +33,58 @@ const MaxBody = 1 << 20
 
 // Receiver is the http.Handler for POST Path. It wakes every AgentProject on
 // the delivery's GitLab project whose webhook secret matches X-Gitlab-Token,
-// and records the delivery in Deliveries (when set) before the wake.
+// and records the delivery in Deliveries (when set) before the wake. A
+// heartbeat (the test delivery the project asked for) wakes nothing.
+//
+// When no AgentProject takes the delivery, it wakes every AgentProjectSet
+// that registered a hook on the project (status.projects[].hookID) and whose
+// template's webhook secret matches: a new milestone in a dormant project.
 type Receiver struct {
 	Reader     client.Reader
 	Wake       func(types.NamespacedName)
+	WakeSet    func(types.NamespacedName)
 	Deliveries *Deliveries
 	Log        logr.Logger
 }
 
+// deliveries counts the hook deliveries by event (the X-Gitlab-Event header,
+// normalized) and result: accepted (an AgentProject was woken), heartbeat
+// (the test delivery a project asked for), set (a set was woken) or refused.
+var deliveries = prometheus.NewCounterVec(prometheus.CounterOpts{
+	Name: "ai_operator_webhook_deliveries_total",
+	Help: "GitLab hook deliveries by event and result (accepted, heartbeat, set, refused)",
+}, []string{"event", "result"})
+
+func init() {
+	metrics.Registry.MustRegister(deliveries)
+}
+
+// knownEvents are the X-Gitlab-Event values with a series of their own;
+// others count as "other", so a sender cannot grow the cardinality.
+var knownEvents = map[string]string{
+	"Push Hook": "push", "Tag Push Hook": "tag_push", "Issue Hook": "issue", "Confidential Issue Hook": "issue",
+	"Note Hook": "note", "Confidential Note Hook": "note", "Merge Request Hook": "merge_request",
+	"Pipeline Hook": "pipeline", "Job Hook": "job", "Milestone Hook": "milestone", "Release Hook": "release",
+}
+
+func eventLabel(header string) string {
+	if e, ok := knownEvents[header]; ok {
+		return e
+	}
+	return "other"
+}
+
 func (r *Receiver) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	log := r.Log.WithValues("event", textutil.Truncate(req.Header.Get("X-Gitlab-Event"), 256), "remote", req.RemoteAddr)
+	sw := &statusWriter{ResponseWriter: w}
+	w = sw
+	defer func() {
+		result := sw.result
+		if result == "" {
+			result = "refused"
+		}
+		deliveries.WithLabelValues(eventLabel(req.Header.Get("X-Gitlab-Event")), result).Inc()
+	}()
 	if req.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -79,35 +124,89 @@ func (r *Receiver) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	token := req.Header.Get("X-Gitlab-Token")
 	var woken []string
-	known := false
+	known, heartbeats := false, 0
 	for i := range projects.Items {
 		p := &projects.Items[i]
 		if !strings.EqualFold(p.Spec.GitLab.Project, path) {
 			continue
 		}
 		known = true
-		if r.tokenMatches(req, p, token, log) {
-			name := types.NamespacedName{Namespace: p.Namespace, Name: p.Name}
-			// Recorded first, so the sync the wake starts sees it.
-			if r.Deliveries != nil {
-				r.Deliveries.Record(name)
-				if noteIID > 0 {
-					r.Deliveries.RecordNote(name, noteIID)
-				}
-			}
-			r.Wake(name)
-			woken = append(woken, name.String())
+		if !r.tokenMatches(req, p, p.Namespace, p.Spec.Webhook.SecretRef, token, log) {
+			continue
 		}
+		name := types.NamespacedName{Namespace: p.Namespace, Name: p.Name}
+		// Recorded first, so the sync the wake starts sees it.
+		if r.Deliveries != nil {
+			if r.Deliveries.RecordHook(name) {
+				heartbeats++
+				continue
+			}
+			if noteIID > 0 {
+				r.Deliveries.RecordNote(name, noteIID)
+			}
+		}
+		r.Wake(name)
+		woken = append(woken, name.String())
 	}
-	if len(woken) == 0 {
-		// Unknown projects get the same answer as bad tokens, so nobody can
-		// probe which projects are served.
-		log.Info("Webhook delivery refused: unknown project or wrong token", "known", known, "tokenSent", token != "")
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	switch {
+	case len(woken) > 0:
+		sw.result = "accepted"
+		log.Info("Webhook delivery accepted", "woken", woken)
+		w.WriteHeader(http.StatusAccepted)
+		return
+	case heartbeats > 0:
+		sw.result = "heartbeat"
+		log.V(1).Info("Webhook heartbeat arrived")
+		w.WriteHeader(http.StatusAccepted)
 		return
 	}
-	log.Info("Webhook delivery accepted", "woken", woken)
-	w.WriteHeader(http.StatusAccepted)
+	if sets := r.wakeSets(req, path, token, log); len(sets) > 0 {
+		sw.result = "set"
+		log.Info("Webhook delivery accepted for project sets", "woken", sets)
+		w.WriteHeader(http.StatusAccepted)
+		return
+	}
+	// Unknown projects get the same answer as bad tokens, so nobody can
+	// probe which projects are served.
+	log.Info("Webhook delivery refused: unknown project or wrong token", "known", known, "tokenSent", token != "")
+	http.Error(w, "unauthorized", http.StatusUnauthorized)
+}
+
+// wakeSets wakes every AgentProjectSet that registered a hook on path and
+// whose template's webhook secret matches token, and returns their names.
+func (r *Receiver) wakeSets(req *http.Request, path, token string, log logr.Logger) []string {
+	if r.WakeSet == nil {
+		return nil
+	}
+	var sets aiv1.AgentProjectSetList
+	if err := r.Reader.List(req.Context(), &sets); err != nil {
+		log.Error(err, "Listing AgentProjectSets failed")
+		return nil
+	}
+	var woken []string
+	for i := range sets.Items {
+		set := &sets.Items[i]
+		hooked := slices.ContainsFunc(set.Status.Projects, func(e aiv1.ProjectSetEntry) bool {
+			return e.HookID != 0 && strings.EqualFold(e.Path, path)
+		})
+		if !hooked {
+			continue
+		}
+		tmpl, err := set.Spec.DecodeTemplate()
+		if err != nil || !r.tokenMatches(req, set, set.Namespace, tmpl.Webhook.SecretRef, token, log) {
+			continue
+		}
+		name := types.NamespacedName{Namespace: set.Namespace, Name: set.Name}
+		r.WakeSet(name)
+		woken = append(woken, name.String())
+	}
+	return woken
+}
+
+// statusWriter remembers the delivery's result for the metric.
+type statusWriter struct {
+	http.ResponseWriter
+	result string
 }
 
 // noteIssue returns the IID of the issue a note event is on, and 0 for any
@@ -128,17 +227,15 @@ func noteIssue(body []byte) int64 {
 	return max(ev.Issue.IID, 0)
 }
 
-// tokenMatches compares the token with the project's webhook secret in
-// constant time. A project without a secret, or with an empty one, matches
-// no token.
-func (r *Receiver) tokenMatches(req *http.Request, p *aiv1.AgentProject, token string, log logr.Logger) bool {
-	ref := p.Spec.Webhook.SecretRef
+// tokenMatches compares the token with the webhook secret ref in namespace
+// in constant time. No secret, or an empty one, matches no token.
+func (r *Receiver) tokenMatches(req *http.Request, owner client.Object, namespace string, ref *corev1.SecretKeySelector, token string, log logr.Logger) bool {
 	if ref == nil || token == "" {
 		return false
 	}
 	var secret corev1.Secret
-	if err := r.Reader.Get(req.Context(), types.NamespacedName{Namespace: p.Namespace, Name: ref.Name}, &secret); err != nil {
-		log.Info("Webhook secret unreadable", "agentProject", p.Namespace+"/"+p.Name, "error", err.Error())
+	if err := r.Reader.Get(req.Context(), types.NamespacedName{Namespace: namespace, Name: ref.Name}, &secret); err != nil {
+		log.Info("Webhook secret unreadable", "owner", namespace+"/"+owner.GetName(), "error", err.Error())
 		return false
 	}
 	want := strings.TrimSpace(string(secret.Data[ref.Key]))

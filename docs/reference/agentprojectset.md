@@ -53,7 +53,7 @@ change to `template` reaches the children on the next poll.
 |-------|---------|
 | `lastDiscoveryTime` | When the set last listed the group. |
 | `counts` | Projects per state: `active`, `dormant`, `excluded`, `explicit`, `nameTaken`. |
-| `projects` | One entry per matched project: `path`, `state`, `child`, `reason` and `lastActiveTime`. |
+| `projects` | One entry per matched project: `path`, `state`, `child`, `reason`, `lastActiveTime`, the hash of its active `milestones`, `milestonesTruncated` (20 or more active milestones: the hash may miss a change, so its AgentProject lists them itself), and `hookID` and `hookCheckedAt` of the set's own hook on a dormant project. |
 | `droppedTargets` | Template `crossRepo` targets that `exclude` matches. The set leaves them out of its children. |
 | `complexity` | `score` and `limit` of the last GraphQL query. |
 
@@ -93,16 +93,40 @@ longer. It carries:
 | annotation `ai.wiemers.me/template-hash` | The template the child was last written from. |
 | annotation `ai.wiemers.me/removing` | The set is removing the child: its webhook is off and it goes once the hook is gone. |
 
-The set owns its children: deleting the set deletes them. On a child,
-the `WebhookDeliveries` condition shows the reason `ViaProjectSet` while the
-set's discovery is current, see [`spec.webhook`](agentproject.md#specwebhook).
+The set owns its children: deleting the set deletes them. On a child, and
+on an AgentProject the set lists as `explicit`, the `WebhookDeliveries`
+condition shows the reason `ViaProjectSet` while the set's discovery is
+current: the set watches the project's milestones, edits included, and wakes
+the AgentProject when they change. See
+[`spec.webhook`](agentproject.md#specwebhook).
 
-## Metric
+## Hooks on dormant projects
 
-`ai_operator_gitlab_requests_total{kind, owner}` counts GitLab requests. `kind`
-is `rest` or `graphql`, `owner` the AgentProject or AgentProjectSet that made
-them. An idle set adds at most one `graphql` request per 100 projects per
-poll.
+A dormant project has no child and so no hook of its own. The set registers
+one there, for issue and milestone events only, with the template's
+`webhook.url` and `webhook.secretRef`. A new milestone or ready issue then
+wakes the set within seconds, and it creates the child at once. The set adds
+at most three such hooks per poll and checks each about hourly.
+
+The set deletes its hook when the child has registered its own, when the
+project is excluded or archived, or when it leaves the group. Deleting the
+set deletes the remaining hooks first: the finalizer
+`ai.wiemers.me/project-hooks` holds the set until they are gone, or until a
+hook failed three times. A new token in `webhook.secretRef` reaches these
+hooks only when they are created anew.
+
+## Metrics
+
+`ai_operator_gitlab_requests_total{kind, owner, op}` counts GitLab requests.
+`kind` is `rest` or `graphql`, `owner` the AgentProject or AgentProjectSet
+that made them, `op` the client call. An idle set adds at most one `graphql`
+request per 100 projects per poll.
+
+`ai_operator_project_syncs_total{namespace, project, kind}` counts each
+AgentProject's polls: `full`, `light` (milestones only) or `skipped` (the
+set watches the milestones). `ai_operator_webhook_deliveries_total{event,
+result}` counts deliveries: `accepted`, `heartbeat`, `set` (a set was woken)
+or `refused`.
 
 ## Next
 

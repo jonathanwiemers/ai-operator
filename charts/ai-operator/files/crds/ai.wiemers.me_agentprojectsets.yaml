@@ -272,6 +272,17 @@ spec:
                       description: Child is the name of the child AgentProject, if
                         there is one.
                       type: string
+                    hookCheckedAt:
+                      description: HookCheckedAt is when the set last checked that
+                        hook in GitLab.
+                      format: date-time
+                      type: string
+                    hookID:
+                      description: |-
+                        HookID is the project hook the set registered on a project without
+                        an AgentProject, so a new milestone or ready issue wakes the set.
+                      format: int64
+                      type: integer
                     lastActiveTime:
                       description: LastActiveTime is when the set last saw work in
                         the project.
@@ -280,8 +291,15 @@ spec:
                     milestones:
                       description: |-
                         Milestones is a hash of the project's active milestones (iid, title,
-                        updatedAt): a change wakes the child.
+                        updatedAt): a change wakes the child, or the explicit AgentProject
+                        that watches the project.
                       type: string
+                    milestonesTruncated:
+                      description: |-
+                        MilestonesTruncated: the project has more active milestones than
+                        discovery reads, so the hash may miss a change and the project's
+                        AgentProject reads its milestones itself.
+                      type: boolean
                     path:
                       description: Path is the project's full path.
                       type: string

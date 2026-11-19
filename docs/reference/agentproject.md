@@ -322,15 +322,16 @@ poll. See [Webhook](../getting-started/install.md#webhook-optional) for the setu
 | `fallbackInterval` | While deliveries arrive, how often the project is fully synced anyway. | `10m` |
 | `silenceThreshold` | How long after the last delivery the project still counts as receiving. After it, every poll is a full sync again. | `30m` |
 
-While deliveries arrive, steps that only time moves on (infra retries,
-autopilot's auto-resume, the main health check) can be up to
-`fallbackInterval` late. The conditions `WebhookRegistered` and
-`WebhookDeliveries` on the AgentProject say how it goes. On an
-AgentProject that an AgentProjectSet created, `WebhookDeliveries` shows
-`ViaProjectSet` while the set's discovery is current: the set watches the
-milestones and wakes the project when they change, so between full syncs
-its polls send no GitLab request. The receiver
-itself is a chart setting (`webhook.*`, see the
+While deliveries arrive, steps that only time moves on (infra retries, autopilot's auto-resume,
+the main health check) can be up to `fallbackInterval` late. The hook sends issues, notes, merge requests, pipelines, pushes and milestones.
+GitLab sends nothing for an edited milestone: an AgentProjectSet's discovery sees the edit, else each
+poll lists the milestones. To wake a project at once, close and reopen the milestone. A quiet project
+gets a heartbeat: when its last delivery is half a `silenceThreshold` old, the operator asks GitLab for a
+test delivery (`status.webhook.heartbeatTrigger` and `heartbeatTime`), so it stays receiving.
+The conditions `WebhookRegistered` and `WebhookDeliveries` say how it goes. `WebhookDeliveries` shows
+`ViaProjectSet` while a set's discovery is current and the set watches the milestones: on its children
+and on an AgentProject it lists as `explicit`. Between full syncs the polls then send no GitLab request.
+The receiver itself is a chart setting (`webhook.*`, see the
 [chart values](../../charts/ai-operator/README.md#gitlab-webhooks)).
 
 ## `spec.crossRepo`

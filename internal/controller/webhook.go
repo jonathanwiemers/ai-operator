@@ -63,7 +63,7 @@ func (r *AgentProjectReconciler) syncWebhook(ctx context.Context, gl gitlab.API,
 		return
 	}
 	opts := gitlab.ProjectHookOptions{URL: wh.URL, Token: token, IssuesEvents: true, NoteEvents: true,
-		MergeRequestsEvents: true, PipelineEvents: true, PushEvents: true, EnableSSLVerification: true}
+		MergeRequestsEvents: true, PipelineEvents: true, PushEvents: true, MilestoneEvents: true, EnableSSLVerification: true}
 	hash := webhookHash(opts)
 	now := r.now()
 	if st != nil && st.HookID != 0 && st.ConfigHash == hash && st.CheckedAt != nil && now.Sub(st.CheckedAt.Time) < webhookRecheck {
@@ -106,7 +106,11 @@ func (r *AgentProjectReconciler) syncWebhook(ctx context.Context, gl gitlab.API,
 	default:
 		id = found.ID
 	}
-	project.Status.Webhook = &aiv1.WebhookStatus{HookID: id, ConfigHash: hash, CheckedAt: &metav1.Time{Time: now}}
+	next := &aiv1.WebhookStatus{HookID: id, ConfigHash: hash, CheckedAt: &metav1.Time{Time: now}}
+	if st != nil && st.HookID == id {
+		next.HeartbeatTrigger, next.HeartbeatTime = st.HeartbeatTrigger, st.HeartbeatTime
+	}
+	project.Status.Webhook = next
 	setWebhookCondition(project, metav1.ConditionTrue, "Registered", fmt.Sprintf("project hook %d delivers to %s", id, wh.URL))
 }
 
@@ -125,19 +129,22 @@ func webhookHash(opts gitlab.ProjectHookOptions) string {
 func hookMatches(h gitlab.ProjectHook, o gitlab.ProjectHookOptions) bool {
 	return h == gitlab.ProjectHook{ID: h.ID, URL: o.URL, IssuesEvents: o.IssuesEvents, NoteEvents: o.NoteEvents,
 		MergeRequestsEvents: o.MergeRequestsEvents, PipelineEvents: o.PipelineEvents, PushEvents: o.PushEvents,
-		EnableSSLVerification: o.EnableSSLVerification}
+		MilestoneEvents: o.MilestoneEvents, EnableSSLVerification: o.EnableSSLVerification}
 }
 
-// webhookDeliveries returns when the last valid delivery for the project
-// arrived since the operator started (zero if none did), and whether
-// deliveries arrive: the last one is younger than webhook.silenceThreshold.
-// Without a secretRef no delivery counts.
-func (r *AgentProjectReconciler) webhookDeliveries(project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, now time.Time) (time.Time, bool) {
+// webhookDeliveries returns when the last valid delivery that told of a
+// change arrived (event) and the last one of any kind, heartbeats included
+// (live), since the operator started (zero if none did), and whether
+// deliveries arrive: live is younger than webhook.silenceThreshold. Without a
+// secretRef no delivery counts.
+func (r *AgentProjectReconciler) webhookDeliveries(project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, now time.Time) (event, live time.Time, receiving bool) {
 	if spec.Webhook.SecretRef == nil || r.Deliveries == nil {
-		return time.Time{}, false
+		return time.Time{}, time.Time{}, false
 	}
-	last, ok := r.Deliveries.Last(types.NamespacedName{Namespace: project.Namespace, Name: project.Name})
-	return last, ok && now.Sub(last) < spec.Webhook.SilenceThreshold.Duration
+	n := types.NamespacedName{Namespace: project.Namespace, Name: project.Name}
+	event, _ = r.Deliveries.LastEvent(n)
+	live, ok := r.Deliveries.Last(n)
+	return event, live, ok && now.Sub(live) < spec.Webhook.SilenceThreshold.Duration
 }
 
 // reportDeliveries mirrors the last delivery into status.webhook and sets the
@@ -171,7 +178,7 @@ func reportDeliveries(project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, pr
 	switch {
 	case viaSet != "":
 		cond.Reason = "ViaProjectSet"
-		cond.Message = fmt.Sprintf("set %s watches the milestones: full sync on deliveries and every %s", viaSet, spec.Webhook.FallbackInterval.Duration)
+		cond.Message = fmt.Sprintf("milestones watched by set %s: full sync on deliveries and every %s", viaSet, spec.Webhook.FallbackInterval.Duration)
 	case !receiving:
 		cond.Status, cond.Reason = metav1.ConditionFalse, "Silent"
 		cond.Message = fmt.Sprintf("no delivery within %s: full sync every pollInterval", spec.Webhook.SilenceThreshold.Duration)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -16,8 +17,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
@@ -46,10 +50,27 @@ type AgentProjectSetReconciler struct {
 	// Nil: the children see the change on their next full sync.
 	Deliveries *webhook.Deliveries
 	Wake       func(types.NamespacedName)
+	// Wakes, when set, reconciles the set of every event at once; SendWake
+	// sends to it (the set waker's Wake, which allows one per 30s).
+	Wakes    <-chan event.GenericEvent
+	SendWake func(types.NamespacedName)
+
+	woken    sync.Map // sets a hook delivery woke: they discover at once
+	failures hookFailures
+}
+
+// WakeSet makes the set discover at once: a hook it registered on a dormant
+// project delivered.
+func (r *AgentProjectSetReconciler) WakeSet(n types.NamespacedName) {
+	r.woken.Store(n, true)
+	if r.SendWake != nil {
+		r.SendWake(n)
+	}
 }
 
 // +kubebuilder:rbac:groups=ai.wiemers.me,resources=agentprojectsets,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=ai.wiemers.me,resources=agentprojectsets/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=ai.wiemers.me,resources=agentprojectsets/finalizers,verbs=update
 // +kubebuilder:rbac:groups=ai.wiemers.me,resources=agentprojects,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=ai.wiemers.me,resources=agenttasks,verbs=list
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get
@@ -61,6 +82,13 @@ func (r *AgentProjectSetReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	if err := r.Get(ctx, req.NamespacedName, &set); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+	if !set.DeletionTimestamp.IsZero() {
+		return r.finalize(ctx, &set)
+	}
+	if err := r.addHookFinalizer(ctx, &set); err != nil {
+		return ctrl.Result{}, err
+	}
+	_, woken := r.woken.LoadAndDelete(req.NamespacedName)
 	orig := set.DeepCopy()
 	spec := set.Spec.WithDefaults()
 	poll := spec.PollInterval.Duration
@@ -72,14 +100,20 @@ func (r *AgentProjectSetReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return r.patchStatus(ctx, &set, orig, poll)
 	}
 
-	// An idle set sends nothing between polls; a spec change discovers at once.
-	if last := set.Status.LastDiscoveryTime; last != nil && set.Status.ObservedGeneration == set.Generation {
+	// An idle set sends nothing between polls; a spec change or a delivery
+	// to a set hook discovers at once.
+	if last := set.Status.LastDiscoveryTime; last != nil && set.Status.ObservedGeneration == set.Generation && !woken {
 		if age := now.Sub(last.Time); age >= 0 && age < poll {
 			return ctrl.Result{RequeueAfter: poll - age}, nil
 		}
 	}
 
-	disc, err := r.discover(ctx, &set, spec, tmpl)
+	d, err := r.gitlabClient(ctx, &set, spec)
+	var disc *gitlab.GroupDiscovery
+	if err == nil {
+		defer countGitLabRequests(set.Name, d)
+		disc, err = r.discover(ctx, d, spec, tmpl)
+	}
 	if err != nil {
 		if gitlab.IsTransient(err) {
 			logger.Info("Group discovery failed, trying again on the next poll", "error", err.Error())
@@ -125,7 +159,8 @@ func (r *AgentProjectSetReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		}
 	}
 	r.removeChildren(ctx, &set, &plan, existing, counts, now)
-	changed := milestoneChanges(&set, &plan, disc, existing)
+	r.syncSetHooks(ctx, &set, d, tmpl, &plan, projects.Items, now)
+	changed := milestoneChanges(&set, &plan, disc, projects.Items)
 
 	stamp := metav1.NewTime(now)
 	set.Status.Projects = plan.Entries
@@ -164,8 +199,8 @@ func checkProjectSet(spec aiv1.AgentProjectSetSpec) (tmpl aiv1.AgentProjectSpec,
 	return tmpl, "", ""
 }
 
-// discover reads the token and the group, and counts the requests.
-func (r *AgentProjectSetReconciler) discover(ctx context.Context, set *aiv1.AgentProjectSet, spec aiv1.AgentProjectSetSpec, tmpl aiv1.AgentProjectSpec) (*gitlab.GroupDiscovery, error) {
+// gitlabClient reads the set's token and creates its GitLab client.
+func (r *AgentProjectSetReconciler) gitlabClient(ctx context.Context, set *aiv1.AgentProjectSet, spec aiv1.AgentProjectSetSpec) (gitlab.Discoverer, error) {
 	ref := spec.GitLab.TokenSecretRef
 	var secret corev1.Secret
 	if err := r.Get(ctx, types.NamespacedName{Namespace: set.Namespace, Name: ref.Name}, &secret); err != nil {
@@ -175,11 +210,14 @@ func (r *AgentProjectSetReconciler) discover(ctx context.Context, set *aiv1.Agen
 	if token == "" {
 		return nil, fmt.Errorf("secret %s has no key %q", ref.Name, ref.Key)
 	}
+	return r.NewDiscoverer(strings.TrimRight(spec.GitLab.URL, "/"), token), nil
+}
+
+// discover reads the group.
+func (r *AgentProjectSetReconciler) discover(ctx context.Context, d gitlab.Discoverer, spec aiv1.AgentProjectSetSpec, tmpl aiv1.AgentProjectSpec) (*gitlab.GroupDiscovery, error) {
 	// Like a project's poll: the client's retries stop at this deadline.
 	dctx, cancel := context.WithTimeout(ctx, max(spec.PollInterval.Duration, syncTimeout))
 	defer cancel()
-	d := r.NewDiscoverer(strings.TrimRight(spec.GitLab.URL, "/"), token)
-	defer countGitLabRequests(set.Name, d)
 	disc, err := d.DiscoverGroup(dctx, spec.GitLab.Group, tmpl.Workflow.WithDefaults().ReadyLabel)
 	if err != nil {
 		return nil, fmt.Errorf("discovering group %s: %w", spec.GitLab.Group, err)
@@ -272,8 +310,11 @@ func (r *AgentProjectSetReconciler) now() time.Time {
 // SetupWithManager registers the controller. It does not watch the children:
 // their status changes on every poll and must not re-run discovery.
 func (r *AgentProjectSetReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
+	b := ctrl.NewControllerManagedBy(mgr).
 		For(&aiv1.AgentProjectSet{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
-		Named("agentprojectset").
-		Complete(r)
+		Named("agentprojectset")
+	if r.Wakes != nil {
+		b = b.WatchesRawSource(source.Channel(r.Wakes, &handler.EnqueueRequestForObject{}))
+	}
+	return b.Complete(r)
 }

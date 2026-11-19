@@ -83,3 +83,9 @@ rules:
   - patch
   - update
   - watch
+- apiGroups:
+  - ai.wiemers.me
+  resources:
+  - agentprojectsets/finalizers
+  verbs:
+  - update

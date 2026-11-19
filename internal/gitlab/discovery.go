@@ -23,13 +23,21 @@ type GroupDiscovery struct {
 	Posts int
 }
 
-// DiscoveredProject is a project of the group with its first 20 active
-// milestones. Archived projects are returned; the caller filters them out.
+// DiscoveredProject is a project of the group with its first
+// DiscoveryMilestones active milestones. Archived projects are returned; the
+// caller filters them out.
 type DiscoveredProject struct {
 	FullPath   string
 	Archived   bool
 	Milestones []DiscoveredMilestone
+	// MilestonesTruncated: the project may have more active milestones than
+	// Milestones holds.
+	MilestonesTruncated bool
 }
+
+// DiscoveryMilestones is how many active milestones discovery reads per
+// project.
+const DiscoveryMilestones = 20
 
 // DiscoveredMilestone is an active milestone of a discovered project.
 type DiscoveredMilestone struct {
@@ -178,6 +186,7 @@ func (c *Client) DiscoverGroup(ctx context.Context, group, readyLabel string) (*
 					}
 					p.Milestones = append(p.Milestones, DiscoveredMilestone{IID: iid, Title: m.Title, Description: m.Description, UpdatedAt: m.UpdatedAt})
 				}
+				p.MilestonesTruncated = len(p.Milestones) >= DiscoveryMilestones
 				out.Projects = append(out.Projects, p)
 			}
 			if err := projects.next("projects", g.Projects.PageInfo); err != nil {

@@ -109,3 +109,43 @@ func TestDeliveriesKeepTheNewestNotes(t *testing.T) {
 		t.Errorf("%d notes kept, want %d", n, MaxNotes)
 	}
 }
+
+func TestDeliveriesHeartbeatIsTheFirstDeliveryWithinTheWindow(t *testing.T) {
+	clk := clocktesting.NewFakeClock(time.Date(2026, 10, 27, 12, 0, 0, 0, time.UTC))
+	d := NewDeliveries(clk)
+	if !d.Started().Equal(clk.Now()) {
+		t.Fatalf("Started() = %v", d.Started())
+	}
+	d.ExpectHeartbeat(app)
+	clk.Step(10 * time.Second)
+	if !d.RecordHook(app) {
+		t.Fatal("the announced delivery is not a heartbeat")
+	}
+	if _, ok := d.LastEvent(app); ok {
+		t.Fatal("a heartbeat is an event")
+	}
+	if got, ok := d.Last(app); !ok || !got.Equal(clk.Now()) {
+		t.Fatalf("Last(app) = %v, %v: a heartbeat shows the hook works", got, ok)
+	}
+	// The second delivery in the window is a real one.
+	if d.RecordHook(app) {
+		t.Fatal("a second delivery is a heartbeat")
+	}
+	if got, ok := d.LastEvent(app); !ok || !got.Equal(clk.Now()) {
+		t.Fatalf("LastEvent(app) = %v, %v", got, ok)
+	}
+	// A heartbeat that does not arrive within the window: the next delivery
+	// is an event.
+	d.ExpectHeartbeat(app)
+	clk.Step(HeartbeatWindow)
+	if d.RecordHook(app) {
+		t.Fatal("a delivery after the window is a heartbeat")
+	}
+	// Record is always an event.
+	d.ExpectHeartbeat(app)
+	clk.Step(time.Second)
+	d.Record(app)
+	if got, _ := d.LastEvent(app); !got.Equal(clk.Now()) {
+		t.Fatalf("LastEvent(app) = %v", got)
+	}
+}

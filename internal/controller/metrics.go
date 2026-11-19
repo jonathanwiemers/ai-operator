@@ -21,14 +21,24 @@ var taskStalled = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 }, []string{"namespace", "task", "reason"})
 
 // gitlabRequests counts the HTTP requests sent to GitLab, retries included,
-// by kind (rest, graphql) and owner (the AgentProject or AgentProjectSet name).
+// by kind (rest, graphql), owner (the AgentProject or AgentProjectSet name)
+// and op (the client method, e.g. ListIssues; "unknown" when the client does
+// not say).
 var gitlabRequests = prometheus.NewCounterVec(prometheus.CounterOpts{
 	Name: "ai_operator_gitlab_requests_total",
-	Help: "HTTP requests sent to GitLab, retries included, by kind (rest, graphql) and owner",
-}, []string{"kind", "owner"})
+	Help: "HTTP requests sent to GitLab, retries included, by kind (rest, graphql), owner and op (client method)",
+}, []string{"kind", "owner", "op"})
+
+// projectSyncs counts AgentProject reconciles by what they read from
+// GitLab: full (every issue and MR), light (milestones only) or skipped
+// (a webhook or the project set covered it, nothing read).
+var projectSyncs = prometheus.NewCounterVec(prometheus.CounterOpts{
+	Name: "ai_operator_project_syncs_total",
+	Help: "AgentProject reconciles by kind: full, light (milestones only) or skipped (covered by webhooks or the set)",
+}, []string{"namespace", "project", "kind"})
 
 func init() {
-	metrics.Registry.MustRegister(taskStalled, gitlabRequests)
+	metrics.Registry.MustRegister(taskStalled, gitlabRequests, projectSyncs)
 }
 
 // countGitLabRequests adds what a client sent to the counter. Call it once
@@ -39,11 +49,17 @@ func countGitLabRequests(owner string, gl any) {
 		return
 	}
 	st := c.Stats()
-	if rest := st.Requests - st.GraphQL; rest > 0 {
-		gitlabRequests.WithLabelValues("rest", owner).Add(float64(rest))
+	byKind := map[string]int64{"rest": st.Requests - st.GraphQL, "graphql": st.GraphQL}
+	for k, n := range st.Ops {
+		if n > 0 {
+			gitlabRequests.WithLabelValues(k.Kind, owner, k.Op).Add(float64(n))
+			byKind[k.Kind] -= n
+		}
 	}
-	if st.GraphQL > 0 {
-		gitlabRequests.WithLabelValues("graphql", owner).Add(float64(st.GraphQL))
+	for kind, n := range byKind {
+		if n > 0 {
+			gitlabRequests.WithLabelValues(kind, owner, "unknown").Add(float64(n))
+		}
 	}
 }
 

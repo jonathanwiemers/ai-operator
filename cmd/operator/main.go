@@ -206,18 +206,10 @@ func main() {
 	waker := webhook.NewWaker(5*time.Second, 100, clock.RealClock{})
 	projects.Wakes = waker.Events()
 	projects.Deliveries = webhook.NewDeliveries(clock.RealClock{})
-	if webhookAddr != "" {
-		utilruntime.Must(mgr.Add(&webhook.Server{
-			Addr: webhookAddr,
-			Handler: &webhook.Receiver{Reader: mgr.GetClient(), Wake: waker.Wake, Deliveries: projects.Deliveries,
-				Log: ctrl.Log.WithName("webhook")},
-		}))
-	}
-	if err := projects.SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "AgentProject")
-		os.Exit(1)
-	}
-	if err := (&controller.AgentProjectSetReconciler{
+	// A delivery to a set's hook on a dormant project discovers the group at
+	// once, at most once per 30 s per set.
+	setWaker := webhook.NewWaker(30*time.Second, 100, clock.RealClock{})
+	sets := &controller.AgentProjectSetReconciler{
 		Client:    mgr.GetClient(),
 		Scheme:    mgr.GetScheme(),
 		APIReader: mgr.GetAPIReader(),
@@ -226,7 +218,21 @@ func main() {
 		},
 		Deliveries: projects.Deliveries,
 		Wake:       waker.Wake,
-	}).SetupWithManager(mgr); err != nil {
+		Wakes:      setWaker.Events(),
+		SendWake:   setWaker.Wake,
+	}
+	if webhookAddr != "" {
+		utilruntime.Must(mgr.Add(&webhook.Server{
+			Addr: webhookAddr,
+			Handler: &webhook.Receiver{Reader: mgr.GetClient(), Wake: waker.Wake, WakeSet: sets.WakeSet,
+				Deliveries: projects.Deliveries, Log: ctrl.Log.WithName("webhook")},
+		}))
+	}
+	if err := projects.SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "AgentProject")
+		os.Exit(1)
+	}
+	if err := sets.SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "AgentProjectSet")
 		os.Exit(1)
 	}

@@ -25,6 +25,7 @@ git history does; otherwise "no milestone".
 9. [Projects: the operator works in every project of a GitLab group](group-projects.spec.md) — One AgentProjectSet watches a group; projects appear only while they have work. Milestone: Projects: the operator works in every project of a GitLab group, except the ones you exclude.
 10. [Cursor's slow pool routes cursor roles to their fallback](cursor-slow-pool-fallback.spec.md) — Detect Cursor's slow pool and run cursor roles on their fallback. Milestone: no milestone.
 11. [Cost levers: fresh step sessions, effort and Sonnet arms, context by tool](cost-levers.spec.md) — Experiment arms for the implementer, cost per merged line per arm, and context by tool. Milestone: Cost levers: fresh step sessions, effort and Sonnet arms, context by tool.
+12. [Webhooks tell of milestones too, so idle projects stop polling GitLab](milestone-webhooks.spec.md) — Milestone events, heartbeats, explicit projects covered by the set, set hooks on dormant projects. Milestone: no milestone.
 
 ## Autopilot and the pilot
 

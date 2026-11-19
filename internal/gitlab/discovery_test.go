@@ -144,7 +144,7 @@ func TestDiscoverGroupPaginates(t *testing.T) {
 	if got.Complexity != (QueryComplexity{Score: 68, Limit: 250}) {
 		t.Errorf("complexity = %+v, want the first POST's 68", got.Complexity)
 	}
-	if st := c.Stats(); st.GraphQL != 2 || st.Requests != 2 {
+	if st := c.Stats(); st.GraphQL != 2 || st.Requests != 2 || st.Ops[OpKey{Kind: "graphql", Op: "DiscoverGroup"}] != 2 {
 		t.Errorf("stats = %+v", st)
 	}
 }

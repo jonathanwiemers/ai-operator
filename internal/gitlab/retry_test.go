@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -37,11 +38,16 @@ func flakyServer(t *testing.T, fails int, status int, header http.Header, ok str
 	return srv, &n
 }
 
+// totals returns requests, retries and GraphQL requests, without the
+// per-method split, so they compare with ==.
+func totals(s Stats) [3]int64 { return [3]int64{s.Requests, s.Retries, s.GraphQL} }
+
 func TestRetriesReadsOnServerErrors(t *testing.T) {
 	srv, n := flakyServer(t, 2, http.StatusBadGateway, nil, `{"iid":7}`)
 	c := New(srv.URL, "tok")
 	is, err := c.GetIssue(context.Background(), "g/p", 7)
-	if err != nil || is.IID != 7 || n.Load() != 3 || c.Stats() != (Stats{Requests: 3, Retries: 2}) {
+	if err != nil || is.IID != 7 || n.Load() != 3 || totals(c.Stats()) != [3]int64{3, 2, 0} ||
+		!maps.Equal(c.Stats().Ops, map[OpKey]int64{{Kind: "rest", Op: "GetIssue"}: 3}) {
 		t.Fatalf("a GET is retried on 502: %v %+v requests %d stats %+v", err, is, n.Load(), c.Stats())
 	}
 
@@ -108,7 +114,7 @@ func TestRetryStopsWhenCanceledDuringTheWait(t *testing.T) {
 	time.AfterFunc(100*time.Millisecond, cancel)
 	c := New(srv.URL, "tok")
 	_, err := c.GetIssue(ctx, "g/p", 7)
-	if StatusCode(err) != http.StatusTooManyRequests || n.Load() != 1 || c.Stats() != (Stats{Requests: 1}) {
+	if StatusCode(err) != http.StatusTooManyRequests || n.Load() != 1 || totals(c.Stats()) != [3]int64{1, 0, 0} {
 		t.Fatalf("canceled while waiting: %v, %d requests, %+v", err, n.Load(), c.Stats())
 	}
 }

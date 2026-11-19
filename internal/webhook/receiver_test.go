@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-logr/logr/funcr"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -278,4 +279,81 @@ func TestRefusedNoteIsNotRecorded(t *testing.T) {
 	if _, ok := e.deliveries.NoteAt(app, 7); ok {
 		t.Error("a refused note was recorded")
 	}
+}
+
+// projectSet is a set on group "group" whose template's webhook secret is
+// secretName, with entries hooked on paths.
+func projectSet(t *testing.T, ns, name, secretName string, hooked ...string) *aiv1.AgentProjectSet {
+	t.Helper()
+	s := &aiv1.AgentProjectSet{ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: name}}
+	s.Spec.Template = &runtime.RawExtension{Raw: []byte(`{"webhook":{"enabled":true,"url":"https://hooks.example","secretRef":{"name":"` + secretName + `","key":"token"}}}`)}
+	for i, p := range hooked {
+		s.Status.Projects = append(s.Status.Projects, aiv1.ProjectSetEntry{Path: p, State: aiv1.ProjectSetDormant, HookID: int64(i + 1)})
+	}
+	// An entry without a hook does not count.
+	s.Status.Projects = append(s.Status.Projects, aiv1.ProjectSetEntry{Path: "group/nohook", State: aiv1.ProjectSetDormant})
+	return s
+}
+
+// withSets wakes sets into e.sets.
+func (e *env) withSets(sets *[]types.NamespacedName) *env {
+	e.receiver.WakeSet = func(n types.NamespacedName) { *sets = append(*sets, n) }
+	return e
+}
+
+var jo = types.NamespacedName{Namespace: "team", Name: "jo"}
+
+func TestSetHookWakesTheSet(t *testing.T) {
+	var sets []types.NamespacedName
+	e := newEnv(t, projectSet(t, "team", "jo", "set-hook", "group/dormant"), secret("team", "set-hook", goodToken)).withSets(&sets)
+	before := testutil.ToFloat64(deliveries.WithLabelValues("note", "set"))
+	e.expect(t, e.deliver(http.MethodPost, payload("Group/Dormant"), goodToken), http.StatusAccepted)
+	if !slices.Equal(sets, []types.NamespacedName{jo}) {
+		t.Fatalf("sets woken %v", sets)
+	}
+	if got := testutil.ToFloat64(deliveries.WithLabelValues("note", "set")) - before; got != 1 {
+		t.Fatalf("set deliveries counted %v", got)
+	}
+
+	for _, c := range []struct{ name, path, token string }{
+		{"wrong token", "group/dormant", otherTok},
+		{"no hook on the path", "group/nohook", goodToken},
+		{"unknown path", "group/unknown", goodToken},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			sets = nil
+			e.expect(t, e.deliver(http.MethodPost, payload(c.path), c.token), http.StatusUnauthorized)
+			if len(sets) != 0 {
+				t.Fatalf("sets woken %v", sets)
+			}
+		})
+	}
+}
+
+func TestAgentProjectWinsOverASetHook(t *testing.T) {
+	var sets []types.NamespacedName
+	e := standard(t, projectSet(t, "team", "jo", "app-hook", "group/app")).withSets(&sets)
+	e.expect(t, e.deliver(http.MethodPost, payload("group/app"), goodToken), http.StatusAccepted, app)
+	if len(sets) != 0 {
+		t.Fatalf("sets woken %v", sets)
+	}
+}
+
+func TestHeartbeatWakesNothing(t *testing.T) {
+	var sets []types.NamespacedName
+	e := standard(t, projectSet(t, "team", "jo", "app-hook", "group/app")).withSets(&sets)
+	before := testutil.ToFloat64(deliveries.WithLabelValues("note", "heartbeat"))
+	e.deliveries.ExpectHeartbeat(app)
+	e.expect(t, e.deliver(http.MethodPost, payload("group/app"), goodToken), http.StatusAccepted)
+	if len(sets) != 0 {
+		t.Fatalf("a heartbeat woke sets %v", sets)
+	}
+	if _, ok := e.deliveries.Last(app); !ok {
+		t.Fatal("the heartbeat was not recorded")
+	}
+	if got := testutil.ToFloat64(deliveries.WithLabelValues("note", "heartbeat")) - before; got != 1 {
+		t.Fatalf("heartbeats counted %v", got)
+	}
+	// The next one is a real delivery.
+	e.expect(t, e.deliver(http.MethodPost, payload("group/app"), goodToken), http.StatusAccepted, app)
 }

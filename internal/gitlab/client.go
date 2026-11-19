@@ -9,16 +9,20 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"math/rand/v2"
 	"net"
 	"net/http"
 	"net/url"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
+	"unicode"
 )
 
 // API is the subset of GitLab used by the operator and the runner.
@@ -82,6 +86,9 @@ type API interface {
 	AddProjectHook(ctx context.Context, project string, opts ProjectHookOptions) (*ProjectHook, error)
 	EditProjectHook(ctx context.Context, project string, id int64, opts ProjectHookOptions) (*ProjectHook, error)
 	DeleteProjectHook(ctx context.Context, project string, id int64) error
+	// TestProjectHook makes GitLab send the hook a test delivery of trigger
+	// (push_events, issues_events, milestone_events, ...).
+	TestProjectHook(ctx context.Context, project string, id int64, trigger string) error
 }
 
 // PipelineVariable is a variable passed to a new pipeline.
@@ -473,6 +480,7 @@ type ProjectHook struct {
 	MergeRequestsEvents   bool   `json:"merge_requests_events"`
 	PipelineEvents        bool   `json:"pipeline_events"`
 	PushEvents            bool   `json:"push_events"`
+	MilestoneEvents       bool   `json:"milestone_events"`
 	EnableSSLVerification bool   `json:"enable_ssl_verification"`
 }
 
@@ -486,6 +494,7 @@ type ProjectHookOptions struct {
 	MergeRequestsEvents   bool   `json:"merge_requests_events"`
 	PipelineEvents        bool   `json:"pipeline_events"`
 	PushEvents            bool   `json:"push_events"`
+	MilestoneEvents       bool   `json:"milestone_events"`
 	EnableSSLVerification bool   `json:"enable_ssl_verification"`
 }
 
@@ -501,6 +510,16 @@ type Client struct {
 	requests, retries atomic.Int64
 	// graphql counts the GraphQL requests; they are part of requests too.
 	graphql atomic.Int64
+	// ops counts requests by kind and the exported method that sent them.
+	opsMu sync.Mutex
+	ops   map[OpKey]int64
+}
+
+// OpKey names one kind of request: Kind is rest or graphql, Op the exported
+// Client method that sent it (ListIssues, DiscoverGroup, ...), "other" when
+// none is on the stack.
+type OpKey struct {
+	Kind, Op string
 }
 
 // Stats counts the requests a client sent (REST and GraphQL), retries
@@ -509,11 +528,57 @@ type Stats struct {
 	Requests, Retries int64
 	// GraphQL is the GraphQL subset of Requests.
 	GraphQL int64
+	// Ops splits Requests by kind and method; nil for clients that do not
+	// track it (fakes).
+	Ops map[OpKey]int64
 }
 
 // Stats returns the client's request counts so far.
 func (c *Client) Stats() Stats {
-	return Stats{Requests: c.requests.Load(), Retries: c.retries.Load(), GraphQL: c.graphql.Load()}
+	c.opsMu.Lock()
+	ops := maps.Clone(c.ops)
+	c.opsMu.Unlock()
+	return Stats{Requests: c.requests.Load(), Retries: c.retries.Load(), GraphQL: c.graphql.Load(), Ops: ops}
+}
+
+// countOp records one request under the outermost exported Client method on
+// the caller's stack, so the metric says what the requests were for.
+func (c *Client) countOp(graphql bool) {
+	key := OpKey{Kind: "rest", Op: callerOp()}
+	if graphql {
+		key.Kind = "graphql"
+	}
+	c.opsMu.Lock()
+	if c.ops == nil {
+		c.ops = map[OpKey]int64{}
+	}
+	c.ops[key]++
+	c.opsMu.Unlock()
+}
+
+const clientMethodPrefix = "/internal/gitlab.(*Client)."
+
+// callerOp returns the name of the outermost exported (*Client) method on
+// the stack, or "other".
+func callerOp() string {
+	pcs := make([]uintptr, 32)
+	frames := runtime.CallersFrames(pcs[:runtime.Callers(3, pcs)])
+	op := "other"
+	for {
+		f, more := frames.Next()
+		if i := strings.Index(f.Function, clientMethodPrefix); i >= 0 {
+			name := f.Function[i+len(clientMethodPrefix):]
+			if j := strings.IndexByte(name, '.'); j >= 0 {
+				name = name[:j] // closures: ListIssues.func1
+			}
+			if name != "" && unicode.IsUpper(rune(name[0])) {
+				op = name
+			}
+		}
+		if !more {
+			return op
+		}
+	}
 }
 
 var _ API = (*Client)(nil)
@@ -654,6 +719,7 @@ func (c *Client) call(ctx context.Context, r request, out any) (*http.Response, 
 		if r.graphql {
 			c.graphql.Add(1)
 		}
+		c.countOp(r.graphql)
 		resp, data, err := c.send(ctx, method, r.url, r.payload)
 		if err == nil && (resp.StatusCode < 200 || resp.StatusCode > 299) {
 			msg := string(data)
@@ -1237,6 +1303,11 @@ func (c *Client) EditProjectHook(ctx context.Context, project string, id int64, 
 
 func (c *Client) DeleteProjectHook(ctx context.Context, project string, id int64) error {
 	_, err := c.do(ctx, http.MethodDelete, fmt.Sprintf("%s/hooks/%d", projectPath(project), id), nil, nil, nil)
+	return err
+}
+
+func (c *Client) TestProjectHook(ctx context.Context, project string, id int64, trigger string) error {
+	_, err := c.do(ctx, http.MethodPost, fmt.Sprintf("%s/hooks/%d/test/%s", projectPath(project), id, url.PathEscape(trigger)), nil, nil, nil)
 	return err
 }
 

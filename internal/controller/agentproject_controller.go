@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -131,6 +132,9 @@ func (r *AgentProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 	var project aiv1.AgentProject
 	if err := r.Get(ctx, req.NamespacedName, &project); err != nil {
+		if apierrors.IsNotFound(err) {
+			projectSyncs.DeletePartialMatch(prometheus.Labels{"namespace": req.Namespace, "project": req.Name})
+		}
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 	spec := project.Spec.WithDefaults()
@@ -148,7 +152,7 @@ func (r *AgentProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		prevDelivery = st.LastDeliveryTime
 	}
 	started := r.now()
-	lastDelivery, receiving := r.webhookDeliveries(&project, spec, started)
+	lastDelivery, liveDelivery, receiving := r.webhookDeliveries(&project, spec, started)
 	// A set child's milestones are watched by its set, which records a
 	// delivery and wakes the child when they change.
 	viaSet := ""
@@ -178,7 +182,13 @@ func (r *AgentProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	if full {
 		syncErr = r.sync(sctx, &project, spec)
 	}
+	// An idle project's hook gets a test delivery, which keeps it receiving.
+	// A project its set covers needs none.
+	if viaSet == "" && r.heartbeatDue(&project, spec, liveDelivery, started) {
+		r.heartbeat(sctx, &project, spec)
+	}
 	cancel()
+	projectSyncs.WithLabelValues(project.Namespace, project.Name, syncKind(full, viaSet)).Inc()
 	// While GitLab gives out, the backfill waits too.
 	if syncErr == nil || !gitlab.IsTransient(syncErr) {
 		r.backfill(ctx, &project, spec)
@@ -205,7 +215,7 @@ func (r *AgentProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		})
 	}
 	// After the sync, which may replace status.webhook.
-	reportDeliveries(&project, spec, prevDelivery, lastDelivery, receiving, viaSet)
+	reportDeliveries(&project, spec, prevDelivery, liveDelivery, receiving, viaSet)
 	reportFallbacks(&project, spec)
 	reportExperiment(&project, spec)
 	r.reportCrossRepo(&project, spec)
@@ -215,6 +225,17 @@ func (r *AgentProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	// Errors are reported in the status; retry on the regular poll interval
 	// instead of hammering GitLab with exponential backoff.
 	return ctrl.Result{RequeueAfter: spec.PollInterval.Duration}, nil
+}
+
+// syncKind names what a reconcile read from GitLab for the syncs metric.
+func syncKind(full bool, viaSet string) string {
+	switch {
+	case full:
+		return "full"
+	case viaSet != "":
+		return "skipped"
+	}
+	return "light"
 }
 
 // fullSyncDue reports whether a project that receives deliveries needs a full
@@ -242,27 +263,57 @@ func (r *AgentProjectReconciler) covered(n types.NamespacedName, delivery time.T
 	r.synced[n] = delivery
 }
 
-// setDiscoveryCurrent returns the name of the AgentProjectSet that controls
-// the project, and whether that set discovered its group within twice its
-// pollInterval: then the set watches the project's milestones. A missing or
-// unreadable set is not current, and the project polls on its own.
+// setDiscoveryCurrent returns the name of the AgentProjectSet that watches
+// the project's milestones, and whether that set discovered its group within
+// twice its pollInterval and holds a hash of all the project's milestones:
+// then the project need not list them itself. A child is watched by the set
+// that controls it; an AgentProject no set controls by any set that lists
+// its project as explicit. A missing or unreadable set is not current, and
+// the project polls on its own.
 func (r *AgentProjectReconciler) setDiscoveryCurrent(ctx context.Context, project *aiv1.AgentProject, now time.Time) (string, bool) {
 	ref := metav1.GetControllerOf(project)
-	if ref == nil || ref.Kind != "AgentProjectSet" || !strings.HasPrefix(ref.APIVersion, aiv1.GroupVersion.Group+"/") {
+	if ref != nil {
+		if ref.Kind != "AgentProjectSet" || !strings.HasPrefix(ref.APIVersion, aiv1.GroupVersion.Group+"/") {
+			return "", false
+		}
+		var set aiv1.AgentProjectSet
+		if err := r.Get(ctx, types.NamespacedName{Namespace: project.Namespace, Name: ref.Name}, &set); err != nil {
+			if !apierrors.IsNotFound(err) {
+				log.FromContext(ctx).V(1).Info("Reading the project's set failed, polling on its own", "set", ref.Name, "error", err.Error())
+			}
+			return ref.Name, false
+		}
+		if set.UID != ref.UID {
+			return ref.Name, false
+		}
+		return ref.Name, setWatches(&set, func(e aiv1.ProjectSetEntry) bool { return e.Child == project.Name }, now)
+	}
+	var sets aiv1.AgentProjectSetList
+	if err := r.List(ctx, &sets); err != nil {
+		log.FromContext(ctx).V(1).Info("Listing project sets failed, polling on its own", "error", err.Error())
 		return "", false
 	}
-	var set aiv1.AgentProjectSet
-	if err := r.Get(ctx, types.NamespacedName{Namespace: project.Namespace, Name: ref.Name}, &set); err != nil {
-		if !apierrors.IsNotFound(err) {
-			log.FromContext(ctx).V(1).Info("Reading the project's set failed, polling on its own", "set", ref.Name, "error", err.Error())
+	path := aiv1.NormalizeProject(project.Spec.GitLab.Project)
+	for i := range sets.Items {
+		set := &sets.Items[i]
+		if setWatches(set, func(e aiv1.ProjectSetEntry) bool {
+			return e.State == aiv1.ProjectSetExplicit && aiv1.NormalizeProject(e.Path) == path
+		}, now) {
+			return set.Name, true
 		}
-		return ref.Name, false
 	}
+	return "", false
+}
+
+// setWatches reports whether the set discovered its group within twice its
+// pollInterval and its entry that match picks holds a milestones hash.
+func setWatches(set *aiv1.AgentProjectSet, match func(aiv1.ProjectSetEntry) bool, now time.Time) bool {
 	last := set.Status.LastDiscoveryTime
-	if set.UID != ref.UID || last == nil {
-		return ref.Name, false
+	if last == nil || now.Sub(last.Time) >= 2*set.Spec.WithDefaults().PollInterval.Duration {
+		return false
 	}
-	return ref.Name, now.Sub(last.Time) < 2*set.Spec.WithDefaults().PollInterval.Duration
+	i := slices.IndexFunc(set.Status.Projects, match)
+	return i >= 0 && set.Status.Projects[i].Milestones != "" && !set.Status.Projects[i].MilestonesTruncated
 }
 
 // milestonesChanged is the light poll between full syncs while deliveries

@@ -13,6 +13,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/clock"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
@@ -111,7 +112,7 @@ func TestCountGitLabRequests(t *testing.T) {
 		gitlabRequests.DeletePartialMatch(prometheus.Labels{"owner": b})
 	})
 	val := func(kind, owner string) float64 {
-		return testutil.ToFloat64(gitlabRequests.WithLabelValues(kind, owner))
+		return testutil.ToFloat64(gitlabRequests.WithLabelValues(kind, owner, "unknown"))
 	}
 
 	before := testutil.CollectAndCount(gitlabRequests)
@@ -133,6 +134,21 @@ func TestCountGitLabRequests(t *testing.T) {
 	if n := testutil.CollectAndCount(gitlabRequests); n != before+3 {
 		t.Fatalf("series = %d, want %d: no graphql series for b", n, before+3)
 	}
+
+	// A client that splits by method gets one series per method; requests
+	// it did not attribute stay unknown.
+	countGitLabRequests(b, statsSource{gitlab.Stats{Requests: 6, GraphQL: 1, Ops: map[gitlab.OpKey]int64{
+		{Kind: "rest", Op: "ListIssues"}: 3, {Kind: "graphql", Op: "DiscoverGroup"}: 1,
+	}}})
+	if v := testutil.ToFloat64(gitlabRequests.WithLabelValues("rest", b, "ListIssues")); v != 3 {
+		t.Errorf("ListIssues = %v, want 3", v)
+	}
+	if v := testutil.ToFloat64(gitlabRequests.WithLabelValues("graphql", b, "DiscoverGroup")); v != 1 {
+		t.Errorf("DiscoverGroup = %v, want 1", v)
+	}
+	if val("rest", b) != 6 || val("graphql", b) != 0 {
+		t.Errorf("unknown: rest %v graphql %v, want 4+2 and 0", val("rest", b), val("graphql", b))
+	}
 }
 
 // A poll counts every request the real client sent to the server.
@@ -153,9 +169,28 @@ func TestPollCountsGitLabRequests(t *testing.T) {
 	e.r.NewGitLab = func(_, token string) gitlab.API { return gitlab.New(srv.URL, token) }
 	e.r.History = history.NewRecorder(nil, time.Hour, clock.RealClock{}, logr.Discard())
 
-	before := testutil.ToFloat64(gitlabRequests.WithLabelValues("rest", "shop"))
+	restShop := func() float64 {
+		mfs, _ := metrics.Registry.Gather()
+		var sum float64
+		for _, mf := range mfs {
+			if mf.GetName() != "ai_operator_gitlab_requests_total" {
+				continue
+			}
+			for _, m := range mf.GetMetric() {
+				l := map[string]string{}
+				for _, p := range m.GetLabel() {
+					l[p.GetName()] = p.GetValue()
+				}
+				if l["kind"] == "rest" && l["owner"] == "shop" {
+					sum += m.GetCounter().GetValue()
+				}
+			}
+		}
+		return sum
+	}
+	before := restShop()
 	e.reconcileFailing()
-	got := testutil.ToFloat64(gitlabRequests.WithLabelValues("rest", "shop")) - before
+	got := restShop() - before
 	if seen.Load() == 0 || got != float64(seen.Load()) {
 		t.Fatalf("counter grew by %v, the server saw %d requests", got, seen.Load())
 	}
