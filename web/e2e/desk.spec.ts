@@ -41,7 +41,7 @@ const projectReady = {
   stream: 'Run 2 needs input',
   decisions: 'Refund in the order currency',
   board: 'Guest checkout: confirmation mail',
-  spend: 'Cache-read share',
+  metrics: 'Cache-read share',
 }
 const milestoneReady = {
   issues: 'Document the refund flow for support',
@@ -51,7 +51,7 @@ const milestoneReady = {
   retrospective: 'Retry the registry push in the release job',
   stream: 'Run 2 needs input',
   board: 'Partial captures for split shipments',
-  spend: 'Cache-read share',
+  metrics: 'Cache-read share',
 }
 
 // What the task tabs show once loaded (e2e/fixtures/task.ts).
@@ -121,7 +121,7 @@ const routes: Route[] = [
     path: '/metrics?range=90d&group=model&kind=implement',
     ready: costsReady,
   },
-  ...(['stream', 'decisions', 'board', 'spend'] as const).map(
+  ...(['stream', 'decisions', 'board', 'metrics'] as const).map(
     (tab): Route => ({
       name: `stream-project-${tab}`,
       path: `/projects/team-a/shop?tab=${tab}`,
@@ -135,7 +135,7 @@ const routes: Route[] = [
     colorScheme: 'dark',
     ready: (page) => expect(page.locator('[data-finishing-entry]').first()).toBeVisible(),
   },
-  ...(['issues', 'needs', 'decisions', 'pilot', 'retrospective', 'stream', 'board', 'spend'] as const).map(
+  ...(['issues', 'needs', 'decisions', 'pilot', 'retrospective', 'stream', 'board', 'metrics'] as const).map(
     (tab): Route => ({
       name: `stream-milestone-${tab}`,
       path: `/projects/team-a/shop/milestones/14?tab=${tab}`,
@@ -573,9 +573,9 @@ for (const { width, height, labels } of [
 
 // RouteTabs (src/ui/RouteTabs.vue): on a phone the milestone's six tabs are
 // wider than the screen. They scroll inside the strip, the page does not,
-// and the tab of ?tab=spend, the last one, is scrolled into view on load.
+// and the tab of ?tab=metrics, the last one, is scrolled into view on load.
 test('stream-milestone RouteTabs scroll inside the strip@375', async ({ page, baseURL }, testInfo) => {
-  const route = routes.find((r) => r.name === 'stream-milestone-spend')!
+  const route = routes.find((r) => r.name === 'stream-milestone-metrics')!
   const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
   await page.setViewportSize({ width: 375, height: 812 })
   await page.clock.setFixedTime(now)
@@ -585,7 +585,7 @@ test('stream-milestone RouteTabs scroll inside the strip@375', async ({ page, ba
   await route.ready(page)
 
   const strip = page.locator('main').getByRole('navigation', { name: 'View' })
-  const active = strip.getByRole('link', { name: 'Spend' })
+  const active = strip.getByRole('link', { name: 'Metrics' })
   await expect(active).toHaveAttribute('aria-current', 'page')
   await expect(active).toBeInViewport({ ratio: 1 })
   await expect(strip.getByRole('link', { name: 'Issues' })).not.toBeInViewport({ ratio: 1 })
@@ -839,7 +839,7 @@ test.describe('touch', () => {
 // these pages is at least 44 px high at 375 px. Not counted: what cannot be
 // tapped (hidden from assistive technology, transparent, or a disabled
 // checkbox of a markdown task list). Exceptions are listed in hitAllowlist.
-const hitRoutes = ['overview', 'inbox', 'metrics', 'metrics-filtered', 'researches', 'research-new', 'task', 'task-chat', 'task-logs', 'task-calls', 'task-details', 'stream-milestone-retrospective', 'stream-milestone-spend', 'research', 'research-report', 'research-run']
+const hitRoutes = ['overview', 'inbox', 'metrics', 'metrics-filtered', 'researches', 'research-new', 'task', 'task-chat', 'task-logs', 'task-calls', 'task-details', 'stream-milestone-retrospective', 'stream-milestone-metrics', 'research', 'research-report', 'research-run']
 
 // "<route> <element as reported>" → why it may stay under 44 px.
 const hitAllowlist: Record<string, string> = {
@@ -1295,7 +1295,7 @@ for (const { width, height } of [widths[0]!, widths[2]!]) {
     await route.ready(page)
 
     const top = page.locator('[data-costs-top]')
-    await expect(top.locator('[data-top=milestone]').getByRole('link').first()).toHaveAttribute('href', /\/projects\/team-a\/shop\/milestones\/14\?tab=spend$/)
+    await expect(top.locator('[data-top=milestone]').getByRole('link').first()).toHaveAttribute('href', /\/projects\/team-a\/shop\/milestones\/14\?tab=metrics$/)
     await expect(top.locator('[data-top=issue]').getByRole('link').first()).toHaveAttribute('href', /\/milestones\/14\?.*spendIssue=281/)
     await expect(top.locator('[data-top=run]').getByRole('link').nth(1)).toHaveAttribute('href', /\/projects\/team-a\/shop\?.*spendTask=research\/payments-news&spendRun=1/)
     await expect(top.locator('[data-top=issue]')).toContainText('not metered')
@@ -3370,12 +3370,19 @@ test.describe('spend', () => {
 
   const pages = [
     {
-      name: 'stream-project-spend',
+      name: 'stream-project-metrics',
       total: '$48.20',
       // Sorted by the API, as the fixture lists them.
       costs: ['$9.85', '$21.10', '$17.30'],
+      lines: { written: '+5820/−1460', merged: '+1610/−390', per100: '$2.41' },
     },
-    { name: 'stream-milestone-spend', total: '$9.85', costs: ['$2.30', '$4.13', '$3.42'] },
+    {
+      name: 'stream-milestone-metrics',
+      total: '$9.85',
+      costs: ['$2.30', '$4.13', '$3.42'],
+      // Partial: merged lines are a lower bound, the cost per 100 an upper one.
+      lines: { written: '+1240/−310', merged: '≥ +212/−38 · 2 of 3 measured', per100: '≤ $3.02' },
+    },
   ]
 
   for (const size of widths) {
@@ -3400,6 +3407,16 @@ test.describe('spend', () => {
         await expect(rows).toHaveCount(p.costs.length)
         for (const [i, c] of p.costs.entries()) await expect(rows.nth(i)).toContainText(c)
         await expect(main.locator('[data-spend="model"] tbody tr').first()).toContainText('$19.40')
+        // The lines next to the cost (R17), and the written lines of the
+        // implementer kinds in By kind.
+        const lines = main.locator('[data-spend-lines]')
+        await expect(lines.locator('[data-lines=written]')).toHaveText(p.lines.written)
+        await expect(lines.locator('[data-lines=merged]')).toHaveText(p.lines.merged)
+        await expect(lines.locator('[data-lines=per100]')).toHaveText(p.lines.per100)
+        const kinds = main.locator('[data-spend="kind"]')
+        await expect(kinds.locator('thead')).toContainText('Lines')
+        await expect(kinds.locator('tbody tr').filter({ hasText: 'implement' })).toContainText('+1240/−310')
+        await expect(kinds.locator('tbody tr').filter({ hasText: 'review' })).toContainText('—')
 
         expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
         // Tables keep their heads at every width: they do not stack.
@@ -3425,8 +3442,8 @@ test.describe('spend', () => {
     }
 
     // A run's calls, the widest table (eleven columns).
-    test(`stream-milestone-spend calls of a run@${size.width}`, async ({ page, baseURL }, testInfo) => {
-      const route = routes.find((r) => r.name === 'stream-milestone-spend')!
+    test(`stream-milestone-metrics calls of a run@${size.width}`, async ({ page, baseURL }, testInfo) => {
+      const route = routes.find((r) => r.name === 'stream-milestone-metrics')!
       const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
       await page.setViewportSize(size)
       await page.clock.setFixedTime(now)
@@ -3441,9 +3458,46 @@ test.describe('spend', () => {
       await expect(main.locator('[data-spend-totals] strong')).toHaveText('$1.32')
       expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
       if (phone) expect((await overflow(page)).children, 'the calls table scrolls in its container').toBeGreaterThan(0)
-      const tab = shot(testInfo.project.outputDir, 'stream-milestone-spend-calls')
+      const tab = shot(testInfo.project.outputDir, 'stream-milestone-metrics-calls')
       await page.screenshot({ path: tab, fullPage: true })
       await testInfo.attach('screenshot', { path: tab, contentType: 'image/png' })
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+
+    // ?tab=spend, the old name, opens the Metrics tab, and the drill-down
+    // still walks milestone, issue, run and call, its links on ?tab=metrics.
+    test(`stream-milestone ?tab=spend opens Metrics, drill-down unchanged@${size.width}`, async ({ page, baseURL }) => {
+      const route = routes.find((r) => r.name === 'stream-milestone-metrics')!
+      const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+      await page.setViewportSize(size)
+      await page.clock.setFixedTime(now)
+      await watch(page, new URL(baseURL ?? '').origin, problems)
+      await mockAPI(page, route, problems)
+      await page.goto('/projects/team-a/shop/milestones/14?tab=spend')
+      const main = page.locator('main')
+      const strip = main.getByRole('navigation', { name: 'View' })
+      await expect(strip.getByRole('link', { name: 'Metrics' })).toHaveAttribute('aria-current', 'page')
+      await expect(strip.getByRole('link', { name: 'Spend' })).toHaveCount(0)
+      await expect(main.locator('[data-spend-totals] strong')).toHaveText('$9.85')
+      await expect(main.locator('[data-spend-lines] [data-lines=per100]')).toHaveText('≤ $3.02')
+
+      // Milestone → issue: the issue's link is on ?tab=metrics.
+      const issue = main.locator('[data-spend="children"] tbody a').filter({ hasText: 'Support refunds through the payment provider' })
+      await expect(issue).toHaveAttribute('href', /\/milestones\/14\?tab=metrics&spendIssue=281$/)
+      await issue.click()
+      await expect(page).toHaveURL(/\/milestones\/14\?tab=metrics&spendIssue=281$/)
+      await expect(main.locator('[data-spend-crumbs]')).toContainText('#281')
+
+      // A run's calls, opened from an old link, and back up by the crumbs.
+      await page.goto('/projects/team-a/shop/milestones/14?tab=spend&spendIssue=281&spendTask=shop-281-implement&spendRun=2')
+      await expect(main.locator('[data-spend-totals] strong')).toHaveText('$1.32')
+      await expect(main.locator('[data-spend="children"] tbody tr')).toHaveCount(1)
+      // A run has no merged lines, only the written ones.
+      await expect(main.locator('[data-spend-lines] [data-lines=merged]')).toHaveCount(0)
+      const crumbs = main.locator('[data-spend-crumbs] a')
+      await crumbs.nth(1).click()
+      await expect(page).toHaveURL(/\/milestones\/14\?tab=metrics$/)
+      await expect(main.locator('[data-spend-totals] strong')).toHaveText('$9.85')
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })
   }

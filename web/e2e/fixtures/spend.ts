@@ -37,16 +37,22 @@ function child(level: SpendChild['level'], key: string, label: string, usd: stri
   }
 }
 
-function spend(t: SpendTotals, children: SpendChild[]): Spend {
+// spend is a scope's answer; extra adds the merged lines of project,
+// milestone and issue scopes. The implement calls of By kind wrote lines,
+// the other kinds none.
+function spend(t: SpendTotals, children: SpendChild[], extra: Partial<Spend> = {}): Spend {
   const by = (key: string, usd: string, tokens: number, calls: number) => ({
     key,
     totals: totals(usd, tokens, calls, calls * 240_000),
     count: 0,
   })
+  const implement = by('implement', '14.20', 6_100_000, 38)
+  implement.totals = { ...implement.totals, linesAdded: 1_240, linesDeleted: 310 }
   return {
+    ...extra,
     totals: t,
     children,
-    byKind: [by('implement', '14.20', 6_100_000, 38), by('review', '4.10', 2_200_000, 22), by('ci-fix', '2.80', 1_100_000, 9)],
+    byKind: [implement, by('review', '4.10', 2_200_000, 22), by('ci-fix', '2.80', 1_100_000, 9)],
     byRole: [by('implementer', '14.20', 6_100_000, 38), by('reviewer', '2.60', 1_400_000, 14), by('security', '1.50', 800_000, 8)],
     byModel: [by('claude-opus-5-5', '19.40', 8_200_000, 52), by('claude-haiku-5-5', '1.70', 1_200_000, 17)],
     byKindModel: [by('implement/claude-opus-5-5', '14.20', 6_100_000, 38)],
@@ -63,19 +69,45 @@ function spend(t: SpendTotals, children: SpendChild[]): Spend {
   }
 }
 
-// projectSpend: team-a/shop by milestone.
-export const projectSpend = spend(totals('48.20', 9_120_000, 141, 33_000_000), [
-  child('milestone', '14', 'Payment providers: refunds, partial captures and the provider switch', '9.85', 1_870_000, 31),
-  child('milestone', '12', 'Checkout without account', '21.10', 4_050_000, 64),
-  child('milestone', '9', 'Search', '17.30', 3_310_000, 46),
-])
+const count = (added: number, deleted: number) => ({ added, deleted })
+const written = (t: SpendTotals, linesAdded: number, linesDeleted: number): SpendTotals => ({ ...t, linesAdded, linesDeleted })
 
-// milestoneSpend: %14 by issue, with a companion.
-export const milestoneSpend = spend(totals('9.85', 1_870_000, 31, 7_400_000), [
-  { ...child('issue', '279', 'Refund reasons in the order history', '2.30', 410_000, 7) },
-  { ...child('issue', '280', 'Provider SDK 4 with refund support', '4.13', 820_000, 12), companion: 'team-a/payments-sdk' },
-  child('issue', '281', 'Support refunds through the payment provider', '3.42', 640_000, 12),
-])
+// projectSpend: team-a/shop by milestone; every merged issue measured.
+export const projectSpend = spend(
+  written(totals('48.20', 9_120_000, 141, 33_000_000), 5_820, 1_460),
+  [
+    child('milestone', '14', 'Payment providers: refunds, partial captures and the provider switch', '9.85', 1_870_000, 31),
+    child('milestone', '12', 'Checkout without account', '21.10', 4_050_000, 64),
+    child('milestone', '9', 'Search', '17.30', 3_310_000, 46),
+  ],
+  {
+    mergedLines: {
+      lines: { production: count(1_610, 390), tests: count(2_040, 120), docs: count(310, 40), generated: count(880, 60) },
+      merged: 9,
+      measured: 9,
+      costPer100USD: '2.41',
+    },
+  },
+)
+
+// milestoneSpend: %14 by issue, with a companion; 2 of its 3 merged issues
+// measured, one with a diff that came without content (partial).
+export const milestoneSpend = spend(
+  written(totals('9.85', 1_870_000, 31, 7_400_000), 1_240, 310),
+  [
+    { ...child('issue', '279', 'Refund reasons in the order history', '2.30', 410_000, 7) },
+    { ...child('issue', '280', 'Provider SDK 4 with refund support', '4.13', 820_000, 12), companion: 'team-a/payments-sdk' },
+    child('issue', '281', 'Support refunds through the payment provider', '3.42', 640_000, 12),
+  ],
+  {
+    mergedLines: {
+      lines: { production: count(212, 38), tests: count(260, 12), docs: count(40, 4), generated: count(0, 0), partial: true },
+      merged: 3,
+      measured: 2,
+      costPer100USD: '3.02',
+    },
+  },
+)
 
 // taskSpend: shop-281-implement by run, with the lines each run wrote.
 const lines = (c: SpendChild, linesAdded: number, linesDeleted: number): SpendChild => ({

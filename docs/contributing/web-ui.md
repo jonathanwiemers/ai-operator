@@ -113,7 +113,7 @@ The seed (namespace `research-dev`) has:
   with an estimated cost, a cursor fix without a cost), #78 with a run from
   before token tracking, and a chat turn without a milestone. The tab is on
   the stream of an AgentProject `dev` in `research-dev`
-  (`…/projects/research-dev/dev?tab=spend`).
+  (`…/projects/research-dev/dev?tab=metrics`).
 * Desk milestones for the dashboard and the milestone pages (snapshot rows
   in `desk_milestones`): in project `dev` two done ones (`%3`, old and
   without agent calls, so it shows no spend, and `%4` with a retrospective
@@ -1227,15 +1227,15 @@ with `ModelBar.vue`) is Tailwind utilities and tokens, without scoped CSS.
   conflict call is, stand below their table instead of in a hover title.
 - A milestone's *old basis* or *mixed basis* mark is in the warning tone.
 
-The e2e cases `spend › stream-project-spend tables scroll in their
-container@<width>`, `spend › stream-milestone-spend tables scroll in their
-container@<width>` and `spend › stream-milestone-spend calls of a
+The e2e cases `spend › stream-project-metrics tables scroll in their
+container@<width>`, `spend › stream-milestone-metrics tables scroll in their
+container@<width>` and `spend › stream-milestone-metrics calls of a
 run@<width>` at 375, 768 and 1280 px check the figures against the
 fixture, that neither the page nor the content pane scrolls sideways, and
 at 375 px that the comparison tables' containers do (`scrollWidth >
 clientWidth`) and the drill-down links are 44 px high
-(`stream-project-spend@<width>.png`, `stream-milestone-spend@<width>.png`,
-`stream-milestone-spend-calls@<width>.png`). The milestone's Spend tab is
+(`stream-project-metrics@<width>.png`, `stream-milestone-metrics@<width>.png`,
+`stream-milestone-metrics-calls@<width>.png`). The milestone's Metrics tab is
 also among the hit-area routes.
 
 ### Spend tab in detail
@@ -1278,7 +1278,7 @@ the database).
   its own spec, pilot and retro calls), an issue's runs, a run's calls.
   Clicking a row goes one level down; a project's milestone opens the
   milestone stream's Spend tab. The position is kept in the query
-  (`?tab=spend&spendIssue=77&spendTask=…&spendRun=2`), so it can be
+  (`?tab=metrics&spendIssue=77&spendTask=…&spendRun=2`), so it can be
   linked to and back goes up again; breadcrumbs lead back to the project.
   Calls of no milestone and a milestone's own calls are not split further.
   An issue with a companion repository has a *companion* marker on its row
@@ -1353,7 +1353,7 @@ the database).
 Shares are of the rows' known cost; a row without a known cost shows
 *n/a* there. When no row has a known cost they are shares of the tokens.
 The Spend tab loads when it opens or the drill-down moves; it does not
-follow live changes. *Costs across projects* above its drill-down opens
+follow live changes. *Metrics across projects* above its drill-down opens
 the [Costs page](#costs-page) filtered to the project.
 ### Costs page
 

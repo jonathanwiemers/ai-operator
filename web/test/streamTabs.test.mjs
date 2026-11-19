@@ -9,6 +9,7 @@ import {
   projectTabsFor,
   streamBaseTabs,
   storedMilestoneTabs,
+  tabAlias,
   tabFromQuery,
   tabQuery,
   taskTabFromRoute,
@@ -24,7 +25,7 @@ test('tabFromQuery: stream is the default', () => {
 
 test('tabFromQuery: known tabs are kept', () => {
   assert.equal(tabFromQuery('board'), 'board')
-  assert.equal(tabFromQuery('spend'), 'spend')
+  assert.equal(tabFromQuery('metrics'), 'metrics')
 })
 
 test('tabFromQuery: unknown tabs fall back to stream', () => {
@@ -62,7 +63,7 @@ test('dashboard tabQuery: overview drops the parameter, stream sets it', () => {
 })
 
 test('milestone tabs: Issues is the default', () => {
-  assert.deepEqual(milestoneTabs.map((t) => t.id), ['issues', 'needs', 'decisions', 'pilot', 'retrospective', 'stream', 'board', 'spend'])
+  assert.deepEqual(milestoneTabs.map((t) => t.id), ['issues', 'needs', 'decisions', 'pilot', 'retrospective', 'stream', 'board', 'metrics'])
   assert.equal(tabFromQuery(undefined, milestoneTabs), 'issues')
   assert.equal(tabFromQuery('', milestoneTabs), 'issues')
   assert.equal(tabFromQuery('issues', milestoneTabs), 'issues')
@@ -71,13 +72,13 @@ test('milestone tabs: Issues is the default', () => {
 test('milestone tabs: old ?tab=stream links open the stream', () => {
   assert.equal(tabFromQuery('stream', milestoneTabs), 'stream')
   assert.equal(tabFromQuery('board', milestoneTabs), 'board')
-  assert.equal(tabFromQuery('spend', milestoneTabs), 'spend')
+  assert.equal(tabFromQuery('metrics', milestoneTabs), 'metrics')
 })
 
 test('milestone tabs: unknown values fall back to Issues', () => {
   assert.equal(tabFromQuery('retro', milestoneTabs), 'issues')
   assert.equal(tabFromQuery('Stream', milestoneTabs), 'issues')
-  assert.equal(tabFromQuery(['x', 'spend'], milestoneTabs), 'spend')
+  assert.equal(tabFromQuery(['x', 'metrics'], milestoneTabs), 'metrics')
 })
 
 test('project tabs: issues is unknown there', () => {
@@ -90,7 +91,7 @@ test('milestone tabQuery: Issues drops the parameter, Stream sets it', () => {
 })
 
 test('stored milestone tabs: no Board, a board link falls back to Issues', () => {
-  assert.deepEqual(storedMilestoneTabs.map((t) => t.id), ['issues', 'needs', 'decisions', 'pilot', 'retrospective', 'stream', 'spend'])
+  assert.deepEqual(storedMilestoneTabs.map((t) => t.id), ['issues', 'needs', 'decisions', 'pilot', 'retrospective', 'stream', 'metrics'])
   assert.equal(tabFromQuery('board', storedMilestoneTabs), 'issues')
 })
 
@@ -168,8 +169,8 @@ test('milestone tabs: Needs you, then Decisions, sit between Issues and Pilot, a
 })
 
 test('project tabs: Decisions after Stream, Plans only with the plans feature', () => {
-  assert.deepEqual(projectTabsFor(false).map((t) => t.label), ['Stream', 'Decisions', 'Board', 'Spend'])
-  assert.deepEqual(projectTabsFor(true).map((t) => t.label), ['Stream', 'Decisions', 'Board', 'Spend', 'Plans'])
+  assert.deepEqual(projectTabsFor(false).map((t) => t.label), ['Stream', 'Decisions', 'Board', 'Metrics'])
+  assert.deepEqual(projectTabsFor(true).map((t) => t.label), ['Stream', 'Decisions', 'Board', 'Metrics', 'Plans'])
   assert.equal(tabFromQuery('decisions', projectTabsFor(false)), 'decisions')
   assert.deepEqual(tabQuery({ q: 'x' }, 'decisions', projectTabsFor(false)), { q: 'x', tab: 'decisions' })
   assert.deepEqual(tabQuery({ tab: 'decisions', q: 'x' }, 'stream', projectTabsFor(true)), { q: 'x' })
@@ -186,4 +187,24 @@ test('milestone tabs have no Plans', () => {
 test('tabFromQuery: ?tab=plans without the feature falls back to Stream', () => {
   assert.equal(tabFromQuery('plans', projectTabsFor(false)), 'stream')
   assert.equal(tabFromQuery('plans'), 'stream')
+})
+
+test('Metrics tab: the Spend tab renamed, ?tab=spend still opens it', () => {
+  assert.deepEqual(streamBaseTabs.at(-1), { id: 'metrics', label: 'Metrics' })
+  assert.equal(tabAlias('spend'), 'metrics')
+  assert.equal(tabAlias('metrics'), 'metrics')
+  assert.equal(tabAlias('board'), 'board')
+  assert.equal(tabAlias('constructor'), 'constructor')
+  assert.equal(tabAlias(null), null)
+  assert.equal(tabFromQuery('spend'), 'metrics')
+  assert.equal(tabFromQuery('spend', projectTabsFor(true)), 'metrics')
+  assert.equal(tabFromQuery('spend', milestoneTabs), 'metrics')
+  assert.equal(tabFromQuery('spend', storedMilestoneTabs), 'metrics')
+  assert.equal(tabFromQuery(['x', 'spend'], milestoneTabs), 'metrics')
+  assert.equal(milestoneTabFromRoute('spend', '', milestoneTabs), 'metrics')
+  // Lists without the tab ignore the alias.
+  assert.equal(tabFromQuery('spend', dashboardTabs), 'overview')
+  assert.equal(taskTabFromRoute('spend', ''), 'overview')
+  // New links use the new id.
+  assert.deepEqual(tabQuery({ tab: 'spend', q: 'x' }, 'metrics', milestoneTabs), { q: 'x', tab: 'metrics' })
 })

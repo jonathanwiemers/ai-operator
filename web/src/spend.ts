@@ -1,11 +1,12 @@
 import { cost, tokenCount } from './format.ts'
 import { issueLabel, milestoneLabel } from './crumbs.ts'
+import { writtenLabel } from './lines.ts'
 import type { SpendBreakdown, SpendChild, SpendTotals, StepLines, SubagentBreakdown } from './types'
 
-// The Spend tab's drill-down (decision 5): project → milestone → issue →
-// run → calls. The milestone is the stream's route parameter, the rest
-// lives in the query (spendIssue, spendTask, spendRun) next to tab=spend,
-// so a position can be linked to and back/forward walks the drill-down.
+// The Metrics tab's drill-down (decision 5; the tab was named Spend):
+// project → milestone → issue → run → calls. The milestone is the stream's
+// route parameter, the rest lives in the query (spendIssue, spendTask,
+// spendRun) next to tab=metrics (old links say tab=spend, an alias), so a position can be linked to and back/forward walks the drill-down.
 
 // SpendScope is what getSpend narrows by; run needs task.
 export interface SpendScope {
@@ -50,14 +51,14 @@ export function scopeFromQuery(milestone: number | undefined, query: Record<stri
   return s
 }
 
-// spendQuery is the query of a drill-down position on the Spend tab,
+// spendQuery is the query of a drill-down position on the Metrics tab,
 // keeping the parameters that are not the drill-down's.
 export function spendQuery(query: Record<string, QueryValue>, scope: SpendScope): Record<string, QueryValue> {
   const out: Record<string, QueryValue> = {}
   for (const [k, v] of Object.entries(query)) {
     if (!(spendParams as readonly string[]).includes(k)) out[k] = v
   }
-  out.tab = 'spend'
+  out.tab = 'metrics'
   if (scope.issue) out.spendIssue = String(scope.issue)
   if (scope.task) out.spendTask = scope.task
   if (scope.task && scope.run) out.spendRun = String(scope.run)
@@ -514,6 +515,20 @@ const implementerKinds = ['implement', 'fix', 'ci', 'conflict']
 export function callLines(c: Pick<SpendChild, 'kind' | 'linesAdded' | 'linesDeleted'>): string {
   if (!c.kind || !implementerKinds.includes(c.kind) || c.linesAdded === undefined) return ''
   return `+${c.linesAdded}/−${c.linesDeleted ?? 0}`
+}
+
+// kindLines is a By kind row's written lines, "+A/−D" (missing fields
+// counting 0), for the implementer kinds; "—" for the others, whose calls
+// write none.
+export function kindLines(b: Pick<SpendBreakdown, 'key' | 'totals'>): string {
+  return implementerKinds.includes(b.key) ? writtenLabel(b.totals) : '—'
+}
+
+// per100Notes is the notes of a scope's cost per 100 merged production
+// lines, those of its cost: token basis and unmetered calls, joined; ""
+// without any. "2 of 3 measured" is on the merged lines next to it.
+export function per100Notes(t: SpendTotals): string {
+  return [basisNote(t), unmeteredNote(t)].filter(Boolean).join(' · ')
 }
 
 // callNudges is "2 step-gate nudges", how often the step-size gate told

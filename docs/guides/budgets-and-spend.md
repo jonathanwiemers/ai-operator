@@ -177,7 +177,7 @@ nothing to a budget, so a budget on cursor without prices never runs out.
 ## The Spend tab
 
 The *Spend* tab of a project or a milestone loads when you open it, and does
-not follow live changes. *Costs across projects* opens the Costs page for
+not follow live changes. *Metrics across projects* opens the Metrics page for
 the project.
 
 - **Totals:** the cost, input, output, cache read and cache write tokens,

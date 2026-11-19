@@ -2,15 +2,16 @@
 // so it can be linked to and reloaded; the first tab of a list is the
 // default and is left out.
 //
-// Project pages: Stream | Decisions (R14) | Board | Spend, and Plans with
+// Project pages: Stream | Decisions (R14) | Board | Metrics, and Plans with
 // the plans feature (R13). Milestone pages: Issues | Needs you | Decisions (R11, D546-P1) |
-// Pilot | Retrospective | Stream | Board | Spend (decision 7, R12), so an old
+// Pilot | Retrospective | Stream | Board | Metrics (decision 7, R12), so an old
 // milestone link with ?tab=stream still opens the stream. The dashboard
 // at /: Overview | Stream (decision 3). The task page (and the issue page
 // with a live task): Overview | Chat | Live | Logs | Calls | Details (R10;
-// Logs for the task's owners, run watchdog R8).
+// Logs for the task's owners, run watchdog R8). Metrics was named Spend:
+// ?tab=spend still opens it (tabAlias).
 // BaseTab: the tabs project and milestone pages share.
-export type BaseTab = 'stream' | 'board' | 'spend'
+export type BaseTab = 'stream' | 'board' | 'metrics'
 export type StreamTab = BaseTab | 'decisions' | 'plans'
 export type MilestoneTab = 'issues' | 'needs' | 'decisions' | 'pilot' | 'retrospective' | BaseTab
 export type DashboardTab = 'overview' | 'stream'
@@ -30,7 +31,7 @@ export interface Tab<T extends string> {
 export const streamBaseTabs: Tab<BaseTab>[] = [
   { id: 'stream', label: 'Stream' },
   { id: 'board', label: 'Board' },
-  { id: 'spend', label: 'Spend' },
+  { id: 'metrics', label: 'Metrics' },
 ]
 
 // projectTabsFor are a project page's tabs: Decisions right after Stream
@@ -73,15 +74,27 @@ export const taskTabs: Tab<TaskTab>[] = [
 
 type QueryValue = string | null | (string | null)[] | undefined
 
-// tabFromQuery reads ?tab= against tabs (Stream, Board, Spend by default):
-// unknown, empty or repeated values fall back to the first known one, else
-// to the list's first tab.
+// tabAliases are the old ids of renamed tabs, so old links keep working:
+// the Spend tab became Metrics (R17 of the milestone "Desk: one Metrics
+// page").
+const tabAliases: Readonly<Record<string, string>> = { spend: 'metrics' }
+
+// tabAlias is the current id of a ?tab= value: the renamed tab's id for an
+// old one, the value itself otherwise.
+export function tabAlias(v: string | null | undefined): string | null | undefined {
+  return v != null && Object.hasOwn(tabAliases, v) ? tabAliases[v] : v
+}
+
+// tabFromQuery reads ?tab= against tabs (Stream, Board, Metrics by
+// default), old ids through tabAlias: unknown, empty or repeated values
+// fall back to the first known one, else to the list's first tab.
 export function tabFromQuery(v: QueryValue): BaseTab
 export function tabFromQuery<T extends string>(v: QueryValue, tabs: readonly Tab<T>[]): T
 export function tabFromQuery(v: QueryValue, tabs: readonly Tab<string>[] = streamBaseTabs): string {
   const list = Array.isArray(v) ? v : [v]
   for (const s of list) {
-    const t = tabs.find((x) => x.id === s)
+    const id = tabAlias(s)
+    const t = tabs.find((x) => x.id === id)
     if (t) return t.id
   }
   return tabs[0]!.id

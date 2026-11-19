@@ -682,7 +682,7 @@ function showDay(i: number): string | null {
         <!-- The project's plans (R13); a 404 (no chat) shows an empty list. -->
         <PlanList v-if="namespace && name" :project="{ namespace, name }" />
       </div>
-      <div v-else-if="tab === 'spend'" class="scroll board">
+      <div v-else-if="tab === 'metrics'" class="scroll board">
         <SpendPanel
           v-if="namespace && name"
           :namespace="namespace"

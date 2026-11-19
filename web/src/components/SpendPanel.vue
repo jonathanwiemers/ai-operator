@@ -4,10 +4,14 @@ import { useRoute } from 'vue-router'
 import { getSpend, LoginRequiredError, NotFoundError } from '../client'
 import { clockTime, duration, fullTime, tokenCount } from '../format'
 import { useNow } from '../live'
+import { measuredLabel, totalsLabel, totalsTooltip, writtenLabel } from '../lines'
+import { per100Label } from '../metricsCode'
 import DataList, { type DataListColumn } from '../ui/DataList.vue'
 import ModelBar from './ModelBar.vue'
 import {
   avgCost,
+  kindLines,
+  per100Notes,
   avgTokens,
   barColors,
   callCost,
@@ -54,8 +58,9 @@ import {
 } from '../spend'
 import type { Spend, SpendBreakdown, SpendChild, SubagentBreakdown } from '../types'
 
-// SpendPanel is the Spend tab of a project or milestone stream: the
-// scope's totals, its children one level down (project → milestone →
+// SpendPanel is the Metrics tab (once named Spend) of a project or
+// milestone stream: the scope's totals with its written and merged lines
+// and the cost per 100 merged production lines, its children one level down (project → milestone →
 // issue → run → calls, the position in ?spendIssue=&spendTask=&spendRun=)
 // its calls by kind, role and model, and the tuning tables: review cost
 // per round, implementer steps fresh vs resumed, with vs without subagents.
@@ -99,7 +104,7 @@ async function load() {
     if (mine !== seq || e instanceof LoginRequiredError) return
     data.value = null
     error.value =
-      e instanceof NotFoundError ? 'Spend needs the research database.' : e instanceof Error ? e.message : String(e)
+      e instanceof NotFoundError ? 'Metrics need the research database.' : e instanceof Error ? e.message : String(e)
   } finally {
     if (mine === seq) loading.value = false
   }
@@ -117,6 +122,13 @@ function to(s: SpendScope) {
 
 const totals = computed(() => data.value?.totals)
 const children = computed(() => data.value?.children ?? [])
+// Merged lines exist at project, milestone and issue scope; mergedLines is
+// absent there while nothing merged ("—").
+const hasMerged = computed(() => !scope.value.task)
+const measured = computed(() => measuredLabel(data.value?.mergedLines))
+const per100Note = computed(() => (totals.value ? per100Notes(totals.value) : ''))
+const per100Title =
+  'The cost of the merged issues’ calls per 100 merged production lines (added plus deleted, companions included); ≤ when some diff came without content'
 const childShares = computed(() => shares(children.value.map((c) => c.totals)))
 
 // The rows' per-model bars, in ?spendUnit= (tokens or USD), and the
@@ -138,10 +150,11 @@ const breakdowns = computed(() => {
   const d = data.value
   if (!d) return []
   return [
-    { title: 'By kind', rows: d.byKind, label: rowKey },
-    { title: 'By role', rows: d.byRole, label: rowKey },
+    // By kind has the written lines of the implementer kinds.
+    { title: 'By kind', rows: d.byKind, label: rowKey, lines: true },
+    { title: 'By role', rows: d.byRole, label: rowKey, lines: false },
     // cursor's auto as "cursor auto (unmetered)".
-    { title: 'By model', rows: d.byModel, label: (b: SpendBreakdown) => modelLabel(rowKey(b), unmetered(b.totals)) },
+    { title: 'By model', rows: d.byModel, label: (b: SpendBreakdown) => modelLabel(rowKey(b), unmetered(b.totals)), lines: false },
   ].map((b) => {
     const sorted = sortByCost(b.rows)
     const pct = shares(sorted.map((r) => r.totals))
@@ -153,6 +166,7 @@ const breakdowns = computed(() => {
         { key: 'calls', label: 'Calls', numeric: true },
         { key: 'tokens', label: 'Tokens', numeric: true },
         { key: 'cost', label: 'Cost', numeric: true },
+        ...(b.lines ? [{ key: 'lines', label: 'Lines', numeric: true }] : []),
         { key: 'share', label: 'Share' },
       ] as DataListColumn[],
       rows: sorted.map((r, i) => ({ ...r, pct: pct.pct[i] ?? null })),
@@ -276,7 +290,7 @@ const mark = 'ms-1.5 rounded-full px-1.5 text-[11px] font-semibold'
         class="ms-auto"
         data-spend-costs
       >
-        Costs across projects
+        Metrics across projects
       </RouterLink>
     </nav>
 
@@ -331,6 +345,31 @@ const mark = 'ms-1.5 rounded-full px-1.5 text-[11px] font-semibold'
             <dt class="text-[11.5px] text-(--text-3)">Cache-read share</dt>
             <dd class="tabular-nums">{{ shareLabel(data.cacheReadShare) }}</dd>
           </div>
+        </dl>
+        <!-- The lines next to the cost: written (all calls), merged and the
+             cost per 100 merged production lines (project, milestone and
+             issue scope; task and run scopes have no merged lines). -->
+        <dl class="mt-2.5 grid grid-cols-2 gap-x-6 gap-y-2 tablet:flex tablet:flex-wrap" data-spend-lines>
+          <div title="Written lines: the step commits of the implementer calls, rewrites and fix rounds included">
+            <dt class="text-[11.5px] text-(--text-3)">Written</dt>
+            <dd class="tabular-nums" data-lines="written">{{ writtenLabel(totals) }}</dd>
+          </div>
+          <template v-if="hasMerged">
+            <div :title="totalsTooltip(data.mergedLines)">
+              <dt class="text-[11.5px] text-(--text-3)">Merged production</dt>
+              <dd class="tabular-nums" data-lines="merged">
+                {{ totalsLabel(data.mergedLines) }}
+                <span v-if="measured" class="faint">· {{ measured }}</span>
+              </dd>
+            </div>
+            <div :title="per100Title">
+              <dt class="text-[11.5px] text-(--text-3)">Cost per 100 merged production lines</dt>
+              <dd class="tabular-nums" data-lines="per100">
+                {{ per100Label(data.mergedLines) }}
+                <span v-if="per100Note" class="faint">· {{ per100Note }}</span>
+              </dd>
+            </div>
+          </template>
         </dl>
         <p v-if="legacyNote(totals)" class="faint mt-2.5 text-[12.5px]">{{ legacyNote(totals) }}</p>
       </section>
@@ -450,6 +489,7 @@ const mark = 'ms-1.5 rounded-full px-1.5 text-[11px] font-semibold'
               <template #cell-calls="{ row }">{{ row.totals.calls }}</template>
               <template #cell-tokens="{ row }"><span :title="tokenTitle(row.totals)">{{ spendTokenLabel(row.totals) }}</span></template>
               <template #cell-cost="{ row }"><span :class="{ italic: !row.totals.costKnown }">{{ spendUSD(row.totals) }}</span></template>
+              <template #cell-lines="{ row }"><span title="Written lines: the step commits of the calls">{{ kindLines(row) }}</span></template>
               <template #cell-share="{ row }">
                 <div class="flex w-28 items-center gap-2" :title="`Share of ${b.basis}`">
                   <span class="h-1.5 flex-1 overflow-hidden rounded-[3px] bg-(--surface-3)">

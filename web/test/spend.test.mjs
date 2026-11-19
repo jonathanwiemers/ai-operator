@@ -9,6 +9,8 @@ import {
   perMillion,
   callCost,
   callLines,
+  kindLines,
+  per100Notes,
   callNudges,
   checkpointsLine,
   childLabel,
@@ -101,15 +103,15 @@ test('scopeFromQuery: repeated values take the first', () => {
 
 test('spendQuery: replaces the drill-down, keeps other parameters, selects the tab', () => {
   const q = { tab: 'board', spendIssue: '4', spendTask: 't', spendRun: '1', other: 'x' }
-  assert.deepEqual(spendQuery(q, {}), { tab: 'spend', other: 'x' })
-  assert.deepEqual(spendQuery(q, { milestone: 3, issue: 5 }), { tab: 'spend', other: 'x', spendIssue: '5' })
+  assert.deepEqual(spendQuery(q, {}), { tab: 'metrics', other: 'x' })
+  assert.deepEqual(spendQuery(q, { milestone: 3, issue: 5 }), { tab: 'metrics', other: 'x', spendIssue: '5' })
   assert.deepEqual(spendQuery({}, { issue: 5, task: 'issue-5', run: 2 }), {
-    tab: 'spend',
+    tab: 'metrics',
     spendIssue: '5',
     spendTask: 'issue-5',
     spendRun: '2',
   })
-  assert.deepEqual(spendQuery({}, { run: 2 }), { tab: 'spend' })
+  assert.deepEqual(spendQuery({}, { run: 2 }), { tab: 'metrics' })
 })
 
 test('scopeFromQuery reads back what spendQuery writes', () => {
@@ -121,12 +123,12 @@ test('spendLocation: the milestone stream with a milestone, else the project str
   assert.deepEqual(spendLocation('ns', 'p', {}), {
     name: 'stream-project',
     params: { namespace: 'ns', name: 'p' },
-    query: { tab: 'spend' },
+    query: { tab: 'metrics' },
   })
   assert.deepEqual(spendLocation('ns', 'p', { milestone: 3, issue: 7 }), {
     name: 'stream-milestone',
     params: { namespace: 'ns', name: 'p', iid: '3' },
-    query: { tab: 'spend', spendIssue: '7' },
+    query: { tab: 'metrics', spendIssue: '7' },
   })
 })
 
@@ -447,6 +449,21 @@ test('callLines shows the uncommitted lines of implementer calls only', () => {
   assert.equal(callLines({ kind: 'review', linesAdded: 0, linesDeleted: 0 }), '')
   assert.equal(callLines({ kind: 'implement' }), '')
   assert.equal(callLines({ linesAdded: 1, linesDeleted: 0 }), '')
+})
+
+test('kindLines: written lines for the implementer kinds, — for the others', () => {
+  assert.equal(kindLines({ key: 'implement', totals: { linesAdded: 412, linesDeleted: 38 } }), '+412/−38')
+  assert.equal(kindLines({ key: 'fix', totals: { linesAdded: 3 } }), '+3/−0')
+  assert.equal(kindLines({ key: 'conflict', totals: {} }), '+0/−0')
+  assert.equal(kindLines({ key: 'review', totals: { linesAdded: 5, linesDeleted: 1 } }), '—')
+  assert.equal(kindLines({ key: '', totals: {} }), '—')
+})
+
+test('per100Notes: the cost basis and unmetered notes, joined', () => {
+  const t = { calls: 10, oldBasisCalls: 0, unmeteredCalls: 0 }
+  assert.equal(per100Notes(t), '')
+  assert.equal(per100Notes({ ...t, oldBasisCalls: 3, unmeteredCalls: 1 }), '3 of 10 calls on the old token basis · 1 call not metered')
+  assert.equal(per100Notes({ ...t, oldBasisCalls: 10 }), 'old token basis')
 })
 
 test('checkpointsLine counts the checkpoints with their reasons', () => {
