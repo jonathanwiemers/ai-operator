@@ -6178,6 +6178,14 @@ export interface CompanionStatus {
    */
   mergeSHA?: string;
   /**
+   * MergedLines are the lines the companion merge request merged, by
+   * category, counted once when the entry became merged; they count to
+   * the home issue. Unset: not measured (the count failed, or the entry
+   * ended before the operator counted lines).
+   * +optional
+   */
+  mergedLines?: MergedLines;
+  /**
    * PipelineStartedAt is when autopilot started a merge request pipeline
    * for the head it is about to merge, because the head had none.
    * +optional

@@ -89,6 +89,9 @@ type AgentProjectReconciler struct {
 	// recordDecisions, when set, records decisions instead of History
 	// (tests).
 	recordDecisions func(store.IssueDecisions)
+	// recordEvent, when set, records the reconciler's history events
+	// instead of History (tests).
+	recordEvent func(store.Event)
 	// Research, set with a research database, adds the usage readings and
 	// limits of the project's AgentResearch runs to its status.
 	Research bool

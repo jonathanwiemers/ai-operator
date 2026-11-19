@@ -2113,7 +2113,7 @@ func (a *autopilot) resumeAll(ctx context.Context, by string) error {
 	switch {
 	case a.ap.Phase == aiv1.AutopilotPaused:
 		if a.landingPause() {
-			a.retryLandings(by) // one more rebase for each
+			a.retryLandings(ctx, by) // one more rebase for each
 		}
 		if a.ap.PauseKind == aiv1.PauseRelease {
 			a.retryFinalRelease(by)

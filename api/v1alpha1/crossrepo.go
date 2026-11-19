@@ -345,6 +345,12 @@ type CompanionStatus struct {
 	// MergeSHA is the commit the companion's merge left.
 	// +optional
 	MergeSHA string `json:"mergeSHA,omitempty"`
+	// MergedLines are the lines the companion merge request merged, by
+	// category, counted once when the entry became merged; they count to
+	// the home issue. Unset: not measured (the count failed, or the entry
+	// ended before the operator counted lines).
+	// +optional
+	MergedLines *MergedLines `json:"mergedLines,omitempty"`
 
 	// PipelineStartedAt is when autopilot started a merge request pipeline
 	// for the head it is about to merge, because the head had none.

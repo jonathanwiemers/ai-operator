@@ -1467,6 +1467,11 @@ func (in *CompanionStatus) DeepCopyInto(out *CompanionStatus) {
 		in, out := &in.EndedAt, &out.EndedAt
 		*out = (*in).DeepCopy()
 	}
+	if in.MergedLines != nil {
+		in, out := &in.MergedLines, &out.MergedLines
+		*out = new(MergedLines)
+		**out = **in
+	}
 	if in.PipelineStartedAt != nil {
 		in, out := &in.PipelineStartedAt, &out.PipelineStartedAt
 		*out = (*in).DeepCopy()

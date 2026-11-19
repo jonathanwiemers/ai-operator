@@ -14,8 +14,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/difflines"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/history"
 	"github.com/jonathanwiemers/ai-operator/internal/notify"
+	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 )
 
 // The landing of a companion merge request after its home merge
@@ -109,7 +112,12 @@ func (r *AgentProjectReconciler) syncCompanions(ctx context.Context, gl gitlab.A
 		}
 		was := e.State
 		owners := r.companionOwners(spec, e, specTasks)
-		if err := r.landCompanion(ctx, gl, spec, e, owners, building); err != nil {
+		err := r.landCompanion(ctx, gl, spec, e, owners, building)
+		if e.State == aiv1.LandingMerged {
+			// merged by hand, or autopilot's merge with a green default branch
+			r.companionMerged(ctx, gl, project, e)
+		}
+		if err != nil {
 			errs = append(errs, fmt.Errorf("companion %s: %w", landingRef(e), err))
 			continue
 		}
@@ -523,11 +531,63 @@ func (a *autopilot) companionLanding(ctx context.Context) error {
 	return nil
 }
 
+// companionMerged follows an entry that just became merged: it counts the
+// lines the companion merge request merged, once (an entry that has them
+// makes no call), and records the companion.merged event of the home issue.
+// The count is a measurement: a failed call only logs, and the event comes
+// without lines.
+func (r *AgentProjectReconciler) companionMerged(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, e *aiv1.CompanionStatus) {
+	if e.MergedLines == nil {
+		diffs, err := gl.ListMergeRequestDiffs(ctx, e.Project, e.MRIID)
+		if err != nil {
+			log.FromContext(ctx).Info("could not count the companion's merged lines", "companion", landingRef(e), "issue", e.HomeIssueIID, "error", err.Error())
+		} else {
+			lines := difflines.Count(diffs)
+			e.MergedLines = &lines
+		}
+	}
+	ev := store.Event{
+		Key:       fmt.Sprintf("companion/%s/%d/merged", e.Project, e.MRIID),
+		Namespace: project.Namespace, Project: project.Name,
+		MilestoneIID: e.MilestoneIID, IssueIID: e.HomeIssueIID, MergeRequestIID: e.MRIID,
+		Kind:    history.KindCompanionMerged,
+		Summary: fmt.Sprintf("Companion %s merged (#%d)", landingRef(e), e.HomeIssueIID),
+		Data:    map[string]any{"companion": e.Project},
+	}
+	if e.EndedAt != nil {
+		ev.At = e.EndedAt.Time
+	}
+	if e.MRURL != "" {
+		ev.Data["mergeRequestURL"] = e.MRURL
+	}
+	if e.MergeSHA != "" {
+		ev.Data["sha"] = e.MergeSHA
+	}
+	if e.MergedLines != nil {
+		ev.Data["lines"] = e.MergedLines
+	}
+	if record := r.eventRecorder(); record != nil {
+		record(ev)
+	}
+}
+
+// eventRecorder is where history events of the reconciler go: the test's
+// hook, else History; nil without a database.
+func (r *AgentProjectReconciler) eventRecorder() func(store.Event) {
+	if r.recordEvent != nil {
+		return r.recordEvent
+	}
+	if r.History == nil {
+		return nil
+	}
+	return r.History.Record
+}
+
 // retryLandings lets the milestone's blocked companions be checked again,
 // with one more rebase and merge: an owner resumed the landing pause. A
 // companion autopilot merged whose default branch is red is recorded as
 // merged instead: the owner goes on with it.
-func (a *autopilot) retryLandings(by string) {
+func (a *autopilot) retryLandings(ctx context.Context, by string) {
 	now := metav1.NewTime(a.r.now())
 	for i := range a.project.Status.Companions {
 		e := &a.project.Status.Companions[i]
@@ -537,6 +597,7 @@ func (a *autopilot) retryLandings(by string) {
 		if e.MergeStartedAt != nil && e.MergeSHA != "" {
 			a.log.Info("companion recorded as merged after a resume, its default branch was red", "companion", landingRef(e), "by", by)
 			e.State, e.Reason, e.EndedAt = aiv1.LandingMerged, "recorded as merged after a resume by "+by+" (its default branch's pipeline was red)", &now
+			a.r.companionMerged(ctx, a.gl, a.project, e)
 			continue
 		}
 		a.log.Info("companion checked again after a resume", "companion", landingRef(e), "by", by)
