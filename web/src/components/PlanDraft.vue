@@ -43,11 +43,12 @@ async function save(): Promise<boolean> {
 
 <template>
   <div class="card flex flex-col gap-2 px-4 py-3.5" data-plan-draft>
-    <div v-if="canEdit" class="flex items-center gap-1.5">
+    <div v-if="canEdit" class="flex flex-wrap items-center gap-1.5">
       <UButton v-for="m in ['edit', 'preview']" :key="m" size="sm" color="neutral" :variant="mode === m ? 'solid' : 'ghost'"
         :label="m === 'edit' ? 'Edit' : 'Preview'" @click="mode = m" />
       <UButton class="ml-auto" size="sm" color="neutral" variant="outline" label="Save" :disabled="!editor.dirty" @click="save" />
       <UButton size="sm" label="Create milestone" :disabled="!editor.text.trim()" @click="create" />
+      <slot name="actions" /><!-- the decision wizard's button (R7) -->
     </div>
     <div v-if="error" class="banner danger">{{ error }}</div>
     <div v-if="canEdit && conflict" class="banner" data-newer-draft>

@@ -50,9 +50,20 @@ import type { ResearchAgent, ResearchDepth, ResearchView } from './generated/api
 import { decisionsSearch, type DecisionParams } from './decisions'
 import { draftConflictFrom, DraftConflict } from './planDraft'
 import { plansPath } from './plansPath'
+import type { DecisionAnswer } from './generated/store'
 import type { ChatKind } from './types'
 
 export { DraftConflict }
+
+// DecisionsChanged is the 409 of a plan chat post whose answers name a
+// decision version the plan no longer has: the wizard reloads them. It
+// lives here, not in planWizard.ts, to keep that out of the initial bundle.
+const decisionsChangedMessage = 'the decisions changed'
+export class DecisionsChanged extends Error {
+  constructor() {
+    super(decisionsChangedMessage)
+  }
+}
 
 export class NotFoundError extends Error {}
 
@@ -358,9 +369,12 @@ export function postPlanChat(
   namespace: string,
   name: string,
   plan: string,
-  body: { body: string; clientKey: string; kind?: Exclude<ChatKind, 'command'> },
+  body: { body: string; clientKey: string; kind?: Exclude<ChatKind, 'command'>; decisions?: DecisionAnswer[] },
 ): Promise<ChatPostResponse> {
-  return post(`${planPath(namespace, name, plan)}/chat`, body)
+  // A 409 about stale decision versions is DecisionsChanged (the wizard reloads).
+  return post<ChatPostResponse>(`${planPath(namespace, name, plan)}/chat`, body).catch((e: unknown) => {
+    throw e instanceof ApiError && e.status === 409 && e.message === decisionsChangedMessage ? new DecisionsChanged() : e
+  })
 }
 // savePlanDraft: PUT .../draft; revision 409 → DraftConflict (server's view).
 export async function savePlanDraft(

@@ -12,7 +12,9 @@ import UInput from '@nuxt/ui/components/Input.vue'
 import Badge from '../components/Badge.vue'
 import PlanChat from '../components/PlanChat.vue'
 import PlanDecisions from '../components/PlanDecisions.vue'
+import PlanDecisionWizard from '../components/PlanDecisionWizard.vue'
 import PlanDraft from '../components/PlanDraft.vue'
+import PlanWizardButton from '../components/PlanWizardButton.vue'
 import RouteTabs from '../ui/RouteTabs.vue'
 import type { PlanView } from '../generated/views'
 import NotFound from './NotFound.vue'
@@ -29,6 +31,7 @@ const pane = computed(() => planPaneTab(tab.value))
 // tablet and wider unless it is the pane's tab.
 const paneClass = (id: PlanPaneTab) => ({ 'max-tablet:hidden': tab.value !== id, 'tablet:hidden': pane.value !== id })
 const owner = computed(() => !!view.value?.permissions.steer)
+const wizard = ref(false)
 
 async function load() {
   try {
@@ -105,11 +108,17 @@ onUnmounted(() => window.clearInterval(timer))
           <RouteTabs class="mb-3 w-fit max-tablet:hidden" :tabs="planPaneTabs" :active="pane" :to="tabTo" label="Plan pane"
             :badges="{ decisions: view.decisionsPending }" />
           <PlanDraft :class="paneClass('draft')" :namespace="namespace" :name="name" :plan="plan"
-            :view="view" :can-edit="owner && view.phase !== 'Created'" @view="(v) => (view = v)" @created="load" />
+            :view="view" :can-edit="owner && view.phase !== 'Created'" @view="(v) => (view = v)" @created="load">
+            <template #actions><PlanWizardButton :decisions="view.decisions ?? []" :phase="view.phase" @open="wizard = true" /></template>
+          </PlanDraft>
           <PlanDecisions :class="paneClass('decisions')" :namespace="namespace" :name="name" :plan="plan"
-            :decisions="view.decisions ?? []" :pending="view.decisionsPending" />
+            :decisions="view.decisions ?? []" :pending="view.decisionsPending">
+            <template v-if="owner" #actions><PlanWizardButton :decisions="view.decisions ?? []" :phase="view.phase" @open="wizard = true" /></template>
+          </PlanDecisions>
         </div>
       </div>
+      <PlanDecisionWizard v-if="owner" v-model:open="wizard" :namespace="namespace" :name="name" :plan="plan" :view="view"
+        @view="(v) => (view = v)" @sent="load" />
     </template>
   </div>
 </template>
