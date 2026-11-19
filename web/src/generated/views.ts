@@ -653,6 +653,51 @@ export interface MetricsView {
 }
 
 //////////
+// source: metrics_flow.go
+
+/**
+ * FlowBucketView is the issues merged in one bucket (its local start date,
+ * YYYY-MM-DD). A bucket without merges has 0.
+ */
+export interface FlowBucketView {
+  bucket: string;
+  merged: number /* int */;
+}
+/**
+ * FlowTotalsView is the figures of the issues merged in the range. The
+ * median wall time (first run start to merge) is of the wallIssues with a
+ * run start, the median agent time (the sum of the issue's call durations)
+ * of the agentIssues with calls; a median of no issues is 0. The review and
+ * fix calls are means per merged issue. An issue is measured whole: its
+ * runs and calls before the range count.
+ */
+export interface FlowTotalsView {
+  mergedIssues: number /* int */;
+  wallIssues: number /* int */;
+  medianWallSec: number /* int64 */;
+  agentIssues: number /* int */;
+  medianAgentSec: number /* int64 */;
+  reviewCallsPerIssue: number /* float64 */;
+  fixCallsPerIssue: number /* float64 */;
+}
+/**
+ * MetricsFlowView is the answer of GET /api/v1/metrics/flow: the issues of
+ * the viewer's projects (or ?project=) merged in the range of local dates
+ * in TZ, From to To inclusive, each once, at its latest merge in the range.
+ * Buckets has one entry per bucket start of the range, by merge time. The
+ * kind and engine filters do not apply, and research calls never count.
+ */
+export interface MetricsFlowView {
+  range: '7d' | '30d' | '90d' | 'month' | 'lastMonth' | '12m' | 'custom';
+  from: string;
+  to: string;
+  bucket: 'day' | 'week' | 'month';
+  tz: string;
+  buckets: FlowBucketView[];
+  totals: FlowTotalsView;
+}
+
+//////////
 // source: metrics_pauses.go
 
 /**

@@ -71,3 +71,8 @@ func SetMaxRangePauseEvents(t interface{ Cleanup(func()) }, n int) {
 	maxRangePauseEvents = n
 	t.Cleanup(func() { maxRangePauseEvents = old })
 }
+
+// FlowQuery is the SQL and arguments FlowInRange runs, for EXPLAIN tests.
+func FlowQuery(q CostQuery, now time.Time) (string, []any) {
+	return flowSQL(q, now)
+}

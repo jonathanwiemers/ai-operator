@@ -95,6 +95,7 @@ packages:
       - gitlab.go
       - issue.go
       - metrics.go
+      - metrics_flow.go
       - metrics_pauses.go
       - milestone.go
       - milestones.go

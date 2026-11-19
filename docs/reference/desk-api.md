@@ -157,6 +157,7 @@ of the project's milestones, when any of them names owner subjects.
 | `GET /api/v1/costs` | Costs over a range for the Costs page. `?range=` or `?from=&to=`, `?group=`, filters. | see, research database |
 | `GET /api/v1/costs/top` | The ten costliest milestones, issues and runs of the range. | see, research database |
 | `GET /api/v1/costs/metrics` | The cost per 100 merged lines by experiment arm, model, effort and step session, and the median base context and top tools per project, for the range. | see, research database |
+| `GET /api/v1/metrics/flow` | The issues merged in the range, each once at its latest merge: merged issues per bucket, the median wall time (first run start to merge) and median agent time (the sum of the issue's call durations), and the review and fix calls per merged issue. An issue counts whole, with its runs and calls before the range. It takes the parameters of `/api/v1/costs`; only the range and `?project=` apply. | see, research database |
 | `GET /api/v1/metrics/pauses` | The milestone pauses that started in the range: per bucket and kind, totals, open now, by kind, resolver and via, per project, and the ten longest with a link to the milestone's Pilot tab. It takes the parameters of `/api/v1/costs`; only the range and `?project=` apply. `truncated` is set when more than 20000 pause events were found, and only the newest were read. | see, research database |
 
 ## Research

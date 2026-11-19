@@ -29,6 +29,8 @@ type fakeCosts struct {
 	metrics       store.Metrics
 	metricsQ      []store.CostQuery
 	pauses        store.PauseRange
+	flow          store.FlowRange
+	flowCalls     []costSeriesCall
 	pausesCalls   []costSeriesCall
 }
 
