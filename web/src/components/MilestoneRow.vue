@@ -3,11 +3,14 @@ import { computed } from 'vue'
 import Badge from './Badge.vue'
 import ProgressBar from './ProgressBar.vue'
 import { costTooltip } from '../format'
+import { measuredLabel, totalsLabel, totalsTooltip } from '../lines'
 import { leftoversLabel, rowCost, rowTokens, stateTone } from '../milestoneRows'
 import type { MilestoneRow } from '../types'
 
 // One milestone row (decision 5): project, title, state, progress, merged
-// of total, open issues, cost and tokens, and its open leftovers. The
+// of total, open issues, cost, tokens and merged production lines ("M of N
+// measured" below them while some merged issues have none, R16), and its
+// open leftovers. The
 // project column is left out on a project's own list. The columns are
 // MilestoneList's.
 const props = defineProps<{ row: MilestoneRow; showProject?: boolean }>()
@@ -21,6 +24,7 @@ const project = computed(() => ({
   name: 'stream-project' as const,
   params: { namespace: props.row.namespace, name: props.row.project },
 }))
+const measured = computed(() => measuredLabel(props.row.mergedLines))
 const num = 'text-right whitespace-nowrap text-(--text-2) tabular-nums'
 </script>
 
@@ -51,6 +55,10 @@ const num = 'text-right whitespace-nowrap text-(--text-2) tabular-nums'
       <span :class="num" :title="costTooltip(row)">{{ rowCost(row) }}</span>
       <span :class="num" :title="`${row.tokens} tokens`">
         <span class="text-(--text-3) tablet:hidden">tok </span>{{ rowTokens(row) }}
+      </span>
+      <span :class="num" :title="totalsTooltip(row.mergedLines)" data-merged>
+        <span class="text-(--text-3) tablet:hidden">merged </span>{{ totalsLabel(row.mergedLines) }}
+        <small v-if="measured" class="text-[11px] text-(--text-3) tablet:block">{{ measured }}</small>
       </span>
     </span>
   </li>

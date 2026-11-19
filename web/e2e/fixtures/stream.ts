@@ -7,6 +7,7 @@ import type {
   StreamPage,
   Task,
 } from '../../src/types'
+import type { IssueFiguresView } from '../../src/generated/views'
 import { ago, cost, now } from './clock'
 import { stream as dashboardStream } from './overview'
 import { checkout, implementTask, payments, refunds, refundsPrompt, refundsTitle, shop, shopURL } from './task'
@@ -166,12 +167,43 @@ export const shopHistory: HistoryResponse = (() => {
   }
 })()
 
-const figures = (usd: string, tokens: number, wallMin: number, agentMin: number, pausedMin: number) => ({
-  ...cost(usd, tokens),
-  wallSec: wallMin * 60,
-  agentSec: agentMin * 60,
-  pausedSec: pausedMin * 60,
-})
+// figures of an issue: its cost and times, the lines its calls wrote and
+// (merged issues) the lines its merge requests merged.
+const figures = (
+  usd: string,
+  tokens: number,
+  wallMin: number,
+  agentMin: number,
+  pausedMin: number,
+  written: [number, number],
+  merged?: Pick<IssueFiguresView, 'mergedLines' | 'companions'>,
+): IssueFiguresView => {
+  const c = cost(usd, tokens)
+  return {
+    ...c,
+    ...merged,
+    spend: { ...emptySpend, costUSD: usd, costKnown: true, linesAdded: written[0], linesDeleted: written[1] },
+    wallSec: wallMin * 60,
+    agentSec: agentMin * 60,
+    pausedSec: pausedMin * 60,
+  }
+}
+const lc = (added: number, deleted: number) => ({ added, deleted })
+const emptySpend = {
+  costUSD: '',
+  costKnown: false,
+  unknownCalls: 0,
+  unmeteredCalls: 0,
+  oldBasisCalls: 0,
+  inputTokens: 0,
+  outputTokens: 0,
+  cacheReadTokens: 0,
+  cacheWriteTokens: 0,
+  calls: 0,
+  subagentCalls: 0,
+  durationMS: 0,
+  checkpoints: 0,
+}
 
 // GET /projects/team-a/shop/milestones/14: paused on #281's question.
 export const paymentsMilestone: MilestoneView = {
@@ -189,7 +221,10 @@ export const paymentsMilestone: MilestoneView = {
       state: 'merged',
       mergeRequestIID: 302,
       mergeRequestURL: mrURL(302),
-      figures: figures('2.30', 410_000, 95, 31, 0),
+      // A partial count: one file's diff was too large.
+      figures: figures('2.30', 410_000, 95, 31, 0, [164, 31], {
+        mergedLines: { production: lc(118, 20), tests: lc(42, 3), docs: lc(0, 0), generated: lc(0, 0), partial: true },
+      }),
       version: '2026.11.3',
     },
     {
@@ -199,7 +234,14 @@ export const paymentsMilestone: MilestoneView = {
       mergeRequestIID: 303,
       mergeRequestURL: mrURL(303),
       task: 'shop-280-implement',
-      figures: figures('4.13', 820_000, 260, 54, 42),
+      // Home +40/−5 production, +60 tests, +10 docs; the companion in
+      // group/infra +12/−3 production.
+      figures: figures('4.13', 820_000, 260, 54, 42, [412, 96], {
+        mergedLines: { production: lc(52, 8), tests: lc(60, 0), docs: lc(10, 0), generated: lc(0, 0) },
+        companions: [
+          { project: 'group/infra', mrIID: 41, lines: { production: lc(12, 3), tests: lc(0, 0), docs: lc(0, 0), generated: lc(0, 0) } },
+        ],
+      }),
     },
     {
       iid: 281,
@@ -208,7 +250,8 @@ export const paymentsMilestone: MilestoneView = {
       mergeRequestIID: 305,
       mergeRequestURL: mrURL(305),
       task: refunds.name,
-      figures: figures('3.42', 640_000, 1290, 16, 24),
+      // Not merged yet: no merged lines (unmeasured).
+      figures: figures('3.42', 640_000, 1290, 16, 24, [182, 24]),
     },
     { iid: 282, title: 'Partial captures for split shipments', state: 'pending', task: 'shop-282-implement' },
     { iid: 283, title: 'Switch the payment provider per country', state: 'pending' },

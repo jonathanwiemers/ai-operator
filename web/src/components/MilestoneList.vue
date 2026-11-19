@@ -15,8 +15,8 @@ const props = defineProps<{ rows: MilestoneRow[]; showProject?: boolean; label: 
 
 const columns = () =>
   props.showProject
-    ? 'tablet:grid-cols-[134px_minmax(0,1fr)_140px_160px_56px_72px_78px]'
-    : 'tablet:grid-cols-[minmax(0,1fr)_140px_160px_56px_72px_78px]'
+    ? 'tablet:grid-cols-[134px_minmax(0,1fr)_140px_160px_56px_72px_64px_92px]'
+    : 'tablet:grid-cols-[minmax(0,1fr)_140px_160px_56px_72px_64px_92px]'
 </script>
 
 <template>
@@ -33,6 +33,7 @@ const columns = () =>
       <span class="text-right">Open</span>
       <span class="text-right">Cost</span>
       <span class="text-right">Tokens</span>
+      <span class="text-right" title="Merged production lines">Lines</span>
     </div>
     <ul class="m-0 list-none p-0 tablet:col-span-full tablet:grid tablet:grid-cols-subgrid" :aria-label="label">
       <MilestoneRowItem v-for="r in rows" :key="milestoneRowKey(r)" :row="r" :show-project="showProject" />

@@ -729,6 +729,11 @@ for (const { width, height } of widths) {
     await page.screenshot({ path: shot, fullPage: true })
     await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
 
+    // Run rows carry the run's written lines (R16).
+    const runRow = main.locator('table').first().locator(':scope > tbody > tr').first()
+    await expect(runRow.locator(':scope > td > [data-label]')).toHaveText(['Run', 'First call', 'Calls', 'Tokens', 'Lines', 'Cost'])
+    await expect(runRow).toContainText('+182/−24')
+
     const callLabels = main.locator('tbody tbody tr').first().locator('[data-label]')
     await expect(callLabels).toHaveText(['#', 'Time', 'Kind', 'Role', 'Engine / model', 'Resumed', 'Lines', 'In', 'Out', 'Cache read', 'Cache write', 'Duration', 'Cost'])
     if (phone) await expect(callLabels.first()).toBeVisible()
@@ -2352,7 +2357,7 @@ test.describe('milestone rows', () => {
           for (const s of layout.stacked) expect(s).toEqual({ titleStateOneLine: true, figuresBelow: true, inside: true })
         } else {
           await expect(heads).toBeVisible()
-          expect(layout.heads).toHaveLength(project ? 7 : 6)
+          expect(layout.heads).toHaveLength(project ? 8 : 7)
           for (const row of layout.rows) expect(row).toEqual(layout.heads)
         }
 
@@ -2431,7 +2436,7 @@ test.describe('overview cards', () => {
 // on one line, release rows sit between the issues in the same order at
 // every width. Below desktop width an issue's number and title come first,
 // its state and figures below: on a tablet the rail leaves too little room
-// for eight columns. Links are at least 44 px high on a phone. From desktop
+// for ten columns. Links are at least 44 px high on a phone. From desktop
 // width every issue row's cells line up with the column heads.
 test.describe('milestone issues', () => {
   for (const size of widths) {
@@ -2457,6 +2462,18 @@ test.describe('milestone issues', () => {
         )
       expect(order).toEqual(['#279', 'release', '#280', 'release', '#281', '#282', 'release', '#283', '#284'])
       await expect(table.locator('[data-issue]').first()).toContainText('2026.11.3')
+      // Written and merged lines (R16): a partial count, one with a
+      // companion, one unmeasured; on a phone and tablet in the card.
+      const issue = (iid: number) => table.locator('[data-issue]').filter({ hasText: `#${iid}` })
+      await expect(issue(279).locator('[data-merged]')).toContainText('≥ +118/−20')
+      await expect(issue(280).locator('[data-merged]')).toContainText('+52/−8')
+      await expect(issue(280).locator('[data-merged]')).toHaveAttribute(
+        'title',
+        'production +52/−8, tests +60/−0, docs +10/−0, generated +0/−0, group/infra +12/−3',
+      )
+      await expect(issue(280).locator('[data-written]')).toContainText('+412/−96')
+      await expect(issue(281).locator('[data-merged]')).toContainText('—')
+      await expect(issue(280).locator('[data-merged]')).toBeVisible()
 
       const layout = await table.evaluate((t) => {
         const box = (e: Element) => e.getBoundingClientRect()
@@ -2486,7 +2503,9 @@ test.describe('milestone issues', () => {
         for (const r of layout.rows) expect(r.stateBelowTitle).toBe(true)
       } else {
         expect(layout.headsShown).toBe(true)
-        expect(layout.heads).toHaveLength(8)
+        expect(layout.heads).toHaveLength(10)
+        await expect(table.locator('[data-heads]')).toContainText('Written')
+        await expect(table.locator('[data-heads]')).toContainText('Merged')
         for (const r of layout.rows) expect(r.lefts).toEqual(layout.heads)
       }
 

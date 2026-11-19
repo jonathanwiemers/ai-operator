@@ -800,8 +800,11 @@ milestone lists on the overview (*In progress*, *Recently done*, with a
   The edge tracks are 14 px wider than their content, because a subgrid's
   padding comes out of its edge tracks.
 - On phones the heads are hidden and a row stacks: the project on top, title
-  and state on one line, the figures (progress, open, cost, tokens) as a
-  wrapping line below, *open* and *tok* labelled. Nothing scrolls sideways.
+  and state on one line, the figures (progress, open, cost, tokens, merged
+  lines) as a wrapping line below, *open*, *tok* and *merged* labelled.
+  Nothing scrolls sideways.
+- *Lines* is the milestone's merged production lines (`web/src/lines.ts`),
+  with "M of N measured" below while some merged issues have none.
 - Both are Tailwind utilities, no scoped `<style>`. The rows' data comes
   from `src/milestoneRows.ts` as before.
 
@@ -938,10 +941,14 @@ Tailwind utilities and Nuxt UI tokens, without scoped CSS.
   issue row are subgrids of it, so the cells line up with the heads as
   before; a release row spans all columns.
 - On phones and tablets the heads are hidden (beside the rail a tablet has
-  about 460 px, too little for eight columns). An issue row shows its number and title
+  about 460 px, too little for ten columns). An issue row shows its number and title
   (and the version it shipped in) on the first line, then its state, merge
   request and labelled figures as a wrapping line. Issue numbers never
   wrap.
+- *Written* and *Merged* (`web/src/lines.ts`) show `+added/−deleted`:
+  the issue's written lines, and its merged production lines with the
+  categories and each companion's share in the tooltip. A partial count
+  shows `≥`, an unmeasured one `—`.
 - Release rows (`releaseRows.ts`) sit between the issues in the same order
   and with the same content at every width.
 - Links in rows (issue title, merge request, release, pipeline) are at

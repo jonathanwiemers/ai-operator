@@ -6,6 +6,7 @@ import ExtLink from './ExtLink.vue'
 import QueueList from './QueueList.vue'
 import RelTime from './RelTime.vue'
 import { costTooltip } from '../format'
+import { mergedLabel, mergedTooltip, writtenLabel } from '../lines'
 import { queueDone, waitingForTurn } from '../milestoneQueue'
 import { issueProgress, issueStateTone, issueTime, progressPct, rowCost, rowTokens, stateTone } from '../milestoneRows'
 import {
@@ -23,7 +24,8 @@ import type { MilestoneIssueRow, MilestoneView } from '../types'
 
 // A milestone's Issues tab (R9, decision 8): its state, progress and cost,
 // then one row per issue with its state, merge request, wall, agent and
-// paused time, cost and tokens, and the version it shipped in. Releases are
+// paused time, cost and tokens, written and merged lines (R16), and the
+// version it shipped in. Releases are
 // rows between the issues (R12, decision 15). Below the table the autopilot
 // queue is grouped by lane: running, landing, ready to land, waiting, held
 // (with Resume) and done (QueueList grouped). The page header holds the
@@ -32,7 +34,7 @@ import type { MilestoneIssueRow, MilestoneView } from '../types'
 //
 // The table is one grid (docs/contributing/web-ui.md, "Milestone Issues"): from desktop width
 // the column heads and every row are subgrids of it, and a release row spans
-// all columns. Below it (the rail leaves too little room for eight columns on
+// all columns. Below it (the rail leaves too little room for ten columns on
 // a tablet) the heads are hidden; an issue row shows its number
 // and title on the first line, then its state, merge request and labelled
 // figures as a wrapping line. Links in rows are 44 px high on phones.
@@ -55,7 +57,7 @@ const num = 'whitespace-nowrap tabular-nums text-(--text-2) desktop:text-right'
 const tap = 'min-h-11 tablet:min-h-0'
 // The edge tracks are 14 px wider than their content: a subgrid's padding
 // (px-3.5) is taken from them.
-const columns = 'desktop:grid-cols-[minmax(0,1fr)_90px_64px_64px_64px_64px_72px_78px]'
+const columns = 'desktop:grid-cols-[minmax(0,1fr)_90px_64px_64px_64px_64px_72px_64px_84px_112px]'
 const sectionHead =
   'm-0 mb-2 flex justify-between text-[11.5px] font-semibold tracking-[0.06em] text-(--text-3) uppercase'
 </script>
@@ -105,6 +107,8 @@ const sectionHead =
         <span role="columnheader" class="text-right">Paused</span>
         <span role="columnheader" class="text-right">Cost</span>
         <span role="columnheader" class="text-right">Tokens</span>
+        <span role="columnheader" class="text-right" title="Lines the agents wrote">Written</span>
+        <span role="columnheader" class="text-right" title="Merged production lines, companions included">Merged</span>
       </div>
       <template v-for="(row, n) in rows" :key="row.key">
         <!-- A release spans the table: state, version or what is planned,
@@ -211,6 +215,17 @@ const sectionHead =
             </span>
             <span :class="num" role="cell">
               <span class="text-(--text-3) desktop:hidden">tok </span>{{ row.issue.figures ? rowTokens(row.issue.figures) : '—' }}
+            </span>
+            <span :class="num" role="cell" data-written title="Lines the agents wrote: every step commit, rewrites included">
+              <span class="text-(--text-3) desktop:hidden">written </span>{{ writtenLabel(row.issue.figures?.spend) }}
+            </span>
+            <span
+              :class="num"
+              role="cell"
+              data-merged
+              :title="mergedTooltip(row.issue.figures?.mergedLines, row.issue.figures?.companions)"
+            >
+              <span class="text-(--text-3) desktop:hidden">merged </span>{{ mergedLabel(row.issue.figures?.mergedLines) }}
             </span>
           </span>
         </div>

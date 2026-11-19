@@ -77,10 +77,14 @@ export const milestoneSpend = spend(totals('9.85', 1_870_000, 31, 7_400_000), [
   child('issue', '281', 'Support refunds through the payment provider', '3.42', 640_000, 12),
 ])
 
-// taskSpend: shop-281-implement by run.
+// taskSpend: shop-281-implement by run, with the lines each run wrote.
+const lines = (c: SpendChild, linesAdded: number, linesDeleted: number): SpendChild => ({
+  ...c,
+  totals: { ...c.totals, linesAdded, linesDeleted },
+})
 export const taskSpend = spend(totals('3.42', 2_580_000, 12, 950_000), [
-  child('run', 'shop-281-implement/2', 'Run 2', '1.32', 984_000, 5),
-  child('run', 'shop-281-implement/1', 'Run 1', '2.10', 1_596_000, 7),
+  lines(child('run', 'shop-281-implement/2', 'Run 2', '1.32', 984_000, 5), 182, 24),
+  lines(child('run', 'shop-281-implement/1', 'Run 1', '2.10', 1_596_000, 7), 230, 41),
 ])
 
 // runSpend: one run of shop-281-implement by call.

@@ -44,6 +44,12 @@ export const openMilestones: MilestoneList = {
       phase: 'running',
       progress: { merged: 4, total: 9, open: 5 },
       followUpsOpen: 0,
+      // One merged issue merged before lines were measured.
+      mergedLines: {
+        lines: { production: { added: 310, deleted: 74 }, tests: { added: 620, deleted: 4 }, docs: { added: 18, deleted: 2 }, generated: { added: 0, deleted: 0 } },
+        merged: 4,
+        measured: 3,
+      },
       startedAt: ago(60 * 24 * 2),
       needsYou: true,
       stored: false,
@@ -59,6 +65,11 @@ export const openMilestones: MilestoneList = {
       phase: 'paused',
       progress: { merged: 2, total: 6, open: 4 },
       followUpsOpen: 0,
+      mergedLines: {
+        lines: { production: { added: 170, deleted: 28 }, tests: { added: 340, deleted: 4 }, docs: { added: 18, deleted: 2 }, generated: { added: 0, deleted: 0 }, partial: true },
+        merged: 2,
+        measured: 2,
+      },
       startedAt: ago(60 * 24 * 5),
       needsYou: true,
       stored: false,
@@ -94,6 +105,11 @@ export const doneMilestones: MilestoneList = {
       phase: 'done',
       progress: { merged: 7, total: 7, open: 0 },
       followUpsOpen: 2,
+      mergedLines: {
+        lines: { production: { added: 640, deleted: 112 }, tests: { added: 1280, deleted: 4 }, docs: { added: 18, deleted: 2 }, generated: { added: 0, deleted: 0 } },
+        merged: 7,
+        measured: 7,
+      },
       startedAt: ago(60 * 24 * 12),
       doneAt: ago(60 * 24 * 9),
       needsYou: false,

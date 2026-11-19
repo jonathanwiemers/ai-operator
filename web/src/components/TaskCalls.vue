@@ -2,6 +2,7 @@
 import { computed, ref, toRaw, watch } from 'vue'
 import { getSpend, LoginRequiredError } from '../client'
 import { clockTime, duration, fullTime, shortSHA, tokenCount } from '../format'
+import { writtenLabel } from '../lines'
 import { useNow } from '../live'
 import {
   callCost,
@@ -44,6 +45,7 @@ const runColumns: DataListColumn[] = [
   { key: 'at', label: 'First call' },
   { key: 'calls', label: 'Calls', numeric: true },
   { key: 'tokens', label: 'Tokens', numeric: true },
+  { key: 'lines', label: 'Lines', numeric: true },
   { key: 'cost', label: 'Cost', numeric: true },
 ]
 const callColumns: DataListColumn[] = [
@@ -133,6 +135,11 @@ async function toggle(r: SpendChild) {
           <template #cell-calls="{ row: r }">{{ r.totals.calls }}</template>
           <template #cell-tokens="{ row: r }">
             <span class="relative z-1" :title="tokenBreakdown(r.totals)">{{ tokenCount(spendTokens(r.totals)) }}</span>
+          </template>
+          <template #cell-lines="{ row: r }">
+            <span class="relative z-1" title="Lines the run's calls wrote: every step commit, rewrites included">
+              {{ writtenLabel(r.totals) }}
+            </span>
           </template>
           <template #cell-cost="{ row: r }">
             <span class="relative z-1" :class="{ 'text-(--text-3)': !r.totals.costKnown }" :title="legacyNote(r.totals) || undefined">
