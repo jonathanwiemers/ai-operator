@@ -103,7 +103,7 @@ onUnmounted(() => window.clearInterval(timer))
         :badges="{ decisions: view.decisionsPending }" />
       <div class="grid gap-4 tablet:grid-cols-2">
         <PlanChat :class="{ 'max-tablet:hidden': tab !== 'chat' }" :namespace="namespace" :name="name" :plan="plan"
-          :can-post="owner" :phase="view.phase" :spend-u-s-d="view.spendUSD" :budget-u-s-d="view.budgetUSD" />
+          :can-post="owner" :phase="view.phase" :spend-u-s-d="view.spendUSD" :budget-u-s-d="view.budgetUSD" :decisions="view.decisions ?? []" />
         <div class="flex min-w-0 flex-col" :class="{ 'max-tablet:hidden': tab === 'chat' }">
           <RouteTabs class="mb-3 w-fit max-tablet:hidden" :tabs="planPaneTabs" :active="pane" :to="tabTo" label="Plan pane"
             :badges="{ decisions: view.decisionsPending }" />

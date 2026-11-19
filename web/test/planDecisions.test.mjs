@@ -48,3 +48,36 @@ test('markedOption: Recommended until signed off, then Signed off; out of range 
   assert.equal(markedOption({ ...d, recommended: -1 }), null)
   assert.equal(markedOption({ ...d, options: [] }), null)
 })
+
+test('answersSummary: all kept, mixed, singular', async () => {
+  const { answersSummary } = await import('../src/planDecisions.ts')
+  assert.deepEqual(answersSummary([{ id: 'D1', version: 1, keep: true }, { id: 'D2', version: 1, keep: true }]),
+    { total: 2, kept: 2, changed: 0, label: 'Answered 2 decisions: 2 kept, 0 changed' })
+  const mixed = [{ id: 'D1', version: 1, keep: true }, { id: 'D2', version: 1, option: 0 }, { id: 'D3', version: 1, other: 'x' }]
+  assert.equal(answersSummary(mixed).label, 'Answered 3 decisions: 1 kept, 2 changed')
+  assert.equal(answersSummary([{ id: 'D1', version: 1, keep: true }]).label, 'Answered 1 decision: 1 kept, 0 changed')
+})
+
+test('changedLines: option with and without version, other', async () => {
+  const { changedLines } = await import('../src/planDecisions.ts')
+  const cur = [{ id: 'D2', version: 2, options: ['A', 'B'] }]
+  const lines = changedLines([
+    { id: 'D1', version: 1, keep: true },
+    { id: 'D2', version: 2, option: 1 },
+    { id: 'D2', version: 1, option: 1 },
+    { id: 'D6', version: 1, other: 'my\nlong ' + 'z'.repeat(100) },
+  ], cur)
+  assert.equal(lines.length, 3)
+  assert.equal(lines[0].text, 'D2 → B')
+  assert.equal(lines[1].text, 'D2 → option 2')
+  assert.ok(lines[2].text.startsWith('D6 → "my long z'))
+  assert.ok(!lines[2].text.includes('\n') && lines[2].text.length < 100)
+  assert.ok(lines[2].full.includes('\n'))
+})
+
+test('createWarning: 0, 1, several', async () => {
+  const { createWarning } = await import('../src/planDecisions.ts')
+  assert.equal(createWarning(0), '')
+  assert.equal(createWarning(1), '1 decision is open or not signed off')
+  assert.equal(createWarning(2), '2 decisions are open or not signed off')
+})

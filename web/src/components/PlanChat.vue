@@ -4,7 +4,7 @@ import { chatPostError } from '../api'
 import { getPlanChat, LoginRequiredError, postPlanChat } from '../client'
 import * as cs from '../chatState'
 import { keepThroughSignIn } from '../signInDraft'
-import type { AgentPlanPhase } from '../generated/api'
+import type { AgentPlanPhase, PlanDecision } from '../generated/api'
 import type { ChatMessage } from '../types'
 import Badge from './Badge.vue'
 import ChatThread from './ChatThread.vue'
@@ -21,6 +21,7 @@ const props = defineProps<{
   // The budget cap (PlanView.budgetUSD) and spend, for the "budget used" stop.
   spendUSD?: string
   budgetUSD?: string
+  decisions?: PlanDecision[]
 }>()
 
 const messages = ref<ChatMessage[]>([])
@@ -97,7 +98,7 @@ onUnmounted(() => window.clearInterval(timer))
   <div class="card overflow-clip">
     <div v-if="error" class="banner danger">{{ error }}</div>
     <div v-if="!grouped.turns.length" class="empty">No messages yet.</div>
-    <ChatThread v-else :turns="grouped.turns" :replies="grouped.repliesByParent" />
+    <ChatThread v-else :turns="grouped.turns" :replies="grouped.repliesByParent" :decisions="decisions" />
     <div v-if="waiting" class="flex items-center border-t border-(--border) bg-(--surface-2) px-4 py-2.5">
       <Badge tone="progress" dot pulse>{{ waiting.label }}</Badge>
     </div>

@@ -62,6 +62,6 @@ async function save(): Promise<boolean> {
       @update:model-value="(t: string) => (editor = { ...editor, text: t, dirty: true })" />
     <Markdown v-else :text="(canEdit ? editor.text : view.draft) || 'No draft yet.'" />
     <PlanCreateDialog v-model:open="creating" :namespace="namespace" :name="name" :plan="plan" :title="view.title"
-      :draft="editor.text" @created="emit('created')" />
+      :draft="editor.text" :pending="view.decisionsPending ?? 0" @created="emit('created')" />
   </div>
 </template>

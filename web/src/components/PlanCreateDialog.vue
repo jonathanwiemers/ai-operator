@@ -1,8 +1,11 @@
 <script setup lang="ts">
 // Create milestone from a plan (R12, Decisions 8, 10): title, final draft, Spec / Autopilot, the appended lines and the estimate.
-import { defineAsyncComponent, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { createPlanMilestone, getEstimate } from '../client'
 import { estimateLabel } from '../estimate'
+import { useRoute } from 'vue-router'
+import { createWarning } from '../planDecisions'
+import { planTabs, tabQuery } from '../streamTabs'
 import { planHeaderLines, planMilestoneTitle } from '../planRows'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
@@ -13,7 +16,9 @@ import type { FollowUpMilestoneView } from '../generated/views'
 import { useBackClose } from '../ui/useBackClose'
 
 const UModal = defineAsyncComponent(() => import('@nuxt/ui/components/Modal.vue'))
-const props = defineProps<{ namespace: string; name: string; plan: string; title: string; draft: string }>()
+const props = defineProps<{ namespace: string; name: string; plan: string; title: string; draft: string; pending?: number }>()
+const route = useRoute()
+const warning = computed(() => createWarning(props.pending ?? 0))
 const emit = defineEmits<{ created: [] }>()
 const open = defineModel<boolean>('open', { required: true })
 const [title, text, spec, autopilot, estimate, error, busy] = [ref(''), ref(''), ref(true), ref(true), ref(''), ref(''), ref(false)]
@@ -45,6 +50,10 @@ async function create() {
         Created the milestone %{{ created.iid }}: <ExtLink :href="created.webURL">on GitLab</ExtLink>.
       </div>
       <div v-else class="flex flex-col gap-2 text-sm" data-plan-create>
+        <div v-if="warning" class="banner warning" role="status" data-create-warning>
+          {{ warning }}.
+          <RouterLink :to="{ query: tabQuery(route.query, 'decisions', planTabs) }" @click="open = false">Review them</RouterLink>
+        </div>
         <UInput v-model="title" :maxlength="255" aria-label="Title" placeholder="Title" />
         <UTextarea v-model="text" :rows="14" spellcheck="true" aria-label="Description" :ui="{ base: 'font-mono text-base/5 tablet:text-[13px]/5' }" />
         <div class="flex gap-4"><USwitch v-model="spec" label="Spec" /><USwitch v-model="autopilot" label="Autopilot" /></div>

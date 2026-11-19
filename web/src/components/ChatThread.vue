@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { chatAuthorLabel as authorLabel, chatStateLabel as stateLabel, commandLabel } from '../chatState'
 import type { ChatMessage } from '../types'
+import type { PlanDecision } from '../generated/api'
 import Badge from './Badge.vue'
+import ChatAnswers from './ChatAnswers.vue'
 import Markdown from './Markdown.vue'
 import RelTime from './RelTime.vue'
 
@@ -10,6 +12,8 @@ import RelTime from './RelTime.vue'
 defineProps<{
   turns: ChatMessage[]
   replies: Map<number, ChatMessage>
+  // The plan's current decisions, for the answers block (plan chat only).
+  decisions?: PlanDecision[]
 }>()
 </script>
 
@@ -28,6 +32,7 @@ defineProps<{
         </div>
         <p v-if="msg.redacted && !msg.body" class="withheld">message hidden</p>
         <p v-else-if="msg.kind === 'command'" class="cmd">{{ commandLabel(msg.body) }}</p>
+        <ChatAnswers v-else-if="msg.role === 'user' && msg.decisions?.length" :answers="msg.decisions" :decisions="decisions ?? []" :body="msg.body" />
         <Markdown v-else-if="msg.body" :text="msg.body" />
         <!-- Every state's reason is text, not the badge's title: a title cannot be read on touch. -->
         <p
