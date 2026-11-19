@@ -164,6 +164,7 @@ packages:
       store.ChatMessage: store.ChatMessage
       store.FollowUpRow: store.FollowUpRow
       store.IssueFigures: store.IssueFigures
+      store.MergedLineTotals: store.MergedLineTotals
       store.MilestoneRow: store.MilestoneRow
       store.EstimateResult: store.EstimateResult
       store.Money: store.Money
@@ -190,6 +191,7 @@ packages:
     include_files:
       - chat.go
       - estimate.go
+      - merged_lines.go
       - milestone_rows.go
       - pauses.go
       - spend_totals.go

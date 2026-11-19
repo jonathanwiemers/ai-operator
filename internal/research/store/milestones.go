@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -24,14 +25,14 @@ const MaxMilestones = 200
 
 // milestoneSelect is the list's statement without ORDER BY: $1 and $2 are
 // the projects' namespaces and names, $3 the state, empty for both. The
-// extra columns come after the list's, before the spend totals; filter is
-// ANDed to the WHERE clause.
+// extra columns come after the list's and the merged line totals', before
+// the spend totals; filter is ANDed to the WHERE clause.
 func milestoneSelect(extra, filter string) string {
 	const inProjects = `(namespace, project) IN (SELECT * FROM unnest($1::text[], $2::text[]))`
-	return spendWith(inProjects+` AND milestone_iid IS NOT NULL`) + `
+	return spendWith(inProjects+` AND milestone_iid IS NOT NULL`) + `, ` + issueLinesCTE(inProjects+` AND milestone_iid IS NOT NULL`) + `
 		SELECT m.namespace, m.project, m.iid, m.title, m.web_url, m.state, m.phase,
 			m.started_at, m.done_at, coalesce(m.tracking_iid, 0),
-			coalesce(i.total, 0), coalesce(i.merged, 0), coalesce(f.open, 0),
+			coalesce(i.total, 0), coalesce(i.merged, 0), coalesce(f.open, 0), ` + coalescedTotals("ml") + `,
 			` + extra + `coalesce(sp.cost, 0), coalesce(sp.unknown, 0), coalesce(sp.input, 0), coalesce(sp.output, 0),
 			coalesce(sp.cache_read, 0), coalesce(sp.cache_write, 0), coalesce(sp.calls, 0),
 			coalesce(sp.subagent_calls, 0), coalesce(sp.duration, 0), coalesce(sp.legacy, 0), coalesce(sp.unmetered, 0),
@@ -51,6 +52,10 @@ func milestoneSelect(extra, filter string) string {
 		) sp (namespace, project, milestone_iid, cost, unknown, input, output, cache_read, cache_write,
 			calls, subagent_calls, duration, legacy, unmetered, checkpoints, old_basis, lines_added, lines_deleted)
 			ON sp.namespace = m.namespace AND sp.project = m.project AND sp.milestone_iid = m.iid
+		LEFT JOIN (
+			SELECT namespace, project, milestone_iid, ` + mergedTotalsColumns + ` FROM issue_lines GROUP BY 1, 2, 3
+		) ml (namespace, project, milestone_iid, ` + strings.Join(mergedTotalsNames, ", ") + `)
+			ON ml.namespace = m.namespace AND ml.project = m.project AND ml.milestone_iid = m.iid
 		WHERE (m.namespace, m.project) IN (SELECT * FROM unnest($1::text[], $2::text[]))
 			AND ($3 = '' OR m.state = $3)` + filter
 }
@@ -60,9 +65,12 @@ func milestoneSelect(extra, filter string) string {
 func scanMilestone(row pgx.Row, extra ...any) (MilestoneRow, error) {
 	var m MilestoneRow
 	var started, done *time.Time
+	var lines MergedLineTotals
 	var err error
-	m.Spend, err = scanTotals(row, append([]any{&m.Project.Namespace, &m.Project.Name, &m.IID, &m.Title, &m.WebURL,
-		&m.State, &m.Phase, &started, &done, &m.TrackingIID, &m.Issues, &m.Merged, &m.FollowUpsOpen}, extra...)...)
+	dest := append([]any{&m.Project.Namespace, &m.Project.Name, &m.IID, &m.Title, &m.WebURL,
+		&m.State, &m.Phase, &started, &done, &m.TrackingIID, &m.Issues, &m.Merged, &m.FollowUpsOpen}, mergedTotalsDest(&lines)...)
+	m.Spend, err = scanTotals(row, append(dest, extra...)...)
+	m.MergedLines = lines.orNil()
 	if started != nil {
 		m.StartedAt = *started
 	}
@@ -194,11 +202,13 @@ func (s *Store) IssueFigures(ctx context.Context, project ProjectKey, milestone,
 }
 
 // issueFigures returns the figures of the milestone's issues in order, of
-// issue only unless it is 0, in three queries.
+// issue only unless it is 0, in three queries: the first reads their spend
+// and merged lines.
 func (s *Store) issueFigures(ctx context.Context, project ProjectKey, milestone, issue int64, now time.Time) ([]IssueFigures, error) {
 	const inScope = `namespace = $1 AND project = $2 AND milestone_iid = $3 AND ($4::bigint = 0 OR issue_iid = $4)`
-	rows, _ := s.pool.Query(ctx, spendWith(inScope)+`
+	rows, _ := s.pool.Query(ctx, spendWith(inScope)+`, `+issueLinesCTE(inScope)+`
 		SELECT i.iid, i.title, i.state, coalesce(i.mr_iid, 0), i.mr_url, i.position,
+			`+issueLineColumns("l")+`, coalesce(l.companions, '[]'::jsonb),
 			coalesce(sp.cost, 0), coalesce(sp.unknown, 0), coalesce(sp.input, 0), coalesce(sp.output, 0),
 			coalesce(sp.cache_read, 0), coalesce(sp.cache_write, 0), coalesce(sp.calls, 0),
 			coalesce(sp.subagent_calls, 0), coalesce(sp.duration, 0), coalesce(sp.legacy, 0), coalesce(sp.unmetered, 0),
@@ -208,12 +218,22 @@ func (s *Store) issueFigures(ctx context.Context, project ProjectKey, milestone,
 			SELECT issue_iid, `+spendTotals+` FROM spend WHERE issue_iid IS NOT NULL GROUP BY 1
 		) sp (issue_iid, cost, unknown, input, output, cache_read, cache_write, calls, subagent_calls, duration, legacy, unmetered, checkpoints, old_basis, lines_added, lines_deleted)
 			ON sp.issue_iid = i.iid
+		LEFT JOIN issue_lines l ON l.issue_iid = i.iid
 		WHERE i.namespace = $1 AND i.project = $2 AND i.milestone_iid = $3 AND ($4::bigint = 0 OR i.iid = $4)
 		ORDER BY i.position, i.iid`, project.Namespace, project.Name, milestone, issue)
 	issues, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (IssueFigures, error) {
 		var f IssueFigures
+		var measured bool
+		var lines MergedLines
 		var err error
-		f.Spend, err = scanTotals(row, &f.IID, &f.Title, &f.State, &f.MRIID, &f.MRURL, &f.Position)
+		dest := append([]any{&f.IID, &f.Title, &f.State, &f.MRIID, &f.MRURL, &f.Position, &measured}, lineDest(&lines)...)
+		f.Spend, err = scanTotals(row, append(dest, &f.Companions)...)
+		if measured {
+			f.MergedLines = &lines
+		}
+		if len(f.Companions) == 0 {
+			f.Companions = nil
+		}
 		if f.Spend.Calls == 0 && !f.Spend.LegacyCostUSD.Known {
 			f.Spend.CostUSD.Known = false
 		}

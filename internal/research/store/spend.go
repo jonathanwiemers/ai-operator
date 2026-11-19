@@ -114,6 +114,10 @@ type Spend struct {
 	CacheReadShare float64
 	// StepLines is the size of the scope's step commits.
 	StepLines StepLines
+	// MergedLines sums the merged lines of the scope's merged issues, with
+	// the cost per 100 merged production lines; nil when none merged, and
+	// always at task and run scope.
+	MergedLines *MergedLineTotals
 }
 
 // spendWith is the common table expressions of the spend queries for the
@@ -428,6 +432,9 @@ func (s *Store) Spend(ctx context.Context, sc SpendScope) (Spend, error) {
 		return Spend{}, err
 	}
 	if sp.StepLines, err = stepLines(s.pool.QueryRow(ctx, with+stepLinesQuery, args...)); err != nil {
+		return Spend{}, err
+	}
+	if sp.MergedLines, err = s.mergedLines(ctx, sc, with, args); err != nil {
 		return Spend{}, err
 	}
 	return sp, nil

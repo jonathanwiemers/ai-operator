@@ -109,6 +109,10 @@ type SpendView struct {
 	CacheReadShare float64                 `json:"cacheReadShare"`
 	// StepLines is the size of the scope's step commits.
 	StepLines StepLinesView `json:"stepLines"`
+	// MergedLines sums the merged lines of the scope's merged issues, with
+	// the cost per 100 merged production lines of the measured ones; absent
+	// when none merged and at task and run scope.
+	MergedLines *store.MergedLineTotals `json:"mergedLines,omitempty"`
 }
 
 // StepLinesView is the size of a scope's step commits: the implement
@@ -223,7 +227,7 @@ func spendView(sp store.Spend) SpendView {
 		ByKindModel: breakdownViews(sp.ByKindModel), ConflictRuns: breakdownViews(sp.ConflictRuns),
 		ByReviewRound: breakdownViews(sp.ByReviewRound), BySession: breakdownViews(sp.BySession), ByCheckpoint: breakdownViews(sp.ByCheckpoint),
 		BySubagents: make([]SubagentBreakdownView, 0, len(sp.BySubagents)), CacheReadShare: sp.CacheReadShare,
-		StepLines: StepLinesView(sp.StepLines)}
+		StepLines: StepLinesView(sp.StepLines), MergedLines: sp.MergedLines}
 	for _, b := range sp.BySubagents {
 		v.BySubagents = append(v.BySubagents, SubagentBreakdownView{Role: b.Role, WithSubagents: b.WithSubagents,
 			Totals: b.Totals, SubagentTokens: b.SubagentTokens,

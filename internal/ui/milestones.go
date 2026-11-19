@@ -310,7 +310,7 @@ func storedMilestoneState(m store.MilestoneRow) MilestoneState {
 
 // mergeMilestoneRows merges the live rows with the snapshot's: a live row
 // keeps its state, title and progress and takes the snapshot's spend,
-// times and follow-ups. A snapshot row without live tasks is a stored row
+// merged lines, times and follow-ups. A snapshot row without live tasks is a stored row
 // if it is done; an open one without tasks is in no work (the operator
 // deletes the tasks of milestones no longer planned) and stays out.
 func mergeMilestoneRows(live []MilestoneRow, stored []store.MilestoneRow) []MilestoneRow {
@@ -325,7 +325,7 @@ func mergeMilestoneRows(live []MilestoneRow, stored []store.MilestoneRow) []Mile
 		cost.Spend = nil
 		if i, ok := byKey[milestoneKey{sm.Project.Namespace, sm.Project.Name, sm.IID}]; ok {
 			m := &out[i]
-			m.Cost, m.FollowUpsOpen = cost, sm.FollowUpsOpen
+			m.Cost, m.FollowUpsOpen, m.MergedLines = cost, sm.FollowUpsOpen, sm.MergedLines
 			if !sm.StartedAt.IsZero() {
 				m.StartedAt = sm.StartedAt
 			}

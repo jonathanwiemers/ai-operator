@@ -29,6 +29,9 @@ type MilestoneRow struct {
 	Open          int         `json:"-"`
 	FollowUpsOpen int         `json:"followUpsOpen"`
 	Spend         SpendTotals `json:"-"`
+	// MergedLines sums the merged lines of the milestone's merged issues
+	// (without the cost per 100 lines); nil when none merged.
+	MergedLines *MergedLineTotals `json:"mergedLines,omitempty"`
 }
 
 // IssueFigures are one issue of a milestone with its figures. FirstRun is
@@ -37,21 +40,26 @@ type MilestoneRow struct {
 // now while it is not merged, 0 if it never ran. AgentMS sums its calls'
 // durations, PausedSec the pauses of the milestone whose item is the issue
 // (open ones up to now). Spend sums its calls as MilestoneRow does: without
-// calls the cost is unknown. The UI sends the issue's fields in its issue
-// row, the agent time in seconds and the spend as a cost chip.
+// calls the cost is unknown. MergedLines sums its merged and
+// companion.merged events' lines, nil while its merged event has none
+// (unmeasured, never 0); Companions lists each companion's share, also of
+// an unmeasured issue. The UI sends the issue's fields in its issue row,
+// the agent time in seconds and the spend as a cost chip.
 type IssueFigures struct {
-	IID       int64       `json:"-"`
-	Title     string      `json:"-"`
-	State     string      `json:"-"`
-	MRIID     int64       `json:"-"`
-	MRURL     string      `json:"-"`
-	Position  int         `json:"-"`
-	FirstRun  *time.Time  `json:"-"`
-	MergedAt  *time.Time  `json:"-"`
-	WallSec   int64       `json:"wallSec"`
-	AgentMS   int64       `json:"-"`
-	PausedSec int64       `json:"pausedSec"`
-	Spend     SpendTotals `json:"-"`
+	IID         int64            `json:"-"`
+	Title       string           `json:"-"`
+	State       string           `json:"-"`
+	MRIID       int64            `json:"-"`
+	MRURL       string           `json:"-"`
+	Position    int              `json:"-"`
+	FirstRun    *time.Time       `json:"-"`
+	MergedAt    *time.Time       `json:"-"`
+	WallSec     int64            `json:"wallSec"`
+	AgentMS     int64            `json:"-"`
+	PausedSec   int64            `json:"pausedSec"`
+	Spend       SpendTotals      `json:"-"`
+	MergedLines *MergedLines     `json:"mergedLines,omitempty"`
+	Companions  []CompanionLines `json:"companions,omitempty"`
 }
 
 // FollowUpRow is a stored leftover of a milestone's retrospective, see

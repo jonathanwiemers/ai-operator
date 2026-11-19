@@ -1776,6 +1776,12 @@ export interface SpendView {
    * StepLines is the size of the scope's step commits.
    */
   stepLines: StepLinesView;
+  /**
+   * MergedLines sums the merged lines of the scope's merged issues, with
+   * the cost per 100 merged production lines of the measured ones; absent
+   * when none merged and at task and run scope.
+   */
+  mergedLines?: store.MergedLineTotals;
 }
 /**
  * StepLinesView is the size of a scope's step commits: the implement

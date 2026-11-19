@@ -104,19 +104,23 @@ func TestMilestoneListJSON(t *testing.T) {
 	started := t0.Add(-48 * time.Hour)
 	done := func(d int) time.Time { return t0.Add(-time.Duration(d) * 24 * time.Hour) }
 	spent := store.SpendTotals{CostUSD: store.USD(4.5), InputTokens: 1000, OutputTokens: 200, Calls: 3}
+	// Three merged issues, two measured; the lines sum the measured ones.
+	lines := &store.MergedLineTotals{Merged: 3, Measured: 2, Lines: store.MergedLines{
+		Production: store.LineCount{Added: 52, Deleted: 8}, Tests: store.LineCount{Added: 60}, Partial: true}}
 	env.server.milestoneRows = &fakeMilestones{rows: []store.MilestoneRow{
 		{Project: shop, IID: 3, Title: "Old title", State: "open", StartedAt: started, TrackingIID: 70,
-			Issues: 7, Merged: 7, FollowUpsOpen: 2, Spend: spent},
+			Issues: 7, Merged: 7, FollowUpsOpen: 2, Spend: spent, MergedLines: lines},
 		{Project: shop, IID: 7, State: "open", Phase: "done", StartedAt: done(3), DoneAt: done(1)},
 		{Project: shop, IID: 1, Title: "First", WebURL: "https://gitlab.example.com/acme/shop/-/milestones/1", TrackingIID: 71,
-			State: "closed", Phase: "done", StartedAt: done(30), DoneAt: done(20), Issues: 3, Merged: 2, Open: 1, FollowUpsOpen: 1, Spend: spent},
+			State: "closed", Phase: "done", StartedAt: done(30), DoneAt: done(20), Issues: 3, Merged: 2, Open: 1, FollowUpsOpen: 1, Spend: spent,
+			MergedLines: lines},
 		{Project: shop, IID: 2, Title: "Second", State: "closed", DoneAt: done(10)},
 	}}
 	code, l := env.getJSON(t, "/api/v1/milestones?state=all")
 	if code != http.StatusOK {
 		t.Fatalf("milestones: status %d", code)
 	}
-	sameJSON(t, l, `{"history": true, "milestones": [
+	sameJSON(t, l, strings.ReplaceAll(`{"history": true, "milestones": [
 		{"namespace": "team-a", "project": "shop", "iid": 5, "title": "M5", "webURL": "https://gitlab.example.com/acme/shop/-/milestones/5",
 		 "state": "paused", "phase": "paused", "progress": {"merged": 0, "total": 0, "open": 0}, "followUpsOpen": 0,
 		 "costUSD": "1.00", "costKnown": true, "tokens": 0, "costFrom": "tasks", "startedAt": "2026-11-01T13:00:00Z",
@@ -128,7 +132,7 @@ func TestMilestoneListJSON(t *testing.T) {
 		{"namespace": "team-a", "project": "shop", "iid": 3, "title": "Checkout", "webURL": "https://gitlab.example.com/acme/shop/-/milestones/3",
 		 "state": "planned", "progress": {"merged": 0, "total": 1, "open": 1}, "followUpsOpen": 2,
 		 "costUSD": "4.50", "costKnown": true, "tokens": 1200, "costFrom": "calls", "startedAt": "2026-10-30T08:00:00Z",
-		 "needsYou": false, "stored": false},
+		 "mergedLines": MERGED, "needsYou": false, "stored": false},
 		{"namespace": "team-a", "project": "shop", "iid": 6, "title": "M6", "webURL": "https://gitlab.example.com/acme/shop/-/milestones/6",
 		 "state": "waiting", "phase": "running", "progress": {"merged": 0, "total": 0, "open": 0}, "followUpsOpen": 0,
 		 "costUSD": "0.00", "costKnown": true, "tokens": 0, "costFrom": "tasks", "startedAt": "2026-11-01T09:00:00Z",
@@ -144,8 +148,41 @@ func TestMilestoneListJSON(t *testing.T) {
 		{"namespace": "team-a", "project": "shop", "iid": 1, "title": "First", "webURL": "https://gitlab.example.com/acme/shop/-/milestones/1",
 		 "state": "done", "phase": "done", "progress": {"merged": 2, "total": 3, "open": 1}, "followUpsOpen": 1,
 		 "costUSD": "4.50", "costKnown": true, "tokens": 1200, "costFrom": "calls",
-		 "startedAt": "2026-10-02T08:00:00Z", "doneAt": "2026-10-12T08:00:00Z", "needsYou": false, "stored": true}
-	]}`)
+		 "startedAt": "2026-10-02T08:00:00Z", "doneAt": "2026-10-12T08:00:00Z", "mergedLines": MERGED,
+		 "needsYou": false, "stored": true}
+	]}`, "MERGED", `{"merged": 3, "measured": 2, "lines": {"production": {"added": 52, "deleted": 8},
+		 "tests": {"added": 60, "deleted": 0}, "docs": {"added": 0, "deleted": 0}, "generated": {"added": 0, "deleted": 0},
+		 "partial": true}}`))
+}
+
+// TestSpendMergedLinesJSON pins the merged lines of a Spend answer: the
+// sums with the merged and measured issues and the cost per 100 production
+// lines, which is left out while unknown; mergedLines is absent when no
+// issue merged.
+func TestSpendMergedLinesJSON(t *testing.T) {
+	merged := func(v SpendView) any {
+		b, err := json.Marshal(v)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var m map[string]any
+		if err := json.Unmarshal(b, &m); err != nil {
+			t.Fatal(err)
+		}
+		return m["mergedLines"]
+	}
+	lines := store.MergedLines{Production: store.LineCount{Added: 60, Deleted: 10}, Docs: store.LineCount{Added: 10}}
+	sameJSON(t, merged(spendView(store.Spend{MergedLines: &store.MergedLineTotals{Merged: 3, Measured: 2, Lines: lines,
+		CostPer100USD: store.USD(5 * 100 / 70.0)}})), `{"merged": 3, "measured": 2, "costPer100USD": "7.14",
+		"lines": {"production": {"added": 60, "deleted": 10}, "tests": {"added": 0, "deleted": 0},
+		 "docs": {"added": 10, "deleted": 0}, "generated": {"added": 0, "deleted": 0}}}`)
+	lines.Partial = true
+	sameJSON(t, merged(spendView(store.Spend{MergedLines: &store.MergedLineTotals{Merged: 1, Measured: 1, Lines: lines}})),
+		`{"merged": 1, "measured": 1, "lines": {"production": {"added": 60, "deleted": 10}, "tests": {"added": 0, "deleted": 0},
+		 "docs": {"added": 10, "deleted": 0}, "generated": {"added": 0, "deleted": 0}, "partial": true}}`)
+	if got := merged(spendView(store.Spend{})); got != nil {
+		t.Errorf("no merged issue: mergedLines = %v, want absent", got)
+	}
 }
 
 // TestMilestoneIssuesJSON pins the issues of a live and a stored milestone
@@ -160,8 +197,17 @@ func TestMilestoneIssuesJSON(t *testing.T) {
 	figures := paypalFigures()
 	first := time.Date(2026, 11, 1, 9, 0, 0, 0, time.UTC)
 	figures.Position, figures.FirstRun = 1, &first
+	stored := storedCheckout()
+	// A home merge plus a companion, the companion's share listed.
+	stored.Issues[0].MergedLines = &store.MergedLines{Production: store.LineCount{Added: 52, Deleted: 8},
+		Tests: store.LineCount{Added: 60}, Docs: store.LineCount{Added: 10}}
+	stored.Issues[0].Companions = []store.CompanionLines{{Project: "group/infra", MRIID: 7,
+		Lines: &store.MergedLines{Production: store.LineCount{Added: 12, Deleted: 3}}}}
+	// Merged without a count: partial is set, its companion has no lines.
+	stored.Issues[1].MergedLines = &store.MergedLines{Docs: store.LineCount{Added: 1}, Partial: true}
+	stored.Issues[1].Companions = []store.CompanionLines{{Project: "group/infra", MRIID: 8}}
 	env.server.milestoneDetails = &fakeMilestoneDetails{d: map[int64]store.MilestoneDetail{
-		3: {Issues: []store.IssueFigures{figures}}, 4: storedCheckout()}}
+		3: {Issues: []store.IssueFigures{figures}}, 4: stored}}
 
 	code, m := env.getJSON(t, shopMilestone)
 	if code != http.StatusOK {
@@ -182,10 +228,17 @@ func TestMilestoneIssuesJSON(t *testing.T) {
 	sameJSON(t, m["issues"], `[
 		{"iid": 50, "title": "Refund API", "state": "merged", "mergeRequestIID": 9,
 		 "figures": {"wallSec": 7200, "agentSec": 900, "pausedSec": 0,
-		  "costUSD": "2.50", "costKnown": true, "tokens": 2300, "costFrom": "calls"}},
+		  "costUSD": "2.50", "costKnown": true, "tokens": 2300, "costFrom": "calls",
+		  "mergedLines": {"production": {"added": 52, "deleted": 8}, "tests": {"added": 60, "deleted": 0},
+		   "docs": {"added": 10, "deleted": 0}, "generated": {"added": 0, "deleted": 0}},
+		  "companions": [{"project": "group/infra", "mrIID": 7, "lines": {"production": {"added": 12, "deleted": 3},
+		   "tests": {"added": 0, "deleted": 0}, "docs": {"added": 0, "deleted": 0}, "generated": {"added": 0, "deleted": 0}}}]}},
 		{"iid": 51, "title": "Refund mail", "state": "skipped",
 		 "figures": {"wallSec": 0, "agentSec": 0, "pausedSec": 0,
-		  "costUSD": "", "costKnown": false, "tokens": 0, "costFrom": "calls"}}
+		  "costUSD": "", "costKnown": false, "tokens": 0, "costFrom": "calls",
+		  "mergedLines": {"production": {"added": 0, "deleted": 0}, "tests": {"added": 0, "deleted": 0},
+		   "docs": {"added": 1, "deleted": 0}, "generated": {"added": 0, "deleted": 0}, "partial": true},
+		  "companions": [{"project": "group/infra", "mrIID": 8}]}}
 	]`)
 }
 

@@ -153,7 +153,7 @@ of the project's milestones, when any of them names owner subjects.
 | `GET /api/v1/events` | Server-sent events that say *what* changed (a project, a task, a research), without content. | login |
 | `GET /api/v1/stream` | The activity stream: comments, runs, pushes, CI, reviews, prompts, chat. `?project=`, `?milestone=`, `?issue=`, `?kinds=`, `?q=`. Comment bodies only with `conversation`. | see, research database |
 | `GET /api/v1/projects/{namespace}/{name}/history` | Activity per day: runs, merges, cost. `?days=` (1 to 90), `?tz=`. | see, research database |
-| `GET /api/v1/spend` | What a project, milestone, issue, task or run cost, with breakdowns by kind, role and model. `?namespace=&project=` are required; narrow it with `&milestone=`, `&issue=`, `&task=` and `&run=` (`run` needs `task`). | see, research database |
+| `GET /api/v1/spend` | What a project, milestone, issue, task or run cost, with breakdowns by kind, role and model. A project, milestone or issue also gets its merged issues' merged lines and the cost per 100 merged production lines (`mergedLines`). `?namespace=&project=` are required; narrow it with `&milestone=`, `&issue=`, `&task=` and `&run=` (`run` needs `task`). | see, research database |
 | `GET /api/v1/costs` | Costs over a range for the Costs page. `?range=` or `?from=&to=`, `?group=`, filters. | see, research database |
 | `GET /api/v1/costs/top` | The ten costliest milestones, issues and runs of the range. | see, research database |
 | `GET /api/v1/costs/metrics` | The cost per 100 merged lines by experiment arm, model, effort and step session, and the median base context and top tools per project, for the range. | see, research database |

@@ -55,6 +55,55 @@ export interface EstimateResult {
 }
 
 //////////
+// source: merged_lines.go
+
+/**
+ * LineCount is a number of added and deleted lines.
+ */
+export interface LineCount {
+  added: number /* int64 */;
+  deleted: number /* int64 */;
+}
+/**
+ * MergedLines are the lines merge requests merged, by the category of each
+ * file's path. Partial is set when some file's diff came without content or
+ * a companion merged without a count: the sums are a lower bound.
+ */
+export interface MergedLines {
+  production: LineCount;
+  tests: LineCount;
+  docs: LineCount;
+  generated: LineCount;
+  partial?: boolean;
+}
+/**
+ * CompanionLines is a companion merge request's share of an issue's merged
+ * lines: the companion project's path, its MR and its lines, nil when the
+ * companion merged without a count.
+ */
+export interface CompanionLines {
+  project: string;
+  mrIID: number /* int64 */;
+  lines?: MergedLines;
+}
+/**
+ * MergedLineTotals sums the merged lines of a scope's merged issues (those
+ * with a merged event). Merged counts them, Measured those whose merged
+ * event has lines; Lines sums the measured ones only, companions included,
+ * and is partial when any of them is. An unmeasured issue adds nothing,
+ * never 0 lines. CostPer100USD is the cost of the measured issues' calls
+ * per 100 merged production lines (added plus deleted), unknown (left out)
+ * when their cost is unknown, they have no production lines, or the view
+ * does not compute it (milestone rows).
+ */
+export interface MergedLineTotals {
+  lines: MergedLines;
+  merged: number /* int64 */;
+  measured: number /* int64 */;
+  costPer100USD?: Money;
+}
+
+//////////
 // source: milestone_rows.go
 
 /**
@@ -74,6 +123,11 @@ export interface MilestoneRow {
   startedAt?: string;
   doneAt?: string;
   followUpsOpen: number /* int */;
+  /**
+   * MergedLines sums the merged lines of the milestone's merged issues
+   * (without the cost per 100 lines); nil when none merged.
+   */
+  mergedLines?: MergedLineTotals;
 }
 /**
  * IssueFigures are one issue of a milestone with its figures. FirstRun is
@@ -82,12 +136,17 @@ export interface MilestoneRow {
  * now while it is not merged, 0 if it never ran. AgentMS sums its calls'
  * durations, PausedSec the pauses of the milestone whose item is the issue
  * (open ones up to now). Spend sums its calls as MilestoneRow does: without
- * calls the cost is unknown. The UI sends the issue's fields in its issue
- * row, the agent time in seconds and the spend as a cost chip.
+ * calls the cost is unknown. MergedLines sums its merged and
+ * companion.merged events' lines, nil while its merged event has none
+ * (unmeasured, never 0); Companions lists each companion's share, also of
+ * an unmeasured issue. The UI sends the issue's fields in its issue row,
+ * the agent time in seconds and the spend as a cost chip.
  */
 export interface IssueFigures {
   wallSec: number /* int64 */;
   pausedSec: number /* int64 */;
+  mergedLines?: MergedLines;
+  companions?: CompanionLines[];
 }
 /**
  * FollowUpRow is a stored leftover of a milestone's retrospective, see
