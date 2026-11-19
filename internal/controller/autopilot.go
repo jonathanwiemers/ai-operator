@@ -426,6 +426,29 @@ func (a *autopilot) deps(iid int64) []int64 {
 	return nil
 }
 
+// onDepCycle reports whether iid reaches itself through dependencies that are
+// still pending: a real cycle, which can never start.
+func (a *autopilot) onDepCycle(iid int64) bool {
+	seen := map[int64]bool{}
+	var walk func(int64) bool
+	walk = func(n int64) bool {
+		for _, d := range a.deps(n) {
+			if d == iid {
+				return true
+			}
+			if it := a.item(d); it == nil || it.State != aiv1.AutopilotItemPending || seen[d] {
+				continue
+			}
+			seen[d] = true
+			if walk(d) {
+				return true
+			}
+		}
+		return false
+	}
+	return walk(iid)
+}
+
 // step drives every active item in queue order until one pauses, then starts
 // pending items while slots are free (maxParallel): an issue starts once its
 // dependencies are merged, without waiting for a whole layer of the plan.
@@ -684,7 +707,7 @@ func (a *autopilot) startable(ctx context.Context) (startCheck, error) {
 					continue // an owner let it start without the skipped one
 				}
 				waits[it.IID] = fmt.Sprintf("#%d waits for the skipped #%d", it.IID, d)
-			} else if dep.State == aiv1.AutopilotItemActive {
+			} else {
 				waits[it.IID] = fmt.Sprintf("#%d waits for #%d", it.IID, d) // held, when stuck on holds
 			}
 			blocked = true
@@ -735,7 +758,7 @@ func (a *autopilot) startable(ctx context.Context) (startCheck, error) {
 			continue
 		}
 		why, ok := waits[it.IID]
-		if !ok {
+		if !ok || a.onDepCycle(it.IID) {
 			why = fmt.Sprintf("#%d waits for another pending issue (a cycle of issue links?)", it.IID)
 		}
 		s.waiting = append(s.waiting, why)

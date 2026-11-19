@@ -283,3 +283,47 @@ func TestAutopilotHoldNoStuckWhileTheMainRedFixRuns(t *testing.T) {
 		}
 	}
 }
+
+// startable names the pending dependency an item waits for; only items on a
+// real cycle of pending dependencies get the cycle text.
+func TestAutopilotStartableNamesPendingDependency(t *testing.T) {
+	const cycle = "waits for another pending issue (a cycle of issue links?)"
+	for _, tc := range []struct {
+		name string
+		plan map[int64][]int64
+		want []string
+	}{
+		{"chain", map[int64][]int64{1: nil, 2: {1}, 3: {2}},
+			[]string{"#1 is blocked by #9 of project 99 (issue link)", "#2 waits for #1", "#3 waits for #2"}},
+		{"cycle", map[int64][]int64{1: {2}, 2: {1}},
+			[]string{"#1 " + cycle, "#2 " + cycle}},
+		{"dependant of a cycle", map[int64][]int64{1: {2}, 2: {1}, 3: {2}},
+			[]string{"#1 " + cycle, "#2 " + cycle, "#3 waits for #2"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			gl := gitlabfake.New()
+			ap := &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning}
+			st := &aiv1.AgentTask{}
+			issues := map[int64]gitlab.Issue{}
+			for iid := int64(1); iid <= 3; iid++ {
+				deps, ok := tc.plan[iid]
+				if !ok {
+					continue
+				}
+				gl.AddIssue(iid, "Issue")
+				issues[iid] = gitlab.Issue{IID: iid, State: "opened"}
+				ap.Items = append(ap.Items, aiv1.AutopilotItem{IID: iid, State: pending})
+				st.Status.Plan = append(st.Status.Plan, aiv1.PlannedIssue{IID: iid, DependsOn: deps})
+			}
+			gl.ForeignLinks = map[int64][]gitlab.LinkedIssue{1: {{IID: 9, ProjectID: 99, State: "opened", LinkType: gitlab.LinkIsBlockedBy}}}
+			a := &autopilot{r: &AgentProjectReconciler{}, gl: gl, spec: aiv1.AgentProjectSpec{}.WithDefaults(), st: st, ap: ap, issues: issues, log: logr.Discard()}
+			s, err := a.startable(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(s.waiting, tc.want) {
+				t.Fatalf("waiting:\n got %q\nwant %q", s.waiting, tc.want)
+			}
+		})
+	}
+}
