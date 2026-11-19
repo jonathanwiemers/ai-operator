@@ -36,19 +36,11 @@ var lineColumns = func() []string {
 // Only a measured issue's sums mean anything: an unmeasured one is never 0
 // lines.
 func issueLinesCTE(where string) string {
-	var sums strings.Builder
-	for _, c := range lineCategories {
-		for _, side := range []string{"added", "deleted"} {
-			fmt.Fprintf(&sums, "coalesce(sum((data #>> '{lines,%s,%s}')::bigint), 0)::bigint AS %s_%s, ", c, side, c, side)
-		}
-	}
 	return `issue_lines AS (
 		SELECT namespace, project, milestone_iid, issue_iid,
 			max(at) FILTER (WHERE kind = 'merged') AS merged_at,
 			coalesce(bool_or(kind = 'merged' AND data ? 'lines'), false) AS measured,
-			` + sums.String() + `
-			coalesce(bool_or(coalesce((data #>> '{lines,partial}')::boolean, false)
-				OR (kind = 'companion.merged' AND NOT data ? 'lines')), false) AS partial,
+			` + eventLineSums + ` AS partial,
 			coalesce(jsonb_agg(jsonb_build_object('project', coalesce(data->>'companion', ''), 'mrIID', coalesce(mr_iid, 0),
 				'lines', data->'lines') ORDER BY data->>'companion', mr_iid) FILTER (WHERE kind = 'companion.merged'), '[]'::jsonb)
 				AS companions
@@ -57,6 +49,21 @@ func issueLinesCTE(where string) string {
 		GROUP BY 1, 2, 3, 4
 	) `
 }
+
+// eventLineSums aggregate merged and companion.merged rows of
+// history_events into the line columns (lineColumns, by their names) and
+// partial (unnamed, last): the sums of data.lines, 0 where it has none, and
+// whether some part is partial or a companion merged without lines.
+var eventLineSums = func() string {
+	var sums strings.Builder
+	for _, c := range lineCategories {
+		for _, side := range []string{"added", "deleted"} {
+			fmt.Fprintf(&sums, "coalesce(sum((data #>> '{lines,%s,%s}')::bigint), 0)::bigint AS %s_%s, ", c, side, c, side)
+		}
+	}
+	return sums.String() + `coalesce(bool_or(coalesce((data #>> '{lines,partial}')::boolean, false)
+		OR (kind = 'companion.merged' AND NOT data ? 'lines')), false)`
+}()
 
 // lineDest are the destinations of the line columns and partial, in
 // order.

@@ -31,6 +31,8 @@ type fakeCosts struct {
 	pauses        store.PauseRange
 	flow          store.FlowRange
 	flowCalls     []costSeriesCall
+	code          store.CodeRange
+	codeCalls     []costSeriesCall
 	pausesCalls   []costSeriesCall
 }
 

@@ -653,6 +653,62 @@ export interface MetricsView {
 }
 
 //////////
+// source: metrics_code.go
+
+/**
+ * CodeBucketView is the lines of one bucket (its local start date,
+ * YYYY-MM-DD): written is the calls' lines by call time, merged the lines of
+ * the merged and companion.merged events by event time, by category, partial
+ * when some part came without a count. A bucket without lines has zeros.
+ */
+export interface CodeBucketView {
+  bucket: string;
+  written: store.LineCount;
+  merged: store.MergedLines;
+}
+/**
+ * CodeTotalsView is the lines of the range. Written and merged sum the
+ * buckets. Issues is the issues with a merged event in the range, each whole
+ * (its companions and calls at any time): merged and measured count them,
+ * lines sums the measured ones, costPer100USD is their calls' cost per 100
+ * merged production lines, left out when unknown or without production
+ * lines. Cost is those calls' totals, for the cost's notes.
+ */
+export interface CodeTotalsView {
+  written: store.LineCount;
+  merged: store.MergedLines;
+  issues: store.MergedLineTotals;
+  cost: store.SpendTotals;
+}
+/**
+ * CodeProjectView is the lines of one project; a companion's lines count
+ * under its home project.
+ */
+export interface CodeProjectView {
+  namespace: string;
+  project: string;
+  totals: CodeTotalsView;
+}
+/**
+ * MetricsCodeView is the answer of GET /api/v1/metrics/code: the lines of
+ * the viewer's projects (or ?project=) in the range of local dates in TZ,
+ * From to To inclusive. Buckets has one entry per bucket start of the range.
+ * ByProject lists the projects with figures, by namespace and name, and is
+ * empty with ?project=. The kind and engine filters do not apply, and
+ * research calls never count.
+ */
+export interface MetricsCodeView {
+  range: '7d' | '30d' | '90d' | 'month' | 'lastMonth' | '12m' | 'custom';
+  from: string;
+  to: string;
+  bucket: 'day' | 'week' | 'month';
+  tz: string;
+  buckets: CodeBucketView[];
+  totals: CodeTotalsView;
+  byProject: CodeProjectView[];
+}
+
+//////////
 // source: metrics_flow.go
 
 /**

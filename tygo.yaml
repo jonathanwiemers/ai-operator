@@ -95,6 +95,7 @@ packages:
       - gitlab.go
       - issue.go
       - metrics.go
+      - metrics_code.go
       - metrics_flow.go
       - metrics_pauses.go
       - milestone.go
@@ -165,6 +166,8 @@ packages:
       store.FollowUpRow: store.FollowUpRow
       store.IssueFigures: store.IssueFigures
       store.MergedLineTotals: store.MergedLineTotals
+      store.MergedLines: store.MergedLines
+      store.LineCount: store.LineCount
       store.MilestoneRow: store.MilestoneRow
       store.EstimateResult: store.EstimateResult
       store.Money: store.Money

@@ -76,3 +76,12 @@ func SetMaxRangePauseEvents(t interface{ Cleanup(func()) }, n int) {
 func FlowQuery(q CostQuery, now time.Time) (string, []any) {
 	return flowSQL(q, now)
 }
+
+// CodeQueries is the SQL and arguments of each statement CodeInRange runs,
+// for EXPLAIN tests.
+func CodeQueries(q CostQuery, bucket string) (sqls []string, args [][]any) {
+	for _, st := range codeSQL(q, bucket) {
+		sqls, args = append(sqls, st.sql), append(args, st.args)
+	}
+	return sqls, args
+}
