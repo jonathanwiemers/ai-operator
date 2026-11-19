@@ -33,6 +33,11 @@ const (
 	KindAutopilot   = "autopilot"
 	KindProposal    = "proposal"
 
+	// KindCompanionMerged is a companion MR of a home issue that merged,
+	// with its lines; a kind of its own so the issue's merge time (from
+	// KindMerged) does not move.
+	KindCompanionMerged = "companion.merged"
+
 	// KindCheckpoint is a pushed checkpoint no agent call carries (budget
 	// stop, lost pod, OOM kill): status.run.runCheckpoints.
 	KindCheckpoint = "checkpoint"
@@ -311,6 +316,9 @@ func (d *Differ) autopilot(t *aiv1.AgentTask, old, cur *aiv1.AutopilotStatus, no
 		e.Data = map[string]any{"sha": it.MergedSHA}
 		if it.MergeRequestURL != "" {
 			e.Data["mergeRequestURL"] = it.MergeRequestURL
+		}
+		if it.MergedLines != nil {
+			e.Data["lines"] = it.MergedLines
 		}
 		out = append(out, e)
 	}

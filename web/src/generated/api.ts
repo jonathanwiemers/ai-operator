@@ -5601,6 +5601,29 @@ export interface BudgetStatus {
   warnedAt?: string;
 }
 /**
+ * LineCount is a number of added and deleted lines.
+ */
+export interface LineCount {
+  added: number /* int64 */;
+  deleted: number /* int64 */;
+}
+/**
+ * MergedLines are the lines a merge request merged, split by the category of
+ * each file's path: generated, tests, docs, and production for the rest.
+ */
+export interface MergedLines {
+  production: LineCount;
+  tests: LineCount;
+  docs: LineCount;
+  generated: LineCount;
+  /**
+   * Partial is set when GitLab returned some file's diff without its
+   * content (collapsed or too large); those lines are not counted.
+   * +optional
+   */
+  partial?: boolean;
+}
+/**
  * AutopilotItem is one issue in the queue of an autopilot milestone.
  */
 export interface AutopilotItem {
@@ -5626,6 +5649,14 @@ export interface AutopilotItem {
    * +optional
    */
   mergedAt?: string;
+  /**
+   * MergedLines are the lines the merge request merged, by category,
+   * counted once from its GitLab diff when autopilot recorded the merge.
+   * Unset when the count failed or the MR merged before lines were
+   * counted.
+   * +optional
+   */
+  mergedLines?: MergedLines;
   /**
    * RebasedFrom is the head the operator asked GitLab to rebase; set
    * while the rebase is in progress.

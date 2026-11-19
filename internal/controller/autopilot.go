@@ -22,6 +22,7 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/chatcmd"
 	"github.com/jonathanwiemers/ai-operator/internal/conventional"
 	"github.com/jonathanwiemers/ai-operator/internal/desklink"
+	"github.com/jonathanwiemers/ai-operator/internal/difflines"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
 	"github.com/jonathanwiemers/ai-operator/internal/notify"
@@ -1894,10 +1895,27 @@ func (a *autopilot) merged(ctx context.Context, it *aiv1.AutopilotItem, mr *gitl
 	if mr != nil {
 		it.MergedSHA = firstNonEmpty(mr.MergeCommitSHA, mr.SquashCommitSHA, mr.SHA)
 		it.MergeRequestIID, it.MergeRequestURL = mr.IID, firstNonEmpty(mr.WebURL, it.MergeRequestURL)
+		a.countMergedLines(ctx, it, mr.IID)
 	}
 	a.log.Info("autopilot merged", "issue", it.IID, "mr", it.MergeRequestIID, "sha", it.MergedSHA)
 	a.releaseDue(it)
 	return nil
+}
+
+// countMergedLines records the lines the merged MR iid merged, once: an item
+// that has them makes no call. It is a measurement: a failed call only logs
+// and leaves MergedLines unset.
+func (a *autopilot) countMergedLines(ctx context.Context, it *aiv1.AutopilotItem, iid int64) {
+	if it.MergedLines != nil {
+		return
+	}
+	diffs, err := a.gl.ListMergeRequestDiffs(ctx, a.spec.GitLab.Project, iid)
+	if err != nil {
+		a.log.Info("could not count the merged lines", "issue", it.IID, "mr", iid, "error", err.Error())
+		return
+	}
+	lines := difflines.Count(diffs)
+	it.MergedLines = &lines
 }
 
 // collectDecisions lists the newest aiv1.MaxAutopilotItemDecisions decisions

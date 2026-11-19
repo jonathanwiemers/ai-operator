@@ -165,8 +165,10 @@ type Fake struct {
 	// lines, or a branch someone pushed to), then are cleared.
 	RebaseDiffs   map[int64][]gitlab.Diff
 	RebaseCommits map[int64][]gitlab.Commit
-	// VersionLists counts ListMergeRequestVersions calls.
+	// VersionLists counts ListMergeRequestVersions calls, DiffLists the
+	// ListMergeRequestDiffs calls per MR.
 	VersionLists int
+	DiffLists    map[int64]int
 	// versions of each MR, oldest first: recorded when an MR is created and
 	// whenever its SHA differs from the last version's head the next time the
 	// fake looks (a rebase or a version read).
@@ -936,6 +938,10 @@ func (f *Fake) DeleteBranch(_ context.Context, _ string, branch string) error {
 func (f *Fake) ListMergeRequestDiffs(_ context.Context, _ string, iid int64) ([]gitlab.Diff, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.DiffLists == nil {
+		f.DiffLists = map[int64]int{}
+	}
+	f.DiffLists[iid]++
 	if err := f.DiffErrors[iid]; err != nil {
 		return nil, err
 	}

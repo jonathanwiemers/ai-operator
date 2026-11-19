@@ -1258,6 +1258,80 @@ spec:
                             milestone's last merge, which the final release must contain.
                           format: date-time
                           type: string
+                        mergedLines:
+                          description: |-
+                            MergedLines are the lines the merge request merged, by category,
+                            counted once from its GitLab diff when autopilot recorded the merge.
+                            Unset when the count failed or the MR merged before lines were
+                            counted.
+                          properties:
+                            docs:
+                              description: LineCount is a number of added and deleted
+                                lines.
+                              properties:
+                                added:
+                                  format: int64
+                                  type: integer
+                                deleted:
+                                  format: int64
+                                  type: integer
+                              required:
+                              - added
+                              - deleted
+                              type: object
+                            generated:
+                              description: LineCount is a number of added and deleted
+                                lines.
+                              properties:
+                                added:
+                                  format: int64
+                                  type: integer
+                                deleted:
+                                  format: int64
+                                  type: integer
+                              required:
+                              - added
+                              - deleted
+                              type: object
+                            partial:
+                              description: |-
+                                Partial is set when GitLab returned some file's diff without its
+                                content (collapsed or too large); those lines are not counted.
+                              type: boolean
+                            production:
+                              description: LineCount is a number of added and deleted
+                                lines.
+                              properties:
+                                added:
+                                  format: int64
+                                  type: integer
+                                deleted:
+                                  format: int64
+                                  type: integer
+                              required:
+                              - added
+                              - deleted
+                              type: object
+                            tests:
+                              description: LineCount is a number of added and deleted
+                                lines.
+                              properties:
+                                added:
+                                  format: int64
+                                  type: integer
+                                deleted:
+                                  format: int64
+                                  type: integer
+                              required:
+                              - added
+                              - deleted
+                              type: object
+                          required:
+                          - docs
+                          - generated
+                          - production
+                          - tests
+                          type: object
                         mergedSHA:
                           description: MergedSHA is the commit the merge request was
                             merged as.
@@ -1501,6 +1575,80 @@ spec:
                           milestone's last merge, which the final release must contain.
                         format: date-time
                         type: string
+                      mergedLines:
+                        description: |-
+                          MergedLines are the lines the merge request merged, by category,
+                          counted once from its GitLab diff when autopilot recorded the merge.
+                          Unset when the count failed or the MR merged before lines were
+                          counted.
+                        properties:
+                          docs:
+                            description: LineCount is a number of added and deleted
+                              lines.
+                            properties:
+                              added:
+                                format: int64
+                                type: integer
+                              deleted:
+                                format: int64
+                                type: integer
+                            required:
+                            - added
+                            - deleted
+                            type: object
+                          generated:
+                            description: LineCount is a number of added and deleted
+                              lines.
+                            properties:
+                              added:
+                                format: int64
+                                type: integer
+                              deleted:
+                                format: int64
+                                type: integer
+                            required:
+                            - added
+                            - deleted
+                            type: object
+                          partial:
+                            description: |-
+                              Partial is set when GitLab returned some file's diff without its
+                              content (collapsed or too large); those lines are not counted.
+                            type: boolean
+                          production:
+                            description: LineCount is a number of added and deleted
+                              lines.
+                            properties:
+                              added:
+                                format: int64
+                                type: integer
+                              deleted:
+                                format: int64
+                                type: integer
+                            required:
+                            - added
+                            - deleted
+                            type: object
+                          tests:
+                            description: LineCount is a number of added and deleted
+                              lines.
+                            properties:
+                              added:
+                                format: int64
+                                type: integer
+                              deleted:
+                                format: int64
+                                type: integer
+                            required:
+                            - added
+                            - deleted
+                            type: object
+                        required:
+                        - docs
+                        - generated
+                        - production
+                        - tests
+                        type: object
                       mergedSHA:
                         description: MergedSHA is the commit the merge request was
                           merged as.

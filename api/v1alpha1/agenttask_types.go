@@ -2249,6 +2249,25 @@ type BudgetStatus struct {
 	WarnedAt *metav1.Time `json:"warnedAt,omitempty"`
 }
 
+// LineCount is a number of added and deleted lines.
+type LineCount struct {
+	Added   int64 `json:"added"`
+	Deleted int64 `json:"deleted"`
+}
+
+// MergedLines are the lines a merge request merged, split by the category of
+// each file's path: generated, tests, docs, and production for the rest.
+type MergedLines struct {
+	Production LineCount `json:"production"`
+	Tests      LineCount `json:"tests"`
+	Docs       LineCount `json:"docs"`
+	Generated  LineCount `json:"generated"`
+	// Partial is set when GitLab returned some file's diff without its
+	// content (collapsed or too large); those lines are not counted.
+	// +optional
+	Partial bool `json:"partial,omitempty"`
+}
+
 // AutopilotItem is one issue in the queue of an autopilot milestone.
 type AutopilotItem struct {
 	IID   int64              `json:"iid"`
@@ -2268,6 +2287,13 @@ type AutopilotItem struct {
 	// milestone's last merge, which the final release must contain.
 	// +optional
 	MergedAt *metav1.Time `json:"mergedAt,omitempty"`
+
+	// MergedLines are the lines the merge request merged, by category,
+	// counted once from its GitLab diff when autopilot recorded the merge.
+	// Unset when the count failed or the MR merged before lines were
+	// counted.
+	// +optional
+	MergedLines *MergedLines `json:"mergedLines,omitempty"`
 
 	// RebasedFrom is the head the operator asked GitLab to rebase; set
 	// while the rebase is in progress.

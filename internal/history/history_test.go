@@ -2,6 +2,7 @@ package history
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
 	"strings"
@@ -141,6 +142,52 @@ func TestDifferTransitions(t *testing.T) {
 				t.Errorf("got %v, want %v", got, c.want)
 			}
 		})
+	}
+}
+
+func TestDifferMergedLines(t *testing.T) {
+	merge := func(lines *aiv1.MergedLines) []store.Event {
+		old := task("1", func(t *aiv1.AgentTask) {
+			t.Status.Autopilot = &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning,
+				Items: []aiv1.AutopilotItem{{IID: 142, State: aiv1.AutopilotItemActive}}}
+		})
+		cur := task("2", func(t *aiv1.AgentTask) {
+			t.Status.Autopilot = &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning,
+				Items: []aiv1.AutopilotItem{{IID: 142, State: aiv1.AutopilotItemMerged, MergeRequestIID: 209,
+					MergedSHA: "abc", MergedLines: lines}}}
+		})
+		return NewDiffer().Update(old, cur, now)
+	}
+
+	lines := &aiv1.MergedLines{
+		Production: aiv1.LineCount{Added: 40, Deleted: 5},
+		Tests:      aiv1.LineCount{Added: 60},
+		Docs:       aiv1.LineCount{Added: 10},
+		Partial:    true,
+	}
+	es := merge(lines)
+	if len(es) != 1 || es[0].Kind != KindMerged || es[0].Key != "task/u1/merged/142" {
+		t.Fatalf("events = %v, want one merged event with the unchanged key", kinds(es))
+	}
+	got, err := json.Marshal(es[0].Data["lines"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"production":{"added":40,"deleted":5},"tests":{"added":60,"deleted":0},` +
+		`"docs":{"added":10,"deleted":0},"generated":{"added":0,"deleted":0},"partial":true}`
+	if string(got) != want {
+		t.Errorf("data.lines = %s, want %s", got, want)
+	}
+	if es[0].Data["sha"] != "abc" {
+		t.Errorf("data.sha = %v, want abc", es[0].Data["sha"])
+	}
+
+	es = merge(nil)
+	if len(es) != 1 || es[0].Key != "task/u1/merged/142" {
+		t.Fatalf("events = %v, want one merged event", kinds(es))
+	}
+	if _, ok := es[0].Data["lines"]; ok {
+		t.Errorf("data = %v, want no lines when they were not counted", es[0].Data)
 	}
 }
 
