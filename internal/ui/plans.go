@@ -311,13 +311,17 @@ func (s *Server) postPlanChat(w http.ResponseWriter, r *http.Request) {
 		badRequest(w, "commands are not supported on a plan")
 		return
 	}
+	if code, msg := checkPlanAnswers(pl, req.Kind, req.Decisions); code != 0 {
+		writeError(w, code, msg)
+		return
+	}
 	id, created, ok := s.insertChat(w, r, store.ChatMessage{Namespace: pl.Namespace, Project: pl.Spec.ProjectRef, Plan: pl.Name,
-		Kind: req.Kind, Body: req.Body, ClientKey: req.ClientKey})
+		Kind: req.Kind, Body: req.Body, ClientKey: req.ClientKey, Decisions: req.Decisions})
 	if !ok {
 		return
 	}
 	s.log.Info("audit", "action", "plan.chat", "user", principalOf(r).Username, "namespace", pl.Namespace, "name", pl.Name,
-		"project", pl.Spec.ProjectRef, "kind", req.Kind, "id", id, "created", created)
+		"project", pl.Spec.ProjectRef, "kind", req.Kind, "answers", len(req.Decisions), "id", id, "created", created)
 	writeChatPosted(w, id, created)
 }
 

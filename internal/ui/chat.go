@@ -25,6 +25,8 @@ type chatRequest struct {
 	Body      string `json:"body"`
 	Kind      string `json:"kind"`
 	ClientKey string `json:"clientKey"`
+	// Decisions are answers to a plan's decisions (plan messages only).
+	Decisions []store.DecisionAnswer `json:"decisions"`
 }
 
 // ChatMessageView is one chat row as the API returns it: the store's
@@ -59,6 +61,10 @@ func (s *Server) postChat(w http.ResponseWriter, r *http.Request) {
 	}
 	req, ok := readChat(w, r)
 	if !ok {
+		return
+	}
+	if len(req.Decisions) > 0 {
+		badRequest(w, "decisions are answered on a plan only")
 		return
 	}
 	id, created, ok := s.insertChat(w, r, store.ChatMessage{
@@ -183,16 +189,17 @@ func (s *Server) writeChatPage(w http.ResponseWriter, r *http.Request, list func
 func chatView(m store.ChatMessage, conversation bool) ChatMessageView {
 	v := ChatMessageView{ChatMessage: m}
 	if !conversation {
-		v.Body, v.Redacted = "", true
+		v.Body, v.Decisions, v.Redacted = "", nil, true
 	}
 	return v
 }
 
-// readChat reads a posted chat message within the size limit.
+// readChat reads a posted chat message within the size limit. The body may
+// be empty only when decisions are answered.
 func readChat(w http.ResponseWriter, r *http.Request) (chatRequest, bool) {
 	var req chatRequest
-	// Room for the JSON envelope around a 16 KiB body.
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxChatBody+1024))
+	// Room for the JSON envelope around a 16 KiB body and the answers.
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxChatBody+1024+maxPlanAnswers*maxAnswerBytes))
 	if err := dec.Decode(&req); err != nil {
 		var tooLarge *http.MaxBytesError
 		if errors.As(err, &tooLarge) {
@@ -216,7 +223,14 @@ func readChat(w http.ResponseWriter, r *http.Request) (chatRequest, bool) {
 		writeError(w, http.StatusBadRequest, "clientKey must be 1 to 128 characters")
 		return req, false
 	}
-	if req.Body == "" {
+	if len(req.Decisions) > maxPlanAnswers {
+		writeError(w, http.StatusBadRequest, fmt.Sprintf("at most %d decisions are answered at once", maxPlanAnswers))
+		return req, false
+	}
+	for i := range req.Decisions {
+		req.Decisions[i].Other = strings.TrimSpace(req.Decisions[i].Other)
+	}
+	if req.Body == "" && len(req.Decisions) == 0 {
 		writeError(w, http.StatusBadRequest, "the message must not be empty")
 		return req, false
 	}

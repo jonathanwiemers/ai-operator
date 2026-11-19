@@ -24,6 +24,22 @@ export interface ChatMessage {
   state?: ChatState;
   reason?: string;
   at: string;
+  /**
+   * Decisions are the owner's answers to a plan's decisions sent with this
+   * message; nil without any.
+   */
+  decisions?: DecisionAnswer[];
+}
+/**
+ * DecisionAnswer is an owner's answer to one plan decision at the version
+ * the owner saw: exactly one of Keep, Option (0-based) and Other is set.
+ */
+export interface DecisionAnswer {
+  id: string;
+  version: number /* int64 */;
+  keep?: boolean;
+  option?: number /* int32 */;
+  other?: string;
 }
 
 //////////

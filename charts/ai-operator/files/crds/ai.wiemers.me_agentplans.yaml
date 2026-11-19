@@ -72,6 +72,47 @@ spec:
                     authorName:
                       description: AuthorName is a display name for the prompt.
                       type: string
+                    decisions:
+                      description: |-
+                        Decisions are the owner's answers to a plan's decisions, sent with
+                        this message from the Desk. Plan messages only.
+                      items:
+                        description: |-
+                          PlanDecisionAnswer is an owner's answer to one plan decision at the
+                          version the owner saw: keep it, pick option Option or answer Other.
+                          Exactly one of Keep, Option and Other is set.
+                        properties:
+                          id:
+                            description: 'ID is the decision''s ID: D1, D2, …'
+                            maxLength: 16
+                            type: string
+                          keep:
+                            description: Keep signs the version off as it is.
+                            type: boolean
+                          option:
+                            description: Option is the 0-based index of the option
+                              the owner picked.
+                            format: int32
+                            maximum: 4
+                            minimum: 0
+                            type: integer
+                          other:
+                            description: Other is the owner's own answer.
+                            maxLength: 2000
+                            type: string
+                          version:
+                            description: Version is the decision's version the owner
+                              answered.
+                            format: int64
+                            minimum: 1
+                            type: integer
+                        required:
+                        - id
+                        - version
+                        type: object
+                      maxItems: 30
+                      type: array
+                      x-kubernetes-list-type: atomic
                     id:
                       description: ID is the chat_messages row id.
                       format: int64

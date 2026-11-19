@@ -31,6 +31,12 @@ func TestChatGrants(t *testing.T) {
 	if err != nil || !created || id == 0 {
 		t.Fatalf("chat writer InsertUserMessage = %d, %v, %v", id, created, err)
 	}
+	if _, created, err := chat.InsertUserMessage(ctx, store.ChatMessage{
+		Namespace: "agents", Project: "orbit", Plan: "p1", Author: "sub-1", ClientKey: "k2", ExpiresAt: exp,
+		Decisions: []store.DecisionAnswer{{ID: "D1", Version: 1, Keep: true}},
+	}); err != nil || !created {
+		t.Fatalf("chat writer InsertUserMessage with answers = %v, %v", created, err)
+	}
 	var seen int64
 	if err := chat.Pool().QueryRow(ctx, "SELECT id FROM chat_messages WHERE id = $1", id).Scan(&seen); err != nil || seen != id {
 		t.Fatalf("chat writer select: %d, %v", seen, err)
@@ -404,6 +410,48 @@ func TestPlanMessages(t *testing.T) {
 	}
 	if c, err := s.ChatContext(ctx, "agents", "orbit", "", 10); err != nil || len(c) != 0 {
 		t.Errorf("ChatContext task '' = %+v, %v; want no plan messages", c, err)
+	}
+}
+
+func TestPlanMessageDecisions(t *testing.T) {
+	s := storetest.New(t)
+	ctx := t.Context()
+	exp := time.Now().Add(time.Hour)
+	two := int32(2)
+	answers := []store.DecisionAnswer{
+		{ID: "D1", Version: 1, Keep: true},
+		{ID: "D2", Version: 3, Option: &two},
+		{ID: "D3", Version: 1, Other: "Use Postgres"},
+	}
+	withAnswers, _, err := s.InsertUserMessage(ctx, store.ChatMessage{Namespace: "agents", Project: "orbit", Plan: "p1",
+		Author: "a", ClientKey: "k1", ExpiresAt: exp, Decisions: answers})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, _, err := s.InsertUserMessage(ctx, store.ChatMessage{Namespace: "agents", Project: "orbit", Plan: "p1",
+		Author: "a", Body: "hi", ClientKey: "k2", ExpiresAt: exp})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var null bool
+	if err := s.Pool().QueryRow(ctx, "SELECT decisions IS NULL FROM chat_messages WHERE id = $1", plain).Scan(&null); err != nil || !null {
+		t.Fatalf("decisions IS NULL of a message without answers = %v, %v; want NULL", null, err)
+	}
+	msgs, err := s.PlanMessages(ctx, "agents", "orbit", "p1", 0, 0, 10)
+	if err != nil || len(msgs) != 2 || msgs[0].ID != plain || msgs[1].ID != withAnswers {
+		t.Fatalf("PlanMessages = %+v, %v", msgs, err)
+	}
+	if msgs[0].Decisions != nil {
+		t.Errorf("Decisions without answers = %+v, want nil", msgs[0].Decisions)
+	}
+	got := msgs[1].Decisions
+	if len(got) != 3 || !got[0].Keep || got[0].Option != nil || got[1].Option == nil || *got[1].Option != 2 ||
+		got[1].Version != 3 || got[2].Other != "Use Postgres" || got[1].Keep || msgs[1].Body != "" {
+		t.Errorf("Decisions = %+v, body %q; want the answers round-tripped", got, msgs[1].Body)
+	}
+	queued, err := s.QueuedMessages(ctx, 10)
+	if err != nil || len(queued) != 2 || len(queued[0].Decisions) != 3 || queued[1].Decisions != nil {
+		t.Errorf("QueuedMessages = %+v, %v; want the answers on the first row only", queued, err)
 	}
 }
 

@@ -33,11 +33,24 @@ type ChatMessage struct {
 	Reason     string    `json:"reason,omitempty"`
 	At         time.Time `json:"at"`
 	ExpiresAt  time.Time `json:"-"`
+	// Decisions are the owner's answers to a plan's decisions sent with this
+	// message; nil without any.
+	Decisions []DecisionAnswer `json:"decisions,omitempty"`
+}
+
+// DecisionAnswer is an owner's answer to one plan decision at the version
+// the owner saw: exactly one of Keep, Option (0-based) and Other is set.
+type DecisionAnswer struct {
+	ID      string `json:"id"`
+	Version int64  `json:"version"`
+	Keep    bool   `json:"keep,omitempty"`
+	Option  *int32 `json:"option,omitempty"`
+	Other   string `json:"other,omitempty"`
 }
 
 // chatColumns are ChatMessage's fields by name (pgx.RowToStructByName).
 const chatColumns = `id, namespace, project, task, coalesce(plan, '') AS plan, author, author_name, role, kind, body,
-	coalesce(reply_to, 0) AS reply_to, coalesce(client_key, '') AS client_key, state, reason, at, expires_at`
+	coalesce(reply_to, 0) AS reply_to, coalesce(client_key, '') AS client_key, state, reason, at, expires_at, decisions`
 
 var scanChat = pgx.RowToStructByName[ChatMessage]
 
@@ -49,16 +62,19 @@ func (s *Store) InsertUserMessage(ctx context.Context, m ChatMessage) (id int64,
 	if kind == "" {
 		kind = "message"
 	}
-	var key any
+	var key, decisions any
 	if m.ClientKey != "" {
 		key = m.ClientKey
 	}
+	if len(m.Decisions) > 0 {
+		decisions = m.Decisions
+	}
 	err = s.pool.QueryRow(ctx, `INSERT INTO chat_messages
-		(namespace, project, task, author, author_name, role, kind, body, client_key, state, expires_at, plan)
-		VALUES ($1, $2, $3, $4, $5, 'user', $6, $7, $8, 'queued', $9, nullif($10, ''))
+		(namespace, project, task, author, author_name, role, kind, body, client_key, state, expires_at, plan, decisions)
+		VALUES ($1, $2, $3, $4, $5, 'user', $6, $7, $8, 'queued', $9, nullif($10, ''), $11)
 		ON CONFLICT (author, client_key) DO NOTHING
 		RETURNING id`,
-		m.Namespace, m.Project, m.Task, m.Author, m.AuthorName, kind, m.Body, key, m.ExpiresAt, m.Plan).Scan(&id)
+		m.Namespace, m.Project, m.Task, m.Author, m.AuthorName, kind, m.Body, key, m.ExpiresAt, m.Plan, decisions).Scan(&id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		err = s.pool.QueryRow(ctx, `SELECT id FROM chat_messages WHERE author = $1 AND client_key = $2`,
 			m.Author, key).Scan(&id)

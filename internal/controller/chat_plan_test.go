@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
 
@@ -99,6 +100,45 @@ func TestChatDispatchPlanDelivered(t *testing.T) {
 	}
 	if tm := e.task(chatTaskName).Spec.Source.ChatMessages; len(tm) != 1 || tm[0].ID != task {
 		t.Fatalf("task chatMessages = %+v", tm)
+	}
+}
+
+func TestChatDispatchPlanDecisions(t *testing.T) {
+	e, _ := newPlanChatEnv(t, chatProject(true), chatPlan(chatPlanName))
+	one := int32(1)
+	id, _, err := e.store.InsertUserMessage(e.ctx, store.ChatMessage{
+		Namespace: ns, Project: "shop", Plan: chatPlanName, Author: "user-1", AuthorName: "Ada", ClientKey: "pd1",
+		ExpiresAt: e.now.Add(time.Hour), Decisions: []store.DecisionAnswer{
+			{ID: "D1", Version: 2, Keep: true}, {ID: "D2", Version: 1, Option: &one}, {ID: "D3", Version: 4, Other: "Use OIDC"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain := e.insertPlanUser(chatPlanName, "and the version", "message", "pd2")
+	e.chat.dispatchQueued(e.ctx)
+
+	msgs := e.plan(chatPlanName).Spec.ChatMessages
+	if len(msgs) != 2 || msgs[0].ID != id || msgs[1].ID != plain {
+		t.Fatalf("plan chatMessages = %+v, want both", msgs)
+	}
+	want := []aiv1.PlanDecisionAnswer{{ID: "D1", Version: 2, Keep: true}, {ID: "D2", Version: 1, Option: &one}, {ID: "D3", Version: 4, Other: "Use OIDC"}}
+	if got := msgs[0]; got.Text != "" || !reflect.DeepEqual(got.Decisions, want) {
+		t.Errorf("answered message = %+v, want empty text and answers %+v", got, want)
+	}
+	if msgs[1].Decisions != nil {
+		t.Errorf("message without answers carries %+v", msgs[1].Decisions)
+	}
+}
+
+func TestPlanAnswers(t *testing.T) {
+	if got := planAnswers(nil); got != nil {
+		t.Errorf("planAnswers(nil) = %+v, want nil", got)
+	}
+	two := int32(2)
+	got := planAnswers([]store.DecisionAnswer{{ID: "D1", Version: 3, Option: &two}, {ID: "D2", Version: 1, Other: "x"}})
+	want := []aiv1.PlanDecisionAnswer{{ID: "D1", Version: 3, Option: &two}, {ID: "D2", Version: 1, Other: "x"}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("planAnswers = %+v, want %+v", got, want)
 	}
 }
 

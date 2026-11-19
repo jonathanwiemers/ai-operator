@@ -3501,6 +3501,49 @@ export interface ChatMessage {
    * At is when the message was written.
    */
   at: string;
+  /**
+   * Decisions are the owner's answers to a plan's decisions, sent with
+   * this message from the Desk. Plan messages only.
+   * +optional
+   * +listType=atomic
+   * +kubebuilder:validation:MaxItems=30
+   */
+  decisions?: PlanDecisionAnswer[];
+}
+/**
+ * PlanDecisionAnswer is an owner's answer to one plan decision at the
+ * version the owner saw: keep it, pick option Option or answer Other.
+ * Exactly one of Keep, Option and Other is set.
+ */
+export interface PlanDecisionAnswer {
+  /**
+   * ID is the decision's ID: D1, D2, …
+   * +kubebuilder:validation:MaxLength=16
+   */
+  id: string;
+  /**
+   * Version is the decision's version the owner answered.
+   * +kubebuilder:validation:Minimum=1
+   */
+  version: number /* int64 */;
+  /**
+   * Keep signs the version off as it is.
+   * +optional
+   */
+  keep?: boolean;
+  /**
+   * Option is the 0-based index of the option the owner picked.
+   * +optional
+   * +kubebuilder:validation:Minimum=0
+   * +kubebuilder:validation:Maximum=4
+   */
+  option?: number /* int32 */;
+  /**
+   * Other is the owner's own answer.
+   * +optional
+   * +kubebuilder:validation:MaxLength=2000
+   */
+  other?: string;
 }
 /**
  * PilotInstruction is what the implementer gets of an accepted instruct:

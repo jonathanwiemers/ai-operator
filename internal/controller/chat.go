@@ -271,6 +271,7 @@ func (c *Chat) deliverChat(ctx context.Context, s *store.Store, m store.ChatMess
 			Author:     m.Author,
 			AuthorName: m.AuthorName,
 			At:         metav1.NewTime(m.At),
+			Decisions:  planAnswers(m.Decisions),
 		})
 		slices.SortFunc(*msgs, func(a, b aiv1.ChatMessage) int { return cmp.Compare(a.ID, b.ID) })
 		// The patch replaces the whole list: the optimistic lock makes a
@@ -289,6 +290,19 @@ func (c *Chat) deliverChat(ctx context.Context, s *store.Store, m store.ChatMess
 	}
 	c.Log.Info("chat message", "id", m.ID, "task", m.Task, "plan", m.Plan, "state", "delivered")
 	return !on
+}
+
+// planAnswers converts a message's decision answers to the CRD's, nil
+// without any.
+func planAnswers(answers []store.DecisionAnswer) []aiv1.PlanDecisionAnswer {
+	if len(answers) == 0 {
+		return nil
+	}
+	out := make([]aiv1.PlanDecisionAnswer, len(answers))
+	for i, a := range answers {
+		out[i] = aiv1.PlanDecisionAnswer{ID: a.ID, Version: a.Version, Keep: a.Keep, Option: a.Option, Other: a.Other}
+	}
+	return out
 }
 
 // Reconcile copies status.chat.replies and spec.source.chatAnswers whose
