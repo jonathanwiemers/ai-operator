@@ -144,6 +144,7 @@ type costReader interface {
 	CostBreakdowns(ctx context.Context, q store.CostQuery) (store.CostBreakdowns, error)
 	CostTop(ctx context.Context, q store.CostQuery, n int) (store.CostTop, error)
 	Metrics(ctx context.Context, q store.CostQuery) (store.Metrics, error)
+	PausesInRange(ctx context.Context, q store.CostQuery, bucket string, now time.Time) (store.PauseRange, error)
 }
 
 // costStore is the reader of the costs, nil without the history database.

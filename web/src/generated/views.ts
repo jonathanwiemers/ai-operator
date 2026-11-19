@@ -653,6 +653,71 @@ export interface MetricsView {
 }
 
 //////////
+// source: metrics_pauses.go
+
+/**
+ * PauseBucketView is the milestone pauses that started in one bucket (its
+ * local start date, YYYY-MM-DD): their number and paused time, in total and
+ * by kind. A bucket without pauses has zeros and an empty byKind.
+ */
+export interface PauseBucketView {
+  bucket: string;
+  count: number /* int */;
+  pausedSec: number /* int64 */;
+  byKind: { [kind: string]: store.PauseKindTotal };
+}
+/**
+ * PauseProjectView is the pauses of one project (namespace/name) in the
+ * range.
+ */
+export interface PauseProjectView {
+  namespace: string;
+  project: string;
+  count: number /* int */;
+  pausedSec: number /* int64 */;
+}
+/**
+ * LongPauseView is one of the longest pauses of the range. Seconds is its
+ * full length, up to now while Open. DeskURL is the milestone's Pilot tab on
+ * the Desk, a path of the Desk's routes.
+ */
+export interface LongPauseView {
+  namespace: string;
+  project: string;
+  milestoneIID: number /* int64 */;
+  kind: aiv1.PauseKind | 'unknown';
+  reason?: string;
+  seconds: number /* int64 */;
+  since: string;
+  open: boolean;
+  deskURL: string;
+}
+/**
+ * MetricsPausesView is the answer of GET /api/v1/metrics/pauses: the
+ * milestone pauses of the viewer's projects (or ?project=) that started in
+ * the range of local dates in TZ, From to To inclusive. A pause counts in
+ * the bucket where it started, with its full length; an open one up to now.
+ * Buckets has one entry per bucket start of the range. Totals' mean time to
+ * resume is of the resumed pauses; OpenNow counts those still open. ByProject
+ * is longest paused first, Longest the ten longest pauses. Truncated: more
+ * than 20000 pause events since From, only the newest were read. The kind
+ * and engine filters do not apply.
+ */
+export interface MetricsPausesView {
+  range: '7d' | '30d' | '90d' | 'month' | 'lastMonth' | '12m' | 'custom';
+  from: string;
+  to: string;
+  bucket: 'day' | 'week' | 'month';
+  tz: string;
+  buckets: PauseBucketView[];
+  totals: store.PauseTotals;
+  openNow: number /* int */;
+  byProject: PauseProjectView[];
+  longest: LongPauseView[];
+  truncated: boolean;
+}
+
+//////////
 // source: milestone.go
 
 /**

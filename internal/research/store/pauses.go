@@ -87,7 +87,7 @@ func (s *Store) Pauses(ctx context.Context, project ProjectKey, milestone int64,
 // still open when its task pauses again ended then, resolver unknown.
 // Pauses are ordered by their start.
 func pairPauses(events []Event, now time.Time) PauseHistory {
-	h := PauseHistory{Pauses: []Pause{}, Totals: PauseTotals{ByKind: map[string]PauseKindTotal{}, ByResolver: map[string]int{}, ByVia: map[string]int{}}}
+	h := PauseHistory{Pauses: []Pause{}}
 	type open struct {
 		id string
 		i  int
@@ -134,7 +134,6 @@ func pairPauses(events []Event, now time.Time) PauseHistory {
 		}
 	}
 	sort.SliceStable(h.Pauses, func(i, j int) bool { return h.Pauses[i].Since.Before(h.Pauses[j].Since) })
-	var resolved, resumeSec int64
 	for i := range h.Pauses {
 		p := &h.Pauses[i]
 		if p.Kind == "" {
@@ -145,7 +144,16 @@ func pairPauses(events []Event, now time.Time) PauseHistory {
 			end = *p.Until
 		}
 		p.Seconds = max(0, int64(end.Sub(p.Since).Seconds()))
-		t := &h.Totals
+	}
+	h.Totals = sumPauses(h.Pauses)
+	return h
+}
+
+// sumPauses is the totals of paired pauses (pairPauses' Kind and Seconds).
+func sumPauses(pauses []Pause) PauseTotals {
+	t := PauseTotals{ByKind: map[string]PauseKindTotal{}, ByResolver: map[string]int{}, ByVia: map[string]int{}}
+	var resolved, resumeSec int64
+	for _, p := range pauses {
 		t.Count++
 		t.PausedSec += p.Seconds
 		k := t.ByKind[p.Kind]
@@ -168,9 +176,9 @@ func pairPauses(events []Event, now time.Time) PauseHistory {
 		}
 	}
 	if resolved > 0 {
-		h.Totals.MeanResumeSec = resumeSec / resolved
+		t.MeanResumeSec = resumeSec / resolved
 	}
-	return h
+	return t
 }
 
 func dataString(d map[string]any, key string) string {

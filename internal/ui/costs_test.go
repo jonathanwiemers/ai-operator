@@ -28,6 +28,8 @@ type fakeCosts struct {
 	topN          []int
 	metrics       store.Metrics
 	metricsQ      []store.CostQuery
+	pauses        store.PauseRange
+	pausesCalls   []costSeriesCall
 }
 
 type costSeriesCall struct {

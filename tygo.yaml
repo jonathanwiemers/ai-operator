@@ -95,6 +95,7 @@ packages:
       - gitlab.go
       - issue.go
       - metrics.go
+      - metrics_pauses.go
       - milestone.go
       - milestones.go
       - oidc.go
@@ -166,6 +167,8 @@ packages:
       store.EstimateResult: store.EstimateResult
       store.Money: store.Money
       store.PauseHistory: store.PauseHistory
+      store.PauseKindTotal: store.PauseKindTotal
+      store.PauseTotals: store.PauseTotals
       store.SpendTotals: store.SpendTotals
 
   # The facts of a stuck issue (problem.Facts), as MilestoneView carries

@@ -57,3 +57,17 @@ func MetricsQueries(q CostQuery) (sqls []string, args [][]any) {
 	}
 	return sqls, args
 }
+
+// PausesInRangeQuery is the SQL and arguments PausesInRange runs, for
+// EXPLAIN tests.
+func PausesInRangeQuery(q CostQuery, now time.Time) (string, []any) {
+	return pausesInRangeSQL(q, now)
+}
+
+// SetMaxRangePauseEvents lowers what PausesInRange reads, for truncation
+// tests, until the test ends.
+func SetMaxRangePauseEvents(t interface{ Cleanup(func()) }, n int) {
+	old := maxRangePauseEvents
+	maxRangePauseEvents = n
+	t.Cleanup(func() { maxRangePauseEvents = old })
+}

@@ -15,7 +15,11 @@ func project(base, ns, project string) string {
 	if base == "" {
 		return ""
 	}
-	return base + "/projects/" + url.PathEscape(ns) + "/" + url.PathEscape(project)
+	return base + projectPath(ns, project)
+}
+
+func projectPath(ns, project string) string {
+	return "/projects/" + url.PathEscape(ns) + "/" + url.PathEscape(project)
 }
 
 // Milestone is the Desk page of a milestone.
@@ -25,6 +29,12 @@ func Milestone(base, ns, proj string, iid int64) string {
 		return ""
 	}
 	return p + "/milestones/" + strconv.FormatInt(iid, 10)
+}
+
+// MilestonePath is the Desk route of a milestone without the Desk's URL,
+// for the Desk's own links (the UI API): never "".
+func MilestonePath(ns, proj string, iid int64) string {
+	return projectPath(ns, proj) + "/milestones/" + strconv.FormatInt(iid, 10)
 }
 
 // Task is the Desk page of an AgentTask.
