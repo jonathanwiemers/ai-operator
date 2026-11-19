@@ -1324,6 +1324,52 @@ export interface ExitView extends aiv1.PauseExit {
 }
 
 //////////
+// source: plan_decisions.go
+
+/**
+ * PlanDecisionHistoryView is the stored history of a plan's decisions, by
+ * decision number, dropped decisions included. Available is false without
+ * the history database.
+ */
+export interface PlanDecisionHistoryView {
+  available: boolean;
+  decisions: PlanDecisionHistoryItem[];
+}
+/**
+ * PlanDecisionHistoryItem is one decision with its versions, newest first.
+ */
+export interface PlanDecisionHistoryItem {
+  id: string;
+  versions: PlanDecisionVersionView[];
+}
+/**
+ * PlanDecisionVersionView is one version of a decision with its sign-offs,
+ * newest first. DecidedBy is "agent" or the owner's OIDC subject.
+ */
+export interface PlanDecisionVersionView {
+  title: string;
+  question: string;
+  options: string[];
+  recommended: number /* int */;
+  why: string;
+  state: aiv1.PlanDecisionState;
+  version: number /* int64 */;
+  decidedBy: string;
+  decidedByName: string;
+  decidedAt: string;
+  signOffs: PlanSignOffView[];
+}
+/**
+ * PlanSignOffView is one owner's sign-off of a version: By is the owner's
+ * OIDC subject.
+ */
+export interface PlanSignOffView {
+  by: string;
+  byName: string;
+  at: string;
+}
+
+//////////
 // source: plans.go
 
 /**
@@ -1377,6 +1423,12 @@ export interface PlanView extends PlanListItem {
   draftRevision: number /* int64 */;
   draftBy?: string;
   draftSHA?: string;
+  /**
+   * Decisions is the current list in status order, never null;
+   * DecisionsPending counts the open or not signed-off entries.
+   */
+  decisions: aiv1.PlanDecision[];
+  decisionsPending: number /* int */;
 }
 
 //////////

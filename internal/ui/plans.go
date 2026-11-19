@@ -67,6 +67,10 @@ type PlanView struct {
 	DraftRevision int64  `json:"draftRevision"`
 	DraftBy       string `json:"draftBy,omitempty"`
 	DraftSHA      string `json:"draftSHA,omitempty"`
+	// Decisions is the current list in status order, never null;
+	// DecisionsPending counts the open or not signed-off entries.
+	Decisions        []aiv1.PlanDecision `json:"decisions"`
+	DecisionsPending int                 `json:"decisionsPending"`
 }
 
 func (s *Server) planItem(pl *aiv1.AgentPlan, steer bool) PlanListItem {
@@ -186,7 +190,8 @@ func (s *Server) setPlanMilestones(ctx context.Context, items []PlanListItem, vi
 
 func (s *Server) planView(pl *aiv1.AgentPlan, steer bool) PlanView {
 	return PlanView{PlanListItem: s.planItem(pl, steer), Draft: pl.Status.Draft,
-		DraftRevision: pl.Status.DraftRevision, DraftBy: pl.Status.DraftBy, DraftSHA: pl.Status.DraftSHA}
+		DraftRevision: pl.Status.DraftRevision, DraftBy: pl.Status.DraftBy, DraftSHA: pl.Status.DraftSHA,
+		Decisions: append([]aiv1.PlanDecision{}, pl.Status.Decisions...), DecisionsPending: planDecisionsPending(pl.Status.Decisions)}
 }
 
 // Limits of the plans owners start from the Desk.

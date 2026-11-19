@@ -104,6 +104,7 @@ packages:
       - oneoff.go
       - overview.go
       - pause_exits.go
+      - plan_decisions.go
       - plans.go
       - plans_all.go
       - projectsets.go
@@ -142,6 +143,8 @@ packages:
       aiv1.PauseResolver: aiv1.PauseResolver
       aiv1.PauseResumeVia: aiv1.PauseResumeVia
       aiv1.PilotActed: aiv1.PilotActed
+      aiv1.PlanDecision: aiv1.PlanDecision
+      aiv1.PlanDecisionState: aiv1.PlanDecisionState
       aiv1.PilotAutonomy: aiv1.PilotAutonomy
       aiv1.PromptClosedReason: aiv1.PromptClosedReason
       aiv1.PromptKind: aiv1.PromptKind
