@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// The rail's content (docs/contributing/web-ui.md, "Navigation"): Inbox, Overview, Costs, Plans, projects,
+// The rail's content (docs/contributing/web-ui.md, "Navigation"): Inbox, Overview, Metrics, Plans, projects,
 // research, engine meters and the user. App.vue renders it in the aside on
 // tablet and desktop and in the rail sheet on phones; App.vue loads the data.
 import { computed } from 'vue'
@@ -86,10 +86,10 @@ function projectActive(namespace: string, name: string) {
         <span class="dot" />
         <span class="name">Overview<span class="sub">what runs, across projects</span></span>
       </RouterLink>
-      <!-- Costs read the history database: the feature history says it is there. -->
-      <RouterLink v-if="hasFeature('history')" to="/costs" class="item" active-class="active" data-rail-costs>
+      <!-- Metrics read the history database: the feature history says it is there. -->
+      <RouterLink v-if="hasFeature('history')" to="/metrics" class="item" active-class="active" data-rail-metrics>
         <span class="dot" />
-        <span class="name">Costs<span class="sub">what agents cost, across projects</span></span>
+        <span class="name">Metrics<span class="sub">cost, code, flow and pauses, across projects</span></span>
       </RouterLink>
       <RouterLink v-if="hasFeature('plans')" to="/plans" class="item" active-class="active" data-rail-plans>
         <span class="dot" />

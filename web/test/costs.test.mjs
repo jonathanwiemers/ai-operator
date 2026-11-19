@@ -155,9 +155,9 @@ test('planTaskLabel: plan/<name> as plain text until the plan route links', () =
 
 test('breakdownLink: project, kind and engine rows set their filter and keep the rest', () => {
   const f = { range: '90d', group: 'kind', kind: 'review' }
-  assert.deepEqual(breakdownLink('project', 'ns/p', f), { path: '/costs', query: { range: '90d', group: 'kind', kind: 'review', project: 'ns/p' } })
-  assert.deepEqual(breakdownLink('kind', 'fix', f), { path: '/costs', query: { range: '90d', group: 'kind', kind: 'fix' } })
-  assert.deepEqual(breakdownLink('engine', 'cursor', { range: '30d', group: 'engine' }), { path: '/costs', query: { group: 'engine', engine: 'cursor' } })
+  assert.deepEqual(breakdownLink('project', 'ns/p', f), { path: '/metrics', query: { range: '90d', group: 'kind', kind: 'review', project: 'ns/p' } })
+  assert.deepEqual(breakdownLink('kind', 'fix', f), { path: '/metrics', query: { range: '90d', group: 'kind', kind: 'fix' } })
+  assert.deepEqual(breakdownLink('engine', 'cursor', { range: '30d', group: 'engine' }), { path: '/metrics', query: { group: 'engine', engine: 'cursor' } })
 })
 
 test('breakdownLink: model rows, the legacy key and keys the filters would drop are no links', () => {

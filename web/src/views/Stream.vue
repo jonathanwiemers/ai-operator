@@ -444,7 +444,7 @@ function showDay(i: number): string | null {
       <!-- Phones: the title has a row of its own and wraps, the cost and the
            Context button follow, then the tab strip and the search take a
            full row each. From 760 px they share one row; the search
-           shrinks from 180 px to 112 px before it would wrap. -->
+           shrinks from 180 px to 64 px before it would wrap. -->
       <div data-stream-head class="bg-(--bg) px-4 pt-3.5 tablet:px-7">
         <div v-if="milestone?.autopilot" class="flex items-center gap-1.5 text-[12.5px] text-(--text-3)">
           <span class="font-semibold text-(--tone-progress-fg)">Autopilot {{ milestone.autopilot.phase.toLowerCase() }}</span>
@@ -452,6 +452,17 @@ function showDay(i: number): string | null {
         <div class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-2">
           <h1 class="max-w-full min-w-0 shrink-0 basis-full text-xl tracking-[-0.01em] break-words tablet:basis-auto">{{ title }}</h1>
           <CostChip :cost="headerCost" />
+          <UButton
+            v-if="!everything && !milestoneIID && namespace && name && hasFeature('history')"
+            color="neutral"
+            variant="outline"
+            size="xs"
+            icon="i-lucide-receipt"
+            aria-label="Metrics"
+            title="Metrics"
+            :to="{ path: '/metrics', query: { project: `${namespace}/${name}` } }"
+            data-project-metrics
+          />
           <RouteTabs
             v-if="!everything"
             class="order-1 basis-full tablet:order-none tablet:basis-auto"
@@ -463,7 +474,7 @@ function showDay(i: number): string | null {
           <form
             v-if="tab === 'stream'"
             role="search"
-            class="order-2 basis-full tablet:order-none tablet:max-w-45 tablet:grow tablet:basis-28"
+            class="order-2 basis-full tablet:order-none tablet:max-w-45 tablet:grow tablet:basis-16"
             @submit.prevent="applySearch"
           >
             <UInput

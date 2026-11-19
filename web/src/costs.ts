@@ -212,7 +212,7 @@ export function breakdownLink(
   // The key must survive parseCostFilters, as a URL typed by hand would.
   const value = parseCostFilters({ [dimension]: key })[dimension]
   if (!value) return null
-  return { path: '/costs', query: costFiltersQuery({ ...filters, [dimension]: value }) }
+  return { path: '/metrics', query: costFiltersQuery({ ...filters, [dimension]: value }) }
 }
 
 export type TopLevel = 'milestone' | 'issue' | 'run'

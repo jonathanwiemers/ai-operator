@@ -4,6 +4,7 @@ import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import App from './App.vue'
 import { canStartResearch, featuresLoaded, hasFeature, isResearchPath } from './api'
 import { darkQuery, followColorScheme } from './colorScheme'
+import { costsRedirect } from './costsRedirect'
 import type { RouteName } from './routeNames'
 import { listenForSheets } from './ui/useBackClose'
 import './style.css'
@@ -16,7 +17,7 @@ followColorScheme(document.documentElement.classList, window.matchMedia(darkQuer
 const Dashboard = () => import('./views/Dashboard.vue')
 const Stream = () => import('./views/Stream.vue')
 const Inbox = () => import('./views/Inbox.vue')
-const Costs = () => import('./views/Costs.vue')
+const Metrics = () => import('./views/Metrics.vue')
 const TaskView = () => import('./views/Task.vue')
 const IssueView = () => import('./views/Issue.vue')
 const Researches = () => import('./views/Researches.vue')
@@ -30,10 +31,13 @@ const NotFound = () => import('./views/NotFound.vue')
 
 // Every route is named, with a name from routeNames: crumbsFor and its test
 // cover each one.
+// The old /costs URL keeps its query on the way to /metrics; it has no name of its own.
+const redirects: RouteRecordRaw[] = [{ path: '/costs', redirect: costsRedirect }]
+
 const routes: (RouteRecordRaw & { name: RouteName })[] = [
   { path: '/', name: 'overview', component: Dashboard },
   { path: '/inbox', name: 'inbox', component: Inbox },
-  { path: '/costs', name: 'costs', component: Costs },
+  { path: '/metrics', name: 'metrics', component: Metrics },
   { path: '/plans', name: 'all-plans', component: AllPlans },
   { path: '/projects/:namespace/:name', name: 'stream-project', component: Stream, props: true },
   {
@@ -70,7 +74,7 @@ const routes: (RouteRecordRaw & { name: RouteName })[] = [
 listenForSheets()
 const router = createRouter({
   history: createWebHistory(),
-  routes,
+  routes: [...redirects, ...routes],
   // A prompt link scrolls to its card: the card scrolls itself into view
   // when it mounts, which the jump to the top would undo on an in-app
   // navigation (the window scrolls on phones). A missing card leaves the

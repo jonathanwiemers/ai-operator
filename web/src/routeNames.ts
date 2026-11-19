@@ -5,7 +5,7 @@
 export const routeNames = [
   'overview',
   'inbox',
-  'costs',
+  'metrics',
   'all-plans',
   'stream-project',
   'stream-milestone',

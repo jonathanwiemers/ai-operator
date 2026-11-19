@@ -37,7 +37,7 @@ test('issue results keep server order and are not re-filtered', () => {
 test('pages are gated by features', () => {
   const pages = (features) => by(paletteGroups({ ...data, features }), 'pages').items.map((x) => x.label)
   assert.deepEqual(pages([]), ['Inbox', 'Overview'])
-  assert.deepEqual(pages([{ name: 'history' }, { name: 'research' }]), ['Inbox', 'Overview', 'Costs', 'Research'])
+  assert.deepEqual(pages([{ name: 'history' }, { name: 'research' }]), ['Inbox', 'Overview', 'Metrics', 'Research'])
 })
 
 test('Plans is in Pages with the plans feature, Plan milestone also needs an open project', () => {

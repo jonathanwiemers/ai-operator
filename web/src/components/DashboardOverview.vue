@@ -46,7 +46,7 @@ function runningFor(w: WorkingNow): string {
           <RouterLink v-if="c.inbox" to="/inbox" :class="chip(c)">
             <b :class="{ 'text-(--text)': !c.warn }">{{ c.value }}</b> {{ c.label }}
           </RouterLink>
-          <RouterLink v-else-if="c.costs" :to="{ path: '/costs', query: { range: '7d' } }" :class="chip(c)" data-chip-costs>
+          <RouterLink v-else-if="c.costs" :to="{ path: '/metrics', query: { range: '7d' } }" :class="chip(c)" data-chip-costs>
             <b :class="{ 'text-(--text)': !c.warn }">{{ c.value }}</b> {{ c.label }}
           </RouterLink>
           <span v-else :class="chip(c)">

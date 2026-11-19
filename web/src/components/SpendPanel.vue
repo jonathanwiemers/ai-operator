@@ -271,7 +271,7 @@ const mark = 'ms-1.5 rounded-full px-1.5 text-[11px] font-semibold'
       </template>
       <span v-if="loading && data" class="faint">Loading…</span>
       <RouterLink
-        :to="{ path: '/costs', query: { project: `${namespace}/${name}` } }"
+        :to="{ path: '/metrics', query: { project: `${namespace}/${name}` } }"
         :class="tap"
         class="ms-auto"
         data-spend-costs

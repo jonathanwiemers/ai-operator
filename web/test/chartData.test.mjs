@@ -372,7 +372,7 @@ test('breakdownRows: top six by known cost, Other sums the rest, links by dimens
   assert.equal(other.value, 7)
   assert.equal(other.unknown, 2)
   assert.equal(other.link, null)
-  assert.deepEqual(out[0].link, { path: '/costs', query: { project: 'ns/a' } })
+  assert.deepEqual(out[0].link, { path: '/metrics', query: { project: 'ns/a' } })
   assert.equal(out.reduce((a, r) => a + r.value, 0), 10 + 9 + 8 + 7 + 6 + 5 + 4 + 3)
 })
 
@@ -384,7 +384,7 @@ test('breakdownRows: a row of unknown cost is n/a, never $0; the legacy key and 
   assert.equal(out[0].link, null)
   assert.equal(out[1].total, null)
   assert.equal(out[1].unknown, 4)
-  assert.deepEqual(out[1].link, { path: '/costs', query: { group: 'kind', kind: 'implement' } })
+  assert.deepEqual(out[1].link, { path: '/metrics', query: { group: 'kind', kind: 'implement' } })
   assert.equal(breakdownRows([by('claude-opus-5-5', '1.00')], 'model', f)[0].link, null)
   assert.deepEqual(breakdownRows([], 'engine', f), [])
 })

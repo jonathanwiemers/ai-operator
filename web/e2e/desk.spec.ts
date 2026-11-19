@@ -109,16 +109,16 @@ const routes: Route[] = [
   // The Costs page in light and dark, ready once Spend over time is drawn.
   ...(['light', 'dark'] as const).map(
     (scheme): Route => ({
-      name: scheme === 'light' ? 'costs' : 'costs-dark',
-      path: '/costs?range=30d&project=team-a/shop',
+      name: scheme === 'light' ? 'metrics' : 'metrics-dark',
+      path: '/metrics?range=30d&project=team-a/shop',
       colorScheme: scheme,
       ready: costsReady,
     }),
   ),
   // Filters from the URL (R17): the fixture answers the same for any filter.
   {
-    name: 'costs-filtered',
-    path: '/costs?range=90d&group=model&kind=implement',
+    name: 'metrics-filtered',
+    path: '/metrics?range=90d&group=model&kind=implement',
     ready: costsReady,
   },
   ...(['stream', 'decisions', 'board', 'spend'] as const).map(
@@ -834,7 +834,7 @@ test.describe('touch', () => {
 // these pages is at least 44 px high at 375 px. Not counted: what cannot be
 // tapped (hidden from assistive technology, transparent, or a disabled
 // checkbox of a markdown task list). Exceptions are listed in hitAllowlist.
-const hitRoutes = ['overview', 'inbox', 'costs', 'costs-filtered', 'researches', 'research-new', 'task', 'task-chat', 'task-logs', 'task-calls', 'task-details', 'stream-milestone-retrospective', 'stream-milestone-spend', 'research', 'research-report', 'research-run']
+const hitRoutes = ['overview', 'inbox', 'metrics', 'metrics-filtered', 'researches', 'research-new', 'task', 'task-chat', 'task-logs', 'task-calls', 'task-details', 'stream-milestone-retrospective', 'stream-milestone-spend', 'research', 'research-report', 'research-run']
 
 // "<route> <element as reported>" → why it may stay under 44 px.
 const hitAllowlist: Record<string, string> = {
@@ -887,11 +887,11 @@ for (const name of hitRoutes) {
   })
 }
 
-// The Costs page (views/Costs.vue, R7): the rail links to it, the filters
+// The Costs page (views/Metrics.vue, R7): the rail links to it, the filters
 // come from the URL, and a changed filter replaces the query and refetches
 // in the browser's time zone, without a reload.
 test('costs filters live in the URL, no reload@1280', async ({ page, baseURL }) => {
-  const route = routes.find((r) => r.name === 'costs')!
+  const route = routes.find((r) => r.name === 'metrics')!
   const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
   const requests: URLSearchParams[] = []
   page.on('request', (req) => {
@@ -904,25 +904,60 @@ test('costs filters live in the URL, no reload@1280', async ({ page, baseURL }) 
   await mockAPI(page, route, problems)
   await page.goto(route.path)
   await route.ready(page)
-  await expect(page.locator('[data-rail-costs]').first()).toHaveClass(/active/)
+  await expect(page.locator('[data-rail-metrics]').first()).toHaveClass(/active/)
   expect(Object.fromEntries(requests[0]!)).toMatchObject({ range: '30d', group: 'project', project: 'team-a/shop' })
   expect(requests[0]!.get('tz')).toBeTruthy()
 
   await page.evaluate(() => ((window as unknown as { kept: boolean }).kept = true))
   await page.locator('[data-filter=group]').click()
   await page.getByRole('option', { name: 'kind', exact: true }).click()
-  await expect(page).toHaveURL(/\/costs\?group=kind&project=team-a(%2F|\/)shop$/)
+  await expect(page).toHaveURL(/\/metrics\?group=kind&project=team-a(%2F|\/)shop$/)
   await expect.poll(() => requests.at(-1)?.get('group')).toBe('kind')
   expect(await page.evaluate(() => (window as unknown as { kept?: boolean }).kept), 'no reload').toBe(true)
   expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
 })
 
-// Spend over time (views/Costs.vue, R9; e2e/fixtures/costs.ts): the canvas's
+// The old /costs URL redirects to /metrics with the same filters, and a project
+// stream links to its per-project view.
+test('costs redirects to metrics with the same filters@1280', async ({ page, baseURL }) => {
+  const route = routes.find((r) => r.name === 'metrics')!
+  const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+  const requests: URLSearchParams[] = []
+  page.on('request', (req) => {
+    const u = new URL(req.url())
+    if (u.pathname === '/api/v1/costs') requests.push(u.searchParams)
+  })
+  await page.setViewportSize(widths[2]!)
+  await page.clock.setFixedTime(now)
+  await watch(page, new URL(baseURL ?? '').origin, problems)
+  await mockAPI(page, route, problems)
+  await page.goto('/costs?range=7d&project=team-a/shop')
+  await route.ready(page)
+  await expect(page).toHaveURL(/\/metrics\?range=7d&project=team-a(%2F|\/)shop$/)
+  expect(Object.fromEntries(requests[0]!)).toMatchObject({ range: '7d', project: 'team-a/shop' })
+  await expect(page.getByRole('heading', { level: 1, name: 'Metrics' })).toBeVisible()
+  expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+})
+
+test('project stream links to its metrics@1280', async ({ page, baseURL }) => {
+  const route = routes.find((r) => r.name === 'stream-project-stream')!
+  const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+  await page.setViewportSize(widths[2]!)
+  await page.clock.setFixedTime(now)
+  await watch(page, new URL(baseURL ?? '').origin, problems)
+  await mockAPI(page, route, problems)
+  await page.goto(route.path)
+  await route.ready(page)
+  await expect(page.locator('[data-project-metrics]')).toHaveAttribute('href', /^\/metrics\?project=team-a(%2F|\/)shop$/)
+  expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+})
+
+// Spend over time (views/Metrics.vue, R9; e2e/fixtures/costs.ts): the canvas's
 // summary, the legend's totals and the table view's figures agree, and the
 // bars take the token colours of the scheme, re-read when it changes.
 for (const { width, height } of [widths[0]!, widths[2]!]) {
   test(`costs Spend over time legend, table and colours@${width}`, async ({ page, baseURL }) => {
-    const route = routes.find((r) => r.name === 'costs')!
+    const route = routes.find((r) => r.name === 'metrics')!
     const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
     await page.setViewportSize({ width, height })
     await page.clock.setFixedTime(now)
@@ -973,12 +1008,12 @@ for (const { width, height } of [widths[0]!, widths[2]!]) {
   })
 }
 
-// This month (views/Costs.vue, R10; e2e/fixtures/costs.ts's month): month to
+// This month (views/Metrics.vue, R10; e2e/fixtures/costs.ts's month): month to
 // date against the same days of last month, the dashed line named in the
 // legend and the table, and both lines drawn.
 for (const { width, height } of [widths[0]!, widths[2]!]) {
   test(`costs This month legend and table@${width}`, async ({ page, baseURL }) => {
-    const route = routes.find((r) => r.name === 'costs')!
+    const route = routes.find((r) => r.name === 'metrics')!
     const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
     await page.setViewportSize({ width, height })
     await page.clock.setFixedTime(now)
@@ -1039,7 +1074,7 @@ for (const { width, height } of [widths[0]!, widths[2]!]) {
 // are not.
 for (const { width, height } of [widths[0]!, widths[2]!]) {
   test(`costs Where it goes rows are filter links@${width}`, async ({ page, baseURL }) => {
-    const route = routes.find((r) => r.name === 'costs')!
+    const route = routes.find((r) => r.name === 'metrics')!
     const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
     await page.setViewportSize({ width, height })
     await page.clock.setFixedTime(now)
@@ -1052,7 +1087,7 @@ for (const { width, height } of [widths[0]!, widths[2]!]) {
     await expect(chart.locator('canvas')).toHaveAttribute('aria-label', /^Known cost by project: \$133\.85 in total/)
     const legend = chart.locator('[data-chart-legend] li')
     await expect(legend).toHaveCount(2)
-    await expect(legend.first().getByRole('link')).toHaveAttribute('href', /^\/costs\?project=team-a(%2F|\/)shop$/)
+    await expect(legend.first().getByRole('link')).toHaveAttribute('href', /^\/metrics\?project=team-a(%2F|\/)shop$/)
 
     await chart.locator('[data-where-dimension=model]').click()
     await expect(chart.locator('[data-chart-legend] li')).toHaveCount(2)
@@ -1060,7 +1095,7 @@ for (const { width, height } of [widths[0]!, widths[2]!]) {
 
     await chart.locator('[data-where-dimension=engine]').click()
     await chart.locator('[data-chart-legend] a', { hasText: 'cursor' }).click()
-    await expect(page).toHaveURL(/\/costs\?.*engine=cursor$/)
+    await expect(page).toHaveURL(/\/metrics\?.*engine=cursor$/)
     await expect(page.locator('[data-filter=engine]')).toContainText('cursor')
 
     problems.csp.push(...(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)))
@@ -1068,12 +1103,12 @@ for (const { width, height } of [widths[0]!, widths[2]!]) {
   })
 }
 
-// Tokens (views/Costs.vue, R12): four token types and the cache-read share in
+// Tokens (views/Metrics.vue, R12): four token types and the cache-read share in
 // the legend and the table; the mixed-basis note appears once and the
 // unmetered calls are named.
 for (const { width, height } of [widths[0]!, widths[2]!]) {
   test(`costs Tokens legend, notes and table@${width}`, async ({ page, baseURL }) => {
-    const route = routes.find((r) => r.name === 'costs')!
+    const route = routes.find((r) => r.name === 'metrics')!
     const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
     await page.setViewportSize({ width, height })
     await page.clock.setFixedTime(now)
@@ -1096,11 +1131,11 @@ for (const { width, height } of [widths[0]!, widths[2]!]) {
   })
 }
 
-// Most expensive (views/Costs.vue, R13): three lists whose rows open the
+// Most expensive (views/Metrics.vue, R13): three lists whose rows open the
 // Spend drill-down; a row with only unknown calls is marked, not $0.00.
 for (const { width, height } of [widths[0]!, widths[2]!]) {
   test(`costs Most expensive rows open the drill-down@${width}`, async ({ page, baseURL }) => {
-    const route = routes.find((r) => r.name === 'costs')!
+    const route = routes.find((r) => r.name === 'metrics')!
     const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
     await page.setViewportSize({ width, height })
     await page.clock.setFixedTime(now)
@@ -1122,13 +1157,13 @@ for (const { width, height } of [widths[0]!, widths[2]!]) {
   })
 }
 
-// Cost per merged line and Context (views/Costs.vue, #539): an arm table per
+// Cost per merged line and Context (views/Metrics.vue, #539): an arm table per
 // project, titled with the experiment it still runs, then by model, effort and
 // step session; rows below 5 merged issues are greyed out with the hint. On a
 // phone the rows are cards with labelled figures.
 for (const { width, height } of [widths[0]!, widths[2]!]) {
   test(`costs metrics and context@${width}`, async ({ page, baseURL }) => {
-    const route = routes.find((r) => r.name === 'costs')!
+    const route = routes.find((r) => r.name === 'metrics')!
     const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
     await page.setViewportSize({ width, height })
     await page.clock.setFixedTime(now)
@@ -1571,7 +1606,7 @@ test.describe('bottom bar', () => {
     for (const { name, url, route } of [
       { name: /^Inbox/, url: /\/inbox$/, route: 'inbox' },
       { name: 'Overview', url: /:\d+\/$/, route: 'overview' },
-      { name: 'Costs', url: /\/costs$/, route: 'costs' },
+      { name: 'Metrics', url: /\/metrics$/, route: 'metrics' },
       { name: 'Research', url: /\/research$/, route: 'researches' },
     ]) {
       const link = nav.getByRole('link', { name })
@@ -1602,12 +1637,12 @@ test.describe('bottom bar', () => {
     await open(page, baseURL, overview, problems, { features: features.features.filter((f) => f.name !== 'research') })
     const nav = bar(page)
     await expect(nav.getByRole('link', { name: 'Overview' })).toHaveAttribute('aria-current', 'page')
-    await expect(nav.getByRole('link')).toHaveText([/Inbox/, 'Overview', 'Costs'])
+    await expect(nav.getByRole('link')).toHaveText([/Inbox/, 'Overview', 'Metrics'])
     await expect(nav.getByRole('button')).toHaveText(['Projects'])
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
   })
 
-  test('Costs is absent without the history feature@375', async ({ page, baseURL }) => {
+  test('Metrics is absent without the history feature@375', async ({ page, baseURL }) => {
     const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
     const overview = routes.find((r) => r.name === 'overview')!
     await open(page, baseURL, overview, problems, { features: features.features.filter((f) => f.name !== 'history') })

@@ -33,7 +33,7 @@ export function paletteGroups(a: {
     { label: 'Inbox', icon: 'i-lucide-inbox', to: { name: 'inbox' } },
     { label: 'Overview', icon: 'i-lucide-layout-dashboard', to: { name: 'overview' } },
   ]
-  if (has('history')) pages.push({ label: 'Costs', icon: 'i-lucide-wallet', to: { name: 'costs' } })
+  if (has('history')) pages.push({ label: 'Metrics', icon: 'i-lucide-wallet', to: { name: 'metrics' } })
   if (has('research')) pages.push({ label: 'Research', icon: 'i-lucide-flask-conical', to: { name: 'researches' } })
   // Plans, and for the open project Plan milestone, which opens its Plans tab
   // (D449-P1: the palette does not create). Both reuse flag (already in the

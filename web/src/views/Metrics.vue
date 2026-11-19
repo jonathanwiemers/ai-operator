@@ -189,7 +189,7 @@ const kpiSub = 'text-[13px] text-(--text-2) [overflow-wrap:anywhere]'
 <template>
   <div class="page">
     <div class="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-      <h1>Costs</h1>
+      <h1>Metrics</h1>
       <span v-if="data" class="faint">{{ data.from }} to {{ data.to }}, {{ data.tz }}</span>
       <span v-if="loading && data" class="faint">Loading…</span>
       <details v-if="data && data.totals.calls > 0" ref="csvMenu" class="relative ms-auto" data-costs-csv>
