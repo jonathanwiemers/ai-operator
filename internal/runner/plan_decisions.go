@@ -123,8 +123,13 @@ func planDecisionIDs(ds []aiv1.PlanDecision) []string {
 
 // mergePlanDecisions turns the agent's valid list into the plan's new list,
 // in the agent's order, and the new highest decision number. Entries left
-// out are dropped.
-func mergePlanDecisions(prev []aiv1.PlanDecision, seq int32, in []planTurnDecision, now time.Time) ([]aiv1.PlanDecision, int32) {
+// out are dropped. answers are the answered message's, from the owner
+// author: a new version of a decision they changed is decided and signed
+// off by them, a version they kept is signed off by them, and a change the
+// agent did not apply signs off nothing.
+func mergePlanDecisions(prev []aiv1.PlanDecision, seq int32, in []planTurnDecision,
+	answers []aiv1.PlanDecisionAnswer, author, authorName string, now time.Time) ([]aiv1.PlanDecision, int32) {
+	keeps := currentPlanAnswers(prev, answers, author)
 	out := make([]aiv1.PlanDecision, 0, len(in))
 	for _, d := range in {
 		d = d.trimmed()
@@ -132,7 +137,19 @@ func mergePlanDecisions(prev []aiv1.PlanDecision, seq int32, in []planTurnDecisi
 		if i := slices.IndexFunc(prev, func(p aiv1.PlanDecision) bool { return p.ID == d.ID }); i >= 0 {
 			old = &prev[i]
 		}
-		out = append(out, nextPlanDecision(old, d, now))
+		next := nextPlanDecision(old, d, now)
+		keep, answered := keeps[d.ID]
+		switch {
+		case !answered || old == nil:
+		case next.Version == old.Version:
+			if keep {
+				signOff(&next, author, authorName, now)
+			}
+		case !keep:
+			next.DecidedBy, next.DecidedByName = author, authorName
+			signOff(&next, author, authorName, now)
+		}
+		out = append(out, next)
 		seq = max(seq, planDecisionNum(d.ID))
 	}
 	return out, seq

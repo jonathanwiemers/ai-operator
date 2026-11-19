@@ -2,8 +2,11 @@ package runner
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
+
+	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 )
 
 // The plan role writes milestones in the format autopilot expects and
@@ -148,5 +151,97 @@ func TestPlanPromptHouseRules(t *testing.T) {
 		"- No new dependencies.\n\n## The owner's message"
 	if !strings.Contains(got, want) {
 		t.Fatalf("house rules:\n%q\nwant\n%q", got, want)
+	}
+}
+
+// planList is a list of locked decisions D1 to Dn at version 1, each
+// recommending "Rail" of "Rail", "Footer" and "Header".
+func planList(n int) []aiv1.PlanDecision {
+	ds := make([]aiv1.PlanDecision, n)
+	for i := range ds {
+		ds[i] = aiv1.PlanDecision{ID: fmt.Sprintf("D%d", i+1), Title: fmt.Sprintf("Place %d", i+1), Question: "Where?",
+			Options: []string{"Rail", "Footer", "Header"}, State: aiv1.PlanDecisionLocked, Version: 1, DecidedBy: "agent"}
+	}
+	return ds
+}
+
+// TestPlanPromptAnswers pins the answers section byte for byte (golden):
+// kept answers on one line with ranges, changes spelled out, and no
+// message section when the message has no text.
+func TestPlanPromptAnswers(t *testing.T) {
+	repo := "## Repository\n\nThe checkout is the default branch main at ab7d54a, fetched just now. Cite file refs at this SHA.\n\n" +
+		"## House rules\n\n- When a requirement has to be narrowed, open a follow-up issue for the rest and say so in the steering log.\n\n"
+	noGitLab := "## GitLab\n\nThe project's milestones, issues and merge requests could not be read for this turn.\n"
+	list := planList(7)
+	withOpen := planList(8)
+	withOpen[7].State = aiv1.PlanDecisionOpen
+	keeps := func(ids ...string) []aiv1.PlanDecisionAnswer {
+		as := make([]aiv1.PlanDecisionAnswer, len(ids))
+		for i, id := range ids {
+			as[i] = keepAnswer(id, 1)
+		}
+		return as
+	}
+	changes := append(keeps("D6", "D1", "D3", "D4"), optionAnswer("D2", 1, 2),
+		aiv1.PlanDecisionAnswer{ID: "D7", Version: 1, Other: "Neither.\nPut it in the footer."}, optionAnswer("D5", 1, 0))
+	changed := "## The owner's answers to the decisions\n\nD1, D3–D6 kept as recommended.\n\n" +
+		"- D2 (Place 2): the owner picks \"Header\" instead of the recommended \"Rail\".\n" +
+		"- D7 (Place 7): the owner answers in their own words: Neither.\n  Put it in the footer.\n\n" +
+		"Apply each change to the draft and to the decisions list. If you do not apply one, say why in your reply.\n\n"
+	for name, tc := range map[string]struct {
+		in   planTurnInput
+		want string
+	}{
+		"keeps only": {
+			in: planTurnInput{Message: "Looks good.", Branch: "main", SHA: "ab7d54a", Decisions: list, Answers: keeps("D2", "D1", "D7", "D4", "D5")},
+			want: repo + "## The owner's answers to the decisions\n\nD1, D2, D4, D5, D7 kept as recommended.\n\n" +
+				"## The owner's message\n\nLooks good.\n\n" + noGitLab,
+		},
+		"keeps and changes": {
+			in:   planTurnInput{Message: "Also add a changelog link.\n", Branch: "main", SHA: "ab7d54a", Decisions: list, Answers: changes},
+			want: repo + changed + "## The owner's message\n\nAlso add a changelog link.\n\n" + noGitLab,
+		},
+		"answers with no text": {
+			in:   planTurnInput{Message: " ", Branch: "main", SHA: "ab7d54a", Decisions: list, Answers: changes},
+			want: repo + changed + noGitLab,
+		},
+		"keep on an open question": {
+			in: planTurnInput{Branch: "main", SHA: "ab7d54a", Decisions: withOpen, Answers: keeps("D8")},
+			want: repo + "## The owner's answers to the decisions\n\n- D8 (Place 8): the owner picks the recommended \"Rail\".\n\n" +
+				"Apply each change to the draft and to the decisions list. If you do not apply one, say why in your reply.\n\n" + noGitLab,
+		},
+		"answers to gone decisions or options": {
+			in: planTurnInput{Message: "Go on.", Branch: "main", SHA: "ab7d54a", Decisions: planList(2),
+				Answers: []aiv1.PlanDecisionAnswer{keepAnswer("D9", 1), optionAnswer("D1", 1, 4)}},
+			want: repo + "## The owner's message\n\nGo on.\n\n" + noGitLab,
+		},
+		"no text, only answers to gone decisions": {
+			in:   planTurnInput{Branch: "main", SHA: "ab7d54a", Decisions: planList(2), Answers: []aiv1.PlanDecisionAnswer{keepAnswer("D9", 1)}},
+			want: repo + "## The owner's message\n\n\n\n" + noGitLab,
+		},
+		"no answers": {
+			in:   planTurnInput{Message: "Go on.", Branch: "main", SHA: "ab7d54a", Decisions: list},
+			want: repo + "## The owner's message\n\nGo on.\n\n" + noGitLab,
+		},
+	} {
+		if got := buildPlanPrompt(tc.in); got != tc.want {
+			t.Errorf("%s: plan prompt:\n%q\nwant\n%q", name, got, tc.want)
+		}
+	}
+}
+
+func TestPlanIDRanges(t *testing.T) {
+	for _, tc := range []struct {
+		nums []int32
+		want string
+	}{
+		{[]int32{1}, "D1"},
+		{[]int32{1, 2}, "D1, D2"},
+		{[]int32{1, 3, 4, 5, 6}, "D1, D3–D6"},
+		{[]int32{2, 3, 4, 7, 8, 10, 11, 12}, "D2–D4, D7, D8, D10–D12"},
+	} {
+		if got := planIDRanges(tc.nums); got != tc.want {
+			t.Errorf("%v: %q, want %q", tc.nums, got, tc.want)
+		}
 	}
 }

@@ -106,7 +106,7 @@ func TestMergePlanDecisions(t *testing.T) {
 		"new decision": {in: change(func(d *planTurnDecision) { d.ID = "D7" }), version: 1, agent: true, seq: 7},
 	} {
 		in := tc.in
-		got, seq := mergePlanDecisions(prev, 3, in, t1)
+		got, seq := mergePlanDecisions(prev, 3, in, nil, "", "", t1)
 		if len(got) != 1 || seq != tc.seq {
 			t.Fatalf("%s: %d decisions, seq %d, want 1 and %d", name, len(got), seq, tc.seq)
 		}
@@ -124,12 +124,117 @@ func TestMergePlanDecisions(t *testing.T) {
 		}
 	}
 	// The agent's order wins; left-out entries are dropped; prev is not changed.
-	got, seq := mergePlanDecisions(prev, 3, []planTurnDecision{turnDecision("D3"), turnDecision("D1"), turnDecision("D4")}, t1)
+	got, seq := mergePlanDecisions(prev, 3, []planTurnDecision{turnDecision("D3"), turnDecision("D1"), turnDecision("D4")}, nil, "", "", t1)
 	if ids := strings.Join(planDecisionIDs(got), ","); ids != "D3,D1,D4" || seq != 4 || got[0].Version != 3 || got[2].Version != 1 {
 		t.Fatalf("merged %s seq %d: %+v", ids, seq, got)
 	}
 	got[1].Options[0] = "changed"
 	if prev[0].Options[0] != "Rail" {
 		t.Fatal("the merge shares the previous list's options")
+	}
+}
+
+func keepAnswer(id string, v int64) aiv1.PlanDecisionAnswer {
+	return aiv1.PlanDecisionAnswer{ID: id, Version: v, Keep: true}
+}
+
+func optionAnswer(id string, v int64, o int32) aiv1.PlanDecisionAnswer {
+	return aiv1.PlanDecisionAnswer{ID: id, Version: v, Option: &o}
+}
+
+// The who-fields of a turn's list follow the answered message (R3,
+// Decision 5): who decided each version and who signed it off.
+func TestPlanDecisionsWho(t *testing.T) {
+	t0, t1 := time.Date(2026, 11, 19, 10, 0, 0, 0, time.UTC), time.Date(2026, 11, 19, 11, 0, 0, 0, time.UTC)
+	byX := storedDecision(turnDecision("D1"), 2, t0)
+	signOff(&byX, "sub-x", "Xavier", t0)
+	open := turnDecision("D1")
+	open.State = "open"
+	moved := turnDecision("D1") // the agent applies a change: another recommendation
+	moved.Recommended = 0
+	locked := storedDecision(turnDecision("D1"), 2, t0)
+	type who struct {
+		version           int64
+		decided, signed   string // "" for not signed off
+		decidedAt, signAt time.Time
+	}
+	for name, tc := range map[string]struct {
+		prev    aiv1.PlanDecision
+		out     []planTurnDecision // nil: the turn leaves the list unchanged
+		answers []aiv1.PlanDecisionAnswer
+		author  string
+		failed  bool // an interrupted or failed turn applies no answers
+		want    who
+	}{
+		"new version without answers": {prev: locked, out: []planTurnDecision{moved},
+			want: who{version: 3, decided: "agent", decidedAt: t1}},
+		"applied change by X": {prev: locked, out: []planTurnDecision{moved}, answers: []aiv1.PlanDecisionAnswer{optionAnswer("D1", 2, 0)}, author: "sub-x",
+			want: who{version: 3, decided: "sub-x", signed: "sub-x", decidedAt: t1, signAt: t1}},
+		"applied other answer by X": {prev: locked, out: []planTurnDecision{moved},
+			answers: []aiv1.PlanDecisionAnswer{{ID: "D1", Version: 2, Other: "Neither"}}, author: "sub-x",
+			want: who{version: 3, decided: "sub-x", signed: "sub-x", decidedAt: t1, signAt: t1}},
+		"keep on the current version": {prev: locked, out: []planTurnDecision{turnDecision("D1")}, answers: []aiv1.PlanDecisionAnswer{keepAnswer("D1", 2)}, author: "sub-x",
+			want: who{version: 2, decided: "agent", signed: "sub-x", decidedAt: t0, signAt: t1}},
+		"keep, list unchanged": {prev: locked, answers: []aiv1.PlanDecisionAnswer{keepAnswer("D1", 2)}, author: "sub-x",
+			want: who{version: 2, decided: "agent", signed: "sub-x", decidedAt: t0, signAt: t1}},
+		"recommended option is a keep": {prev: locked, answers: []aiv1.PlanDecisionAnswer{optionAnswer("D1", 2, 1)}, author: "sub-x",
+			want: who{version: 2, decided: "agent", signed: "sub-x", decidedAt: t0, signAt: t1}},
+		"later keep by Y replaces X": {prev: byX, out: []planTurnDecision{turnDecision("D1")}, answers: []aiv1.PlanDecisionAnswer{keepAnswer("D1", 2)}, author: "sub-y",
+			want: who{version: 2, decided: "agent", signed: "sub-y", decidedAt: t0, signAt: t1}},
+		"later keep by Y, list unchanged": {prev: byX, answers: []aiv1.PlanDecisionAnswer{keepAnswer("D1", 2)}, author: "sub-y",
+			want: who{version: 2, decided: "agent", signed: "sub-y", decidedAt: t0, signAt: t1}},
+		"unapplied change": {prev: locked, out: []planTurnDecision{turnDecision("D1")}, answers: []aiv1.PlanDecisionAnswer{optionAnswer("D1", 2, 0)}, author: "sub-x",
+			want: who{version: 2, decided: "agent", decidedAt: t0}},
+		"unapplied change, list unchanged": {prev: byX, answers: []aiv1.PlanDecisionAnswer{optionAnswer("D1", 2, 0)}, author: "sub-y",
+			want: who{version: 2, decided: "agent", signed: "sub-x", decidedAt: t0, signAt: t0}},
+		"keep on a stale version": {prev: locked, out: []planTurnDecision{turnDecision("D1")}, answers: []aiv1.PlanDecisionAnswer{keepAnswer("D1", 1)}, author: "sub-x",
+			want: who{version: 2, decided: "agent", decidedAt: t0}},
+		"keep on a stale version, list unchanged": {prev: locked, answers: []aiv1.PlanDecisionAnswer{keepAnswer("D1", 1)}, author: "sub-x",
+			want: who{version: 2, decided: "agent", decidedAt: t0}},
+		"stale change applied": {prev: locked, out: []planTurnDecision{moved}, answers: []aiv1.PlanDecisionAnswer{optionAnswer("D1", 1, 0)}, author: "sub-x",
+			want: who{version: 3, decided: "agent", decidedAt: t1}},
+		"keep, the agent changes it anyway": {prev: locked, out: []planTurnDecision{moved}, answers: []aiv1.PlanDecisionAnswer{keepAnswer("D1", 2)}, author: "sub-x",
+			want: who{version: 3, decided: "agent", decidedAt: t1}},
+		"keep on an open entry the agent locks": {prev: storedDecision(open, 1, t0), out: []planTurnDecision{turnDecision("D1")},
+			answers: []aiv1.PlanDecisionAnswer{keepAnswer("D1", 1)}, author: "sub-x",
+			want: who{version: 2, decided: "sub-x", signed: "sub-x", decidedAt: t1, signAt: t1}},
+		"keep on an open entry left open": {prev: storedDecision(open, 1, t0), answers: []aiv1.PlanDecisionAnswer{keepAnswer("D1", 1)}, author: "sub-x",
+			want: who{version: 1, decided: "agent", decidedAt: t0}},
+		"interrupted turn": {prev: byX, out: []planTurnDecision{moved}, answers: []aiv1.PlanDecisionAnswer{optionAnswer("D1", 2, 0)}, author: "sub-y", failed: true,
+			want: who{version: 2, decided: "agent", signed: "sub-x", decidedAt: t0, signAt: t0}},
+		"no author": {prev: locked, answers: []aiv1.PlanDecisionAnswer{keepAnswer("D1", 2)},
+			want: who{version: 2, decided: "agent", decidedAt: t0}},
+	} {
+		prev := []aiv1.PlanDecision{tc.prev}
+		var got []aiv1.PlanDecision
+		names := map[string]string{"sub-x": "Xavier", "sub-y": "Yvonne"}
+		switch {
+		case tc.failed: // as PlanRun.turn: no list and no answers (see TestPlanFailedTurnSignsOffNothing)
+			got = signOffKept(prev, nil, tc.author, names[tc.author], t1)
+		case tc.out == nil:
+			got = signOffKept(prev, tc.answers, tc.author, names[tc.author], t1)
+		default:
+			got, _ = mergePlanDecisions(prev, 1, tc.out, tc.answers, tc.author, names[tc.author], t1)
+		}
+		d := got[0]
+		var signAt time.Time
+		if d.SignedOffAt != nil {
+			signAt = d.SignedOffAt.Time
+		}
+		w := tc.want
+		decidedName := map[string]string{"agent": ""}[w.decided]
+		if w.decided != "agent" {
+			decidedName = names[w.decided]
+		}
+		if d.Version != w.version || d.DecidedBy != w.decided || d.DecidedByName != decidedName || !d.DecidedAt.Time.Equal(w.decidedAt) ||
+			d.SignedOffBy != w.signed || d.SignedOffByName != names[w.signed] || (d.SignedOffAt != nil) != (w.signed != "") || !signAt.Equal(w.signAt) {
+			t.Errorf("%s: got version %d decided %s/%q at %v, signed %s/%q at %v; want %+v", name,
+				d.Version, d.DecidedBy, d.DecidedByName, d.DecidedAt.Time, d.SignedOffBy, d.SignedOffByName, signAt, w)
+		}
+	}
+	// A sign-off does not write into the list it was given.
+	prev := []aiv1.PlanDecision{storedDecision(turnDecision("D1"), 2, t0)}
+	if signOffKept(prev, []aiv1.PlanDecisionAnswer{keepAnswer("D1", 2)}, "sub-x", "Xavier", t1); prev[0].SignedOffBy != "" {
+		t.Fatal("signOffKept changed its input")
 	}
 }

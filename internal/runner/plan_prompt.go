@@ -3,6 +3,8 @@ package runner
 import (
 	"fmt"
 	"strings"
+
+	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 )
 
 const planSystemPrompt = `You help the owner of a project write the description of one GitLab
@@ -125,6 +127,10 @@ type planTurnInput struct {
 	// decision (NextDecisionID > 1).
 	DecisionIDs    []string
 	NextDecisionID int
+	// Answers are the message's answers to the decisions, rendered against
+	// Decisions, the plan's current list.
+	Answers   []aiv1.PlanDecisionAnswer
+	Decisions []aiv1.PlanDecision
 }
 
 // houseRules renders the project's house rules for a plan turn.
@@ -167,7 +173,14 @@ func buildPlanPrompt(in planTurnInput) string {
 	if in.Untitled {
 		b.WriteString("## Title\n\nThe plan has no title yet: give one in title.\n\n")
 	}
-	fmt.Fprintf(&b, "## The owner's message\n\n%s\n\n", strings.TrimSpace(in.Message))
+	answers := renderPlanAnswers(in.Decisions, in.Answers)
+	if answers != "" {
+		fmt.Fprintf(&b, "## The owner's answers to the decisions\n\n%s\n\n", answers)
+	}
+	// A message of answers alone has no text.
+	if msg := strings.TrimSpace(in.Message); msg != "" || answers == "" {
+		fmt.Fprintf(&b, "## The owner's message\n\n%s\n\n", msg)
+	}
 	gl := strings.TrimSpace(in.GitLab)
 	if gl == "" {
 		b.WriteString("## GitLab\n\nThe project's milestones, issues and merge requests could not be read for this turn.\n")

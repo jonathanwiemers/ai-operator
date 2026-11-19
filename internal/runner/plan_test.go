@@ -487,3 +487,97 @@ func TestPlanInterruptedTurnStoresNoDecisions(t *testing.T) {
 		t.Fatalf("reply %+v, decisions %+v", rep, p.Status.Decisions)
 	}
 }
+
+// answered is a message of owner sub-bob with answers to the decisions.
+func answered(id int64, text string, as ...aiv1.PlanDecisionAnswer) aiv1.ChatMessage {
+	m := chatMsg(id, "message", text, "sub-bob")
+	m.AuthorName, m.Decisions = "Bob", as
+	return m
+}
+
+func (e *planEnv) answer(t *testing.T, msg aiv1.ChatMessage) *aiv1.AgentPlan {
+	t.Helper()
+	if err := e.run.turn(context.Background(), e.plan(t), e.project, msg); err != nil {
+		t.Fatal(err)
+	}
+	return e.plan(t)
+}
+
+// Keeps sign off when the agent leaves the list unchanged (D614-P4), and an
+// applied change is decided and signed off by the owner who answered.
+func TestPlanTurnAnswersSignOff(t *testing.T) {
+	const draft = "## Goal\n\nShow the version.\n\n## Decisions (locked)\n\n1. In the rail.\n2. Tag and SHA."
+	d1 := decisionJSON("D1", "Placement", "locked", 0, "Rail", "Footer")
+	e := newPlanEnv(t,
+		planDecided("Two decisions.", draft, decisionsJSON(d1, decisionJSON("D2", "Format", "locked", 1, "Tag", "Tag and SHA"))),
+		planDecided("Noted.", "", "[]"),
+		planDecided("D2 is the tag now.", "", decisionsJSON(d1, decisionJSON("D2", "Format", "locked", 0, "Tag", "Tag and SHA"))))
+	e.turn(t, 10, "draft it")
+	p := e.answer(t, answered(11, "", keepAnswer("D1", 1), keepAnswer("D2", 1)))
+	turn11 := p.Status.Decisions
+	for _, d := range turn11 {
+		if d.Version != 1 || d.DecidedBy != "agent" || d.SignedOffBy != "sub-bob" || d.SignedOffByName != "Bob" || d.SignedOffAt == nil {
+			t.Fatalf("keeps with an empty list: %+v", turn11)
+		}
+	}
+	prompt := e.engine.calls[1].Prompt
+	if !strings.Contains(prompt, "## The owner's answers to the decisions\n\nD1, D2 kept as recommended.\n\n## GitLab") ||
+		strings.Contains(prompt, "## The owner's message") {
+		t.Fatalf("prompt of answers without text:\n%s", prompt)
+	}
+
+	p = e.answer(t, answered(12, "Tag only.", optionAnswer("D2", 1, 0)))
+	ds := p.Status.Decisions
+	if d := ds[1]; d.Version != 2 || d.DecidedBy != "sub-bob" || d.DecidedByName != "Bob" || d.SignedOffBy != "sub-bob" ||
+		d.SignedOffAt == nil || !d.SignedOffAt.Equal(&d.DecidedAt) {
+		t.Fatalf("applied change: %+v", d)
+	}
+	if d := ds[0]; d.Version != 1 || d.SignedOffBy != "sub-bob" || !d.SignedOffAt.Equal(turn11[0].SignedOffAt) {
+		t.Fatalf("an unanswered decision lost its sign-off: %+v", d)
+	}
+	if want := "- D2 (Format): the owner picks \"Tag\" instead of the recommended \"Tag and SHA\"."; !strings.Contains(e.engine.calls[2].Prompt, want) {
+		t.Fatalf("prompt lacks %q:\n%s", want, e.engine.calls[2].Prompt)
+	}
+}
+
+// A failed turn applies no answers: the owner sends them again.
+func TestPlanFailedTurnSignsOffNothing(t *testing.T) {
+	e := newPlanEnv(t,
+		planDecided("One.", "", decisionsJSON(decisionJSON("D1", "Placement", "locked", 0, "Rail", "Footer"))),
+		func(Invocation) (*Result, error) { return nil, errors.New("claude exited with status 1") },
+		func(Invocation) (*Result, error) { return &Result{SessionID: "s", Text: "not json"}, nil })
+	e.turn(t, 10, "go")
+	for _, id := range []int64{11, 12} {
+		p := e.answer(t, answered(id, "", keepAnswer("D1", 1)))
+		if rep := lastReply(t, p, id); rep.Error == "" || p.Status.Decisions[0].SignedOffBy != "" {
+			t.Fatalf("turn %d: reply %+v, decisions %+v", id, rep, p.Status.Decisions)
+		}
+	}
+}
+
+// An interrupted turn applies no answers, even when the engine still answered.
+func TestPlanInterruptedTurnSignsOffNothing(t *testing.T) {
+	d1 := decisionsJSON(decisionJSON("D1", "Placement", "locked", 0, "Rail", "Footer"))
+	e := newPlanEnv(t, planDecided("One.", "", d1), nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	// Set before any turn: a turn's interrupt watcher reads it.
+	e.run.wake = e.run.watchObject(ctx, &aiv1.AgentPlanList{}, "shop-plan-1")
+	e.turn(t, 10, "go")
+	e.engine.answers[1] = func(inv Invocation) (*Result, error) {
+		e.engine.mu.Lock()
+		turnCtx := e.engine.ctxs[len(e.engine.ctxs)-1]
+		e.engine.mu.Unlock()
+		e.post(t, chatMsg(12, "interrupt", "stop", "alice"))
+		<-turnCtx.Done()
+		return planDecided("Here.", "", d1)(inv)
+	}
+	e.post(t, answered(11, "", keepAnswer("D1", 1)))
+	if _, err := e.run.tick(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	p := e.plan(t)
+	if rep, _ := replyFor(p, 11); rep.Error != "interrupted" || p.Status.Decisions[0].SignedOffBy != "" {
+		t.Fatalf("reply %+v, decisions %+v", rep, p.Status.Decisions)
+	}
+}

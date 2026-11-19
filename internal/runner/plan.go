@@ -103,6 +103,10 @@ func (p *PlanRun) turn(ctx context.Context, plan *aiv1.AgentPlan, project *aiv1.
 		return ctx.Err() // the pod stops: still in flight
 	}
 	base, draft, title := plan.Status.DraftRevision, strings.TrimSpace(out.Draft), planTitleFrom(out.Title)
+	answers := msg.Decisions
+	if errStr != "" {
+		answers = nil // a failed or interrupted turn applies no answers: the owner sends them again
+	}
 	return p.answer(ctx, &st, func(s *aiv1.AgentPlanStatus) []aiv1.ChatReply {
 		text, refused := textutil.Truncate(prose(out.Reply), maxChatReplyBytes-128), true
 		switch {
@@ -116,13 +120,20 @@ func (p *PlanRun) turn(ctx context.Context, plan *aiv1.AgentPlan, project *aiv1.
 			s.Draft, s.DraftRevision, s.DraftBy, s.DraftSHA, refused = draft, base+1, "agent", sha, false
 		}
 		// The list follows the draft: not applied when the draft was refused.
+		// The owner's keeps sign off even when the list is not applied.
+		merged := false
 		if len(out.Decisions) > 0 && !refused {
 			if err := validPlanDecisions(s.Decisions, s.DecisionSeq, out.Decisions); err != nil {
 				p.Log.Info("plan decisions not applied", "error", err.Error())
 				text += "\n\n" + planDecisionsInvalid
 			} else {
-				s.Decisions, s.DecisionSeq = mergePlanDecisions(s.Decisions, s.DecisionSeq, out.Decisions, at.Time)
+				s.Decisions, s.DecisionSeq = mergePlanDecisions(s.Decisions, s.DecisionSeq, out.Decisions,
+					answers, msg.Author, msg.AuthorName, at.Time)
+				merged = true
 			}
+		}
+		if !merged {
+			s.Decisions = signOffKept(s.Decisions, answers, msg.Author, msg.AuthorName, at.Time)
 		}
 		if title != "" && s.Title == "" && plan.Spec.Title == "" {
 			s.Title = title // the agent names the plan once
@@ -251,7 +262,8 @@ func (p *PlanRun) ask(ctx context.Context, st *state, plan *aiv1.AgentPlan, spec
 		Untitled:   plan.Spec.Title == "" && plan.Status.Title == "",
 		Edited:     plan.Status.DraftBy == "owner" && rev > st.PlanSeenRevision,
 		MaxMRLines: spec.MaxMRLines(), Constraints: spec.HouseConstraints(),
-		DecisionIDs: planDecisionIDs(plan.Status.Decisions), NextDecisionID: int(plan.Status.DecisionSeq) + 1})
+		DecisionIDs: planDecisionIDs(plan.Status.Decisions), NextDecisionID: int(plan.Status.DecisionSeq) + 1,
+		Answers: msg.Decisions, Decisions: plan.Status.Decisions})
 	if st.ChatInFlight != nil && st.ChatInFlight.Resent {
 		inv.Prompt = chatResendPrefix + "\n\n" + inv.Prompt
 	}
