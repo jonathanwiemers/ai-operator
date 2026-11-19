@@ -94,7 +94,7 @@ See [Labels](../reference/labels.md) and
 *Companions* on its *Issues* tab, also after the issue's task is gone. A
 task's header links its companion merge request. A companion that is ready
 for you to merge is an Inbox item, with a browser notification. On the
-*Spend* tab, an issue with a companion has a *companion* marker: its calls
+*Metrics* tab, an issue with a companion has a *companion* marker: its calls
 edit both trees and count to the home issue. See [The Desk](desk.md).
 
 **In GitLab**, the companion's merge request:

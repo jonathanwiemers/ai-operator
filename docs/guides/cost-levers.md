@@ -1,9 +1,9 @@
 # Cost levers
 
-This page shows how you find out which settings make a merged line of code
+This page shows how you find out which settings make a line of code
 cheaper. You try them side by side in an
 [experiment](../concepts/glossary.md#experiment): each issue runs on one
-[arm](../concepts/glossary.md#arm), and the Desk's Costs page compares the
+[arm](../concepts/glossary.md#arm), and the Desk's Metrics page compares the
 arms on real issues. You read the numbers and decide; nothing switches on
 its own.
 
@@ -143,21 +143,23 @@ had a label of yours and runs outside the experiment.
 
 ## Read the arm table
 
-In the Desk, open *Costs* in the rail and pick a range that covers the
-experiment, for example 90 days. The section *Cost per merged line* has
+In the Desk, open *Metrics* in the rail and pick a range that covers the
+experiment, for example 90 days. The section *Cost per 100 written lines* has
 one table per project with an experiment, titled *Arms of cost-levers:
 my-group/shop*:
 
-| Arm | Merged issues | Merged lines | Known cost | Tokens | Per 100 lines |
-|-----|---------------|--------------|------------|--------|---------------|
+| Arm | Merged issues | Written lines | Known cost | Tokens | Per 100 written lines |
+|-----|---------------|---------------|------------|--------|-----------------------|
 | baseline | 7 | 2,940 | $412.80 | 1.9B | $14.04 · 7 issues |
 | fresh | 6 | 2,510 | $251.30 | 1.1B | $10.01 · 6 issues |
 | medium | 8 | 3,320 | $398.60 | 1.8B | $12.01 · 8 issues |
 | sonnet | 3 | 1,120 | $71.40 | 640M | $6.38 · 3 issues |
 
-- **Per 100 lines** is the figure to compare: the known cost of the arm's
-  issues for every 100 merged lines. It counts all calls of an issue,
-  reviews and CI rounds included.
+- **Per 100 written lines** is the figure to compare: the known cost of the
+  arm's merged issues for every 100 lines their implement calls wrote. It
+  counts all calls of an issue, reviews and CI rounds included. The Code
+  section of the same page has the cost per 100 merged production lines,
+  see [Lines of code](budgets-and-spend.md#lines-of-code).
 - **Merged issues** is how many issues of the arm were merged. The issue
   count next to the figure says how much it rests on.
 - Below the arm tables, *By model*, *By effort* and *By step session*
@@ -171,7 +173,7 @@ In this example the `sonnet` row is greyed out: it has only 3 merged issues.
   with "too few to compare". Wait until every arm has 5 or more.
 - **Similar issue mixes.** The hash spreads issues evenly, but a few big
   issues in one arm still move its figure. Compare over a range with many
-  issues, and look at the merged lines per issue too.
+  issues, and look at the written lines per issue too.
 - **One change at a time.** Change the profiles, the effort or the
   implementer's model during an experiment, and its arms no longer compare.
   Start a new experiment with a new name instead.
@@ -181,7 +183,7 @@ In this example the `sonnet` row is greyed out: it has only 3 merged issues.
 
 ## Read the Context panel
 
-The *Context* section of the Costs page shows, per project, what fills an
+The *Context* section of the Metrics page shows, per project, what fills an
 agent's context:
 
 - **Base context by role:** the median context of a fresh session's first
@@ -228,8 +230,8 @@ no arm.
 
 ## Next
 
-- [Budgets and spend](budgets-and-spend.md#the-costs-page): the rest of
-  the Costs page, and budgets.
+- [Budgets and spend](budgets-and-spend.md#the-metrics-page): the rest of
+  the Metrics page, lines of code, and budgets.
 - [Experiment](../reference/agents-and-models.md#experiment): every field
   and rule of an experiment.
 - [Profiles](../reference/agents-and-models.md#profiles): how the planner

@@ -4,7 +4,7 @@ Screenshots of the Desk, all on invented data (a shop on
 `gitlab.example.com`, user `sam`). Do not edit them by hand: `make
 docs-screenshots` renders them again, see
 [Docs screenshots](../../contributing/web-ui.md#docs-screenshots). All of them are shown in
-[The Desk](../../guides/desk.md), the Costs page in
+[The Desk](../../guides/desk.md), the Metrics page in
 [Steer from the Desk](../../guides/steer-from-the-desk.md#costs-at-a-glance).
 
 | File | Page | Used in |

@@ -2,7 +2,7 @@ import type { CostPointView, CostsMonthView, SpendBreakdownView } from './genera
 import { breakdownLink, changeLabel, costKeyLabel, monthToDate, type CostFilters, type CostGroup, type MonthSum, type MonthToDate } from './costs.ts'
 import { tokenCount } from './format.ts'
 
-// The Costs page's chart data (docs/contributing/web-ui.md, "Costs page"; decisions 7 and 8 of
+// The Costs page's chart data (docs/contributing/web-ui.md, "Metrics page"; decisions 7 and 8 of
 // docs/specs/costs-page.spec.md): buckets and points of GET /api/v1/costs
 // shaped into series, top N plus Other, bucket labels and colour slots.
 // Pure: no Vue, no Chart.js; the chart wrappers only pass it on.

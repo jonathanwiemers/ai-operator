@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Code (docs/contributing/web-ui.md, "Costs page"; R14 of the milestone
+// Code (docs/contributing/web-ui.md, "Metrics page"; R14 of the milestone
 // "Desk: one Metrics page"): the written and merged production lines per
 // bucket, the range's tiles and, without a project filter, the merged
 // production lines and cost per 100 of each project. Kind and engine do not

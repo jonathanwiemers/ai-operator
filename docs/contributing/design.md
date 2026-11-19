@@ -787,6 +787,11 @@ them). Two sources of events:
   returned, a bounded set of seen IDs keeping repeats away from the
   database.
 
+The AgentProject reconciler also records one kind itself, through its
+Recorder: `companion.merged`, when a companion entry becomes merged (see
+[Merged lines](#merged-lines)). A `merged` event carries `data.lines` when
+the item has `mergedLines`.
+
 Every event has a deterministic key (`task/<uid>/run/<n>`, `note/<id>`, …),
 so writing it twice is one row. A leader-only recorder writes in batches
 from a bounded queue: a full queue or a database outage drops events and
@@ -868,7 +873,7 @@ outlives its result in `research_runs`.
 
 `agent_calls_project_at_idx` (namespace, project, at) serves time ranges over
 several projects: `Store.SpendSince` (the dashboard's today and 7-day chips)
-and the Costs page's queries. A store test checks with `EXPLAIN` that the
+and the Metrics page's queries. A store test checks with `EXPLAIN` that the
 plan uses it.
 
 **Spend.** Sums of cost and tokens come from Postgres, never from the
@@ -903,6 +908,60 @@ call: no cost, no tokens, not in `Calls`. `SpendTotals.Checkpoints` counts
 the calls with a checkpoint plus these events at every scope and child.
 `ByCheckpoint` groups both by reason, with the number in `Count`; its
 totals stay the calls'.
+
+### Merged lines
+
+User side: [Lines of code](../guides/budgets-and-spend.md#lines-of-code);
+the fields and events: [Status and history events](../reference/status-and-history.md).
+
+*Written* lines are `agent_calls.lines_added`/`lines_deleted`, summed into
+`SpendTotals.linesAdded`/`linesDeleted` at every scope (legacy runs add 0).
+*Merged* lines are the final diff of an issue's merge requests, home and
+companions, counted once from GitLab when each becomes merged:
+
+- `internal/difflines` classifies a path and counts a `[]gitlab.Diff`. The
+  category is decided on `new_path` (`old_path` for a deleted file), the
+  first match wins, patterns in `.gitignore` syntax (a pattern without a
+  `/` matches at any depth):
+  - `generated`: `zz_generated*`, `web/src/generated/**`, `config/crd/**`,
+    `config/rbac/**`, `charts/*/files/**`, `*.pb.go`, `go.sum`,
+    `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`;
+  - `tests`: `*_test.go`, `**/test/**`, `**/tests/**`, `**/testdata/**`,
+    `*.test.*`, `*.spec.ts`;
+  - `docs`: `docs/**`, `*.md`;
+  - `production`: everything else.
+
+  It counts the patch lines that start with `+` or `-`, not the `+++`/`---`
+  headers; a binary patch counts 0. A diff without content (collapsed, too
+  large, or empty and not a pure rename) sets `partial`. The list is the
+  same for companion repositories and lives in code only.
+- Home MRs: when autopilot records the merge (`autopilot.merged`), it makes
+  one `ListMergeRequestDiffs` call while the item has no `mergedLines` and
+  stores the count on `AutopilotItem.mergedLines`. The differ copies it to
+  the `merged` event as `data.lines`; the event key is unchanged.
+- Companions: when a `status.companions` entry becomes merged (a human
+  merge seen on a poll, a resumed landing, autopilot's own merge),
+  `companionMerged` counts once into `CompanionStatus.mergedLines` and
+  records a `companion.merged` event through the AgentProject reconciler's
+  recorder: the home namespace, project, milestone and issue, `mr_iid` the
+  companion MR, `data.companion` its path, `data.lines`, keyed
+  `companion/<path>/<mrIID>/merged`, at the entry's end time. A kind of its
+  own, so `issueFigures`' merge time (from `merged`) does not move.
+- A failed diffs call only logs: the merge or landing goes on, the field
+  stays empty, and the event comes without `lines`. It is not retried.
+  There is no new table and no migration: the lines expire with the
+  history retention, and nothing is backfilled.
+
+The store sums `merged` and `companion.merged` events per issue
+(`merged_lines_query.go`): an issue is measured when its `merged` event has
+`lines`; one without counts as unmeasured, not 0 (`issues` and `measured`
+counts, "M of N measured" in the Desk). The sums are `partial` when a part
+is, or a companion merged without lines. Per project, companion lines count
+under the home project. The cost per 100 merged production lines is the
+cost of all calls of the measured merged issues (calls before the range
+included) divided by their production lines (added plus deleted,
+companions included), times 100; unmeasured issues add neither cost nor
+lines.
 
 ### Pricing
 
@@ -941,8 +1000,8 @@ rows keep their cost.
 ### What the spend counts
 
 User side: [What counts as spend](../guides/budgets-and-spend.md#what-counts-as-spend).
-Budgets, the Spend tab ([Spend tab in detail](web-ui.md#spend-tab-in-detail)),
-the Costs page and the retrospective read the same numbers: one row per
+Budgets, the Metrics tab ([Metrics tab in detail](web-ui.md#metrics-tab-in-detail)),
+the Metrics page and the retrospective read the same numbers: one row per
 agent call in `agent_calls`. Calls without a known cost add nothing to the
 spend a budget compares.
 

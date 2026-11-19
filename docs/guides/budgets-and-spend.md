@@ -3,21 +3,25 @@
 Every agent call costs something, and the operator records each one. This
 page shows where you see the spend in the Desk, what counts as spend, how
 you give a milestone or an issue a [budget](../concepts/glossary.md#budget),
-and what happens when one is used up. Spend, budgets and the Costs page need
-the research database (see
+and what happens when one is used up. It also shows the lines of code the
+agents wrote and merged next to the cost. Spend, budgets and the Metrics
+page need the research database (see
 [Install](../getting-started/install.md#add-the-database)).
 
 ## See the spend in the Desk
 
-![Costs page with totals and a stacked daily spend chart per project](../assets/screenshots/costs.webp)
+![Metrics page with totals and a stacked daily spend chart per project](../assets/screenshots/costs.webp)
 
 - **Cost chips** on each project, milestone and task show the cost and the
   tokens, for example `$12.34 · 1.2M tok`.
-- **The *Spend* tab** of a project or a milestone breaks that cost down, to
-  the single call. See [The Spend tab](#the-spend-tab).
-- **The Costs page** (*Costs* in the rail, or the dashboard's *today* and
-  *last 7 days* chips) compares projects, kinds, models and engines over
-  time, and lists the open budgets. See [The Costs page](#the-costs-page).
+- **The *Metrics* tab** of a project or a milestone breaks that cost down,
+  to the single call, next to its lines. See [The Metrics tab](#the-metrics-tab).
+- **The Metrics page** (*Metrics* in the rail, or the dashboard's *today*
+  and *last 7 days* chips) compares projects, kinds, models and engines over
+  time, with the code, the flow and the pauses. See
+  [The Metrics page](#the-metrics-page).
+- **Lines** in a milestone's *Issues* table, the milestone rows and a
+  task's runs. See [Lines of code](#lines-of-code).
 - **The Inbox** shows a budget prompt and an issue at 80 % of its budget.
 
 Unknown is never $0: a cost the Desk does not know shows *n/a*, and calls
@@ -27,7 +31,7 @@ without a cost are counted next to the figure (*+3 calls without cost*).
 
 One record per agent call: planning, implementer steps, reviews, fix, CI and
 conflict rounds, the describer, the pilot, the retrospective and Desk chat
-turns. The Spend tab, the Costs page, the budgets and the
+turns. The Metrics tab, the Metrics page, the budgets and the
 [retrospective](pilot.md#the-retrospective) all read the same records.
 
 - **A call counts only itself.** Its tokens are everything it ran: the main
@@ -174,14 +178,19 @@ be read, budgets are not enforced, and the operator logs it on every poll:
 autopilot never pauses for lack of data. Calls without a known cost add
 nothing to a budget, so a budget on cursor without prices never runs out.
 
-## The Spend tab
+## The Metrics tab
 
-The *Spend* tab of a project or a milestone loads when you open it, and does
-not follow live changes. *Metrics across projects* opens the Metrics page for
-the project.
+The *Metrics* tab of a project or a milestone loads when you open it, and
+does not follow live changes. It was called *Spend*: links with `?tab=spend`
+still open it, new links use `?tab=metrics`. *Metrics across projects* opens
+the Metrics page for the project.
 
 - **Totals:** the cost, input, output, cache read and cache write tokens,
   calls (and subagent calls), checkpoints, duration and the cache-read share.
+- **Lines** next to the totals: the written lines, and for a project,
+  milestone or issue the merged production lines and the cost per 100
+  merged production lines (see [Lines of code](#lines-of-code)). An issue's
+  runs and calls have written lines only.
 - **Drill-down:** a project's milestones, a milestone's issues (and its own
   planning, pilot and retrospective calls), an issue's runs, a run's calls.
   Click a row to go one level down; the crumbs lead back. The position is
@@ -196,8 +205,9 @@ the project.
   model, its tokens and its cost.
 - **Breakdowns** by kind, role and model, highest cost first, and *By kind
   and model*, with the cost per 1M tokens, so "Opus with large outputs" can
-  be read off. A milestone and an issue also list the conflict calls per
-  run; more than one marks a repeat.
+  be read off. *By kind* also shows the written lines of the implementer
+  kinds. A milestone and an issue also list the conflict calls per run;
+  more than one marks a repeat.
 - **Tuning tables**, with the average cost per call, to set the levers in
   [Agents and models](../reference/agents-and-models.md#roles):
   - *Review rounds:* the review calls by round. A high round-1 cost on big
@@ -213,38 +223,44 @@ the project.
 Shares are of the known cost; when no row has one, of the tokens. Only
 milestones without an *old basis* or *mixed basis* mark compare on tokens.
 
-## The Costs page
+## The Metrics page
 
-The Costs page shows what agents cost across every project you may see,
-and research when you may read it. The filters are in the address, so a
-link shows the same page, for example
-`/costs?range=90d&group=model&kind=implement`:
+The Metrics page (`/metrics`) shows cost, tokens, code, flow and pauses
+across every project you may see, and research cost when you may read it.
+It replaced the Costs page: an old `/costs` link opens `/metrics` with the
+same filters. The filters are in the address, so a link shows the same
+page, for example `/metrics?range=90d&group=model&kind=implement`:
 
 - **Range:** the last 30 days by default, 7 or 90 days, this month, last
   month, 12 months, or your own dates. Days are your browser's.
 - **Group by:** project (the default), kind, model or engine.
 - **Filters:** project, kind and engine.
 
+Without a project filter, the page is the general view of all your
+projects. With one, `/metrics?project=namespace/name`, it is that
+project's metrics: the *Metrics* button on the project's stream opens it.
+
 At the top: the known cost of the range against the period before, month
 to date against the same days of last month, calls, metered tokens, the
 cache-read share, and the calls of unknown cost. Below them:
 
-- **Spend over time:** the known cost per day, week or month, one colour
-  per group key (the top six, then *Other*).
-- **This month:** this month's running cost as a line, last month's dashed
-  next to it.
-- **Where it goes:** the known cost by project, kind, model or engine. A
-  click on a project, kind or engine row filters the page.
+- **Cost:**
+  - *Spend over time:* the known cost per day, week or month, one colour
+    per group key (the top six, then *Other*).
+  - *This month:* this month's running cost as a line, last month's dashed
+    next to it.
+  - *Where it goes:* the known cost by project, kind, model or engine. A
+    click on a project, kind or engine row filters the page.
 - **Tokens:** the tokens per bucket by type, with the cache-read share.
 - **Most expensive:** the top ten milestones, issues and runs of the range.
-  Each opens its place in the Spend tab.
-- **Cost per merged line:** the issues of the range by experiment arm
+  Each opens its place in the Metrics tab.
+- **Cost per 100 written lines:** the issues of the range by experiment arm
   (per project, only when issues ran in an experiment), by model, by
-  effort and by step session. Each row shows the merged issues, their
-  merged lines, the cost and tokens of all its issues, and the cost per
-  100 merged lines. A row with fewer than 5 merged issues is greyed out:
-  too few to compare. How to run an experiment and read these tables is in
-  [Cost levers](cost-levers.md).
+  effort and by step session. Each row shows the merged issues, the
+  written lines of their implement calls, the cost and tokens of all its
+  issues, and the cost per 100 of those lines. A row with fewer than 5
+  merged issues is greyed out: too few to compare. How to run an
+  experiment and read these tables is in [Cost levers](cost-levers.md).
 - **Context:** per project, the median base context per role (what a
   fresh session holds before the agent starts) and the five tools whose
   results put the most tokens into the context.
@@ -252,6 +268,18 @@ cache-read share, and the calls of unknown cost. Below them:
 - **Budgets:** the budgets of milestones still on autopilot and of their
   issues, by share used, in the warning colour from 80 %. The page only
   shows them; you set budgets as above.
+- **Code:** the written lines and the merged production lines per bucket
+  side by side, tiles for the written lines, the merged lines of each
+  category and the cost per 100 merged production lines, and without a
+  project filter the same per project. See [Lines of code](#lines-of-code).
+- **Flow:** the issues merged in the range per bucket, the median wall
+  time (first run to merge), the median agent time (the sum of the issue's
+  call times), and the review and fix calls per merged issue.
+- **Pauses:** see [Pauses on the Metrics page](#pauses-on-the-metrics-page).
+
+Code, Flow and Pauses follow the range and the project filter only. While
+Kind or Engine is set, they say "Kind and engine filter cost and tokens
+only".
 
 *Download CSV* saves the series or the breakdowns of the current filters as
 a spreadsheet file. An unknown cost is an empty cell, never 0.
@@ -268,6 +296,86 @@ a spreadsheet file. An unknown cost is an empty cell, never 0.
 - Calls expire with `research.historyRetention` (the default is in the
   [chart values](../../charts/ai-operator/README.md#research)), so a range
   starts no earlier than that.
+
+### Pauses on the Metrics page
+
+The *Pauses* section counts the [pauses](../concepts/glossary.md#pause) of
+your autopilot milestones that started in the range:
+
+- the pauses per bucket, stacked by kind, and the paused hours per bucket;
+- tiles: the number of pauses, the paused time, the mean time to resume,
+  and the pauses open now;
+- tables by kind (count and time), by who resolved them and by how they
+  ended;
+- without a project filter, the same per project;
+- the 10 longest pauses (project, milestone, kind, reason, length). Each
+  opens the milestone's *Pilot* tab.
+
+A pause counts in the bucket where it started, with its full length; an
+open one counts up to now. A pause that started before the range is left
+out, even if it ended in it. Only milestone pauses count: an issue's
+[hold](../concepts/glossary.md#hold) is not recorded as a pause yet. The
+section reads at most the newest 20000 pause events; above that it says
+"Counts only the newest 20000 pause events."
+
+## Lines of code
+
+The Desk counts two kinds of lines next to the cost. Both show as
+`+added/−deleted`, for example `+40/−5`, and neither replaces the other.
+
+- **[Written lines](../concepts/glossary.md#written-lines)** measure effort:
+  the lines of every step commit the implementer calls left, rewrites and
+  fix rounds included. Every file counts, tests and docs too.
+- **[Merged lines](../concepts/glossary.md#merged-lines)** measure the
+  outcome: the final diff of the issue's merge requests, counted once from
+  GitLab when each one merges on an autopilot milestone. They are split
+  into four categories.
+
+A file's category comes from its new path, or the old path of a deleted
+file. The first match wins:
+
+| Category | Paths |
+|---|---|
+| generated | `zz_generated*`, the web UI's generated types, the CRD and RBAC manifests, `charts/*/files/**`, protobuf Go code, `go.sum`, `package-lock.json`, `pnpm-lock.yaml`, `yarn.lock` |
+| tests | Go test files, `**/test/**`, `**/tests/**`, `**/testdata/**`, `*.test.*`, TypeScript spec files |
+| docs | `docs/**`, `*.md` |
+| production | everything else |
+
+So a Go test file under `docs/` is tests, and a Markdown file among the
+generated web types is generated. The same list applies to every
+repository, companions included, and you cannot change it. The exact
+patterns are in [Merged lines](../contributing/design.md#merged-lines).
+
+**Companions count to the home issue.** The merged lines of an issue's
+[companion](../concepts/glossary.md#companion-repository) merge requests add
+to the issue's merged lines, and per project they count under the home
+project. A companion that merges later does not move the issue's merge
+time. In a milestone's *Issues* table, *Merged* shows the production lines;
+its tooltip lists the four categories and each companion's share, for
+example `group/infra +12/−3`.
+
+**Cost per 100 merged production lines.** The cost of all calls of the
+issues merged in the scope or range, calls before the range included,
+divided by their merged production lines (added plus deleted, companions
+included), times 100. Only measured issues count, on both sides: an issue
+without merged lines adds neither cost nor lines, and the figure says
+which share was measured, for example "2 of 3 measured". It carries the
+same notes as the cost (unmetered calls, old token basis).
+
+**What the signs mean.**
+
+- `—`: not measured. The issue merged before the Desk counted merged
+  lines, or GitLab's diff could not be read at merge. For the cost per 100
+  lines: the cost is unknown or there are no production lines.
+- `≥ +A/−D`: a partial count. GitLab sent some file's diff without its
+  content (collapsed or too large); those lines are not guessed, so the
+  real count is higher.
+- `≤ $1.20`: a cost per 100 lines over a partial count, so the real figure
+  is lower.
+
+There is no backfill: merged lines start with the first merge after the
+release that added them, and older issues show `—`. Written lines exist
+for every call the research database still keeps.
 
 ## Ask the database
 

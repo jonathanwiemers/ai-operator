@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Budgets (docs/contributing/web-ui.md, "Costs page"): the budgets of milestones whose
+// Budgets (docs/contributing/web-ui.md, "Metrics page"): the budgets of milestones whose
 // autopilot is not done, the milestone's own and its issues', as used. Shown
 // only, never set or enforced. Live state, not bound to the range. The
 // server sorts by share used; unknown spend is shown as unknown, never $0.

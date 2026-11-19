@@ -144,7 +144,7 @@ kubectl apply -f shop.yaml
 
 Open `https://ai.example.com` and sign in at your provider. The Desk opens
 on *Overview*, with your project's milestones. The rail on the left has
-*Inbox* (everything that needs you, across projects), *Overview*, *Costs*
+*Inbox* (everything that needs you, across projects), *Overview*, *Metrics*
 and your projects.
 
 Your user name is at the bottom of the rail. Note it: on your first

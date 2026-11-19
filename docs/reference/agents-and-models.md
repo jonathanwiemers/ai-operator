@@ -121,7 +121,7 @@ Every role and profile has these fields:
 
 A lower `maxInlineDiff` saves input tokens on big changes, but the reviewer
 then reads files itself and may look less closely. To tune it, compare the
-*Review rounds* in the Desk's [Spend tab](../guides/budgets-and-spend.md#the-spend-tab): if a lower cap
+*Review rounds* in the Desk's [Metrics tab](../guides/budgets-and-spend.md#the-metrics-tab): if a lower cap
 raises the cost per call or brings more rounds, go back up.
 
 `implement` and every profile also have:
@@ -136,7 +136,7 @@ step carries the whole session, so steps get more expensive as the run
 goes on. With `fresh`, each step after the first gets the issue, the
 summaries of the steps before, the agent's notes and new comments. It costs
 about as much as the first step, but forgets what was not in the notes or
-the code. The *Implementer steps: resumed vs fresh* table in the Spend tab
+the code. The *Implementer steps: resumed vs fresh* table in the Metrics tab
 compares the two.
 
 The step-size gate is claude only; a cursor role just gets the sentence
@@ -237,7 +237,7 @@ role's context. Give a writer only work that follows an existing file.
 
 On cursor, a role runs without its subagents, and the run log says so.
 
-To see whether they pay off, compare runs in the Spend tab: subagent models
+To see whether they pay off, compare runs in the Metrics tab: subagent models
 show up as their own, and the *With vs without subagents* table gives the
 cost per call of the calls in which a subagent ran against those without.
 A lower cost *with* means delegation pays.

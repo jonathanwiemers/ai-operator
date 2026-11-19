@@ -1,4 +1,4 @@
-// The Costs page's metrics (docs/contributing/web-ui.md, "Costs page"): what
+// The Costs page's metrics (docs/contributing/web-ui.md, "Metrics page"): what
 // 100 written lines (implement calls of merged issues) cost by experiment
 // arm, model, effort and step session, and what fills the context. Pure
 // helpers for MetricsBreakdown.vue and MetricsContext.vue; the figures

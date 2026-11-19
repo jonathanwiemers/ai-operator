@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Flow (docs/contributing/web-ui.md, "Costs page"; R14 of the milestone
+// Flow (docs/contributing/web-ui.md, "Metrics page"; R14 of the milestone
 // "Desk: one Metrics page"): the issues merged per bucket, their median wall
 // and agent times and the review and fix calls per merged issue. Kind and
 // engine do not apply.

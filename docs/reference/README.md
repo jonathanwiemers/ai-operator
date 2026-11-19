@@ -28,3 +28,6 @@ here once, and the guides link to them. The Helm chart values are in the
    child labels and metric of a set that covers a GitLab group.
 9. **[AgentResearch](agentresearch.md)**: the fields and status of a
    research, `spec.research` on a project, and the default candidates.
+10. **[Status and history events](status-and-history.md)**: the
+    `mergedLines` status fields of tasks and companions, and the history
+    events behind the Desk's lines and pauses.

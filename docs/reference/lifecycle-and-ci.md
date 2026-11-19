@@ -98,7 +98,7 @@ from the checkpoint. See
 The same happens when the agent container restarts, and in the new pod
 after a lost pod or an out-of-memory kill. A clean work tree saves nothing,
 and a merge in progress is aborted and saves nothing. A checkpoint never
-counts as the pushed or reviewed commit. The Task page and the Spend tab
+counts as the pushed or reviewed commit. The Task page and the Metrics tab
 count the checkpoints.
 
 | Field | Meaning | Default |

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Pauses (docs/contributing/web-ui.md, "Costs page"; decision 10 of the
+// Pauses (docs/contributing/web-ui.md, "Metrics page"; decision 10 of the
 // milestone "Desk: one Metrics page"): the milestone pauses that started in the
 // range, per bucket by kind and in paused hours, the totals, who and how
 // ended them, per project without a project filter, and the ten longest,

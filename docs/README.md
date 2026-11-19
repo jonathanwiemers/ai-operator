@@ -43,7 +43,8 @@ watch [budgets and spend](guides/budgets-and-spend.md), try
 [agents and models](reference/agents-and-models.md),
 [lifecycle and CI](reference/lifecycle-and-ci.md) and the
 [agent image](reference/agent-image.md), the
-[`AgentResearch` fields](reference/agentresearch.md) and the
+[`AgentResearch` fields](reference/agentresearch.md), the
+[status fields and history events](reference/status-and-history.md) and the
 [Desk API](reference/desk-api.md), for looking things up.
 
 ## Concepts

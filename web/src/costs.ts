@@ -3,7 +3,7 @@ import type { SpendTotals } from './generated/store.ts'
 import type { CostPointView, CostsMonthView, CostsView, CostTopRowView } from './generated/views.ts'
 import { spendLocation, type SpendScope } from './spend.ts'
 
-// The Costs page's pure parts (docs/contributing/web-ui.md, "Costs page"): its filters in
+// The Costs page's pure parts (docs/contributing/web-ui.md, "Metrics page"): its filters in
 // the URL (?range=&from=&to=&group=&project=&kind=&engine=, decision 9) and
 // the KPI row's figures. Costs.vue renders them.
 

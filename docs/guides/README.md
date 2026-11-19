@@ -36,7 +36,7 @@ In the order you need them for a milestone:
 12. [Read and revisit decisions](decisions.md): the Decisions tabs, search,
     the card, the chain of revisits and what Revisit does.
 13. [Budgets and spend](budgets-and-spend.md): what counts as spend, budgets
-    for a milestone and its issues, and the Spend tab and Costs page.
+    for a milestone and its issues, and the Metrics tab and Metrics page.
 14. [Cost levers](cost-levers.md): try fresh step sessions, a lower effort
     and a cheaper profile side by side in an experiment, and read the arm
     table and the Context panel.

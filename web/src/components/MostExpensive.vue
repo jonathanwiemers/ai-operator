@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Most expensive (docs/contributing/web-ui.md, "Costs page"): the top milestones, issues and
+// Most expensive (docs/contributing/web-ui.md, "Metrics page"): the top milestones, issues and
 // runs of the range by known cost, ten each. A row names its label, project
 // and, for a run, its kind; its cost is the known cost, or "n/a" / "not
 // metered" when every call is unknown, never $0.00, with a mark for the

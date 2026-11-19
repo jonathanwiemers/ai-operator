@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Context (docs/contributing/web-ui.md, "Costs page"): per project, how big
+// Context (docs/contributing/web-ui.md, "Metrics page"): per project, how big
 // a fresh context is before the agent starts (the median first turn of the
 // calls that started their session, per role), and the five tools whose
 // results put the most into the context over the range, in tokens estimated

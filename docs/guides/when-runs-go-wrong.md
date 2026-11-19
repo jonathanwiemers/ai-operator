@@ -57,7 +57,7 @@ force push. A clean tree saves nothing.
 
 The issue, the progress comment and the failure report say what was saved:
 `💾 Saved a checkpoint (<sha>, N files, +A/−D) because …`. The Desk counts
-checkpoints by reason on the task page (*Agent calls*) and on the *Spend*
+checkpoints by reason on the task page (*Agent calls*) and on the *Metrics*
 tab of the issue, milestone and project.
 
 To turn checkpoints off, set `checkpoint.disabled: true`. A cut-off run then

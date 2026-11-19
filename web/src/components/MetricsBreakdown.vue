@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// Cost per 100 written lines (docs/contributing/web-ui.md, "Costs page"): the
+// Cost per 100 written lines (docs/contributing/web-ui.md, "Metrics page"): the
 // range's issues by experiment arm (one table per project, none without
 // experiment data), by model, by effort and by step session. An issue counts
 // whole for one row; a row with fewer than 5 merged issues is greyed out

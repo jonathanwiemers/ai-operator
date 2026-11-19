@@ -7,9 +7,8 @@ ai-operator. You see what needs you, follow every
 to the [pilot](../concepts/glossary.md#pilot), chat with an agent, resume a
 pause. This page shows how you get in, who sees what, and what each view
 shows. What you do in them is in
-[Steer from the Desk](steer-from-the-desk.md).
-
-To turn the Desk on, follow [Turn on the Desk](../getting-started/turn-on-the-desk.md).
+[Steer from the Desk](steer-from-the-desk.md). To turn the Desk on, follow
+[Turn on the Desk](../getting-started/turn-on-the-desk.md).
 
 ## Log in
 
@@ -120,13 +119,14 @@ write rule must match names there (for example `agents/*`). A user may start
 
 ![Desk overview with running, paused and done milestones, their progress, cost and tokens](../assets/screenshots/dashboard.webp)
 
-- **The rail** on the left has *Inbox*, *Overview*, *Costs*, *Plans* (with
-  Desk chat), your projects
-  with a status dot (running, needs you, idle), a count of what needs you, the
-  counts of active and [settling](../concepts/glossary.md#settling)
-  milestones, the researches, and how much of each
-  [engine's](../concepts/glossary.md#engine) usage window is used. Its footer
-  shows the operator's version, with a note when an update is rolling out or out.
+- **The rail** on the left has *Inbox*, *Overview*, *Metrics* (cost, code,
+  flow and pauses across projects, see [The Metrics page](budgets-and-spend.md#the-metrics-page);
+  old `/costs` links open it), *Plans* (with Desk chat), your projects with a status dot
+  (running, needs you, idle), a count of what needs you, the counts of
+  active and [settling](../concepts/glossary.md#settling) milestones, the
+  researches, and how much of each [engine's](../concepts/glossary.md#engine)
+  usage window is used. Its footer shows the operator's version, with a note
+  when an update is rolling out or out.
 - **Breadcrumbs** at the top lead back up, one click per level: *Overview* ›
   project › milestone › issue, or *Overview* › project › *Plans* › plan.
 - **Search**: ⌘K (macOS) or Ctrl+K opens the search from anywhere. It finds
@@ -187,7 +187,7 @@ event of all your projects.
 
 ![Project page with its milestones, the pilot message box and a run that asks a question, beside the needs-you panel and the queue](../assets/screenshots/project-stream.webp)
 
-A project page has the tabs *Stream | Decisions | Board | Spend*, and *Plans*
+A project page has the tabs *Stream | Decisions | Board | Metrics*, and *Plans*
 with Desk chat:
 
 - **Stream**: the project's [autopilot queue and the milestones that are
@@ -197,7 +197,7 @@ with Desk chat:
   short pause card over it.
 - **Decisions**: the decisions of all its milestones, or of the one you pick.
 - **Board**: one board per milestone, plus the issues without one.
-- **Spend**: what the project's agent calls cost.
+- **Metrics**: what the project's agent calls cost, with its lines of code.
 - **Plans**: the project's [plans](write-a-milestone.md#draft-it-in-the-desk)
   and, for an owner, *Plan milestone*.
 
@@ -213,7 +213,7 @@ tablet the *Context* button opens it.
 ## A milestone
 
 A milestone page has the tabs *Issues*, *Needs you*, *Decisions*, *Pilot*,
-*Retrospective*, *Stream*, *Board* and *Spend*. The tab is part of the address, so you can
+*Retrospective*, *Stream*, *Board* and *Metrics*. The tab is part of the address, so you can
 send a link to it.
 
 ### Issues
@@ -222,7 +222,8 @@ send a link to it.
 
 The milestone's state, progress and cost, then one row per issue: its
 title, state, merge request, wall time (first run to merge), agent time,
-time paused, cost and tokens. An issue that shipped shows its version.
+time paused, cost, tokens, and written and merged lines (see [Lines of
+code](budgets-and-spend.md#lines-of-code)). An issue that shipped shows its version.
 Between the issues sit the releases, at the point they were decided:
 *Release after #N*, *Releasing…* with its pipeline, or the version with a
 link to the GitLab release.
@@ -277,18 +278,17 @@ See [Steer from the Desk](steer-from-the-desk.md#ask-the-pilot).
 
 ![Retrospective with cost drivers by issue and model, and numbered leftovers](../assets/screenshots/milestone-retrospective.webp)
 
-Once the milestone is done: the pilot's
-[retrospective](../concepts/glossary.md#retrospective), the cost drivers
-(the issues and roles that cost most), and the leftovers with their state.
-Owners turn leftovers into a follow-up milestone here, see
+Once the milestone is done: the pilot's [retrospective](../concepts/glossary.md#retrospective),
+the cost drivers (the issues and roles that cost most), and the leftovers
+with their state. Owners turn leftovers into a follow-up milestone here, see
 [The retrospective](pilot.md#the-retrospective).
 
-### Stream, Board and Spend
+### Stream, Board and Metrics
 
 *Stream* is the runtime: runs, pushes, CI, reviews and merges, with the
 chips *All*, *Runs*, *CI & review* and *Merged*. The pilot's events are on
 *Pilot*, so the two tabs share nothing. *Board* is the milestone's board,
-*Spend* its cost.
+*Metrics* its cost and [lines](budgets-and-spend.md#lines-of-code); `?tab=spend` still opens it.
 
 ### Done milestones
 
@@ -322,10 +322,10 @@ Its tabs, each shown when there is something in it:
 - **Logs**: for owners with the `steer` grant, the last 500 lines of the
   runner's or the agent's container, *Download*, and *Follow* for new
   lines.
-- **Calls**: every agent call, with the database: per run its calls with
-  model, tokens, duration and cost; for the implementer the lines it
-  changed; a 💾 badge where a call saved a checkpoint; and a chart of how
-  the session's context grew.
+- **Calls**: every agent call, with the database: per run its written lines
+  and its calls with model, tokens, duration and cost; for the implementer
+  the lines each call changed; a 💾 badge where a call saved a checkpoint;
+  and a chart of how the session's context grew.
 - **Details**: runs, spend, branch and last push, the pod and how to follow
   its logs, and the conditions.
 

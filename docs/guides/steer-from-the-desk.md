@@ -262,13 +262,13 @@ are in the [chart README](../../charts/ai-operator/README.md#plan).
 
 ## Costs at a glance
 
-![Costs page with totals and a stacked daily spend chart per project](../assets/screenshots/costs.webp)
+![Metrics page with totals and a stacked daily spend chart per project](../assets/screenshots/costs.webp)
 
 - A cost chip on each project, milestone and task shows its cost and
   tokens, for example `$12.34 · 1.2M tok`. Hover it to split the tokens.
   An unknown cost shows *n/a* or a dash, never $0.
-- The *Spend* tab of a project or milestone breaks the cost down, and
-  *Costs* in the rail compares projects over time.
+- The *Metrics* tab of a project or milestone breaks the cost down, and
+  *Metrics* in the rail compares projects over time.
 - An issue at 80 % of its budget shows in the Inbox.
 
 Spend and budgets are explained in [Budgets and spend](budgets-and-spend.md).
@@ -277,7 +277,7 @@ Spend and budgets are explained in [Budgets and spend](budgets-and-spend.md).
 
 The Desk works on a phone. Below 760 px a bar at the bottom holds *Inbox*
 (with its count), *Overview*, *Projects* (the rail as a sheet: projects,
-researches, engine usage, sign out), and *Costs* and *Research* where you
+researches, engine usage, sign out), and *Metrics* and *Research* where you
 have them. The bar hides while you type.
 
 - Tables become cards, and every button is big enough to tap.

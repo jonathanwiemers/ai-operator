@@ -107,7 +107,7 @@ The seed (namespace `research-dev`) has:
 * `heat-pumps`: a deep report with every block type;
 * `hostile`: a stored result with raw HTML and `javascript:` links, as if
   written behind the validator's back. Its page must show *Result withheld*.
-* agent calls of project `dev` for the [Spend](web-ui.md#spend-tab-in-detail) tab: milestone 4
+* agent calls of project `dev` for the [Metrics](web-ui.md#metrics-tab-in-detail) tab: milestone 4
   with its spec, pilot and retro calls, #77 over two runs (an opus step with
   a haiku subagent and a context series, a resumed step, a cursor review
   with an estimated cost, a cursor fix without a cost), #78 with a run from
@@ -429,7 +429,7 @@ calls per bucket), `chartSummary` (the canvas's text) and `readChartColors`.
 
 ### Charts
 
-The Costs page draws its charts with [Chart.js](https://www.chartjs.org) 4
+The Metrics page draws its charts with [Chart.js](https://www.chartjs.org) 4
 (MIT) and `vue-chartjs`, pinned in `web/package.json`. Chart.js draws on a
 canvas and injects no `<style>` element; it sizes the canvas through the
 CSSOM (`element.style`), which `style-src 'self'` allows, so the CSP stays as
@@ -874,7 +874,7 @@ The dashboard (`web/src/views/Dashboard.vue`) and its Overview tab
 - *Overview* and *Stream* are a [RouteTabs](#routetabs) strip beside the
   heading; on a phone the strip's links are 44 px high.
 - The summary strip's chips wrap. The needs-you chip links to the Inbox,
-  the *today* and *last 7 days* chips to the [Costs page](#costs-page)'s
+  the *today* and *last 7 days* chips to the [Metrics page](#metrics-page)'s
   last 7 days; these links are at least 44 px high on phones.
 - *Working now* has one column of cards on phones, two on tablets, and on
   desktop as many columns of at least 300 px as fit, as before. Long titles
@@ -1207,9 +1207,9 @@ the dialog by back without a post, then dismisses (asserting `POST
 The tab is also among the hit-area routes, and the route checks cover
 `stream-milestone-retrospective` at the three widths.
 
-### Spend tab
+### Metrics tab
 
-The project's and the milestone's Spend tab (`web/src/components/SpendPanel.vue`,
+The project's and the milestone's Metrics tab, once named Spend (`web/src/components/SpendPanel.vue`,
 with `ModelBar.vue`) is Tailwind utilities and tokens, without scoped CSS.
 
 - The totals are key and value pairs: two columns on phones, one wrapping
@@ -1238,10 +1238,10 @@ clientWidth`) and the drill-down links are 44 px high
 `stream-milestone-metrics-calls@<width>.png`). The milestone's Metrics tab is
 also among the hit-area routes.
 
-### Spend tab in detail
+### Metrics tab in detail
 
-What the Spend tab shows, field by field; the user side is
-[The Spend tab](../guides/budgets-and-spend.md#the-spend-tab). It reads
+What the Metrics tab (once named Spend) shows, field by field; the user side is
+[The Metrics tab](../guides/budgets-and-spend.md#the-metrics-tab). It reads
 `GET /api/v1/spend` (without the research database the tab says it needs
 the database).
 
@@ -1267,6 +1267,15 @@ the database).
   recorded before whose models do not add up to its tokens counts whole
   on its main model, unsplit
   ([What the spend counts](design.md#what-the-spend-counts)).
+* **Lines** (`data-spend-lines`, `web/src/lines.ts`): *Written* (the
+  scope's `linesAdded`/`linesDeleted`), and at project, milestone and issue
+  scope *Merged production* with "M of N measured" and *Cost per 100
+  merged production lines* (`mergedLines` of the API, `per100Label`), with
+  the cost's basis and unmetered notes. Task and run scopes have written
+  lines only ([Merged lines](design.md#merged-lines)).
+* **Tab id:** `metrics`; `?tab=spend` is an alias (`tabAlias` in
+  `streamTabs.ts`), so old links open the tab, and new links use
+  `?tab=metrics`.
 * **Token basis:** calls recorded before the token basis was stored count
   tokens differently (subagents and Desk chats). A scope that mixes them
   says *N of M calls on the old token basis* next to its totals (*old
@@ -1308,7 +1317,8 @@ the database).
   (named in its tooltip), and an estimated cost is marked `~`. Rows from
   before token tracking have no bar.
 * **Breakdowns** by kind, role and model (subagent models as their own),
-  highest cost first, each row with its share bar. A row whose calls all
+  highest cost first, each row with its share bar. *By kind* has a *Lines*
+  column with the written lines of the implementer kinds (`kindLines`). A row whose calls all
   report neither a cost nor tokens stays a row and shows *not metered*
   instead of *n/a* and 0 tokens; in the drill-down's model list such a
   model is marked *(not metered)*. Cursor's model `auto` reads *cursor
@@ -1354,17 +1364,25 @@ Shares are of the rows' known cost; a row without a known cost shows
 *n/a* there. When no row has a known cost they are shares of the tokens.
 The Spend tab loads when it opens or the drill-down moves; it does not
 follow live changes. *Metrics across projects* above its drill-down opens
-the [Costs page](#costs-page) filtered to the project.
-### Costs page
+the [Metrics page](#metrics-page) filtered to the project.
+### Metrics page
 
-The user side is [The Costs page](../guides/budgets-and-spend.md#the-costs-page).
+The user side is [The Metrics page](../guides/budgets-and-spend.md#the-metrics-page)
+and [Lines of code](../guides/budgets-and-spend.md#lines-of-code).
 
-*Costs* (`/costs`, `web/src/views/Costs.vue`, its own chunk) shows what
-agents cost across every project you may see, and research when you may
-read it, from `GET /api/v1/costs`. It is in the rail after *Overview*, and
-so in the phone's Projects sheet and the bottom bar. The
-entry shows with the research database (the `history` feature). The
-dashboard's *today* and *last 7 days* chips open it for the last 7 days.
+*Metrics* (`/metrics`, `web/src/views/Metrics.vue`, its own chunk; it was
+the Costs page at `/costs`) shows what agents cost across every project you
+may see, and research when you may read it, from `GET /api/v1/costs`, with
+the Code, Flow and Pauses sections from `GET /api/v1/metrics/code`,
+`/metrics/flow` and `/metrics/pauses`. `/costs` redirects to `/metrics`
+with the same query and hash (`costsRedirect.ts`, a route without a name),
+so old links keep their filters. It is in the rail after *Overview*
+("cost, code, flow and pauses, across projects"), and so in the phone's
+Projects sheet and the bottom bar. The entry shows with the research
+database (the `history` feature). The dashboard's *today* and *last 7 days*
+chips open it for the last 7 days. Without `?project=` it is the general
+view; a project stream's *Metrics* button (`data-project-metrics`) opens it
+with `?project=<namespace>/<name>`.
 
 The filters live in the URL, so a shared link shows the same page:
 `?range=` (`30d`, the default, `7d`, `90d`, `month`, `lastMonth`, `12m`) or
@@ -1492,6 +1510,18 @@ issues per bucket and tiles for the median wall and agent times
 `metricsFilterNote` while Kind or Engine is set. The per-arm table above
 them is *Cost per 100 written lines*: its `mergedLines` are the implement
 calls' lines of merged issues, not the merged lines of Code.
+
+*Pauses* (`MetricsPauses.vue`, `metricsPauses.ts`, `getMetricsPauses`)
+comes last and is left out when its request fails. It draws the pauses per
+bucket stacked by kind and the paused hours per bucket, tiles for the
+pauses, paused time, mean time to resume and open now, tables by kind,
+resolver and via with the labels of the milestone's pause card
+(`pauseCard.ts`, `pauses.ts`), a per-project table without a project filter, and the ten
+longest pauses, each row linking to the milestone's Pilot tab (`deskURL` of the
+API). `pausesTruncatedNote` shows when the answer says `truncated`, and
+`metricsFilterNote` while Kind or Engine is set. The figures come from the
+`autopilot.paused` and `autopilot.resumed` events
+([History](design.md#history)).
 
 *Download CSV* (a menu next to the title, shown when the range has calls):
 *Series* saves `costs-series-<from>-<to>.csv`, one row per bucket and key
@@ -1665,6 +1695,9 @@ Every event kind belongs to one of a milestone's two event tabs, never both
 - *Stream*: `run.started`, `run.finished`, `push`, `checkpoint` (a budget
   stop, a lost pod or an OOM kill; under the *Runs* chip), `ci`, `review`,
   `merged` and `closed`.
+
+`companion.merged` is in neither list: it only feeds the merged lines
+([Merged lines](design.md#merged-lines)) and is not shown in any stream.
 
 A project's *Stream* tab and the dashboard's show all kinds, and every kind
 can be asked for with `kinds=`. A `prompt.posted` event is one line,

@@ -302,7 +302,7 @@ again, it tries again.
 By default the implementer resolves conflicts in its own long session, on
 its own model, which can be expensive. The
 [conflict role](../reference/agents-and-models.md#conflict-role) runs them
-on a cheaper model in a fresh session instead. The Spend tab shows what
+on a cheaper model in a fresh session instead. The Metrics tab shows what
 conflict calls cost.
 
 With `workflow.resolveConflicts: false` you resolve conflicts yourself, and

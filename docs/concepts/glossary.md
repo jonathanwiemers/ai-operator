@@ -84,7 +84,7 @@ see [Roles](roles.md).
 
 Two to four [arms](#arm) of implementer settings that a project tries side
 by side, set in `agents.implement.experiment`. Each issue runs on one arm,
-and the Desk's Costs page compares the arms' cost per merged line. See
+and the Desk's Metrics page compares the arms' cost per written line. See
 [Cost levers](../guides/cost-levers.md).
 
 ### Hold
@@ -124,6 +124,14 @@ The rule autopilot merges by: CI green, the review clean, the last run
 succeeded, and the merge request's head is the one that was checked. A
 model never decides to merge. See
 [The merge gate](../guides/autopilot.md#the-merge-gate).
+
+### Merged lines
+
+The lines an issue's merge requests merged, its
+[companions'](#companion-repository) included, counted once from GitLab at
+each merge and split into production, tests, docs and generated files. They
+measure the outcome; [written lines](#written-lines) measure the effort. See
+[Lines of code](../guides/budgets-and-spend.md#lines-of-code).
 
 ### Milestone
 
@@ -315,6 +323,13 @@ the plan only; an issue starts as soon as its own dependencies are merged.
 
 An optional subagent that writes boilerplate, such as tests that follow an
 existing file, for a role. See [Roles](roles.md#scout-and-writer).
+
+### Written lines
+
+The lines the [implementer](#implementer) calls wrote: every step commit,
+rewrites and fix rounds included, every file counted. They measure the
+effort; [merged lines](#merged-lines) measure the outcome. See
+[Lines of code](../guides/budgets-and-spend.md#lines-of-code).
 
 ## Next
 
