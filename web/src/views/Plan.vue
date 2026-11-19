@@ -1,15 +1,17 @@
 <script setup lang="ts">
 // One plan (R11): header with phase, spend / cap, budget raise and delete;
-// chat left, draft editor right, on phones tabs Chat / Draft.
+// chat left, the right pane with the tabs Draft / Decisions, on phones the
+// tabs Chat / Decisions / Draft (R6). One ?tab= serves both layouts.
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { deletePlan, getPlan, LoginRequiredError, NotFoundError, raisePlanBudget } from '../client'
 import { planPhaseTone, planSpendLabel, planTitle, raiseBudgetError } from '../planRows'
-import { planTabs, tabFromQuery, tabQuery, type PlanTab } from '../streamTabs'
+import { planPaneTab, planPaneTabs, planTabs, tabFromQuery, tabQuery, type PlanPaneTab, type PlanTab } from '../streamTabs'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
 import Badge from '../components/Badge.vue'
 import PlanChat from '../components/PlanChat.vue'
+import PlanDecisions from '../components/PlanDecisions.vue'
 import PlanDraft from '../components/PlanDraft.vue'
 import RouteTabs from '../ui/RouteTabs.vue'
 import type { PlanView } from '../generated/views'
@@ -22,6 +24,10 @@ const view = ref<PlanView | null>(null)
 const [error, notFound, raise, raiseError] = [ref(''), ref(false), ref(''), ref('')]
 const tab = computed(() => tabFromQuery(route.query.tab, planTabs))
 const tabTo = (id: PlanTab) => ({ query: tabQuery(route.query, id, planTabs) })
+const pane = computed(() => planPaneTab(tab.value))
+// paneClass hides a right-pane child: on phones unless it is the tab, on
+// tablet and wider unless it is the pane's tab.
+const paneClass = (id: PlanPaneTab) => ({ 'max-tablet:hidden': tab.value !== id, 'tablet:hidden': pane.value !== id })
 const owner = computed(() => !!view.value?.permissions.steer)
 
 async function load() {
@@ -90,12 +96,19 @@ onUnmounted(() => window.clearInterval(timer))
     <div v-if="error" class="banner danger">{{ error }}</div>
     <div v-if="!view" class="empty">Loading…</div>
     <template v-else>
-      <RouteTabs class="mb-3 w-fit tablet:hidden" :tabs="planTabs" :active="tab" :to="tabTo" label="Plan" />
+      <RouteTabs class="mb-3 w-fit tablet:hidden" :tabs="planTabs" :active="tab" :to="tabTo" label="Plan"
+        :badges="{ decisions: view.decisionsPending }" />
       <div class="grid gap-4 tablet:grid-cols-2">
         <PlanChat :class="{ 'max-tablet:hidden': tab !== 'chat' }" :namespace="namespace" :name="name" :plan="plan"
           :can-post="owner" :phase="view.phase" :spend-u-s-d="view.spendUSD" :budget-u-s-d="view.budgetUSD" />
-        <PlanDraft :class="{ 'max-tablet:hidden': tab !== 'draft' }" :namespace="namespace" :name="name" :plan="plan"
-          :view="view" :can-edit="owner && view.phase !== 'Created'" @view="(v) => (view = v)" @created="load" />
+        <div class="flex min-w-0 flex-col" :class="{ 'max-tablet:hidden': tab === 'chat' }">
+          <RouteTabs class="mb-3 w-fit max-tablet:hidden" :tabs="planPaneTabs" :active="pane" :to="tabTo" label="Plan pane"
+            :badges="{ decisions: view.decisionsPending }" />
+          <PlanDraft :class="paneClass('draft')" :namespace="namespace" :name="name" :plan="plan"
+            :view="view" :can-edit="owner && view.phase !== 'Created'" @view="(v) => (view = v)" @created="load" />
+          <PlanDecisions :class="paneClass('decisions')" :namespace="namespace" :name="name" :plan="plan"
+            :decisions="view.decisions ?? []" :pending="view.decisionsPending" />
+        </div>
       </div>
     </template>
   </div>

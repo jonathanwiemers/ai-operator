@@ -5,6 +5,8 @@ import {
   dashboardTabs,
   milestoneTabFromRoute,
   milestoneTabs,
+  planPaneTab,
+  planPaneTabs,
   planTabs,
   projectTabsFor,
   streamBaseTabs,
@@ -149,11 +151,22 @@ test('taskTabFromRoute: #live-transcript without ?tab= opens Live where there is
   assert.equal(taskTabFromRoute(undefined, '#prompt-Q4'), 'overview')
 })
 
-test('planTabs: Chat is the default, Draft is kept in ?tab=', () => {
+test('planTabs: Chat is the default, then Decisions and Draft, kept in ?tab=', () => {
+  assert.deepEqual(planTabs.map((t) => t.id), ['chat', 'decisions', 'draft'])
   assert.equal(tabFromQuery(undefined, planTabs), 'chat')
   assert.equal(tabFromQuery('draft', planTabs), 'draft')
+  assert.equal(tabFromQuery('decisions', planTabs), 'decisions')
   assert.deepEqual(tabQuery({ tab: 'draft' }, 'chat', planTabs), {})
   assert.deepEqual(tabQuery({}, 'draft', planTabs), { tab: 'draft' })
+  assert.deepEqual(tabQuery({}, 'decisions', planTabs), { tab: 'decisions' })
+})
+
+test('planPaneTab: the wide right pane shows Decisions only for ?tab=decisions, else Draft', () => {
+  assert.deepEqual(planPaneTabs.map((t) => t.id), ['draft', 'decisions'])
+  assert.equal(planPaneTab(tabFromQuery(undefined, planTabs)), 'draft')
+  assert.equal(planPaneTab('chat'), 'draft')
+  assert.equal(planPaneTab('draft'), 'draft')
+  assert.equal(planPaneTab('decisions'), 'decisions')
 })
 
 test('milestoneTabFromRoute: prompt and problem links open Needs you, ?tab=pilot stays on Pilot', () => {

@@ -16,12 +16,26 @@ export type StreamTab = BaseTab | 'decisions' | 'plans'
 export type MilestoneTab = 'issues' | 'needs' | 'decisions' | 'pilot' | 'retrospective' | BaseTab
 export type DashboardTab = 'overview' | 'stream'
 export type TaskTab = 'overview' | 'chat' | 'live' | 'logs' | 'calls' | 'details'
-// A plan's tabs on phones; desktop shows both columns.
-export type PlanTab = 'chat' | 'draft'
+// A plan's tabs on phones: Chat, Decisions, Draft. Tablet and wider keep
+// the chat left and show planPaneTabs (Draft, Decisions) on the right; one
+// ?tab= serves both layouts (D617-P1).
+export type PlanTab = 'chat' | 'decisions' | 'draft'
+export type PlanPaneTab = 'draft' | 'decisions'
 export const planTabs: Tab<PlanTab>[] = [
   { id: 'chat', label: 'Chat' },
+  { id: 'decisions', label: 'Decisions' },
   { id: 'draft', label: 'Draft' },
 ]
+export const planPaneTabs: Tab<PlanPaneTab>[] = [
+  { id: 'draft', label: 'Draft' },
+  { id: 'decisions', label: 'Decisions' },
+]
+
+// planPaneTab is the right pane's tab on wide screens: Decisions for
+// ?tab=decisions, Draft for chat (or none) and draft.
+export function planPaneTab(tab: PlanTab): PlanPaneTab {
+  return tab === 'decisions' ? 'decisions' : 'draft'
+}
 
 export interface Tab<T extends string> {
   id: T

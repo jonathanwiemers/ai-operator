@@ -29,6 +29,7 @@ import type {
   NoteView,
   OverviewView,
   PlanOverview,
+  PlanDecisionHistoryView,
   PlanView,
   ProjectDetail,
   ProjectSetSummary,
@@ -328,6 +329,11 @@ export function getPlans(project?: { namespace: string; name: string }): Promise
 }
 export function getPlan(namespace: string, name: string, plan: string): Promise<PlanView> {
   return get(planPath(namespace, name, plan))
+}
+// getPlanDecisionHistory: GET …/plans/{plan}/decisions, every version and
+// sign-off of the plan's decisions, newest first.
+export function getPlanDecisionHistory(namespace: string, name: string, plan: string): Promise<PlanDecisionHistoryView> {
+  return get(`${planPath(namespace, name, plan)}/decisions`)
 }
 export function createPlan(namespace: string, name: string, body: { title?: string } = {}): Promise<PlanView> {
   return post(planPath(namespace, name), body)
