@@ -240,15 +240,20 @@ func syncKind(full bool, viaSet string) string {
 
 // fullSyncDue reports whether a project that receives deliveries needs a full
 // sync now: a delivery came that the last one did not cover, it is
-// webhook.fallbackInterval old, it failed, or the spec changed since.
+// webhook.fallbackInterval old, it failed, or the spec changed since. With
+// only settling milestones, the fallback is at least settleInterval.
 func (r *AgentProjectReconciler) fullSyncDue(project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, lastDelivery, now time.Time) bool {
+	fallback := spec.Webhook.FallbackInterval.Duration
+	if onlySettling(project) {
+		fallback = max(fallback, settleInterval)
+	}
 	last := project.Status.LastSyncTime
 	synced := meta.FindStatusCondition(project.Status.Conditions, "Synced")
 	r.mu.Lock()
 	seen, ok := r.synced[types.NamespacedName{Namespace: project.Namespace, Name: project.Name}]
 	r.mu.Unlock()
 	return last == nil || synced == nil || synced.Status != metav1.ConditionTrue || synced.ObservedGeneration != project.Generation ||
-		!ok || lastDelivery.After(seen) || now.Sub(last.Time) >= spec.Webhook.FallbackInterval.Duration
+		!ok || lastDelivery.After(seen) || now.Sub(last.Time) >= fallback
 }
 
 // covered notes that a full sync of n, started when delivery was the last

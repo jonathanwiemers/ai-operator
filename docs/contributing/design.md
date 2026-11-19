@@ -1325,8 +1325,13 @@ sequenceDiagram
   The requeue stays
   `pollInterval`. Steps that only time advances (infra retries, auto-resume,
   the main health interval, the hourly hook check) run on full syncs, so at
-  most `fallbackInterval` late while receiving. After a restart nothing is
-  receiving until the next delivery.
+  most `fallbackInterval` late while receiving. A project whose milestones
+  all settle (`activeMilestones` 0, `settlingMilestones` above 0;
+  `onlySettling`) stretches that fallback to at least `settleInterval`
+  (`fullSyncDue`): set children and explicit projects alike. Deliveries and
+  set wakes still sync at once, and `settleSkip` still decides per milestone
+  inside the sync. After a restart nothing is receiving until the next
+  delivery.
 * **Set children poll through their set.** A child of an AgentProjectSet
   (controller reference, same set UID) with a `secretRef` counts as
   receiving while the set's `status.lastDiscoveryTime` is younger than twice
@@ -3533,7 +3538,11 @@ child's next full sync deletes the hook and clears `WebhookRegistered`, and
 only then the set deletes the child, after a live check that it has no
 AgentTask. A hook that cannot be deleted keeps the child without a timeout.
 A child with a task is kept. A child whose project left the set's scope is
-removed without waiting for `dormantAfter`.
+removed without waiting for `dormantAfter`. A child whose milestones all
+settle (`onlySettling` on its status counts) is idle: its tasks and selected
+milestones no longer refresh `lastActiveTime`, a ready issue still does. It
+may turn dormant while it settles, its tasks keep it, and it goes once the
+milestone closed and its tasks are gone.
 
 **Polling through the set.** A set child skips the light poll. While the
 set's `lastDiscoveryTime` is younger than twice its `pollInterval`, the child

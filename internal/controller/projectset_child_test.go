@@ -178,6 +178,33 @@ func TestExplicitProjectNextToACurrentSetPollsAsBefore(t *testing.T) {
 	e.wantDeliveries(metav1.ConditionTrue, "Receiving", clk.Now().Add(-3*time.Minute))
 }
 
+// settling gives the child the counts of a project whose only milestone
+// settles, as its last full sync left them.
+func (c *childEnv) settling() {
+	c.t.Helper()
+	p := c.project()
+	p.Status.ActiveMilestones, p.Status.SettlingMilestones = 0, 1
+	if err := c.c.Status().Update(c.ctx, &p); err != nil {
+		c.t.Fatal(err)
+	}
+}
+
+func TestSetChildWithOnlySettlingMilestonesSyncsEverySettleInterval(t *testing.T) {
+	c := newChildEnv(t)
+	c.settling()
+	// The last full sync was at 12:00: no request at 12:10, the fallback
+	// interval, a full sync at 12:15, settleInterval.
+	c.childPolls(skip, skip, skip, skip, skip, skip, skip, skip, skip, skip, skip, skip, skip, skip, F)
+}
+
+func TestSetChildWithOnlySettlingMilestonesSyncsADeliveryAtOnce(t *testing.T) {
+	c := newChildEnv(t)
+	c.settling()
+	c.childPolls(skip, skip)
+	c.r.Deliveries.Record(shop)
+	c.childPolls(F)
+}
+
 // setEntries replaces the set's status entries.
 func (c *childEnv) setEntries(entries ...aiv1.ProjectSetEntry) {
 	c.t.Helper()

@@ -104,6 +104,10 @@ test:
       command: ["postgres", "-c", "fsync=off", "-c", "synchronous_commit=off", "-c", "full_page_writes=off"]
   variables:
     MISE_TASK: test
+    # Per package: under -race on a busy shared runner internal/controller
+    # can pass go test's default 10m (about 7.5m on main on an agent node).
+    # Set here, not in mise.toml: a change there rebuilds the toolchain image.
+    GOFLAGS: -timeout=20m
     POSTGRES_INITDB_ARGS: --no-sync
     POSTGRES_PASSWORD: postgres
     POSTGRES_DB: ai_operator_test

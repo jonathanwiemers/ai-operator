@@ -25,6 +25,13 @@ func autopilotSettling(st *aiv1.AgentTask, now time.Time) bool {
 // settleInterval is how often a settling milestone syncs without a wake.
 const settleInterval = 15 * time.Minute
 
+// onlySettling reports whether every milestone p tracks is settling. Such a
+// project counts as idle in its set, and syncs without a delivery at most
+// every settleInterval.
+func onlySettling(p *aiv1.AgentProject) bool {
+	return p != nil && p.Status.ActiveMilestones == 0 && p.Status.SettlingMilestones > 0
+}
+
 // settleSkip reports whether this poll leaves the settling milestone st
 // alone: it synced less than settleInterval ago and nothing woke it. A Desk
 // command or a webhook note on its tracking issue wakes it; a re-plan ends

@@ -276,3 +276,45 @@ func TestProjectSetRemovalForbiddenHook(t *testing.T) {
 		t.Errorf("reason = %q", got.Reason)
 	}
 }
+
+// A child whose only milestone settles is idle and turns dormant, but its
+// tasks keep it until the milestone closes and they are gone.
+func TestProjectSetRemovalKeepsSettlingChildWithTasks(t *testing.T) {
+	e := newSetEnv(t, nil)
+	e.discover(activeProject("jo.wiemers/shop"))
+	e.reconcile()
+	task := &aiv1.AgentTask{ObjectMeta: metav1.ObjectMeta{Name: "shop-1", Namespace: "agents", Labels: map[string]string{LabelProject: "shop"}}}
+	if err := e.c.Create(context.Background(), task); err != nil {
+		t.Fatal(err)
+	}
+	c := e.child("shop")
+	c.Status.ActiveMilestones, c.Status.SettlingMilestones = 0, 1
+	if err := e.c.Status().Update(context.Background(), c); err != nil {
+		t.Fatal(err)
+	}
+	// The spec milestone is still open, the task still there.
+	e.now = e.now.Add(168 * time.Hour)
+	e.reconcile()
+	e.poll()
+	if c := e.child("shop"); removing(c) || !c.Spec.Webhook.Enabled {
+		t.Errorf("settling child with a task touched: webhook %v, annotations %v", c.Spec.Webhook.Enabled, c.Annotations)
+	}
+	if en := setEntry(e.set(), "jo.wiemers/shop"); en.State != aiv1.ProjectSetDormant || en.Child != "shop" ||
+		!strings.HasPrefix(en.Reason, "kept: 1 open task; no work for 168h") {
+		t.Errorf("entry = %+v", en)
+	}
+
+	// The milestone closed and its task went: removed without another wait.
+	e.discover(gitlab.DiscoveredProject{FullPath: "jo.wiemers/shop"})
+	if err := e.c.Delete(context.Background(), task); err != nil {
+		t.Fatal(err)
+	}
+	e.poll()
+	if c := e.child("shop"); !removing(c) {
+		t.Fatalf("child not switched off: webhook %v, annotations %v", c.Spec.Webhook.Enabled, c.Annotations)
+	}
+	e.poll()
+	if !e.gone("shop") {
+		t.Fatal("child not deleted after its tasks were gone")
+	}
+}

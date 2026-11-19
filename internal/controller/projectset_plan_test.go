@@ -387,3 +387,56 @@ func TestProjectSetPlanChildName(t *testing.T) {
 		t.Errorf("50 characters are kept: %q", exact)
 	}
 }
+
+// A child whose only milestones settle is idle: its tasks and its spec
+// milestone no longer refresh LastActiveTime, a running milestone or a ready
+// issue still does.
+func TestProjectSetPlanSettlingChildIsIdle(t *testing.T) {
+	set := planSet()
+	child := func(active, settling int32) aiv1.AgentProject {
+		p := agentProject("agents", "shop", "jo.wiemers/shop", set)
+		p.Status.ActiveMilestones, p.Status.SettlingMilestones = active, settling
+		return p
+	}
+	cases := []struct {
+		name       string
+		child      aiv1.AgentProject
+		ready      bool
+		since      time.Duration // LastActiveTime of the previous entry
+		wantState  aiv1.ProjectSetState
+		wantActive *metav1.Time
+	}{
+		{"one settling milestone", child(0, 1), false, time.Hour, aiv1.ProjectSetActive, ago(time.Hour)},
+		{"settling past dormantAfter", child(0, 1), false, 168 * time.Hour, aiv1.ProjectSetDormant, ago(168 * time.Hour)},
+		{"a running milestone next to a settling one", child(1, 1), false, time.Hour, aiv1.ProjectSetActive, ago(0)},
+		{"settling with a ready issue", child(0, 1), true, time.Hour, aiv1.ProjectSetActive, ago(0)},
+		{"no settling milestone", child(0, 0), false, time.Hour, aiv1.ProjectSetActive, ago(0)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := set.DeepCopy()
+			s.Status.Projects = []aiv1.ProjectSetEntry{{Path: "jo.wiemers/shop", State: aiv1.ProjectSetActive, Child: "shop", LastActiveTime: ago(tc.since)}}
+			var ready []gitlab.DiscoveredIssue
+			if tc.ready {
+				ready = []gitlab.DiscoveredIssue{{Project: "jo.wiemers/shop", IID: 7}}
+			}
+			plan := planProjectSet(projectSetInput{
+				Set: s,
+				Discovery: &gitlab.GroupDiscovery{
+					Projects:    []gitlab.DiscoveredProject{{FullPath: "jo.wiemers/shop", Milestones: []gitlab.DiscoveredMilestone{specMilestone("/agent autopilot")}}},
+					ReadyIssues: ready,
+				},
+				Projects:   []aiv1.AgentProject{tc.child},
+				TaskCounts: map[string]int{"shop": 4},
+				Now:        planNow,
+			})
+			if len(plan.Entries) != 1 {
+				t.Fatalf("entries = %+v", plan.Entries)
+			}
+			e := plan.Entries[0]
+			if e.State != tc.wantState || e.Child != "shop" || !e.LastActiveTime.Equal(tc.wantActive) {
+				t.Errorf("entry = %s/%q, last active %v, want %s/shop, %v", e.State, e.Child, e.LastActiveTime, tc.wantState, tc.wantActive)
+			}
+		})
+	}
+}

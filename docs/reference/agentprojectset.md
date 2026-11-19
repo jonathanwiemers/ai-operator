@@ -62,7 +62,7 @@ Entry states:
 | State | Meaning |
 |-------|---------|
 | `active` | The project has work and a child. |
-| `dormant` | No spec-marker milestone, ready issue or task. The child, if any, goes after `dormantAfter`. |
+| `dormant` | No spec-marker milestone, ready issue or task. The child, if any, goes after `dormantAfter`. A project whose only open milestones are settling (`activeMilestones` 0, `settlingMilestones` above 0 on the child) counts as idle: only a ready issue makes it active. |
 | `excluded` | `exclude` matches, the project is archived, or `include` no longer matches a project that has a child. |
 | `explicit` | An AgentProject the set does not own watches it, named in the reason. |
 | `nameTaken` | The child's name belongs to an object the set does not own. |

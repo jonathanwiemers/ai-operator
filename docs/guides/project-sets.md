@@ -74,6 +74,14 @@ label, or an AgentTask of its child.
 Only active projects get a child. Any other matched project is
 [dormant](../concepts/glossary.md#dormant-project).
 
+A project whose only open milestones are settling counts as idle. Settling
+means the autopilot is done and only waits for the retrospective's
+follow-ups. Its tasks and spec markers do not keep it active, a ready issue
+does. Its child keeps its tasks, so it is not removed while the milestone
+settles. During that time the child syncs on a delivery, on a wake from the
+set and every 15 minutes, or every `webhook.fallbackInterval` if that is
+longer.
+
 A child that has had no work for `dormantAfter` and has no AgentTask is
 removed. The set first switches the child's webhook off, waits until GitLab's
 hook is gone, and only then deletes the child. A child with a task stays, and

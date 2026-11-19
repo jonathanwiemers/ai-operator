@@ -36,7 +36,7 @@ vet:
 
 .PHONY: test
 test:
-	go test -race ./...
+	go test -race -timeout 20m ./...
 
 .PHONY: test-db
 test-db: ## Start a Postgres for the research store tests (docker, 127.0.0.1:55432).

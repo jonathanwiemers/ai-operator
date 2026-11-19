@@ -141,8 +141,10 @@ func planProjectSet(in projectSetInput) projectSetPlan {
 		if child != nil {
 			name = child.Name
 		}
-		active := ready[path] || in.TaskCounts[name] > 0 ||
-			(reErr == nil && projectSetSelects(sel, titleRE, dp.Milestones))
+		// A child whose milestones all settle is idle: their tasks and
+		// markers do not count, a ready issue does.
+		active := ready[path] || !onlySettling(child) && (in.TaskCounts[name] > 0 ||
+			(reErr == nil && projectSetSelects(sel, titleRE, dp.Milestones)))
 		now := metav1.NewTime(in.Now)
 		switch {
 		case active && child == nil:
