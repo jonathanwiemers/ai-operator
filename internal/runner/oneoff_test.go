@@ -77,6 +77,17 @@ func TestRetryOneOff(t *testing.T) {
 	if err := retryOneOff(done, logr.Discard(), "push", gitTransient, func() error { calls++; return timeout }); err != timeout || calls != 1 {
 		t.Fatalf("err=%v calls=%d", err, calls)
 	}
+	// So does a ctx that ends during an attempt, even with the zero waits
+	// TestMain sets: a select between a done ctx and an elapsed wait picks
+	// at random, so the done ctx must be checked before it.
+	for i := 0; i < 100; i++ {
+		during, cancel := context.WithCancel(ctx)
+		calls = 0
+		err := retryOneOff(during, logr.Discard(), "push", gitTransient, func() error { calls++; cancel(); return timeout })
+		if err != timeout || calls != 1 {
+			t.Fatalf("ctx ended during the attempt, run %d: err=%v calls=%d", i, err, calls)
+		}
+	}
 }
 
 // failingHook makes the remote refuse the next n pushes with a 502 in the
