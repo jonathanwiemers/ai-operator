@@ -2227,6 +2227,11 @@ type AutopilotStatus struct {
 	// MaxMilestoneReleases).
 	// +optional
 	Releases []ReleaseRecord `json:"releases,omitempty"`
+
+	// SettleSyncedAt is when the operator last synced the milestone while it
+	// was settling: done, waiting only for its retrospective's follow-ups.
+	// +optional
+	SettleSyncedAt *metav1.Time `json:"settleSyncedAt,omitempty"`
 }
 
 // BudgetStatus is the budget of an autopilot milestone and what it spent,

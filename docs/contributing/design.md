@@ -1919,6 +1919,19 @@ stateDiagram-v2
   closes first and comments after: the next poll lists active milestones
   only, so the spec task is deleted and the comment cannot repeat. See
   [autopilot-close-milestone.spec.md](../specs/autopilot-close-milestone.spec.md).
+* **Settling.** A `Done` autopilot whose retrospective is posted and whose
+  follow-ups are not settled yet, without a pending re-plan, is settling
+  (`autopilotSettling`, `internal/controller/settling.go`). Its sync reads
+  only the tracking issue's notes and runs the pilot, the follow-ups and the
+  release records not ended (`settle`); a pending command takes the full
+  sync. It syncs at most every `settleInterval` = 15 minutes: the time of
+  its last sync is `status.autopilot.settleSyncedAt`, so a restart does not
+  sync every settling milestone at once. Other polls skip its revisits and
+  its autopilot sync (`settleSkip`); its decisions are not synced while it
+  settles, their watermark catches up once it leaves settling. A Desk
+  command on the milestone wakes it on the next poll. A re-plan, a command
+  that leaves `Done`, or the end of `followUpWindow` ends settling, so the
+  next poll is a full sync; the last one closes the milestone on time.
 * **Off.** Removing the marker sets `phase: Off` and closes the tracking
   issue; if the milestone is no longer planned at all, this happens before
   the spec task is deleted.

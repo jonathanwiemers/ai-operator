@@ -1813,6 +1813,12 @@ spec:
                     - causeGone
                     - selfHealed
                     type: string
+                  settleSyncedAt:
+                    description: |-
+                      SettleSyncedAt is when the operator last synced the milestone while it
+                      was settling: done, waiting only for its retrospective's follow-ups.
+                    format: date-time
+                    type: string
                   startRequestedAt:
                     description: |-
                       StartRequestedAt is the time of the run-next mark (set with

@@ -128,9 +128,15 @@ func (a *autopilot) sync(ctx context.Context) error {
 		a.ap.Phase = aiv1.AutopilotRunning
 	}
 	a.ap.MaxParallel = a.maxParallel()
-	if autopilotSettling(a.st, a.r.now()) {
-		if done, err := a.settle(ctx); done || err != nil {
-			return err
+	if now := a.r.now(); autopilotSettling(a.st, now) {
+		done, err := a.settle(ctx)
+		if err != nil {
+			return err // tried again on the next poll
+		}
+		// After settle compared: a stamp alone never re-renders the tracking issue.
+		a.ap.SettleSyncedAt = &metav1.Time{Time: now}
+		if done {
+			return nil
 		}
 	}
 	if err := a.loadIssues(ctx); err != nil {

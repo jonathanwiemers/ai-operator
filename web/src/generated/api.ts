@@ -5532,6 +5532,12 @@ export interface AutopilotStatus {
    * +optional
    */
   releases?: ReleaseRecord[];
+  /**
+   * SettleSyncedAt is when the operator last synced the milestone while it
+   * was settling: done, waiting only for its retrospective's follow-ups.
+   * +optional
+   */
+  settleSyncedAt?: string;
 }
 /**
  * BudgetStatus is the budget of an autopilot milestone and what it spent,

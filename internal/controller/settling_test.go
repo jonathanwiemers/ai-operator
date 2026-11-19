@@ -16,6 +16,7 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab/gitlabfake"
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
+	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 )
 
 func TestAutopilotSettling(t *testing.T) {
@@ -139,6 +140,8 @@ func newSettlingEnv(t *testing.T) (*projectEnv, *settleGitLab, gitlab.Note) {
 	if !autopilotSettling(st, e.r.Now()) || e.gl.Milestones[0].State == "closed" {
 		t.Fatalf("the milestone is settling: %+v %+v", st.Status.Autopilot, st.Status.Pilot)
 	}
+	// The setup's polls synced it: the next one is due.
+	e.gl.Clock = e.gl.Clock.Add(settleInterval)
 	gl := &settleGitLab{Fake: e.gl}
 	e.r.NewGitLab = func(string, string) gitlab.API { return gl }
 	return e, gl, note
@@ -342,5 +345,249 @@ func TestDoneMilestoneTakesTheFullSyncWhenNotSettling(t *testing.T) {
 				t.Fatalf("the full sync lists the milestone's issues: %q", gl.calls)
 			}
 		})
+	}
+}
+
+// milestoneGitLab counts the poll's ListIssues calls by state and milestone
+// and its ListIssueNotes calls by issue.
+type milestoneGitLab struct {
+	*gitlabfake.Fake
+	calls map[string]int
+}
+
+func (g *milestoneGitLab) ListIssues(ctx context.Context, project string, opts gitlab.ListIssuesOptions) ([]gitlab.Issue, error) {
+	g.calls[fmt.Sprintf("ListIssues %s %q", opts.State, opts.Milestone)]++
+	return g.Fake.ListIssues(ctx, project, opts)
+}
+
+func (g *milestoneGitLab) ListIssueNotes(ctx context.Context, project string, iid int64) ([]gitlab.Note, error) {
+	g.calls[fmt.Sprintf("ListIssueNotes #%d", iid)]++
+	return g.Fake.ListIssueNotes(ctx, project, iid)
+}
+
+// milestoneIssues is how many ListIssues calls named the milestone title,
+// and how many of them with State all.
+func (g *milestoneGitLab) milestoneIssues(title string) (n, all int) {
+	for call, c := range g.calls {
+		if strings.HasPrefix(call, "ListIssues ") && strings.HasSuffix(call, fmt.Sprintf(" %q", title)) {
+			n += c
+			if strings.HasPrefix(call, "ListIssues all ") {
+				all += c
+			}
+		}
+	}
+	return n, all
+}
+
+// addSettlingMilestone adds an autopilot milestone, without a pilot, that is
+// done with its retrospective posted on its tracking issue, and returns its
+// spec task's name.
+func addSettlingMilestone(e *projectEnv, iid int64) string {
+	e.t.Helper()
+	title := fmt.Sprintf("Done %d", iid)
+	e.gl.Milestones = append(e.gl.Milestones, gitlab.Milestone{ID: 10 + iid, IID: iid, Title: title, State: "active", Description: "/agent autopilot\nDone."})
+	tracking := 100 + iid
+	e.gl.AddIssue(tracking, "Autopilot: "+title)
+	note := e.gl.AddNote(tracking, e.gl.Bot, "🧭 **Retrospective**\n\n1. Docs\n"+marker.Retrospective)
+	e.reconcile()
+	name := ""
+	for n, st := range e.tasks() {
+		if st.Spec.Type == aiv1.TaskTypeSpec && st.Spec.Milestone != nil && st.Spec.Milestone.IID == iid {
+			name = n
+		}
+	}
+	if name == "" {
+		e.t.Fatalf("no spec task for milestone %d: %v", iid, keys(e.tasks()))
+	}
+	runs := e.tasks()[name].Spec.RunRequest
+	posted := metav1.NewTime(e.gl.Clock)
+	e.patchStatus(name, func(s *aiv1.AgentTaskStatus) {
+		s.Run.ObservedRunRequest = runs
+		s.Autopilot = &aiv1.AutopilotStatus{Phase: aiv1.AutopilotDone, TrackingIssueIID: tracking}
+		s.Pilot = &aiv1.PilotStatus{Retrospective: &aiv1.PilotRetrospective{NoteID: note.ID, PostedAt: &posted,
+			FollowUps: []aiv1.PilotFollowUp{{Title: "Docs"}}}}
+	})
+	if !autopilotSettling(e.task(name), e.r.Now()) {
+		e.t.Fatalf("milestone %d is settling", iid)
+	}
+	return name
+}
+
+func TestSettlingMilestonesSyncEveryInterval(t *testing.T) {
+	e, _, _ := newSettlingEnv(t)
+	e.r.recordDecisions = func(store.IssueDecisions) {}
+	settling := map[string]int64{"Checkout v2": e.autopilot().TrackingIssueIID} // title: tracking issue
+	for _, iid := range []int64{4, 5} {
+		addSettlingMilestone(e, iid)
+		settling[fmt.Sprintf("Done %d", iid)] = 100 + iid
+	}
+	e.gl.Milestones = append(e.gl.Milestones, gitlab.Milestone{ID: 16, IID: 6, Title: "Running", State: "active", Description: "/agent autopilot\nBuild it."})
+	e.reconcile()
+	gl := &milestoneGitLab{Fake: e.gl, calls: map[string]int{}}
+	e.r.NewGitLab = func(string, string) gitlab.API { return gl }
+	// Two due polls: the first one also catches the revisits up with the
+	// retrospectives just posted.
+	for range 2 {
+		e.gl.Clock = e.gl.Clock.Add(settleInterval)
+		e.reconcile()
+	}
+	e.gl.Clock = e.gl.Clock.Add(settleInterval)
+
+	start := e.gl.Clock
+	// Polls that read each tracking issue's notes: the settle sync and the
+	// revisits read them on a due poll, nothing on the others.
+	read := map[string]int{}
+	for at := time.Duration(0); ; at = min(at+2*time.Minute, settleInterval) {
+		e.gl.Clock = start.Add(at)
+		gl.calls = map[string]int{}
+		e.reconcile()
+		for title, tracking := range settling {
+			n, all := gl.milestoneIssues(title)
+			if all > 0 || at > 0 && at < settleInterval && n > 0 {
+				t.Fatalf("at %v milestone %q lists its issues: %v", at, title, gl.calls)
+			}
+			if n := gl.calls[fmt.Sprintf("ListIssueNotes #%d", tracking)]; n > 2 {
+				t.Fatalf("at %v the notes of %q are read %d times", at, title, n)
+			} else if n > 0 {
+				read[title]++
+			}
+		}
+		if _, all := gl.milestoneIssues("Running"); all == 0 {
+			t.Fatalf("at %v the running milestone takes the full sync: %v", at, gl.calls)
+		}
+		if at < settleInterval {
+			for title := range settling {
+				if n := read[title]; n != 1 {
+					t.Fatalf("by %v the tracking issue of %q was read on %d polls, want one", at, title, n)
+				}
+			}
+		}
+		if at == settleInterval {
+			break
+		}
+	}
+	for title := range settling {
+		if n := read[title]; n != 2 {
+			t.Fatalf("at %v the tracking issue of %q is read again: %d polls", settleInterval, title, n)
+		}
+	}
+	if st := e.task(specTaskName); !st.Status.Autopilot.SettleSyncedAt.Time.Equal(start.Add(settleInterval)) {
+		t.Fatalf("settleSyncedAt is the last sync: %v", st.Status.Autopilot.SettleSyncedAt)
+	}
+
+	// A restart keeps the time in the status: no milestone syncs at once.
+	e.r = &AgentProjectReconciler{Client: e.c, Scheme: e.r.Scheme, Now: e.r.Now, recordDecisions: e.r.recordDecisions,
+		NewGitLab: func(string, string) gitlab.API { return gl }}
+	e.gl.Clock = e.gl.Clock.Add(2 * time.Minute)
+	gl.calls = map[string]int{}
+	e.reconcile()
+	for title, tracking := range settling {
+		if n := gl.calls[fmt.Sprintf("ListIssueNotes #%d", tracking)]; n != 0 {
+			t.Fatalf("after a restart %q is not synced before it is due: %v", title, gl.calls)
+		}
+	}
+}
+
+func TestSettlingMilestoneWakesForADeskCommand(t *testing.T) {
+	e, gl, _ := newSettlingEnv(t)
+	e.reconcile()
+	wantSettled(e, gl)
+	gl.calls = nil
+	e.reconcile()
+	if len(gl.calls) != 0 {
+		t.Fatalf("a poll right after a settle sync leaves the milestone alone: %q", gl.calls)
+	}
+	st := e.task(specTaskName)
+	st.Spec.Source.ChatMessages = append(st.Spec.Source.ChatMessages,
+		aiv1.ChatMessage{ID: st.Spec.Source.LastChatCommandID + 1, Kind: "command", Text: `{"cmd":"pause"}`, Author: "ada@x"})
+	if err := e.c.Update(e.ctx, st); err != nil {
+		t.Fatal(err)
+	}
+	e.gl.Clock = e.gl.Clock.Add(time.Minute)
+	e.reconcile()
+	wantFull(e, gl)
+	st = e.task(specTaskName)
+	if st.Spec.Source.LastChatCommandID != st.Spec.Source.ChatMessages[len(st.Spec.Source.ChatMessages)-1].ID {
+		t.Fatalf("the Desk command is applied on the next poll: %+v", st.Spec.Source)
+	}
+}
+
+func TestSettlingMilestoneTakesTheFullSyncAfterAReplan(t *testing.T) {
+	e, gl, _ := newSettlingEnv(t)
+	e.reconcile()
+	wantSettled(e, gl)
+	st := e.task(specTaskName)
+	st.Spec.RunRequest++
+	if err := e.c.Update(e.ctx, st); err != nil {
+		t.Fatal(err)
+	}
+	gl.calls = nil
+	e.gl.Clock = e.gl.Clock.Add(time.Minute)
+	e.reconcile()
+	if gl.count("ListIssues") != 1 {
+		t.Fatalf("a re-plan right after a settle sync takes the full sync: %q", gl.calls)
+	}
+}
+
+func TestSettlingMilestoneOpensAFollowUpWithinTheInterval(t *testing.T) {
+	e, gl, retro := newSettlingEnv(t)
+	e.reconcile()
+	wantSettled(e, gl)
+	synced := e.gl.Clock
+	e.gl.AddReply(e.autopilot().TrackingIssueIID, retro.ID, alice, "create 1")
+	// Polls every 2m, up to one settleInterval after the sync.
+	for at := 2 * time.Minute; ; at = min(at+2*time.Minute, settleInterval) {
+		e.gl.Clock = synced.Add(at)
+		e.reconcile()
+		if opened := followUpIssues(e)["Docs"] != nil; opened != (at == settleInterval) {
+			t.Fatalf("at %v the follow-up is opened: %v, want only once the sync is due", at, opened)
+		}
+		if at == settleInterval {
+			break
+		}
+	}
+	if e.task(specTaskName).Status.Pilot.Retrospective.Created["1"] == 0 {
+		t.Fatal("the retrospective records the created follow-up")
+	}
+}
+
+// A command that leaves Done ends settling: the full-sync fallback applies
+// it, and later polls are full syncs while the phase is not Done.
+func TestSettlingMilestoneTakesTheFullSyncAfterACommandLeavesDone(t *testing.T) {
+	e, gl, _ := newSettlingEnv(t)
+	e.reconcile()
+	wantSettled(e, gl)
+	e.gl.Issues[1].State = "opened"
+	e.gl.AddNote(e.autopilot().TrackingIssueIID, alice, "/agent unskip #1")
+	e.gl.Clock = e.gl.Clock.Add(settleInterval)
+	gl.calls = nil
+	e.reconcile()
+	wantFull(e, gl)
+	if ap := e.autopilot(); ap.Phase == aiv1.AutopilotDone || autopilotSettling(e.task(specTaskName), e.r.Now()) {
+		t.Fatalf("the unskip leaves Done: %+v", ap)
+	}
+	for range 2 {
+		gl.calls = nil
+		e.gl.Clock = e.gl.Clock.Add(2 * time.Minute)
+		e.reconcile()
+		if gl.count("ListIssues") != 1 {
+			t.Fatalf("a running milestone takes the full sync: %q", gl.calls)
+		}
+	}
+}
+
+func TestSettlingMilestoneClosesOnTheFirstPollAfterTheWindow(t *testing.T) {
+	e, gl, _ := newSettlingEnv(t)
+	end := e.task(specTaskName).Status.Pilot.Retrospective.PostedAt.Add(aiv1.FollowUpWindow)
+	e.gl.Clock = end.Add(-time.Minute)
+	e.reconcile()
+	wantSettled(e, gl)
+	if e.gl.Milestones[0].State == "closed" {
+		t.Fatal("the window is still open")
+	}
+	e.gl.Clock = end
+	e.reconcile()
+	if e.gl.Milestones[0].State != "closed" {
+		t.Fatalf("the first poll after the window closes the milestone, synced or not: %q", gl.calls)
 	}
 }

@@ -354,9 +354,18 @@ func (ph autopilotPhase) run(ctx context.Context) {
 	r, gl, gate, project, spec := ph.r, ph.gl, ph.gate, ph.project, ph.spec
 	tasks, keep, byMilestone, pilots, descriptions, ahead := ph.tasks, ph.keep, ph.byMilestone, ph.pilots, ph.descriptions, ph.ahead
 	autopilots, specTasks, lane, implTasks, homeMRs := ph.autopilots, ph.specTasks, ph.lane, ph.implTasks, ph.homeMRs
+	// A settling milestone syncs only when due or woken (settleSkip). Its
+	// decisions are recorded; the watermark catches up once it leaves settling.
+	now, skip := r.now(), map[int64]bool{}
 	for _, st := range specTasks {
+		if skip[st.Spec.Milestone.IID] = r.settleSkip(project, st, now); skip[st.Spec.Milestone.IID] {
+			continue
+		}
 		if err := r.syncRevisits(ctx, gl, gate, project, spec, st); err != nil {
 			ph.errs = append(ph.errs, fmt.Errorf("revisits of milestone %q: %w", st.Spec.Milestone.Title, err))
+		}
+		if autopilotSettling(st, now) {
+			continue
 		}
 		if err := r.syncDecisions(ctx, gl, project, spec, st); err != nil {
 			ph.errs = append(ph.errs, fmt.Errorf("decisions of milestone %q: %w", st.Spec.Milestone.Title, err))
@@ -379,6 +388,9 @@ func (ph autopilotPhase) run(ctx context.Context) {
 		}
 	}
 	for _, st := range autopilots {
+		if skip[st.Spec.Milestone.IID] {
+			continue
+		}
 		if err := r.syncAutopilot(ctx, gl, gate, project, spec, st, implTasks, pilots[st.Spec.Milestone.IID], st == lane, ahead[st.Spec.Milestone.IID], markedBy); err != nil {
 			ph.errs = append(ph.errs, fmt.Errorf("autopilot of milestone %q: %w", st.Spec.Milestone.Title, err))
 		}

@@ -21,6 +21,20 @@ func autopilotSettling(st *aiv1.AgentTask, now time.Time) bool {
 		ps != nil && ps.Retrospective != nil && !ps.Retrospective.FollowUpsSettled(now)
 }
 
+// settleInterval is how often a settling milestone syncs without a wake.
+const settleInterval = 15 * time.Minute
+
+// settleSkip reports whether this poll leaves the settling milestone st
+// alone: it synced less than settleInterval ago and nothing woke it. A Desk
+// command wakes it; a re-plan ends settling (autopilotSettling).
+func (r *AgentProjectReconciler) settleSkip(project *aiv1.AgentProject, st *aiv1.AgentTask, now time.Time) bool {
+	if !autopilotSettling(st, now) || st.Status.Autopilot.SettleSyncedAt == nil || now.Sub(st.Status.Autopilot.SettleSyncedAt.Time) >= settleInterval {
+		return false
+	}
+	src := &st.Spec.Source
+	return !slices.ContainsFunc(src.ChatMessages, func(m aiv1.ChatMessage) bool { return m.Kind == "command" && m.ID > src.LastChatCommandID })
+}
+
 // settle is the sync of a settling milestone: it reads the tracking issue's
 // notes and runs only what they can still change (the pilot, the follow-ups,
 // release records not ended). It returns false, with the notes kept for
