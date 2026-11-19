@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/go-logr/logr"
 
@@ -704,6 +706,10 @@ func thinSeries(series []int64, turns []int32, max int) ([]int64, []int32) {
 	return kept, mapped
 }
 
+// answerGrace is how long a CLI may keep running after its answer before
+// runCLI ends it and uses the answer. A variable so tests can shorten it.
+var answerGrace = 60 * time.Second
+
 // runCLI runs an agent CLI. With stream, its output is a line per event: each
 // is logged (see logEvent); it keeps the answer and adds up the usage (addUsage).
 func runCLI(ctx context.Context, bin string, args []string, dir string, env []string, stdin string, stream bool) (*Result, error) {
@@ -725,6 +731,8 @@ func runCLI(ctx context.Context, bin string, args []string, dir string, env []st
 		if err := cmd.Start(); err != nil {
 			return nil, fmt.Errorf("%s failed: %w", filepath.Base(bin), err)
 		}
+		var stopped atomic.Bool
+		var grace *time.Timer
 		rd := bufio.NewReader(pipe)
 		for {
 			line, err := rd.ReadBytes('\n')
@@ -733,15 +741,33 @@ func runCLI(ctx context.Context, bin string, args []string, dir string, env []st
 					tr.log.Info("skipping an unreadable result line", "error", perr.Error())
 				} else if last, usage = r, addUsage(usage, r.CallUsage); !r.IsError && r.Structured != nil {
 					answer = r
+					if grace == nil { // the CLI may wait for a wakeup it scheduled (#504)
+						grace = time.AfterFunc(answerGrace, func() {
+							stopped.Store(true)
+							_ = cmd.Process.Kill()
+							_ = pipe.Close() // a grandchild may still hold the write end
+						})
+					}
 				}
 			}
 			if err != nil {
 				break
 			}
 		}
+		if grace != nil {
+			grace.Stop()
+		}
+		killed := stopped.Load()
+		if killed {
+			tr.log.Info("agent kept running after it answered", "grace", answerGrace.String())
+			cmd.WaitDelay = time.Second // a grandchild may still hold stderr
+		}
 		// No result: the stream ended early, the messages are no answer.
 		tr.flush()
 		runErr = cmd.Wait()
+		if killed {
+			runErr = nil // the kill's exit status, the answer stands
+		}
 		stdout.Write(tr.result)
 		if answer != nil && !last.IsError { // an error after the answer fails the run
 			answer.CostUSD, last = last.CostUSD, answer
