@@ -33,7 +33,7 @@ type CostTop struct {
 // costTopCols are the columns of spend that CostTop reads.
 const costTopCols = `legacy, namespace, project, coalesce(milestone_iid, 0) AS milestone_iid, coalesce(issue_iid, 0) AS issue_iid,
 	task, coalesce(run, 0) AS run, seq, at, kind, engine, cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
-	subagent_calls, duration_ms, checkpoints, token_basis`
+	subagent_calls, duration_ms, checkpoints, token_basis, lines_added, lines_deleted`
 
 // costTopLevels are CostTop's groups: the filter of the rows that have one,
 // the key columns and the milestone, issue, task, run and kind columns.

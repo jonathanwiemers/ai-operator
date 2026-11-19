@@ -197,4 +197,11 @@ export interface SpendTotals {
    */
   legacyCostUSD?: Money;
   checkpoints: number /* int64 */;
+  /**
+   * LinesAdded and LinesDeleted are the sums of the calls' written lines: every
+   * step commit, rewrites and fix rounds included. Only implementer calls
+   * carry lines; review calls and legacy runs add 0.
+   */
+  linesAdded?: number /* int64 */;
+  linesDeleted?: number /* int64 */;
 }

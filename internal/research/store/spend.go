@@ -162,21 +162,22 @@ func spendWith(where string) string {
 	), spend AS (
 		SELECT false AS legacy, id, namespace, project, milestone_iid, issue_iid, task, run, seq, at, kind, role, engine, model, resumed,
 			cost_usd, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, subagent_calls, duration_ms, read_gate_blocks,
-			checkpoint, (checkpoint <> '')::int AS checkpoints, token_basis
+			checkpoint, (checkpoint <> '')::int AS checkpoints, token_basis, lines_added, lines_deleted
 		FROM scoped
 		UNION ALL
-		SELECT true, NULL, namespace, project, milestone_iid, issue_iid, task, run, NULL, at, '', '', '', '', false, cost_usd, 0, 0, 0, 0, 0, 0, 0, '', 0, 0::smallint
+		SELECT true, NULL, namespace, project, milestone_iid, issue_iid, task, run, NULL, at, '', '', '', '', false, cost_usd, 0, 0, 0, 0, 0, 0, 0, '', 0, 0::smallint, 0, 0
 		FROM legacy
 		UNION ALL
 		SELECT true, NULL, namespace, project, milestone_iid, issue_iid, task, run, NULL, at, '', '', '', '', false, NULL, 0, 0, 0, 0, 0, 0, 0,
-			CASE WHEN reason = '' THEN 'unknown' ELSE reason END, 1, 0::smallint
+			CASE WHEN reason = '' THEN 'unknown' ELSE reason END, 1, 0::smallint, 0, 0
 		FROM cpevents
 	), split AS (
 		SELECT false AS legacy, c.id, c.namespace, c.project, c.engine, c.milestone_iid, c.issue_iid, c.task, c.run, c.seq, c.at, c.kind, m.model, m.main,
 			m.cost_usd, m.input_tokens, m.output_tokens, m.cache_read_tokens, m.cache_write_tokens,
 			CASE WHEN m.main THEN c.subagent_calls ELSE 0 END AS subagent_calls,
 			CASE WHEN m.main THEN c.duration_ms ELSE 0 END AS duration_ms,
-			CASE WHEN m.main AND c.checkpoint <> '' THEN 1 ELSE 0 END AS checkpoints, c.token_basis
+			CASE WHEN m.main AND c.checkpoint <> '' THEN 1 ELSE 0 END AS checkpoints, c.token_basis,
+			CASE WHEN m.main THEN c.lines_added ELSE 0 END AS lines_added, CASE WHEN m.main THEN c.lines_deleted ELSE 0 END AS lines_deleted
 		FROM scoped c CROSS JOIN LATERAL (
 			-- The models' token sum and the main model (the row's model when
 			-- c.models is empty).
@@ -217,7 +218,8 @@ const spendTotals = `coalesce(sum(cost_usd), 0)::float8,
 	count(*) FILTER (WHERE NOT legacy AND cost_usd IS NULL
 		AND input_tokens + output_tokens + cache_read_tokens + cache_write_tokens = 0),
 	coalesce(sum(checkpoints), 0)::bigint,
-	count(*) FILTER (WHERE NOT legacy AND token_basis = 0)`
+	count(*) FILTER (WHERE NOT legacy AND token_basis = 0),
+	coalesce(sum(lines_added), 0)::bigint, coalesce(sum(lines_deleted), 0)::bigint`
 
 // scanTotals scans the spendTotals columns after the dest columns before
 // them.
@@ -231,7 +233,7 @@ func scanTotals(row pgx.Row, dest ...any) (SpendTotals, error) {
 	var legacy float64
 	err := row.Scan(append(dest, &t.CostUSD.USD, &t.UnknownCalls, &t.InputTokens, &t.OutputTokens,
 		&t.CacheReadTokens, &t.CacheWriteTokens, &t.Calls, &t.SubagentCalls, &t.DurationMS, &legacy,
-		&t.UnmeteredCalls, &t.Checkpoints, &t.OldBasisCalls)...)
+		&t.UnmeteredCalls, &t.Checkpoints, &t.OldBasisCalls, &t.LinesAdded, &t.LinesDeleted)...)
 	if legacy > 0 {
 		t.LegacyCostUSD = USD(legacy)
 	}

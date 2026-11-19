@@ -49,6 +49,7 @@ func TestCostSeries(t *testing.T) {
 	// An implement call with a haiku subagent: two models.
 	split := call("k1", "agents", "shop", day.Add(10*time.Hour), "shop-2", "implement", "claude", "claude-opus-5-5", usd(1.23), 10, 20)
 	split.CacheReadTokens, split.CacheWriteTokens = 30, 40
+	split.LinesAdded, split.LinesDeleted = 50, 6
 	split.Models = []store.CallModel{
 		{Model: "claude-opus-5-5", InputTokens: 8, OutputTokens: 15, CacheReadTokens: 30, CacheWriteTokens: 40, CostUSD: usd(1.2)},
 		{Model: "claude-haiku-5-5", InputTokens: 2, OutputTokens: 5, CostUSD: usd(0.03)},
@@ -144,6 +145,22 @@ func TestCostSeries(t *testing.T) {
 	if math.Abs(sum.CostUSD.USD-all.CostUSD.USD) > 1e-9 || sum.InputTokens != all.InputTokens || sum.OutputTokens != all.OutputTokens ||
 		sum.CacheReadTokens != all.CacheReadTokens || sum.CacheWriteTokens != all.CacheWriteTokens || sum.DurationMS != all.DurationMS {
 		t.Errorf("model split sums to %+v, want %+v", sum, all)
+	}
+
+	// Written lines: the split call's lines go to its main model only, so the
+	// by-model rows add up to the ungrouped totals; review adds 0.
+	var modelLines [2]int64
+	for _, p := range byModel {
+		modelLines[0] += p.Totals.LinesAdded
+		modelLines[1] += p.Totals.LinesDeleted
+	}
+	if g := series(q, "day", "")[0].Totals; g.LinesAdded != 50 || g.LinesDeleted != 6 || modelLines != [2]int64{50, 6} {
+		t.Errorf("lines = %d/%d, by model %v; want 50/6", g.LinesAdded, g.LinesDeleted, modelLines)
+	}
+	for _, p := range series(q, "day", "kind") {
+		if want := (p.Key == "implement"); want != (p.Totals.LinesAdded == 50 && p.Totals.LinesDeleted == 6) {
+			t.Errorf("kind %q lines = %d/%d", p.Key, p.Totals.LinesAdded, p.Totals.LinesDeleted)
+		}
 	}
 
 	// Filters: a kind or an engine drops the legacy run; excluded kinds
@@ -293,6 +310,7 @@ func TestCostBreakdowns(t *testing.T) {
 	// An implement call with a haiku subagent and a step of 40 lines.
 	split := call("k1", "shop", day.Add(10*time.Hour), "implement", "claude", "claude-opus-5-5", usd(1.23), 10, 20)
 	split.CacheReadTokens, split.CacheWriteTokens = 30, 40
+	split.LinesAdded, split.LinesDeleted = 50, 6
 	split.LinesAdded, split.LinesDeleted, split.StepGateNudges = 30, 10, 1
 	split.Models = []store.CallModel{
 		{Model: "claude-opus-5-5", InputTokens: 8, OutputTokens: 15, CacheReadTokens: 30, CacheWriteTokens: 40, CostUSD: usd(1.2)},

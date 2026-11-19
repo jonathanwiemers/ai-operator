@@ -48,6 +48,8 @@ func TestSpend(t *testing.T) {
 	fix := call("c3", 4*time.Hour, 20, 150, "orbit-150", 1, 1, "fix", "fix", "gpt-5", nil, 100, 50, 0, 0, 5000)
 	fix.Engine = "cursor"
 	fix.Checkpoint, fix.CheckpointSHA = "usage-limit", "def456"
+	// A fix round wrote 30 more lines.
+	fix.LinesAdded, fix.LinesDeleted = 30, 4
 	// The milestone's spec: no issue.
 	spec := call("c4", time.Hour, 20, 0, "orbit-spec-20", 1, 1, "spec", "spec", "claude-opus-5-5", usd(0.25), 1, 2, 3, 4, 1000)
 	// Milestone 21, #160: the row has the model's alias, models the full
@@ -138,7 +140,8 @@ func TestSpend(t *testing.T) {
 	sp := spend(store.SpendScope{})
 	want := store.SpendTotals{CostUSD: store.USD(7.08), UnknownCalls: 1,
 		InputTokens: 217, OutputTokens: 88, CacheReadTokens: 1133, CacheWriteTokens: 44,
-		Calls: 6, OldBasisCalls: 6, SubagentCalls: 3, DurationMS: 96500, LegacyCostUSD: store.USD(2), Checkpoints: 3}
+		Calls: 6, OldBasisCalls: 6, SubagentCalls: 3, DurationMS: 96500, LegacyCostUSD: store.USD(2), Checkpoints: 3,
+		LinesAdded: 150, LinesDeleted: 11}
 	if sp.Totals != want {
 		t.Errorf("project totals:\n got %+v\nwant %+v", sp.Totals, want)
 	}
@@ -200,17 +203,29 @@ func TestSpend(t *testing.T) {
 	checkBreakdown("%20 by model", sp.ByModel, []breakdown{
 		{"claude-opus-5-5", 1.45, true, 2}, {"claude-sonnet-5-5", 0.5, true, 1},
 		{"claude-haiku-5-5", 0.03, true, 1}, {"gpt-5", 0, false, 1}})
+	// Written lines: a run child and the by-kind rows carry them, review adds 0.
+	lines := map[string][2]int64{}
+	for _, k := range sp.ByKind {
+		lines[k.Key] = [2]int64{k.Totals.LinesAdded, k.Totals.LinesDeleted}
+	}
+	if lines["implement"] != [2]int64{120, 7} || lines["fix"] != [2]int64{30, 4} || lines["review"] != [2]int64{} {
+		t.Errorf("milestone 20 lines by kind = %v", lines)
+	}
 
 	// #148: its runs, the legacy one without tokens.
 	sp = spend(store.SpendScope{MilestoneIID: 20, IssueIID: 148})
 	if want := (store.SpendTotals{CostUSD: store.USD(3.73), InputTokens: 110, OutputTokens: 30,
-		CacheReadTokens: 1030, CacheWriteTokens: 40, Calls: 2, OldBasisCalls: 2, SubagentCalls: 1, DurationMS: 70000, LegacyCostUSD: store.USD(2), Checkpoints: 1}); sp.Totals != want {
+		CacheReadTokens: 1030, CacheWriteTokens: 40, Calls: 2, OldBasisCalls: 2, SubagentCalls: 1, DurationMS: 70000, LegacyCostUSD: store.USD(2), Checkpoints: 1,
+		LinesAdded: 120, LinesDeleted: 7}); sp.Totals != want {
 		t.Errorf("#148 totals:\n got %+v\nwant %+v", sp.Totals, want)
 	}
 	checkChildren("#148", sp.Children, []child{
 		{"run", "orbit-148/1", "orbit-148 run 1", 2, 2, true, 0, 0},
 		{"run", "orbit-148/2", "orbit-148 run 2", 1.73, 0, true, 2, 0},
 	})
+	if c := sp.Children[1]; c.Totals.LinesAdded != 120 || c.Totals.LinesDeleted != 7 {
+		t.Errorf("run 2 child lines = %+v", c.Totals)
+	}
 	if c := sp.Children[0]; c.Totals.Tokens() != 0 || c.Models != nil || !c.At.Equal(base) {
 		t.Errorf("legacy run = %+v; want no tokens or models, at %v", c, base)
 	}
@@ -222,14 +237,16 @@ func TestSpend(t *testing.T) {
 
 	// #150 has only an unknown cursor call.
 	sp = spend(store.SpendScope{IssueIID: 150})
-	if sp.Totals.CostUSD.Known || sp.Totals.UnknownCalls != 1 || sp.Totals.CostUSD.USD != 0 || sp.Totals.Calls != 1 {
+	if sp.Totals.CostUSD.Known || sp.Totals.UnknownCalls != 1 || sp.Totals.CostUSD.USD != 0 || sp.Totals.Calls != 1 ||
+		sp.Totals.LinesAdded != 30 || sp.Totals.LinesDeleted != 4 {
 		t.Errorf("#150 totals = %+v; want unknown", sp.Totals)
 	}
 	checkModels("#150 run", sp.Children[0].Models, []store.ModelSplit{{Model: "gpt-5", Main: true, Tokens: 150}})
 
 	// A run: its calls by seq, with their rows.
 	sp = spend(store.SpendScope{Task: "orbit-148", Run: 2})
-	if sp.Totals.CostUSD.USD != 1.73 || sp.Totals.LegacyCostUSD.USD != 0 || sp.Totals.Calls != 2 {
+	if sp.Totals.CostUSD.USD != 1.73 || sp.Totals.LegacyCostUSD.USD != 0 || sp.Totals.Calls != 2 ||
+		sp.Totals.LinesAdded != 120 || sp.Totals.LinesDeleted != 7 {
 		t.Errorf("run 2 totals = %+v", sp.Totals)
 	}
 	checkChildren("run 2", sp.Children, []child{

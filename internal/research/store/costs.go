@@ -52,7 +52,7 @@ var costGroups = map[string]string{
 
 // costCols are the columns of spend and split that CostSeries reads.
 const costCols = `legacy, namespace, project, at, kind, engine, coalesce(model, '') AS model, cost_usd,
-	input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, subagent_calls, duration_ms, checkpoints, token_basis`
+	input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, subagent_calls, duration_ms, checkpoints, token_basis, lines_added, lines_deleted`
 
 // CostSeries returns the totals of q's calls and legacy runs per bucket
 // (day, week or month) and group (project, kind, model, engine or "" for

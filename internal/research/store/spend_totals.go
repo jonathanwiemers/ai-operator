@@ -36,6 +36,11 @@ type SpendTotals struct {
 	// unknown (left out of the JSON) when there is none.
 	LegacyCostUSD Money `json:"legacyCostUSD,omitzero"`
 	Checkpoints   int64 `json:"checkpoints"`
+	// LinesAdded and LinesDeleted are the sums of the calls' written lines: every
+	// step commit, rewrites and fix rounds included. Only implementer calls
+	// carry lines; review calls and legacy runs add 0.
+	LinesAdded   int64 `json:"linesAdded,omitempty"`
+	LinesDeleted int64 `json:"linesDeleted,omitempty"`
 }
 
 // MarshalJSON writes t with costKnown from CostUSD.Known.
@@ -63,6 +68,8 @@ func (t SpendTotals) Add(u SpendTotals) SpendTotals {
 		DurationMS:       t.DurationMS + u.DurationMS,
 		LegacyCostUSD:    t.LegacyCostUSD.Add(u.LegacyCostUSD),
 		Checkpoints:      t.Checkpoints + u.Checkpoints,
+		LinesAdded:       t.LinesAdded + u.LinesAdded,
+		LinesDeleted:     t.LinesDeleted + u.LinesDeleted,
 	}
 }
 
