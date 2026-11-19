@@ -1439,9 +1439,15 @@ type AgentProjectStatus struct {
 	// +optional
 	BotUsername string `json:"botUsername,omitempty"`
 
-	// ActiveMilestones is the number of milestones currently tracked.
+	// ActiveMilestones is the number of tracked milestones that are not
+	// settling (see settlingMilestones).
 	// +optional
 	ActiveMilestones int32 `json:"activeMilestones,omitempty"`
+
+	// SettlingMilestones is the number of milestones whose autopilot is done
+	// and that only wait for their retrospective's follow-ups.
+	// +optional
+	SettlingMilestones int32 `json:"settlingMilestones,omitempty"`
 
 	// ActiveTasks is the number of AgentTasks belonging to this project.
 	// +optional

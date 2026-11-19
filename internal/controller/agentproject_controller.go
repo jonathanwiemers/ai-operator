@@ -359,6 +359,7 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 		return err
 	}
 	defer countGitLabRequests(project.Name, gl)
+	var poll *projectPoll
 	if c, ok := gl.(interface{ Stats() gitlab.Stats }); ok {
 		// What a poll costs GitLab; retries mean it pushed back.
 		defer func() {
@@ -367,10 +368,14 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 			if st.Retries > 0 {
 				lvl = 0
 			}
-			log.FromContext(ctx).V(lvl).Info("GitLab poll done", "requests", st.Requests, "retries", st.Retries)
+			settled := 0
+			if poll != nil {
+				settled = poll.settled
+			}
+			log.FromContext(ctx).V(lvl).Info("GitLab poll done", "requests", st.Requests, "retries", st.Retries, "settling", settled)
 		}()
 	}
-	poll, err := r.newProjectPoll(ctx, gl, project, spec, started)
+	poll, err = r.newProjectPoll(ctx, gl, project, spec, started)
 	if err != nil {
 		return err
 	}

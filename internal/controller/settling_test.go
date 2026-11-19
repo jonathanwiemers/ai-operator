@@ -594,6 +594,30 @@ func TestSettlingMilestoneClosesOnTheFirstPollAfterTheWindow(t *testing.T) {
 	}
 }
 
+func TestSettlingMilestonesAreCountedApartFromActiveOnes(t *testing.T) {
+	e, _, _ := newSettlingEnv(t)
+	for _, iid := range []int64{4, 5} {
+		addSettlingMilestone(e, iid)
+	}
+	for i, iid := range []int64{6, 7} {
+		e.gl.Milestones = append(e.gl.Milestones, gitlab.Milestone{ID: int64(20 + i), IID: iid, Title: fmt.Sprintf("Running %d", iid), State: "active", Description: "/agent autopilot\nBuild it."})
+	}
+	e.reconcile()
+	if st := e.project().Status; st.ActiveMilestones != 2 || st.SettlingMilestones != 3 {
+		t.Fatalf("active %d, settling %d, want 2 and 3", st.ActiveMilestones, st.SettlingMilestones)
+	}
+	// A re-plan puts a milestone back among the active ones.
+	st := e.task(specTaskName)
+	st.Spec.RunRequest++
+	if err := e.c.Update(e.ctx, st); err != nil {
+		t.Fatal(err)
+	}
+	e.reconcile()
+	if st := e.project().Status; st.ActiveMilestones != 3 || st.SettlingMilestones != 2 {
+		t.Fatalf("after a re-plan: active %d, settling %d, want 3 and 2", st.ActiveMilestones, st.SettlingMilestones)
+	}
+}
+
 // noteDelivered records, at the fake GitLab's time, a webhook note event on
 // the issue iid of the project shop.
 func noteDelivered(e *projectEnv, iid int64) {

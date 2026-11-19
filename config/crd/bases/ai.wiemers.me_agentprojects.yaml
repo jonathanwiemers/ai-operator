@@ -2670,8 +2670,9 @@ spec:
             description: AgentProjectStatus is the observed state of an AgentProject.
             properties:
               activeMilestones:
-                description: ActiveMilestones is the number of milestones currently
-                  tracked.
+                description: |-
+                  ActiveMilestones is the number of tracked milestones that are not
+                  settling (see settlingMilestones).
                 format: int32
                 type: integer
               activeTasks:
@@ -3278,6 +3279,12 @@ spec:
                   - state
                   type: object
                 type: array
+              settlingMilestones:
+                description: |-
+                  SettlingMilestones is the number of milestones whose autopilot is done
+                  and that only wait for their retrospective's follow-ups.
+                format: int32
+                type: integer
               usageLimits:
                 description: |-
                   UsageLimits lists engines that currently hit a usage or rate limit.

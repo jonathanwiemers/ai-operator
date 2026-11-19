@@ -1851,10 +1851,17 @@ export interface AgentProjectStatus {
    */
   botUsername?: string;
   /**
-   * ActiveMilestones is the number of milestones currently tracked.
+   * ActiveMilestones is the number of tracked milestones that are not
+   * settling (see settlingMilestones).
    * +optional
    */
   activeMilestones?: number /* int32 */;
+  /**
+   * SettlingMilestones is the number of milestones whose autopilot is done
+   * and that only wait for their retrospective's follow-ups.
+   * +optional
+   */
+  settlingMilestones?: number /* int32 */;
   /**
    * ActiveTasks is the number of AgentTasks belonging to this project.
    * +optional

@@ -27,6 +27,7 @@ type projectPoll struct {
 	started time.Time
 	titleRE *regexp.Regexp
 	prefix  string
+	settled int // settling milestones this poll left alone
 
 	tasks       aiv1.AgentTaskList
 	byMilestone map[int64]*aiv1.AgentTask
@@ -131,7 +132,7 @@ func (p *projectPoll) syncMilestones(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("listing milestones: %w", err)
 	}
-	var active int32
+	var active, settling int32
 	p.descriptions = map[int64]string{}
 	for _, m := range milestones {
 		p.descriptions[m.ID] = m.Description
@@ -145,13 +146,17 @@ func (p *projectPoll) syncMilestones(ctx context.Context) error {
 		if !selected {
 			continue
 		}
-		active++
 		if p.byMilestone[m.IID] != nil {
 			requirements[m.IID] = rules.CountRequirements(m.Description)
 		}
 		task, err := r.syncSpecTask(ctx, project, spec, m, p.byMilestone[m.IID], autopilot, p.ahead[m.IID], p.owners(m.Description), p.ownerSubjects(m.Description))
 		if err != nil {
 			return err
+		}
+		if autopilotSettling(task, r.now()) {
+			settling++
+		} else {
+			active++
 		}
 		p.keep[task.Name] = true
 		p.byMilestone[m.IID] = task
@@ -160,7 +165,7 @@ func (p *projectPoll) syncMilestones(ctx context.Context) error {
 			p.autopilots[m.IID] = task
 		}
 	}
-	project.Status.ActiveMilestones = active
+	project.Status.ActiveMilestones, project.Status.SettlingMilestones = active, settling
 	r.requirements.note(store.ProjectKey{Namespace: project.Namespace, Name: project.Name}, requirements)
 	// One autopilot drives the main-red issue (the main-red lane): the
 	// oldest milestone that is not done.
@@ -359,6 +364,7 @@ func (ph autopilotPhase) run(ctx context.Context) {
 	now, skip := r.now(), map[int64]bool{}
 	for _, st := range specTasks {
 		if skip[st.Spec.Milestone.IID] = r.settleSkip(project, st, now); skip[st.Spec.Milestone.IID] {
+			ph.settled++
 			continue
 		}
 		if err := r.syncRevisits(ctx, gl, gate, project, spec, st); err != nil {
