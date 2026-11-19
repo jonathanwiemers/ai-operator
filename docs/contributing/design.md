@@ -3014,6 +3014,13 @@ How the runner drives each CLI (users see the capabilities in
 | session resume | `--resume` | `--resume` |
 | subagents, hooks | `--agents`, `--settings` | none |
 
+Every claude invocation also denies `ScheduleWakeup`, `CronCreate`,
+`CronDelete` and `RemoteTrigger`, after the role's own denials: a pending
+wakeup or cron job keeps the CLI alive after the agent has answered, and the
+run must end with the answer. If a one-shot run still prints several result
+lines, the runner keeps the last successful one with structured output (an
+error after it fails the run) and adds up the usage of every line.
+
 **Model routing.** Strong models are expensive, so they are only used where
 they pay off:
 

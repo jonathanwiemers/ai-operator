@@ -3,6 +3,7 @@ package runner
 import (
 	"bufio"
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -242,6 +243,9 @@ type ClaudeCLI struct {
 	Env []string
 }
 
+// schedulingTools are denied to claude: they keep the CLI alive after the answer.
+var schedulingTools = []string{"ScheduleWakeup", "CronCreate", "CronDelete", "RemoteTrigger"}
+
 // Args returns the command line for an invocation (without the binary).
 func (c *ClaudeCLI) Args(inv Invocation) []string {
 	// stream-json prints the session as it happens (thinking, messages,
@@ -262,9 +266,8 @@ func (c *ClaudeCLI) Args(inv Invocation) []string {
 	if len(inv.AllowedTools) > 0 {
 		args = append(args, "--allowedTools", strings.Join(inv.AllowedTools, ","))
 	}
-	if len(inv.DisallowedTools) > 0 {
-		args = append(args, "--disallowedTools", strings.Join(inv.DisallowedTools, ","))
-	}
+	more := slices.DeleteFunc(slices.Clone(schedulingTools), func(t string) bool { return slices.Contains(inv.DisallowedTools, t) })
+	args = append(args, "--disallowedTools", strings.Join(append(slices.Clip(inv.DisallowedTools), more...), ","))
 	if inv.JSONSchema != "" {
 		args = append(args, "--json-schema", inv.JSONSchema)
 	}
@@ -315,6 +318,31 @@ func sinceLastResult(res *Result) bool {
 		res.CostUSD += m.CostUSD
 	}
 	return true
+}
+
+// addUsage adds n, the usage of a later result line of the same process, to u
+// and returns the sum: modelUsage and subagent_stats count the whole process,
+// the other figures add up. sinceLast is nil once a line lacks it.
+func addUsage(u, n *CallUsage) *CallUsage {
+	if u == nil || n == nil {
+		return cmp.Or(n, u)
+	}
+	u.InputTokens, u.OutputTokens = u.InputTokens+n.InputTokens, u.OutputTokens+n.OutputTokens
+	u.CacheReadTokens, u.CacheWriteTokens = u.CacheReadTokens+n.CacheReadTokens, u.CacheWriteTokens+n.CacheWriteTokens
+	u.Turns, u.DurationMS = u.Turns+n.Turns, u.DurationMS+n.DurationMS
+	u.Models, u.SubagentCalls = n.Models, n.SubagentCalls
+	if u.sinceLast == nil || n.sinceLast == nil {
+		u.sinceLast = nil
+		return u
+	}
+	merged := map[string]modelFigures{}
+	for _, m := range slices.Concat(u.sinceLast, n.sinceLast) {
+		f := merged[m.Model]
+		merged[m.Model] = modelFigures{InputTokens: f.InputTokens + m.InputTokens, OutputTokens: f.OutputTokens + m.OutputTokens,
+			CacheReadInputTokens: f.CacheReadInputTokens + m.CacheReadTokens, CacheCreationInputTokens: f.CacheCreationInputTokens + m.CacheWriteTokens, CostUSD: f.CostUSD + m.CostUSD}
+	}
+	u.sinceLast = append([]ModelUsage{}, modelList(merged)...)
+	return u
 }
 
 // CursorCLI runs the Cursor CLI (cursor-agent). Authentication comes from
@@ -677,7 +705,7 @@ func thinSeries(series []int64, turns []int32, max int) ([]int64, []int32) {
 }
 
 // runCLI runs an agent CLI. With stream, its output is a line per event: each
-// is logged (see logEvent) and only the last one, the result, is kept.
+// is logged (see logEvent); it keeps the answer and adds up the usage (addUsage).
 func runCLI(ctx context.Context, bin string, args []string, dir string, env []string, stdin string, stream bool) (*Result, error) {
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = dir
@@ -686,6 +714,8 @@ func runCLI(ctx context.Context, bin string, args []string, dir string, env []st
 	var stdout, stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	var runErr error
+	var answer, last *Result // the last success with structured output, the last result
+	var usage *CallUsage
 	tr := &turnReader{log: logr.FromContextOrDiscard(ctx), status: statusSink(ctx)}
 	if stream {
 		pipe, err := cmd.StdoutPipe()
@@ -698,8 +728,12 @@ func runCLI(ctx context.Context, bin string, args []string, dir string, env []st
 		rd := bufio.NewReader(pipe)
 		for {
 			line, err := rd.ReadBytes('\n')
-			if line = bytes.TrimSpace(line); len(line) > 0 {
-				tr.consume(line)
+			if line = bytes.TrimSpace(line); len(line) > 0 && tr.consume(line) {
+				if r, perr := ParseResult(line); perr != nil {
+					tr.log.Info("skipping an unreadable result line", "error", perr.Error())
+				} else if last, usage = r, addUsage(usage, r.CallUsage); !r.IsError && r.Structured != nil {
+					answer = r
+				}
 			}
 			if err != nil {
 				break
@@ -708,13 +742,20 @@ func runCLI(ctx context.Context, bin string, args []string, dir string, env []st
 		// No result: the stream ended early, the messages are no answer.
 		tr.flush()
 		runErr = cmd.Wait()
-		stdout.Reset()
 		stdout.Write(tr.result)
+		if answer != nil && !last.IsError { // an error after the answer fails the run
+			answer.CostUSD, last = last.CostUSD, answer
+		}
 	} else {
 		cmd.Stdout = &stdout
 		runErr = cmd.Run()
 	}
-	res, parseErr := ParseResult(stdout.Bytes())
+	res, parseErr := last, error(nil)
+	if res == nil {
+		res, parseErr = ParseResult(stdout.Bytes())
+	} else {
+		res.CallUsage = usage
+	}
 	if parseErr != nil {
 		if runErr != nil {
 			return nil, fmt.Errorf("%s failed: %w: %s", filepath.Base(bin), runErr, tail(stderr.String(), 2000))
