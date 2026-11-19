@@ -20,8 +20,11 @@ const props = withDefaults(
     // line is an optional percentage line (0 to 100) on a second y axis on
     // the right, the cache-read share of the Tokens chart.
     line?: ShareLine
+    // grouped draws the series side by side, not stacked: series that are
+    // not parts of one whole (written and merged lines).
+    grouped?: boolean
   }>(),
-  { unit: 'usd', line: undefined },
+  { unit: 'usd', line: undefined, grouped: false },
 )
 
 const colors = useChartColors()
@@ -117,13 +120,13 @@ const options = computed<ChartOptions<'bar' | 'line'>>(() => {
     },
     scales: {
       x: {
-        stacked: true,
+        stacked: !props.grouped,
         grid: { display: false },
         border: { color: c.grid },
         ticks: { ...ticks, maxRotation: 0, autoSkip: true, maxTicksLimit: phone.value ? 4 : 10 },
       },
       y: {
-        stacked: true,
+        stacked: !props.grouped,
         beginAtZero: true,
         grid: { color: c.grid },
         border: { display: false },

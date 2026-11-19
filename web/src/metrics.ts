@@ -1,7 +1,8 @@
 // The Costs page's metrics (docs/contributing/web-ui.md, "Costs page"): what
-// a merged line cost by experiment arm, model, effort and step session, and
-// what fills the context. Pure helpers for MetricsBreakdown.vue and
-// MetricsContext.vue; the figures come from GET /costs/metrics.
+// 100 written lines (implement calls of merged issues) cost by experiment
+// arm, model, effort and step session, and what fills the context. Pure
+// helpers for MetricsBreakdown.vue and MetricsContext.vue; the figures
+// come from GET /costs/metrics.
 import { formatUSD } from './chartData.ts'
 import type { MetricsGroup, MetricsView, ProjectContext } from './generated/views.ts'
 
@@ -19,7 +20,7 @@ export function issuesLabel(n: number): string {
   return `${n} ${n === 1 ? 'issue' : 'issues'}`
 }
 
-// per100Label is the cost per 100 merged lines, "—" without merged lines.
+// per100Label is the cost per 100 written lines, "—" without lines.
 export function per100Label(g: MetricsGroup): string {
   return g.mergedLines > 0 ? formatUSD(g.costPer100Lines) : '—'
 }

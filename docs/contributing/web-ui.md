@@ -341,7 +341,9 @@ loads anyway.
   `pauses.ts`): 123.3 kB. The section is required by
   the Metrics page milestone (R15) and cannot fit under
   120, so the cap was raised to 124 kB and the raise reported on its merge
-  request.
+  request. With the *Code* and *Flow* sections (#608, R14, `MetricsCode.vue`,
+  `MetricsFlow.vue`, `metricsCode.ts`, `metricsFlow.ts`): 125.0 kB, the cap
+  raised to 126 kB on the same grounds and reported on its merge request.
 
 ## UI kit
 
@@ -1474,6 +1476,22 @@ spent / limit and a share bar; at 80 % or more the bar uses the warning tone.
 Unknown spend reads "unknown" with no bar, never $0. The first 10 show, *Show
 all* the rest; an empty state without budgets. Shown only: the page sets and
 enforces none. Live state, not bound to the range or the filters.
+
+*Code* (`MetricsCode.vue`, `metricsCode.ts`, `getMetricsCode`) and *Flow*
+(`MetricsFlow.vue`, `metricsFlow.ts`, `getMetricsFlow`) follow, before
+*Pauses*; each is left out when its request fails. Code draws the written
+lines and the merged production lines (added plus deleted) per bucket side
+by side (`StackedBars` with `grouped`), tiles for written, merged by
+category and the cost per 100 merged production lines, and without a
+project filter a per-project table. Merged figures of a partial count read
+`≥`, the cost per 100 `≤`; it is `—` when the cost is unknown or there are no
+production lines, and its tile notes the measured issues ("2 of 3
+measured") and the cost's basis and unmetered notes. Flow draws the merged
+issues per bucket and tiles for the median wall and agent times
+(`durationShort`) and the review and fix calls per merged issue. Both show
+`metricsFilterNote` while Kind or Engine is set. The per-arm table above
+them is *Cost per 100 written lines*: its `mergedLines` are the implement
+calls' lines of merged issues, not the merged lines of Code.
 
 *Download CSV* (a menu next to the title, shown when the range has calls):
 *Series* saves `costs-series-<from>-<to>.csv`, one row per bucket and key

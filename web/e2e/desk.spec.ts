@@ -1205,6 +1205,82 @@ test('metrics Pauses notes and per project without a project filter@375', async 
   expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
 })
 
+
+// Code and Flow (components/MetricsCode.vue and MetricsFlow.vue, R14;
+// e2e/fixtures/metrics.ts): one project's tiles and charts with no sideways
+// scrolling on a phone, and no per-project table with the project filter.
+for (const { width, height } of [widths[0]!, widths[2]!]) {
+  test(`metrics Code and Flow tiles and charts@${width}`, async ({ page, baseURL }) => {
+    const route = routes.find((r) => r.name === 'metrics')!
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await page.setViewportSize({ width, height })
+    await page.clock.setFixedTime(now)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, route, problems)
+    await page.goto(route.path)
+    await route.ready(page)
+
+    // The sections in order: Tokens, Code, Flow, Pauses.
+    await expect(page.locator('main h2')).toContainText(['Tokens', 'Code', 'Flow', 'Pauses'])
+    const code = page.locator('[data-metrics-code]')
+    await code.scrollIntoViewIfNeeded()
+    await expect(code.locator('[data-tile=written] dd').first()).toHaveText('+1200/−300')
+    await expect(code.locator('[data-tile=production] dd')).toHaveText('+240/−30')
+    await expect(code.locator('[data-tile=tests] dd')).toHaveText('+360/−0')
+    await expect(code.locator('[data-tile=per100] dd').first()).toHaveText('$4.32')
+    await expect(code.locator('[data-chart=code] canvas[role=img]')).toBeVisible()
+    await expect(code.locator('[data-code-table=project]')).toHaveCount(0)
+    await code.locator('[data-chart=code]').getByRole('button', { name: 'Table' }).click()
+    await expect(code.locator('[data-chart=code]').getByRole('table')).toBeVisible()
+
+    const flow = page.locator('[data-metrics-flow]')
+    await flow.scrollIntoViewIfNeeded()
+    await expect(flow.locator('[data-tile=wall] dd')).toHaveText('3h 20m')
+    await expect(flow.locator('[data-tile=agent] dd')).toHaveText('52m')
+    await expect(flow.locator('[data-tile=review] dd')).toHaveText('1.5')
+    await expect(flow.locator('[data-tile=fix] dd')).toHaveText('0.5')
+    await expect(flow.locator('[data-chart=flow] canvas[role=img]')).toBeVisible()
+    await expect(page.locator('[data-metrics-code], [data-metrics-flow]').locator('[data-metrics-filter-note]')).toHaveCount(0)
+
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
+    problems.csp.push(...(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)))
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+}
+
+// Without a project filter the Code table lists each project; the partial
+// count reads ≥ on the merged lines and ≤ on the cost per 100. Kind review
+// leaves Code, Flow and Pauses with the filter note.
+test('metrics Code per project and the filter note with kind=review@375', async ({ page, baseURL }) => {
+  const route = routes.find((r) => r.name === 'metrics-filtered')!
+  const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.clock.setFixedTime(now)
+  await watch(page, new URL(baseURL ?? '').origin, problems)
+  await mockAPI(page, route, problems)
+  await page.goto('/metrics?range=30d&kind=review')
+  await route.ready(page)
+
+  const code = page.locator('[data-metrics-code]')
+  await expect(code.locator('[data-tile=production] dd')).toHaveText('≥ +252/−33')
+  await expect(code.locator('[data-tile=per100] dd').first()).toHaveText('≤ $4.61')
+  await expect(code.locator('[data-tile=per100]')).toContainText('7 of 8 measured · 6 of 46 calls on the old token basis')
+  const rows = code.locator('[data-code-table=project] tbody tr')
+  await expect(rows).toHaveCount(2)
+  await expect(rows.first()).toContainText('team-a/shop')
+  await expect(rows.first()).toContainText('+240/−30')
+  await expect(rows.first()).toContainText('$4.32')
+  await expect(rows.nth(1)).toContainText('≥ +12/−3')
+  await expect(rows.nth(1)).toContainText('≤ $9.80')
+  for (const s of ['[data-metrics-code]', '[data-metrics-flow]', '[data-metrics-pauses]']) {
+    await expect(page.locator(`${s} [data-metrics-filter-note]`)).toHaveText('Kind and engine filter cost and tokens only')
+  }
+  await expect(page.locator('[data-metrics-flow] [data-tile=fix] dd')).toHaveText('0.7')
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
+
+  problems.csp.push(...(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)))
+  expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+})
 // Most expensive (views/Metrics.vue, R13): three lists whose rows open the
 // Spend drill-down; a row with only unknown calls is marked, not $0.00.
 for (const { width, height } of [widths[0]!, widths[2]!]) {

@@ -1,4 +1,5 @@
-import type { MetricsPausesView, PauseBucketView } from '../../src/generated/views'
+import type { SpendTotals } from '../../src/generated/store'
+import type { CodeBucketView, CodeTotalsView, MetricsCodeView, MetricsFlowView, MetricsPausesView, PauseBucketView } from '../../src/generated/views'
 import { now } from './clock'
 
 // GET /api/v1/metrics/pauses?range=&from=&to=&project=&tz=: the milestone's
@@ -88,5 +89,99 @@ export function metricsPauses(q: URLSearchParams): MetricsPausesView {
     },
     byProject: [pauses.byProject[0]!],
     longest: pauses.longest.filter((p) => p.project === 'shop'),
+  }
+}
+
+// GET /api/v1/metrics/code and /api/v1/metrics/flow: the same 30 days. shop
+// merged an issue every fifth day, +40/−5 production, +60 tests, +10 docs;
+// the long-named project merged one issue whose diff was partly too large,
+// so the general view's merged lines read "≥" and its cost per 100 "≤".
+// With ?project=team-a/shop only shop, and no per-project table.
+
+const lines = (added: number, deleted: number) => ({ added, deleted })
+const noLines = () => ({ production: lines(0, 0), tests: lines(0, 0), docs: lines(0, 0), generated: lines(0, 0) })
+const shopMerged = (n: number) => ({ production: lines(40 * n, 5 * n), tests: lines(60 * n, 0), docs: lines(10 * n, 0), generated: lines(0, 0) })
+const longMerged = { production: lines(12, 3), tests: lines(0, 0), docs: lines(0, 0), generated: lines(0, 0), partial: true }
+const cost = (usd: string, calls: number): SpendTotals => ({
+  costUSD: usd,
+  costKnown: true,
+  unknownCalls: 0,
+  unmeteredCalls: 0,
+  oldBasisCalls: 0,
+  inputTokens: 0,
+  outputTokens: 0,
+  cacheReadTokens: 0,
+  cacheWriteTokens: 0,
+  calls,
+  subagentCalls: 0,
+  durationMS: 0,
+  checkpoints: 0,
+})
+
+const shopDays = new Set(days.filter((_, i) => i % 5 === 4))
+const shopTotals: CodeTotalsView = {
+  written: lines(1200, 300),
+  merged: shopMerged(shopDays.size),
+  issues: { lines: shopMerged(shopDays.size), merged: shopDays.size, measured: shopDays.size, costPer100USD: '4.32' },
+  cost: cost('11.66', 40),
+}
+const longTotals: CodeTotalsView = {
+  written: lines(90, 20),
+  merged: longMerged,
+  issues: { lines: longMerged, merged: 2, measured: 1, costPer100USD: '9.80' },
+  cost: cost('1.47', 6),
+}
+
+const codeBuckets = (withLong: boolean): CodeBucketView[] =>
+  days.map((bucket, i) => {
+    const merged = shopDays.has(bucket) ? shopMerged(1) : withLong && i === 16 ? longMerged : noLines()
+    return { bucket, written: lines(40, 10), merged }
+  })
+
+const codeView = (withLong: boolean): MetricsCodeView => ({
+  range: '30d',
+  from: days[0]!,
+  to: days[days.length - 1]!,
+  bucket: 'day',
+  tz: 'UTC',
+  buckets: codeBuckets(withLong),
+  totals: withLong
+    ? {
+        written: lines(1290, 320),
+        merged: { ...shopMerged(shopDays.size), production: lines(252, 33), partial: true },
+        issues: { lines: { ...shopMerged(shopDays.size), production: lines(252, 33), partial: true }, merged: 8, measured: 7, costPer100USD: '4.61' },
+        cost: { ...cost('13.13', 46), oldBasisCalls: 6 },
+      }
+    : shopTotals,
+  byProject: withLong
+    ? [
+        { namespace: 'team-a', project: 'shop', totals: shopTotals },
+        { namespace: long.namespace, project: long.project, totals: longTotals },
+      ]
+    : [],
+})
+
+export function metricsCode(q: URLSearchParams): MetricsCodeView {
+  return codeView(q.get('project') !== 'team-a/shop')
+}
+
+export function metricsFlow(q: URLSearchParams): MetricsFlowView {
+  const one = q.get('project') === 'team-a/shop'
+  return {
+    range: '30d',
+    from: days[0]!,
+    to: days[days.length - 1]!,
+    bucket: 'day',
+    tz: 'UTC',
+    buckets: days.map((bucket, i) => ({ bucket, merged: (shopDays.has(bucket) ? 1 : 0) + (!one && i === 16 ? 1 : 0) })),
+    totals: {
+      mergedIssues: one ? 6 : 7,
+      wallIssues: one ? 6 : 7,
+      medianWallSec: 3 * 3600 + 20 * 60,
+      agentIssues: one ? 6 : 7,
+      medianAgentSec: 52 * 60,
+      reviewCallsPerIssue: 1.5,
+      fixCallsPerIssue: one ? 0.5 : 0.71,
+    },
   }
 }

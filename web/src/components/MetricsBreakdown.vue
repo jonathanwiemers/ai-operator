@@ -1,9 +1,11 @@
 <script setup lang="ts">
-// Cost per merged line (docs/contributing/web-ui.md, "Costs page"): the
+// Cost per 100 written lines (docs/contributing/web-ui.md, "Costs page"): the
 // range's issues by experiment arm (one table per project, none without
 // experiment data), by model, by effort and by step session. An issue counts
 // whole for one row; a row with fewer than 5 merged issues is greyed out
-// with the hint. The cost per 100 lines carries its merged-issue count.
+// with the hint. The cost per 100 lines carries its merged-issue count. Its
+// lines are the implement calls' written lines of the merged issues (the
+// /costs/metrics field mergedLines), not the Code section's merged lines.
 import { computed } from 'vue'
 import { formatUSD } from '../chartData'
 import { tokenCount } from '../format'
@@ -19,10 +21,10 @@ function columns(name: string): DataListColumn[] {
   return [
     { key: 'key', label: name },
     { key: 'issues', label: 'Merged issues', numeric: true },
-    { key: 'lines', label: 'Merged lines', numeric: true },
+    { key: 'lines', label: 'Written lines', numeric: true },
     { key: 'cost', label: 'Known cost', numeric: true },
     { key: 'tokens', label: 'Tokens', numeric: true },
-    { key: 'per100', label: 'Per 100 lines', numeric: true },
+    { key: 'per100', label: 'Per 100 written lines', numeric: true },
   ]
 }
 
@@ -33,7 +35,7 @@ const dim = (r: MetricsGroup) => (r.low ? 'text-(--text-3)' : '')
 <template>
   <section class="section" aria-labelledby="costs-metrics" data-costs-metrics>
     <div class="section-head flex flex-wrap items-baseline gap-x-3 gap-y-1">
-      <h2 id="costs-metrics">Cost per merged line</h2>
+      <h2 id="costs-metrics">Cost per 100 written lines</h2>
       <span class="faint">
         Each issue with calls in the range counts whole, all its calls<template v-if="filtered">; the kind and engine filters do not apply</template>
       </span>
