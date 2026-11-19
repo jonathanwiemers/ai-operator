@@ -1948,6 +1948,12 @@ export interface ProjectSummary extends Cost {
   createdAt: string;
   autopilots?: AutopilotOverview[];
   /**
+   * ActiveMilestones and SettlingMilestones come from the project status:
+   * running milestones, and done ones waiting for retrospective follow-ups.
+   */
+  activeMilestones?: number /* int32 */;
+  settlingMilestones?: number /* int32 */;
+  /**
    * Set is the AgentProjectSet the project is a child of, empty for an
    * explicit AgentProject.
    */

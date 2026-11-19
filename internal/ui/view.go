@@ -115,6 +115,10 @@ type ProjectSummary struct {
 	Stages            map[Stage]int       `json:"stages" tstype:"{ [key in Stage]?: number }"`
 	CreatedAt         metav1.Time         `json:"createdAt"`
 	Autopilots        []AutopilotOverview `json:"autopilots,omitempty"`
+	// ActiveMilestones and SettlingMilestones come from the project status:
+	// running milestones, and done ones waiting for retrospective follow-ups.
+	ActiveMilestones   int32 `json:"activeMilestones,omitempty"`
+	SettlingMilestones int32 `json:"settlingMilestones,omitempty"`
 	// Set is the AgentProjectSet the project is a child of, empty for an
 	// explicit AgentProject.
 	Set string `json:"set,omitempty"`
@@ -295,20 +299,22 @@ func setOf(p *aiv1.AgentProject) string {
 // summarize builds the summary of p from its tasks.
 func summarize(p *aiv1.AgentProject, tasks []aiv1.AgentTask, now time.Time) ProjectSummary {
 	s := ProjectSummary{
-		Namespace:         p.Namespace,
-		Name:              p.Name,
-		GitLab:            gitLabRef(p),
-		Suspend:           p.Spec.Suspend,
-		MaxConcurrentRuns: p.Spec.MaxConcurrentRuns,
-		PollInterval:      shortDuration(p.Spec.PollInterval.Duration),
-		LastSyncTime:      p.Status.LastSyncTime,
-		UsageLimits:       p.Status.UsageLimits,
-		EngineUsage:       p.Status.EngineUsage,
-		Conditions:        p.Status.Conditions,
-		Tasks:             len(tasks),
-		Stages:            map[Stage]int{},
-		CreatedAt:         p.CreationTimestamp,
-		Set:               setOf(p),
+		Namespace:          p.Namespace,
+		Name:               p.Name,
+		GitLab:             gitLabRef(p),
+		Suspend:            p.Spec.Suspend,
+		MaxConcurrentRuns:  p.Spec.MaxConcurrentRuns,
+		PollInterval:       shortDuration(p.Spec.PollInterval.Duration),
+		LastSyncTime:       p.Status.LastSyncTime,
+		UsageLimits:        p.Status.UsageLimits,
+		EngineUsage:        p.Status.EngineUsage,
+		Conditions:         p.Status.Conditions,
+		Tasks:              len(tasks),
+		Stages:             map[Stage]int{},
+		CreatedAt:          p.CreationTimestamp,
+		Set:                setOf(p),
+		ActiveMilestones:   p.Status.ActiveMilestones,
+		SettlingMilestones: p.Status.SettlingMilestones,
 	}
 	var cost float64
 	for i := range tasks {

@@ -122,11 +122,11 @@ write rule must match names there (for example `agents/*`). A user may start
 
 - **The rail** on the left has *Inbox*, *Overview*, *Costs*, *Plans* (with
   Desk chat), your projects
-  with a status dot (running, needs you, idle) and a count of what needs
-  you, the researches, and how much of each
-  [engine's](../concepts/glossary.md#engine) usage window is used. Its
-  footer shows the operator's version, with a note when an update is
-  rolling out or out.
+  with a status dot (running, needs you, idle), a count of what needs you, the
+  counts of active and [settling](../concepts/glossary.md#settling)
+  milestones, the researches, and how much of each
+  [engine's](../concepts/glossary.md#engine) usage window is used. Its footer
+  shows the operator's version, with a note when an update is rolling out or out.
 - **Breadcrumbs** at the top lead back up, one click per level: *Overview* ›
   project › milestone › issue, or *Overview* › project › *Plans* › plan.
 - **Search**: ⌘K (macOS) or Ctrl+K opens the search from anywhere. It finds

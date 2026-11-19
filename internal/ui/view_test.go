@@ -142,3 +142,11 @@ func TestAutopilotWaitingFor(t *testing.T) {
 		t.Fatalf("a pause that does not end by itself: %d", got)
 	}
 }
+
+func TestSummarizeMilestoneCounts(t *testing.T) {
+	p := &aiv1.AgentProject{Status: aiv1.AgentProjectStatus{ActiveMilestones: 6, SettlingMilestones: 8}}
+	s := summarize(p, nil, time.Now())
+	if s.ActiveMilestones != 6 || s.SettlingMilestones != 8 {
+		t.Fatalf("counts = %d active, %d settling", s.ActiveMilestones, s.SettlingMilestones)
+	}
+}

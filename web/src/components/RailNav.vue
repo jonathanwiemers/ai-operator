@@ -9,7 +9,7 @@ import { logout } from '../client'
 import { aboutLine } from '../about'
 import { loginLasts, windowLabel } from '../format'
 import { live } from '../live'
-import { projectDot, projectNeedsYou, projectStateLine } from '../stream'
+import { milestoneCounts, projectDot, projectNeedsYou, projectStateLine } from '../stream'
 import type { EngineUsage, ProjectSummary, ResearchSummary } from '../types'
 import type { ProjectSetSummary } from '../generated/views'
 import { groupProjects, setCountsLine, setProblem } from '../projectSets'
@@ -132,7 +132,11 @@ function projectActive(namespace: string, name: string) {
           />
           <span class="name">
             {{ r.p.name }}
-            <span class="sub">{{ projectStateLine(r.p.stages, r.p.autopilots) }}</span>
+            <span
+              class="sub"
+              :title="milestoneCounts(r.p.activeMilestones, r.p.settlingMilestones) ? 'settling: done, waiting up to 7 days for retrospective follow-ups' : undefined"
+              >{{ [projectStateLine(r.p.stages, r.p.autopilots), milestoneCounts(r.p.activeMilestones, r.p.settlingMilestones)].filter(Boolean).join(' · ') }}</span
+            >
           </span>
           <span v-if="projectNeedsYou(r.p.stages)" class="count">{{ projectNeedsYou(r.p.stages) }}</span>
         </RouterLink>

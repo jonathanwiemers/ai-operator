@@ -128,6 +128,13 @@ export function projectStateLine(
   return 'idle'
 }
 
+// "6 active · 8 settling"; a zero part is left out, '' when both are 0.
+export function milestoneCounts(active?: number, settling?: number): string {
+  return [active ? `${active} active` : '', settling ? `${settling} settling` : '']
+    .filter(Boolean)
+    .join(' · ')
+}
+
 // Day divider label in the user's local timezone.
 export function dayLabel(iso: string, now = Date.now()): string {
   const t = new Date(iso)

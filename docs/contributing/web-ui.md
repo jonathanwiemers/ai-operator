@@ -594,7 +594,8 @@ its `vaul-vue` is unmaintained). Every sheet closes by its scrim, its close
 button, Escape and the browser's back button. There are no swipe gestures.
 The rail on phones is the first sheet: the bottom bar's *Projects* opens it from the
 left with the rail's content (`components/RailNav.vue`, which the aside
-renders on tablet and desktop). Below 1180 px the stream header's
+renders on tablet and desktop). A project row reads the state line (`projectStateLine`) and
+`milestoneCounts` (`N active · M settling`, zero parts left out). Below 1180 px the stream header's
 *Context* button opens the context panel (`components/ContextPanel.vue`)
 from the right, the side it has on desktop; widening the window to 1180 px
 closes the sheet. Dialogs close the same ways; the first is the

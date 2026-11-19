@@ -263,6 +263,13 @@ an active project and owns. It polls through its set and goes when the
 project is [dormant](#dormant-project). See
 [Project sets](../guides/project-sets.md#active-and-dormant).
 
+### Settling
+
+The state of a milestone whose autopilot is done and whose retrospective is
+posted: it waits up to 7 days for follow-ups. The operator then reads only
+its tracking issue, at most every 15 minutes. See
+[Retrospective](#retrospective).
+
 ### Spec
 
 The description of a milestone: the goal, the requirements and the

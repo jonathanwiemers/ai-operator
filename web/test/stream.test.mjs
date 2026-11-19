@@ -17,6 +17,7 @@ import {
   noteTargetLabel,
   noteTargets,
   projectDot,
+  milestoneCounts,
   projectNeedsYou,
   sameLocalDay,
   slashOpens,
@@ -58,6 +59,14 @@ test('projectDot from stages', () => {
   assert.equal(projectDot({ review: 3 }), 'idle')
   assert.equal(projectDot({}), 'idle')
   assert.equal(projectNeedsYou({ 'needs-input': 1, failed: 2, blocked: 1 }), 4)
+})
+
+test('milestoneCounts: both, one, none', () => {
+  assert.equal(milestoneCounts(6, 8), '6 active · 8 settling')
+  assert.equal(milestoneCounts(0, 8), '8 settling')
+  assert.equal(milestoneCounts(6, 0), '6 active')
+  assert.equal(milestoneCounts(0, 0), '')
+  assert.equal(milestoneCounts(), '')
 })
 
 test('dayLabel Today / Yesterday / weekday', () => {
