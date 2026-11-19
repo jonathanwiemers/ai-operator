@@ -5,9 +5,9 @@
 // series' swatch is a dashed line; a total of null (only calls of unknown
 // cost) is "n/a", never $0.
 import { computed } from 'vue'
-import { formatPercent, formatTokens, formatUSD, type ChartToken, type ChartView } from '../../chartData'
+import { formatPercent, unitFormat, type ChartToken, type ChartUnit, type ChartView } from '../../chartData'
 
-const props = withDefaults(defineProps<{ chart: ChartView; unit?: 'usd' | 'tokens' }>(), { unit: 'usd' })
+const props = withDefaults(defineProps<{ chart: ChartView; unit?: ChartUnit }>(), { unit: 'usd' })
 
 // Whole class names, so Tailwind finds them; no inline style (the CSP).
 const swatch: Record<ChartToken, string> = {
@@ -29,7 +29,7 @@ const dash: Record<ChartToken, string> = {
   '--chart-other': 'border-(--chart-other)',
 }
 
-const format = computed(() => (props.unit === 'usd' ? formatUSD : formatTokens))
+const format = computed(() => unitFormat(props.unit))
 </script>
 
 <template>

@@ -160,6 +160,40 @@ export function formatUSD(usd: number): string {
 // formatTokens is a chart's token count in k/M (format.ts's tokenCount).
 export const formatTokens = tokenCount
 
+// ChartUnit is what a chart's values are: known cost in USD, tokens, a
+// count (pauses) or hours. Count and hours charts have no unknown calls.
+export type ChartUnit = 'usd' | 'tokens' | 'count' | 'hours'
+
+// formatCount is a chart's whole count, thousands grouped ("1,234").
+export function formatCount(n: number): string {
+  return (Number.isFinite(n) ? n : 0).toLocaleString('en-US', { maximumFractionDigits: 0 })
+}
+
+// formatHours is a chart's hours with at most one decimal ("2.5 h").
+export function formatHours(h: number): string {
+  return `${(Number.isFinite(h) ? h : 0).toLocaleString('en-US', { maximumFractionDigits: 1 })} h`
+}
+
+// unitFormat is the formatter of a chart unit.
+export function unitFormat(unit: ChartUnit): (v: number) => string {
+  switch (unit) {
+    case 'usd':
+      return formatUSD
+    case 'tokens':
+      return formatTokens
+    case 'count':
+      return formatCount
+    case 'hours':
+      return formatHours
+  }
+}
+
+// metered says whether a unit's charts mark calls of unknown cost or not
+// metered (cost and tokens); count and hours charts have none.
+export function metered(unit: ChartUnit): boolean {
+  return unit === 'usd' || unit === 'tokens'
+}
+
 // seriesLabel names a series key: Other, the legacy runs ("before calls")
 // or the key itself (a project, kind, model or engine).
 export function seriesLabel(key: string): string {

@@ -8,7 +8,7 @@ import './register'
 import type { ChartData, ChartOptions, TooltipItem } from 'chart.js'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { Chart } from 'vue-chartjs'
-import { formatPercent, formatTokens, formatUSD, unknownNote, type ShareLine, type StackedChart } from '../../chartData'
+import { formatPercent, metered, unitFormat, unknownNote, type ChartUnit, type ShareLine, type StackedChart } from '../../chartData'
 import { useChartColors } from './useChartColors'
 
 const props = withDefaults(
@@ -16,7 +16,7 @@ const props = withDefaults(
     chart: StackedChart
     // summary is the canvas's aria-label (chartData.ts's chartSummary).
     summary: string
-    unit?: 'usd' | 'tokens'
+    unit?: ChartUnit
     // line is an optional percentage line (0 to 100) on a second y axis on
     // the right, the cache-read share of the Tokens chart.
     line?: ShareLine
@@ -34,7 +34,7 @@ const onPhone = (e: MediaQueryListEvent) => (phone.value = e.matches)
 phoneQuery.addEventListener('change', onPhone)
 onBeforeUnmount(() => phoneQuery.removeEventListener('change', onPhone))
 
-const format = computed(() => (props.unit === 'usd' ? formatUSD : formatTokens))
+const format = computed(() => unitFormat(props.unit))
 
 const data = computed<ChartData<'bar' | 'line'>>(() => {
   const bars = props.chart.series.map((s) => ({
@@ -64,6 +64,9 @@ const data = computed<ChartData<'bar' | 'line'>>(() => {
   }
   return { labels: props.chart.labels, datasets: [...bars, line] }
 })
+
+// zeroLabel is a bucket's only tooltip line when nothing is in it.
+const zeroLabel: Record<ChartUnit, string> = { usd: 'No known cost', tokens: 'No metered tokens', count: 'None', hours: 'None' }
 
 const isShare = (item: TooltipItem<'bar' | 'line'>) => item.dataset.yAxisID === 'share'
 
@@ -101,12 +104,13 @@ const options = computed<ChartOptions<'bar' | 'line'>>(() => {
             isShare(item)
               ? ` ${item.dataset.label}: ${formatPercent(item.parsed.y ?? 0)}`
               : zeroBucket(item)
-                ? props.unit === 'usd' ? 'No known cost' : 'No metered tokens'
+                ? zeroLabel[props.unit]
                 : ` ${item.dataset.label}: ${fmt(item.parsed.y ?? 0)}`,
           footer: (items) => {
             const i = items[0]?.dataIndex
             if (i === undefined) return ''
-            return props.chart.notes ? (props.chart.notes[i] ?? '') : unknownNote(props.chart.unknown[i] ?? 0)
+            if (props.chart.notes) return props.chart.notes[i] ?? ''
+            return metered(props.unit) ? unknownNote(props.chart.unknown[i] ?? 0) : ''
           },
         },
       },
@@ -123,7 +127,8 @@ const options = computed<ChartOptions<'bar' | 'line'>>(() => {
         beginAtZero: true,
         grid: { color: c.grid },
         border: { display: false },
-        ticks: { ...ticks, maxTicksLimit: phone.value ? 4 : 6, callback: (v) => fmt(Number(v)) },
+        // Counts tick at whole numbers only, so small counts never repeat a rounded label.
+        ticks: { ...ticks, maxTicksLimit: phone.value ? 4 : 6, ...(props.unit === 'count' ? { precision: 0 } : {}), callback: (v) => fmt(Number(v)) },
       },
       ...(props.line
         ? {

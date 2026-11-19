@@ -6,23 +6,24 @@
 // values) there is no total column; a value null (no point) is "–".
 import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, ref } from 'vue'
-import { formatPercent, formatTokens, formatUSD, unknownNote, type ChartView } from '../../chartData'
+import { formatPercent, metered, unitFormat, unknownNote, type ChartUnit, type ChartView } from '../../chartData'
 import DataList, { type DataListColumn } from '../DataList.vue'
 
 const props = withDefaults(
-  defineProps<{ chart: ChartView; label: string; unit?: 'usd' | 'tokens'; rowLabel?: string; sum?: boolean }>(),
+  defineProps<{ chart: ChartView; label: string; unit?: ChartUnit; rowLabel?: string; sum?: boolean }>(),
   { unit: 'usd', rowLabel: 'Period', sum: true },
 )
 
 const open = ref(false)
-const format = computed(() => (props.unit === 'usd' ? formatUSD : formatTokens))
+const format = computed(() => unitFormat(props.unit))
 
 // Series keys may hold any character; the columns are numbered.
 const columns = computed<DataListColumn[]>(() => [
   { key: 'bucket', label: props.rowLabel },
   ...props.chart.series.map((s, i) => ({ key: `s${i}`, label: s.label, numeric: true })),
   ...(props.sum ? [{ key: 'total', label: 'Total', numeric: true, class: 'font-semibold' }] : []),
-  { key: 'unknown', label: props.unit === 'tokens' ? 'Not metered' : 'Unknown cost' },
+  // Count and hours charts have no calls of unknown cost: no column.
+  ...(metered(props.unit) || props.chart.notes ? [{ key: 'unknown', label: props.unit === 'tokens' ? 'Not metered' : 'Unknown cost' }] : []),
 ])
 
 const rows = computed(() =>

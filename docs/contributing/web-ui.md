@@ -336,6 +336,12 @@ loads anyway.
   (#367): 113.0 kB, 1.0 kB more for the mixed bar and line chart and the
   token shaping. Final (#372, R17): 117.1 kB (JS 117.1, CSS 0.0), the initial
   bundle 129.1 kB; the cap stays 120.
+  2026-11-19, `/metrics` (`src/views/Metrics.vue`) at 120.0 kB on main;
+  with the *Pauses* section (#606, `MetricsPauses.vue`, `metricsPauses.ts`,
+  `pauses.ts`): 123.3 kB. The section is required by
+  the Metrics page milestone (R15) and cannot fit under
+  120, so the cap was raised to 124 kB and the raise reported on its merge
+  request.
 
 ## UI kit
 

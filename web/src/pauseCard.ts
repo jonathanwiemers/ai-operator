@@ -344,6 +344,13 @@ export function pauseTitle(kind: PauseKind | undefined, held?: number): string {
   return known(kind) ? titles[kind] : 'Autopilot paused'
 }
 
+// pauseKindLabel names a pause kind as the card's heading does ("CI is
+// red"); a kind the card does not know is shown as it is, none as "unknown".
+export function pauseKindLabel(kind: string | undefined): string {
+  if (known(kind)) return titles[kind]
+  return kind || 'unknown'
+}
+
 // pauseExplain is the card's short explanation of a kind, '' for kinds the
 // title and reason explain.
 export function pauseExplain(kind: PauseKind | undefined): string {

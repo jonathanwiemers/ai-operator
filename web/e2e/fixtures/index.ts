@@ -6,6 +6,7 @@ import { costs, costsMetrics, costsTop } from './costs'
 import { answerDecisions } from './decisions'
 import { doneMilestones, openMilestones, overview } from './overview'
 import { shopPlanOverview } from './plans'
+import { metricsPauses } from './metrics'
 import { inbox, projects, projectSets, researches } from './rail'
 import { researchAPI } from './research'
 import { about, features, me } from './session'
@@ -36,6 +37,7 @@ export const api: Record<string, Fixture> = {
   '/costs': costs,
   '/costs/top': costsTop,
   '/costs/metrics': costsMetrics,
+  '/metrics/pauses': metricsPauses,
   '/gitlab': gitlabStatus,
   '/search': answerSearch,
   '/plans': shopPlanOverview,

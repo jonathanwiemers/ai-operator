@@ -20,6 +20,7 @@ import type {
   InboxResponse,
   IssueView,
   Me,
+  MetricsPausesView,
   MetricsView,
   MilestoneList,
   MilestoneView,
@@ -446,6 +447,13 @@ export function getCostsTop(params: CostsParams = {}): Promise<CostsTopView> {
 // and projects (group, kind and engine are ignored by the server).
 export function getCostsMetrics(params: CostsParams = {}): Promise<MetricsView> {
   return get<MetricsView>(`/costs/metrics${costsQuery(params)}`)
+}
+
+// getMetricsPauses: GET /metrics/pauses, the milestone pauses that started
+// in the same range, of the same projects (group, kind and engine are
+// ignored by the server).
+export function getMetricsPauses(params: CostsParams = {}): Promise<MetricsPausesView> {
+  return get<MetricsPausesView>(`/metrics/pauses${costsQuery(params)}`)
 }
 
 function costsQuery(params: CostsParams): string {

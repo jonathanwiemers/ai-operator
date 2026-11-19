@@ -5,7 +5,7 @@ import UInput from '@nuxt/ui/components/Input.vue'
 import USelect from '@nuxt/ui/components/Select.vue'
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ApiError, getCosts, getCostsMetrics, getCostsTop, getProjects, LoginRequiredError, NotFoundError } from '../client'
+import { ApiError, getCosts, getCostsMetrics, getCostsTop, getMetricsPauses, getProjects, LoginRequiredError, NotFoundError } from '../client'
 import {
   changeLabel,
   costChange,
@@ -26,10 +26,11 @@ import {
 import { chartSummary, cumulativeMonth, monthSummary, stackedChart, thisMonth, tokensChart, tokensSummary } from '../chartData'
 import { cost, tokenCount } from '../format'
 import { basisNote, basisTitle, shareLabel, spendTokens, spendUSD, tokenBreakdown, unmeteredNote } from '../spend'
-import type { CostsTopView, CostsView, MetricsView } from '../generated/views'
+import type { CostsTopView, CostsView, MetricsPausesView, MetricsView } from '../generated/views'
 import BudgetsSection from '../components/BudgetsSection.vue'
 import MetricsBreakdown from '../components/MetricsBreakdown.vue'
 import MetricsContext from '../components/MetricsContext.vue'
+import MetricsPauses from '../components/MetricsPauses.vue'
 import MostExpensive from '../components/MostExpensive.vue'
 import PlanUsage from '../components/PlanUsage.vue'
 import WhereItGoes from '../components/WhereItGoes.vue'
@@ -53,6 +54,7 @@ const filters = computed(() => parseCostFilters(route.query))
 const data = ref<CostsView | null>(null)
 const top = ref<CostsTopView | null>(null)
 const metrics = ref<MetricsView | null>(null)
+const pauses = ref<MetricsPausesView | null>(null)
 const loading = ref(false)
 const error = ref('')
 let seq = 0
@@ -63,22 +65,25 @@ async function load() {
   error.value = ''
   try {
     const params = costParams(filters.value, tz)
-    // The top lists and the metrics are side parts: their failure leaves the
-    // page standing.
-    const [v, t, m] = await Promise.all([
+    // The top lists, the metrics and the pauses are side parts: their
+    // failure leaves the page standing (D606-P1).
+    const [v, t, m, p] = await Promise.all([
       getCosts(params),
       getCostsTop(params).catch(() => null),
       getCostsMetrics(params).catch(() => null),
+      getMetricsPauses(params).catch(() => null),
     ])
     if (mine !== seq) return
     data.value = v
     top.value = t
     metrics.value = m
+    pauses.value = p
   } catch (e) {
     if (mine !== seq || e instanceof LoginRequiredError) return
     data.value = null
     top.value = null
     metrics.value = null
+    pauses.value = null
     if (e instanceof NotFoundError) {
       error.value = filters.value.project
         ? `There is no project ${filters.value.project} you may see.`
@@ -348,6 +353,7 @@ const kpiSub = 'text-[13px] text-(--text-2) [overflow-wrap:anywhere]'
       </template>
       <PlanUsage :usage="data.planUsage" />
       <BudgetsSection :budgets="data.budgets" />
+      <MetricsPauses v-if="pauses" :pauses="pauses" :filtered="!!(filters.kind || filters.engine)" :project="filters.project" />
     </template>
   </div>
 </template>

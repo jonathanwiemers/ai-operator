@@ -1131,6 +1131,75 @@ for (const { width, height } of [widths[0]!, widths[2]!]) {
   })
 }
 
+// Pauses (components/MetricsPauses.vue, R15; e2e/fixtures/metrics.ts): the
+// milestone's scenario on team-a/shop, with no sideways scrolling on a phone;
+// a longest-pause row opens the milestone's Pilot tab. With kind and range
+// 90d the section names the filter and the truncation.
+for (const { width, height } of [widths[0]!, widths[2]!]) {
+  test(`metrics Pauses tiles, tables and longest@${width}`, async ({ page, baseURL }) => {
+    const route = routes.find((r) => r.name === 'metrics')!
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await page.setViewportSize({ width, height })
+    await page.clock.setFixedTime(now)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, route, problems)
+    await page.goto(route.path)
+    await route.ready(page)
+
+    const section = page.locator('[data-metrics-pauses]')
+    await section.scrollIntoViewIfNeeded()
+    await expect(section.locator('[data-tile=count] dd')).toHaveText('3')
+    await expect(section.locator('[data-tile=open] dd')).toHaveText('1')
+    await expect(section.locator('[data-chart=pauses] canvas[role=img]')).toBeVisible()
+    await expect(section.locator('[data-chart=paused-hours] canvas[role=img]')).toBeVisible()
+    await expect(section.locator('[data-chart=pauses] [data-chart-legend] li').first()).toHaveText(/CI is red\s*2/)
+    const kind = section.locator('[data-pauses-table=kind] tbody tr').filter({ hasText: 'CI is red' })
+    await expect(kind).toContainText('2')
+    await expect(kind).toContainText('2h 30m')
+    // Each cell carries its column label too (DataList's phone cards).
+    const resolver = section.locator('[data-pauses-table=resolver] tbody tr')
+    await expect(resolver).toHaveCount(1)
+    await expect(resolver).toHaveText(/owner.*2$/)
+    // The project filter is set: no per-project table.
+    await expect(section.locator('[data-pauses-table=project]')).toHaveCount(0)
+    await expect(section.locator('[data-metrics-filter-note], [data-pauses-truncated]')).toHaveCount(0)
+    await section.locator('[data-chart=pauses]').getByRole('button', { name: 'Table' }).click()
+    await expect(section.locator('[data-chart=pauses]').getByRole('table')).toBeVisible()
+
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
+
+    const budget = section.locator('[data-pauses-table=longest] tbody tr').first()
+    await expect(budget).toContainText('The budget is used')
+    await expect(budget).toContainText('open')
+    await budget.locator('[data-long-pause]').click()
+    await expect(page).toHaveURL(/\/projects\/team-a\/shop\/milestones\/14\?tab=pilot$/)
+
+    problems.csp.push(...(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)))
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+}
+
+test('metrics Pauses notes and per project without a project filter@375', async ({ page, baseURL }) => {
+  const route = routes.find((r) => r.name === 'metrics-filtered')!
+  const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.clock.setFixedTime(now)
+  await watch(page, new URL(baseURL ?? '').origin, problems)
+  await mockAPI(page, route, problems)
+  await page.goto(route.path)
+  await route.ready(page)
+
+  const section = page.locator('[data-metrics-pauses]')
+  await expect(section.locator('[data-metrics-filter-note]')).toHaveText('Kind and engine filter cost and tokens only')
+  await expect(section.locator('[data-pauses-truncated]')).toContainText('only the newest 20000 pause events')
+  await expect(section.locator('[data-tile=count] dd')).toHaveText('4')
+  await expect(section.locator('[data-pauses-table=project] tbody tr')).toHaveCount(2)
+  expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
+
+  problems.csp.push(...(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)))
+  expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+})
+
 // Most expensive (views/Metrics.vue, R13): three lists whose rows open the
 // Spend drill-down; a row with only unknown calls is marked, not $0.00.
 for (const { width, height } of [widths[0]!, widths[2]!]) {
