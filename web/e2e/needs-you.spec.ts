@@ -342,10 +342,10 @@ for (const size of widths) {
   test(`a budget pause is a card of its own@${size.width}`, async ({ page, baseURL }) => {
     const problems = await open(page, baseURL, `${milestonePath}?tab=needs`, size, budget)
     const needs = page.locator('[data-needs-open]')
-    // The milestone's pause, #284's hold and #281's open question.
-    await expect(needs.locator('[data-open-problem]')).toHaveCount(3)
-    const ids = await needs.locator('[data-open-problem]').evaluateAll((es) => es.map((e) => e.id).sort())
-    expect(ids).toEqual(['problem-0', 'problem-281', 'problem-284'])
+    // The milestone's pause, #284's hold and #281's open question. Polled: a
+    // single read could run before the milestone's cards have rendered.
+    const ids = () => needs.locator('[data-open-problem]').evaluateAll((es) => es.map((e) => e.id).sort())
+    await expect.poll(ids).toEqual(['problem-0', 'problem-281', 'problem-284'])
     await expect(needs.locator('#problem-0 [data-problem-head]')).toContainText('Milestone')
     await expect(needs.locator('#problem-0 [data-pause-card]')).toHaveCount(1)
     await expect(needs.locator('#problem-284 [data-pause-card]')).toHaveCount(1)
