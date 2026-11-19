@@ -128,13 +128,13 @@ func (a *autopilot) sync(ctx context.Context) error {
 		a.ap.Phase = aiv1.AutopilotRunning
 	}
 	a.ap.MaxParallel = a.maxParallel()
-	issues, err := a.gl.ListIssues(ctx, a.spec.GitLab.Project, gitlab.ListIssuesOptions{Milestone: a.st.Spec.Milestone.Title, State: "all"})
-	if err != nil {
-		return fmt.Errorf("listing issues of milestone %q: %w", a.st.Spec.Milestone.Title, err)
+	if autopilotSettling(a.st, a.r.now()) {
+		if done, err := a.settle(ctx); done || err != nil {
+			return err
+		}
 	}
-	a.issues = map[int64]gitlab.Issue{}
-	for _, is := range issues {
-		a.issues[is.IID] = is
+	if err := a.loadIssues(ctx); err != nil {
+		return err
 	}
 	if err := a.loadMainRedFix(ctx); err != nil {
 		return err
@@ -218,6 +218,19 @@ func (a *autopilot) sync(ctx context.Context) error {
 		return err
 	}
 	return a.updateTracking(ctx)
+}
+
+// loadIssues lists the milestone's issues, open and closed, into a.issues.
+func (a *autopilot) loadIssues(ctx context.Context) error {
+	issues, err := a.gl.ListIssues(ctx, a.spec.GitLab.Project, gitlab.ListIssuesOptions{Milestone: a.st.Spec.Milestone.Title, State: "all"})
+	if err != nil {
+		return fmt.Errorf("listing issues of milestone %q: %w", a.st.Spec.Milestone.Title, err)
+	}
+	a.issues = map[int64]gitlab.Issue{}
+	for _, is := range issues {
+		a.issues[is.IID] = is
+	}
+	return nil
 }
 
 // announcePassed says once on the tracking issue that a younger milestone
@@ -331,6 +344,8 @@ type autopilot struct {
 	// poll's startable, for the tracking issue.
 	companionOpen map[string]bool
 	holds         map[int64]*openCompanion
+	// notes are the tracking issue's notes when settle read them already.
+	notes []gitlab.Note
 }
 
 // queueOrder orders the plan topologically: dependencies first, ties in plan
@@ -2187,16 +2202,10 @@ func (a *autopilot) stateHash() string {
 // answers any other command once, in its thread; then the pilot's accepted
 // queue commands and its release decisions.
 func (a *autopilot) commands(ctx context.Context) error {
-	if a.ap.TrackingIssueIID == 0 {
-		return nil
+	if ok, err := a.trackingNotes(ctx); !ok {
+		return err
 	}
-	notes, err := a.gl.ListIssueNotes(ctx, a.spec.GitLab.Project, a.ap.TrackingIssueIID)
-	if a.trackingGone(err) {
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("listing notes of the tracking issue #%d: %w", a.ap.TrackingIssueIID, err)
-	}
+	notes := a.notes
 	coord := a.pilot(ctx, notes)
 	if err := a.followUps(ctx, notes); err != nil {
 		return err

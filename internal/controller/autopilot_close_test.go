@@ -86,6 +86,8 @@ func TestDoneAutopilotWaitsForTheFollowUps(t *testing.T) {
 		{"a week later", func(e *projectEnv, _ int64) { e.gl.Clock = e.gl.Clock.Add(aiv1.FollowUpWindow) }},
 		{"dismissed by an owner", func(e *projectEnv, retro int64) {
 			e.gl.AddReply(e.autopilot().TrackingIssueIID, retro, alice, "create none")
+			// The settling poll dismisses them; the next is a full sync.
+			e.reconcile()
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
