@@ -140,10 +140,48 @@ exists in GitLab.
 | `POST /api/v1/projects/{namespace}/{name}/plans/{plan}/budget` | Raise the plan's budget, up to its limit. | `steer`, Desk chat |
 | `POST /api/v1/projects/{namespace}/{name}/plans/{plan}/milestone` | Create the milestone in GitLab from the draft. | `steer`, Desk chat, GitLab connected |
 | `GET /api/v1/projects/{namespace}/{name}/plans/{plan}/chat` | The plan's chat. | see, Desk chat |
+| `GET /api/v1/projects/{namespace}/{name}/plans/{plan}/decisions` | The history of the plan's decisions: each decision's versions and sign-offs, newest first. | see, Desk chat |
 | `POST /api/v1/projects/{namespace}/{name}/plans/{plan}/chat` | Send the planner a message. | `steer`, Desk chat |
 
 On plans, `steer` also needs you to be an owner subject
 of the project's milestones, when any of them names owner subjects.
+
+### Plan decisions
+
+A plan's current decisions are in `GET …/plans/{plan}`: `decisions` is the
+list (never `null`) and `decisionsPending` counts the ones that are open or
+whose current version is not signed off. Each entry has `id`, `title`,
+`question`, `options`, `recommended` (an index), `why`, `state` (`open` or
+`locked`), `version`, `decidedBy`, `decidedByName`, `decidedAt`,
+`signedOffBy`, `signedOffByName` and `signedOffAt`. `decidedBy` is `agent`
+or the owner.
+
+To answer them, post to the plan's chat with a `decisions` list. Each answer
+names the decision and the `version` you saw, and one of `keep`, `option`
+(an index) or `other` (your own text). The `body` is the extra text and may
+be empty when answers are present:
+
+```sh
+curl -sS -X POST -H "Cookie: $COOKIE" -H 'Content-Type: application/json' \
+  "$DESK/api/v1/projects/$NS/$PROJECT/plans/$PLAN/chat" \
+  -d '{"kind":"message","body":"","decisions":[
+        {"id":"D1","version":2,"keep":true},
+        {"id":"D2","version":1,"option":0},
+        {"id":"D6","version":3,"other":"Use the existing queue."}]}'
+```
+
+Each answer sets exactly one of the three, and each ID appears once; if not,
+the answer is `400`. Answers go with `"kind": "message"` only.
+
+If an ID is not in the plan's current list, or its version is not the
+current one, the answer is `409` with "the decisions changed": read the plan
+again and send against the new versions.
+
+`GET …/plans/{plan}/decisions` returns `{"available": true, "decisions":
+[…]}`. Each decision has its `id` and `versions`, newest first. A version
+has the fields above up to `decidedAt`, and `signOffs`: a list of `by`,
+`byName` and `at`, one per owner's sign-off. The history includes decisions
+the agent dropped. `available` is `false` without the history database.
 
 ## Activity and spend
 
@@ -183,6 +221,11 @@ without it they answer 404.
 ## Limits
 
 - A chat message is at most 16 KiB, a one-off research request 32 KiB.
+- A plan chat message may answer at most 30 decisions, and an `other`
+  answer is at most 2,000 characters. The agent returns at most 30
+  decisions per plan, each with 2 to 5 options. A title is at most 120
+  characters, a question and a `why` at most 1,000, an option at most 500.
+  The history expires with the chat history retention.
 - Chat, comments and plans have rate limits per user; over them the API
   answers 429.
 - Event streams (`/api/v1/events`, `…/transcript` and

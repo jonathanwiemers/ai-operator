@@ -13,10 +13,12 @@ In reading order:
    and security.
 2. **[Web UI development](web-ui.md)**: run the Desk locally, its checks,
    the bundle budget, the UI kit and its conventions, and the roadmap.
-3. **[Releasing](releasing.md)**: calendar versions, who decides a release,
+3. **[Plan decisions](plan-decisions.md)**: how the runner versions a plan's
+   decisions, who signs off, and how the controller keeps their history.
+4. **[Releasing](releasing.md)**: calendar versions, who decides a release,
    the release pipelines, published images and chart.
-4. **[Research internals](research.md)**: research runs in the operator and
+5. **[Research internals](research.md)**: research runs in the operator and
    the pod, results and new items, the block schema, and the database with
    its logins and grants.
-5. **[Sandbox test plan](sandbox-test-plan.md)**: an end-to-end run with a
+6. **[Sandbox test plan](sandbox-test-plan.md)**: an end-to-end run with a
    real GitLab project and the real agent CLIs.

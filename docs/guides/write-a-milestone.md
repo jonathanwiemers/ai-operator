@@ -31,6 +31,73 @@ The operator then creates the milestone in GitLab with your GitLab login.
 A plan has its own budget; the chart values are in the
 [chart README](../../charts/ai-operator/README.md#plan).
 
+### Answer the agent's decisions
+
+The agent returns its decisions as a list, not only as prose in the draft.
+Each plan decision (like a [decision](../concepts/glossary.md#decision) on
+an issue) has an ID (`D1`, `D2`, …), a question, a few options, the option
+the agent recommends and why. It is *open* while it is a question in the
+agent's reply, and *locked* once it is in the draft's
+`## Decisions (locked)` section.
+
+On the plan page, the button reads **Answer 3 questions** while three
+decisions are open, and **Review decisions** otherwise. It is in the
+*Decisions* tab and in the draft's toolbar. It is for owners, and it is off
+while a turn runs and once the milestone is created.
+
+A review goes like this:
+
+1. Click **Review decisions**. The wizard opens on the first decision that
+   is open or not signed off. A phone shows it full screen.
+2. Each step shows one decision. The agent's pick is preselected and marked
+   *Recommended*; a decision you signed off shows your choice instead. Keep
+   it, pick another option, or choose *Other* and write your own answer.
+3. *Back*, *Next* and the step list move between steps ("3 of 7").
+4. The last step lists every decision as *kept* or *changed*. Add text for
+   the agent if you like, then click **Send**.
+
+The answers go to the agent as one chat message. The chat shows it as
+"Answered 7 decisions: 5 kept, 2 changed", with the changed ones listed
+and your text below. The agent's next turn updates the draft and the list.
+Your picks stay in your browser until a send succeeds. If you edited the
+draft since the agent's last turn, the wizard warns you and still sends; the
+agent reads your edit with the answers.
+
+If another owner sent first, the decisions changed under you. The wizard
+says so and reloads them, and it keeps your picks of the decisions that did
+not change. Answers in a turn that fails or that you interrupt are not
+applied: send them again.
+
+### The Decisions tab and sign-off
+
+The *Decisions* tab shows every current decision. On a phone the plan has
+the tabs *Chat*, *Decisions* and *Draft*. On a wider screen the chat stays
+on the left and the right pane has *Draft* and *Decisions*.
+
+A card shows the state, the question, the options with the recommended or
+chosen one marked, and why. Under it, one line says who decided and who
+signed off, for example "Decided by the agent · signed off by Sam". Open
+*History* on a card to see every version and each
+[sign-off](../concepts/glossary.md#sign-off) with its time.
+
+A decision gets a new version each time its title, question, options,
+recommendation or state changes. These rules say who decided and who signed
+off:
+
+- You **keep** a decision: you sign off its current version. A second
+  owner's keep adds a second sign-off.
+- You **change** a decision and the agent applies it: you decided the new
+  version and signed it off.
+- The agent changes a decision on its own, for example when you ask it in
+  the chat to rethink D3: the new version is decided by the agent and shows
+  *Not signed off* until an owner keeps it. The wizard leads to it first.
+- You change a decision and the agent does not apply it: nothing is signed
+  off. The agent says why in its reply.
+
+*Create milestone* warns "2 decisions are open or not signed off" and still
+creates the milestone. The milestone's description is the draft as it is,
+with no sign-off notes. The history expires with the plan's chat history.
+
 ### Find your plans
 
 *Plans* in the rail lists the plans of every project you may see, with the
@@ -226,3 +293,5 @@ plan does not list it, and even if the linked issue is in another project.
   marker line.
 - [Your first milestone](../getting-started/first-milestone.md): a short
   spec on autopilot, step by step.
+- [Desk API](../reference/desk-api.md#plans): the plan endpoints, the
+  decisions history and the `decisions` field of the plan chat.

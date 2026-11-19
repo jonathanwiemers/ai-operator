@@ -58,6 +58,7 @@ git history does; otherwise "no milestone".
 14. [Plans name themselves, show their milestone's progress, one plan list](plans-overview.spec.md) — Agent-given plan titles, a `/plans` page and a Plans tab per project with milestone state. Milestone: Desk: plans name themselves, show their milestone's progress, and one plan list for all projects and each project.
 15. [One Decisions tab to read, search and revisit decisions](desk-decisions.spec.md) — Stored copies of every decision, a Decisions tab per milestone and project, the revisit chain and what Revisit does. Milestone: Desk: one Decisions tab to read, search and revisit what the agents decided.
 16. [One Metrics page, with lines of code next to cost](metrics-page.spec.md) — `/metrics` replaces `/costs`: written and merged lines, the cost per 100 merged production lines, Code, Flow and Pauses sections, and the Metrics tab. Milestone: Desk: one Metrics page, with lines of code next to cost, for all projects and each project.
+17. [Answer a plan's decisions step by step](plan-decisions.spec.md) — The plan turn returns decisions as data, a wizard with the agent's pick preselected, versions with decided-by and sign-off, and a history. Milestone: Desk: answer a plan's decisions step by step, with the agent's pick preselected.
 
 ## Research
 

@@ -278,6 +278,13 @@ posted: it waits up to 7 days for follow-ups. The operator then reads only
 its tracking issue, at most every 15 minutes. See
 [Retrospective](#retrospective).
 
+### Sign-off
+
+An owner's confirmation of one version of a plan's decision in the Desk,
+made by keeping it or changing it in the wizard. A decision the agent
+changed on its own shows *Not signed off* until an owner keeps it. See
+[Write a milestone](../guides/write-a-milestone.md#the-decisions-tab-and-sign-off).
+
 ### Spec
 
 The description of a milestone: the goal, the requirements and the

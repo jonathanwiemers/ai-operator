@@ -199,7 +199,7 @@ with Desk chat:
 - **Board**: one board per milestone, plus the issues without one.
 - **Metrics**: what the project's agent calls cost, with its lines of code.
 - **Plans**: the project's [plans](write-a-milestone.md#draft-it-in-the-desk)
-  and, for an owner, *Plan milestone*.
+  and, for an owner, *Plan milestone*; a [plan's decisions](write-a-milestone.md#answer-the-agents-decisions) have a wizard.
 
 Filter chips narrow the stream: *All*, *Chat*, *Needs you*, *Runs*, *CI &
 review* and *Merged*. Comments on the same issue or merge request are one
