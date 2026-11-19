@@ -248,3 +248,34 @@ func TestLoggedValuesAreClipped(t *testing.T) {
 		t.Errorf("project path logged unclipped: %d bytes", len(logs))
 	}
 }
+
+func TestNoteOnAnIssueIsRecorded(t *testing.T) {
+	cases := []struct {
+		name, body string
+		want       bool
+	}{
+		{"note on an issue", `{"object_kind":"note","project":{"path_with_namespace":"group/app"},"object_attributes":{"noteable_type":"Issue"},"issue":{"iid":7}}`, true},
+		{"note on a merge request", `{"object_kind":"note","project":{"path_with_namespace":"group/app"},"object_attributes":{"noteable_type":"MergeRequest"},"merge_request":{"iid":7}}`, false},
+		{"issue event", `{"object_kind":"issue","project":{"path_with_namespace":"group/app"},"object_attributes":{"iid":7},"issue":{"iid":7}}`, false},
+		{"note without an issue", `{"object_kind":"note","project":{"path_with_namespace":"group/app"},"object_attributes":{"noteable_type":"Issue"}}`, false},
+		{"odd issue field", `{"object_kind":"note","project":{"path_with_namespace":"group/app"},"object_attributes":{"noteable_type":"Issue"},"issue":"7"}`, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			e := standard(t)
+			e.expect(t, e.deliver(http.MethodPost, c.body, goodToken), http.StatusAccepted, app)
+			if _, ok := e.deliveries.NoteAt(app, 7); ok != c.want {
+				t.Errorf("note on #7 recorded: %v, want %v", ok, c.want)
+			}
+		})
+	}
+}
+
+func TestRefusedNoteIsNotRecorded(t *testing.T) {
+	e := standard(t)
+	body := `{"object_kind":"note","project":{"path_with_namespace":"group/app"},"object_attributes":{"noteable_type":"Issue"},"issue":{"iid":7}}`
+	e.expect(t, e.deliver(http.MethodPost, body, otherTok), http.StatusUnauthorized)
+	if _, ok := e.deliveries.NoteAt(app, 7); ok {
+		t.Error("a refused note was recorded")
+	}
+}

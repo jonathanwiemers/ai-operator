@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/equality"
+	"k8s.io/apimachinery/pkg/types"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
@@ -26,10 +27,17 @@ const settleInterval = 15 * time.Minute
 
 // settleSkip reports whether this poll leaves the settling milestone st
 // alone: it synced less than settleInterval ago and nothing woke it. A Desk
-// command wakes it; a re-plan ends settling (autopilotSettling).
+// command or a webhook note on its tracking issue wakes it; a re-plan ends
+// settling (autopilotSettling).
 func (r *AgentProjectReconciler) settleSkip(project *aiv1.AgentProject, st *aiv1.AgentTask, now time.Time) bool {
 	if !autopilotSettling(st, now) || st.Status.Autopilot.SettleSyncedAt == nil || now.Sub(st.Status.Autopilot.SettleSyncedAt.Time) >= settleInterval {
 		return false
+	}
+	if r.Deliveries != nil {
+		n := types.NamespacedName{Namespace: project.Namespace, Name: project.Name}
+		if at, ok := r.Deliveries.NoteAt(n, st.Status.Autopilot.TrackingIssueIID); ok && at.After(st.Status.Autopilot.SettleSyncedAt.Time) {
+			return false
+		}
 	}
 	src := &st.Spec.Source
 	return !slices.ContainsFunc(src.ChatMessages, func(m aiv1.ChatMessage) bool { return m.Kind == "command" && m.ID > src.LastChatCommandID })

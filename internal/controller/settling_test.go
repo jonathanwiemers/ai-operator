@@ -11,12 +11,14 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	clocktesting "k8s.io/utils/clock/testing"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab/gitlabfake"
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
+	"github.com/jonathanwiemers/ai-operator/internal/webhook"
 )
 
 func TestAutopilotSettling(t *testing.T) {
@@ -589,5 +591,47 @@ func TestSettlingMilestoneClosesOnTheFirstPollAfterTheWindow(t *testing.T) {
 	e.reconcile()
 	if e.gl.Milestones[0].State != "closed" {
 		t.Fatalf("the first poll after the window closes the milestone, synced or not: %q", gl.calls)
+	}
+}
+
+// noteDelivered records, at the fake GitLab's time, a webhook note event on
+// the issue iid of the project shop.
+func noteDelivered(e *projectEnv, iid int64) {
+	if e.r.Deliveries == nil {
+		e.r.Deliveries = webhook.NewDeliveries(clocktesting.NewFakeClock(e.gl.Clock))
+	}
+	e.r.Deliveries.Clock = clocktesting.NewFakeClock(e.gl.Clock)
+	e.r.Deliveries.Record(shop)
+	e.r.Deliveries.RecordNote(shop, iid)
+}
+
+func TestSettlingMilestoneWakesForANoteOnItsTrackingIssue(t *testing.T) {
+	e, gl, _ := newSettlingEnv(t)
+	e.reconcile()
+	wantSettled(e, gl)
+	tracking := e.autopilot().TrackingIssueIID
+
+	// A note on another issue, or an earlier one, leaves it alone.
+	noteDelivered(e, tracking)
+	e.gl.Clock = e.gl.Clock.Add(time.Minute)
+	noteDelivered(e, tracking+1)
+	gl.calls = nil
+	e.reconcile()
+	if len(gl.calls) != 0 {
+		t.Fatalf("a note on another issue does not wake the milestone: %q", gl.calls)
+	}
+
+	e.gl.Clock = e.gl.Clock.Add(time.Minute)
+	noteDelivered(e, tracking)
+	gl.calls = nil
+	e.reconcile()
+	wantSettled(e, gl)
+
+	// The note is synced: the next poll leaves the milestone alone again.
+	e.gl.Clock = e.gl.Clock.Add(time.Minute)
+	gl.calls = nil
+	e.reconcile()
+	if len(gl.calls) != 0 {
+		t.Fatalf("a synced note wakes the milestone once: %q", gl.calls)
 	}
 }

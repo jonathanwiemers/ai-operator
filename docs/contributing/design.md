@@ -1929,7 +1929,10 @@ stateDiagram-v2
   sync every settling milestone at once. Other polls skip its revisits and
   its autopilot sync (`settleSkip`); its decisions are not synced while it
   settles, their watermark catches up once it leaves settling. A Desk
-  command on the milestone wakes it on the next poll. A re-plan, a command
+  command on the milestone wakes it on the next poll, and so does a webhook
+  note event on its tracking issue that arrived after `settleSyncedAt`: the
+  receiver keeps the last note time per issue IID, for the 100 newest
+  issues per AgentProject, in memory (`Deliveries.RecordNote`). A re-plan, a command
   that leaves `Done`, or the end of `followUpWindow` ends settling, so the
   next poll is a full sync; the last one closes the milestone on time.
 * **Off.** Removing the marker sets `phase: Off` and closes the tracking

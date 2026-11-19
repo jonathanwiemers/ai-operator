@@ -1,6 +1,7 @@
 // Package webhook receives the deliveries of GitLab project hooks. A delivery
 // is only a wake-up call: it names the project to sync now, and counts only
-// with the project's secret token. Nothing else in the payload is used.
+// with the project's secret token. Beyond the project, only a note event's
+// issue IID is used (Deliveries.RecordNote).
 package webhook
 
 import (
@@ -67,6 +68,7 @@ func (r *Receiver) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	path := payload.Project.PathWithNamespace
+	noteIID := noteIssue(body)
 	log = log.WithValues("project", textutil.Truncate(path, 256))
 
 	var projects aiv1.AgentProjectList
@@ -89,6 +91,9 @@ func (r *Receiver) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			// Recorded first, so the sync the wake starts sees it.
 			if r.Deliveries != nil {
 				r.Deliveries.Record(name)
+				if noteIID > 0 {
+					r.Deliveries.RecordNote(name, noteIID)
+				}
 			}
 			r.Wake(name)
 			woken = append(woken, name.String())
@@ -103,6 +108,24 @@ func (r *Receiver) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	}
 	log.Info("Webhook delivery accepted", "woken", woken)
 	w.WriteHeader(http.StatusAccepted)
+}
+
+// noteIssue returns the IID of the issue a note event is on, and 0 for any
+// other event. Its fields are decoded apart, so an odd one changes no answer.
+func noteIssue(body []byte) int64 {
+	var ev struct {
+		ObjectKind       string `json:"object_kind"`
+		ObjectAttributes struct {
+			NoteableType string `json:"noteable_type"`
+		} `json:"object_attributes"`
+		Issue struct {
+			IID int64 `json:"iid"`
+		} `json:"issue"`
+	}
+	if json.Unmarshal(body, &ev) != nil || ev.ObjectKind != "note" || ev.ObjectAttributes.NoteableType != "Issue" {
+		return 0
+	}
+	return max(ev.Issue.IID, 0)
 }
 
 // tokenMatches compares the token with the project's webhook secret in

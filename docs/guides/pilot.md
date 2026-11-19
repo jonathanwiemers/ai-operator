@@ -336,7 +336,9 @@ names an unknown or settled follow-up gets one comment saying why.
 every follow-up was opened, taken over or dismissed (or 7 days have passed),
 and no issue of the milestone is open. While a done milestone waits for its
 follow-ups, the operator reads its tracking issue every 15 minutes, so a
-`create` or `create none` takes effect within 15 minutes. A Desk command
+`create` or `create none` takes effect within 15 minutes. With the
+[webhook](../reference/agentproject.md#specwebhook) on, it is picked up
+within one poll. A Desk command
 or a changed milestone description is picked up on the next poll. While
 issues are open, a skipped one say, the tracking issue names them once. Then: "🏁 The milestone is
 closed." A closed milestone is no longer planned, so `create` no longer
