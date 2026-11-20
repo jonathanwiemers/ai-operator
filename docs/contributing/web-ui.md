@@ -242,10 +242,26 @@ How it works:
   sets `?tab=`, and `#live-transcript` without `?tab=` opens *Live*
   (`task-tabs-task@375.png`, `task-tabs-issue@1280.png`).
 - **Known overflow.** `web/e2e/known-overflow.ts` lists the
-  `route@width` cases that scroll sideways today, with the measured px.
+  `route@width` cases that scroll sideways today, with the issue that fixes
+  them and the measured px.
   They run as expected failures (`test.fail()`). A slice that fixes one
   removes its entry: Playwright fails a listed case that passes, and an
   unlisted case that overflows.
+- **Accessibility.** Each route's check at 375 px and at its widest size
+  (1280 px, or 1180 px for the edge routes) also runs axe-core
+  (`@axe-core/playwright`) with the WCAG 2.2 A and AA tags (`wcag2a`,
+  `wcag2aa`, `wcag21aa`, `wcag22aa`); no other rule is gated and none is
+  turned off. Routes without a `colorScheme` of their own get one more check
+  at the widest size in dark, `<route>@1280-dark`. A violation fails with
+  `rule id: target selectors`. `web/e2e/known-a11y.ts` lists the checks
+  that fail today, `"<route>@<width>[-dark]"` → the issue that fixes them,
+  the requirement and the rule ids (`… R6: color-contrast`). A listed check
+  must find exactly those rules, and then runs as an expected failure
+  (`test.fail()`), after the overflow and CSP checks of the same case have
+  passed. A slice that fixes a rule removes it there. Both known lists use the
+  key and issue-link checks of `web/e2e/knownKeys.ts`
+  (`web/test/knownKeys.test.mjs`). The milestone behind it is
+  [Desk: works by keyboard and screen reader](../specs/desk-accessible.spec.md).
 - **Screenshots.** Each check takes a full-page screenshot to
   `web/e2e-results/screenshots/<route>@<width>.png`, even when it fails.
   The HTML report is in `web/e2e-results/report`, and traces of failed

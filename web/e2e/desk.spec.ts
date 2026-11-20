@@ -2,6 +2,7 @@
 // phone, a tablet and a desktop width, served by e2e/serve.mjs with the
 // server's CSP and the API answered from e2e/fixtures.
 import { join } from 'node:path'
+import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Page } from '@playwright/test'
 import { answer, now } from './fixtures'
 import { inbox, withSet, withSetProjects } from './fixtures/rail'
@@ -13,6 +14,8 @@ import { refundsPrompt, refundsResponse } from './fixtures/task'
 import { taskTabs, type TaskTab } from '../src/streamTabs'
 import type { Feature } from '../src/types'
 import { knownOverflow } from './known-overflow'
+import { knownA11y } from './known-a11y'
+import { knownRules } from './knownKeys'
 import { longBranch } from './fixtures/long'
 
 const widths = [
@@ -297,25 +300,75 @@ async function watch(page: Page, origin: string, problems: Problems): Promise<vo
 
 const atEdges = (name: string) => /^(overview|stream-project|stream-milestone|task|issue)(-|$)/.test(name)
 
+// openRoute loads the route at a size, in a colour scheme (the route's own
+// when unset), with the API from the fixtures and the problems recorded.
+async function openRoute(
+  page: Page,
+  baseURL: string | undefined,
+  route: Route,
+  size: { width: number; height: number },
+  colorScheme = route.colorScheme,
+): Promise<Problems> {
+  const origin = new URL(baseURL ?? '').origin
+  const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+  await page.setViewportSize(size)
+  if (colorScheme) await page.emulateMedia({ colorScheme })
+  await page.clock.setFixedTime(now)
+  if (route.signedOut) await freshSignInMarker(page)
+  await watch(page, origin, problems)
+  await mockAPI(page, route, problems)
+  // Registered last, so it answers before the fixtures.
+  if (route.features) await page.route('**/api/v1/features', (r) => r.fulfill({ status: 200, json: { features: route.features } }))
+  await page.goto(route.path)
+  return problems
+}
+
+// The accessibility check (docs/contributing/web-ui.md, "Checks"): axe-core
+// with the WCAG 2.2 level A and AA rules, no other rule gated.
+const a11yTags = ['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']
+
+// a11yViolations runs axe on the page as it is and lists each violated rule
+// as "<rule id>: <target selector>, ...".
+async function a11yViolations(page: Page): Promise<string[]> {
+  const { violations } = await new AxeBuilder({ page }).withTags(a11yTags).analyze()
+  return violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`)
+}
+
+// expectA11y fails on axe violations or, for a check listed in
+// known-a11y.ts, expects exactly the listed rules and then the failure
+// (test.fail()): Playwright fails the run when a listed check passes, so the
+// slice that fixes it removes the entry. It runs last in a check, so a listed
+// check still has to pass the ones before.
+async function expectA11y(page: Page, id: string): Promise<void> {
+  const violations = await a11yViolations(page)
+  const known = knownA11y[id]
+  if (known !== undefined) {
+    const listed = knownRules(known)
+    const found = violations.map((v) => v.slice(0, v.indexOf(':')))
+    expect(
+      violations.filter((_, i) => !listed.includes(found[i]!)),
+      'axe violations (WCAG 2.2 AA) as "rule: targets" that e2e/known-a11y.ts does not list for this check',
+    ).toEqual([])
+    expect(
+      listed.filter((r) => !found.includes(r)),
+      'rules e2e/known-a11y.ts lists for this check that axe no longer finds: remove them there',
+    ).toEqual([])
+    test.fail(true, `known a11y: ${known}`)
+  }
+  expect(violations, 'axe violations (WCAG 2.2 AA) as "rule: targets"; fix them or list the check in e2e/known-a11y.ts').toEqual([])
+}
+
 for (const route of routes) {
-  for (const size of atEdges(route.name) ? edgeWidths : widths) {
+  const sizes = atEdges(route.name) ? edgeWidths : widths
+  // axe runs at the phone size and at the widest of the route's sizes.
+  const desktop = sizes[sizes.length - 1]!
+  for (const size of sizes) {
     const id = `${route.name}@${size.width}`
     test(id, async ({ page, baseURL }, testInfo) => {
       const known = knownOverflow[id]
       test.fail(known !== undefined, `known overflow: ${known}`)
 
-      const origin = new URL(baseURL ?? '').origin
-      const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
-      await page.setViewportSize(size)
-      if (route.colorScheme) await page.emulateMedia({ colorScheme: route.colorScheme })
-      await page.clock.setFixedTime(now)
-      if (route.signedOut) await freshSignInMarker(page)
-      await watch(page, origin, problems)
-      await mockAPI(page, route, problems)
-      // Registered last, so it answers before the fixtures.
-      if (route.features) await page.route('**/api/v1/features', (r) => r.fulfill({ status: 200, json: { features: route.features } }))
-
-      await page.goto(route.path)
+      const problems = await openRoute(page, baseURL, route, size)
       // The screenshot is taken even when the page never gets ready.
       const shot = join(testInfo.project.outputDir, '..', 'screenshots', `${id}.png`)
       try {
@@ -343,6 +396,19 @@ for (const route of routes) {
         }
       })
       expect(overflow, 'sideways scroll in px of the page and of the content pane').toEqual({ page: 0, pane: 0 })
+
+      if (size === sizes[0] || size === desktop) await expectA11y(page, id)
+    })
+  }
+  // The dark pass: axe at the desktop size in the dark tokens, for the
+  // routes without a scheme of their own.
+  if (!route.colorScheme) {
+    const id = `${route.name}@${desktop.width}-dark`
+    test(id, async ({ page, baseURL }) => {
+      await openRoute(page, baseURL, route, desktop, 'dark')
+      await route.ready(page)
+      await page.waitForLoadState('networkidle')
+      await expectA11y(page, id)
     })
   }
 }
