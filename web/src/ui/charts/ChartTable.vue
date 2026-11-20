@@ -55,8 +55,10 @@ const rows = computed(() =>
       data-chart-table-toggle
       @click="open = !open"
     />
-    <div :class="open ? 'mt-3 max-h-96 overflow-y-auto' : 'sr-only'" role="group" :aria-label="label">
-      <DataList :columns="columns" :rows="rows" :row-key="(r) => r.id!" scroll />
+    <!-- Closed, the table is for screen readers only: it does not scroll
+         and takes no keyboard stop. -->
+    <div :class="open ? 'mt-3 max-h-96 overflow-y-auto' : 'sr-only [&>div]:overflow-visible'" role="group" :aria-label="label">
+      <DataList :columns="columns" :rows="rows" :row-key="(r) => r.id!" scroll :tabbable="open" />
     </div>
   </div>
 </template>

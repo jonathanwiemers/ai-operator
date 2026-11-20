@@ -736,7 +736,10 @@ stays selectable.
 
 - `scroll`: the table keeps its columns at every width and scrolls inside its
   own `overflow-x-auto` container, for comparison tables (Spend's tables are
-  the first). The page never scrolls sideways.
+  the first). The page never scrolls sideways. The container takes the
+  keyboard focus (`tabindex="0"`), so a keyboard user scrolls it too (axe
+  `scrollable-region-focusable`). `:tabbable="false"` drops that stop for
+  a copy only screen readers see (the closed `ChartTable`).
 
 A row is `relative`, so a link in a cell can cover the row with
 `after:absolute after:inset-0`. The research runs table is the first user;
@@ -858,6 +861,12 @@ useBackClose(open) // <USlideover v-model:open="open">
   `listenForSheets()` before `createWebHistory()`: listeners on `window`
   run in the order they were added, whatever their capture flag.
   `useBackClose` throws without it.
+- Focus: closing a sheet or dialog returns the focus to the element that had
+  it when the layer opened. Reka does that for every `v-model` overlay: its
+  dialog content takes the focused element as its trigger when it mounts.
+  A navigation from the layer (a palette pick, a link in the rail sheet)
+  ends on the new page's `h1` instead (`useRouteFocus`). Escape closes the
+  topmost layer only (Reka's dismissable layers).
 
 A sheet sets `z-40` on its `overlay` and `content` (`ui` prop): Nuxt UI
 sets no z-index, and the sticky mobile bar and the fixed bottom bar have 10. The e2e cases
@@ -867,7 +876,8 @@ back; `rail-sheet@375.png` shows the open sheet. The cases `context sheet …`
 open the Context sheet on the project and the milestone page at 375 and
 768 px, check its four parts (Needs you, the queue, companions, the last
 30 days), that it fits the width, and that back, scrim, close button and
-Escape close it; `context-sheet-<page>@<width>.png` show it open. At
+Escape close it, the last three with the focus back on the Context button
+(the rail sheet: every way, on *Projects*); `context-sheet-<page>@<width>.png` show it open. At
 1280 px the project page keeps the panel at its side and neither page has
 the button.
 

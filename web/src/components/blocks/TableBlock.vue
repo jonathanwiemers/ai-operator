@@ -1,12 +1,12 @@
 <script setup lang="ts">
 // A table of strings. It keeps its columns at every width: each column is at
 // least 8rem wide, so on a phone the table scrolls inside its own container,
-// never the page. Long cells wrap.
+// never the page, and takes the keyboard focus to scroll. Long cells wrap.
 defineProps<{ columns: string[]; rows: string[][] }>()
 </script>
 
 <template>
-  <div class="card overflow-x-auto" data-block="table">
+  <div class="card overflow-x-auto" tabindex="0" data-block="table">
     <table class="w-full border-collapse text-left">
       <thead>
         <tr>

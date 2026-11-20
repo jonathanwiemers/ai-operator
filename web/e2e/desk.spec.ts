@@ -1894,6 +1894,8 @@ test.describe('rail sheet', () => {
       await expect.poll(() => page.evaluate(() => (history.state as Record<string, unknown> | null)?.__sheet), 'the entry is gone').toBeUndefined()
       expect(page.url(), 'the URL is unchanged').toBe(url)
       expect(await sameRoute(page), 'the router did not navigate').toBe(true)
+      // The focus is back on the button that opened the sheet (Decision 6).
+      await expect(page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Projects' })).toBeFocused()
       await expect(page.locator('main').getByText(projectReady.stream).first()).toBeVisible()
       // A reload of the page's data would come within this time.
       await page.waitForTimeout(500)
@@ -1931,6 +1933,10 @@ test.describe('rail sheet', () => {
     await expect(sheet).toBeHidden()
     await start.ready(page)
     expect(await page.evaluate(() => (history.state as Record<string, unknown> | null)?.__sheet)).toBeUndefined()
+    // The new page's h1 has the focus, not the button that opened the sheet.
+    await expect(page.locator('main h1')).toBeFocused()
+    await page.waitForTimeout(500)
+    await expect(page.locator('main h1')).toBeFocused()
 
     // One back is the Inbox: the sheet's entry is not left in between.
     await page.goBack()
@@ -2134,6 +2140,8 @@ test.describe('context sheet', () => {
       await close(page)
       await expect(sheet).toBeHidden()
       await expect.poll(() => sheetEntry(page), 'the entry is gone').toBeUndefined()
+      // The focus is back on the Context button (Decision 6).
+      await expect(page.locator('main').getByRole('button', { name: /^Context/ })).toBeFocused()
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })
   }
@@ -2452,6 +2460,90 @@ test.describe('landmarks and route focus', () => {
     await page.locator('main').getByRole('button', { name: /^Context/ }).click()
     const sheet = page.getByRole('dialog', { name: 'Context' })
     await expect(sheet.getByRole('complementary', { name: 'Context' })).toBeVisible()
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+
+  // The focus ring (Decision 6): Nuxt UI's controls draw theirs in --focus,
+  // not in a tint of their own colour. Focus moved by script after a Tab
+  // counts as keyboard focus, so :focus-visible matches.
+  test('Nuxt UI controls show the --focus ring@1280', async ({ page, baseURL }) => {
+    const problems = await load(page, baseURL, routes.find((r) => r.name === 'research-new')!, { width: 1280, height: 800 })
+    const main = page.locator('main')
+    const focus = await page.evaluate(() => {
+      const probe = document.body.appendChild(document.createElement('span'))
+      probe.style.color = 'var(--focus)'
+      const c = getComputedStyle(probe).color
+      probe.remove()
+      return c
+    })
+    const controls = [
+      { name: 'UButton', control: page.locator('.rail').getByRole('button', { name: /^Search/ }) },
+      { name: 'UInput', control: main.getByRole('textbox', { name: 'Topics' }) },
+      { name: 'UTextarea', control: main.getByRole('textbox', { name: 'Question' }) },
+      { name: 'USelect', control: main.getByRole('combobox', { name: 'View' }) },
+    ]
+    for (const { name, control } of controls) {
+      await page.keyboard.press('Tab')
+      await control.focus()
+      // After the colour transition: during it the colour is a mix.
+      const ring = await control.evaluate(async (e) => {
+        await Promise.all(e.getAnimations().map((a) => a.finished))
+        const s = getComputedStyle(e)
+        return { visible: e.matches(':focus-visible'), color: s.outlineColor, style: s.outlineStyle, width: parseFloat(s.outlineWidth) }
+      })
+      expect(ring, `${name} ring`).toEqual({ visible: true, color: focus, style: 'solid', width: expect.any(Number) })
+      expect(ring.width, `${name} ring width`).toBeGreaterThanOrEqual(2)
+    }
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+
+  // A dialog opened by v-model (Restart run): Escape closes it, the focus
+  // goes back to its opener, and the history entry it pushed is gone.
+  for (const size of sizes) {
+    test(`a dialog closed by Escape gives the focus back to its opener@${size.width}`, async ({ page, baseURL }) => {
+      const problems = await load(page, baseURL, routes.find((r) => r.name === 'task')!, size)
+      // By attribute: the open dialog hides the page from the accessibility tree.
+      const opener = page.locator('main [data-restart-run]')
+      await opener.focus()
+      await page.keyboard.press('Enter')
+      const dialog = page.getByRole('dialog', { name: 'Restart the run?' })
+      await expect(dialog).toBeVisible()
+      await expect(opener, 'the dialog has the focus').not.toBeFocused()
+      await page.keyboard.press('Escape')
+      await expect(dialog).toBeHidden()
+      await expect(opener).toBeFocused()
+      await expect.poll(() => page.evaluate(() => (history.state as Record<string, unknown> | null)?.__sheet), 'the entry is gone').toBeUndefined()
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+  }
+})
+
+// Reduced motion (Decision 10): with the system setting on, a sheet opens
+// without a transition or a running animation, and still closes and
+// unmounts (Reka's Presence waits for animationend, which a 0s animation
+// fires).
+test.describe('reduced motion', () => {
+  test.use({ reducedMotion: 'reduce' })
+
+  test('the context sheet opens without motion and still unmounts@375', async ({ page, baseURL }) => {
+    const route = routes.find((r) => r.name === 'stream-project-stream')!
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await page.setViewportSize({ width: 375, height: 812 })
+    await page.clock.setFixedTime(now)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, route, problems)
+    await page.goto(route.path)
+    await route.ready(page)
+    await page.locator('main').getByRole('button', { name: /^Context/ }).click()
+    const sheet = page.getByRole('dialog', { name: 'Context' })
+    await expect(sheet).toBeVisible()
+    const motion = await sheet.evaluate((e) => ({
+      transitions: [e, ...e.querySelectorAll('*')].flatMap((c) => getComputedStyle(c).transitionDuration.split(', ')).filter((d) => d !== '0s'),
+      running: document.getAnimations().filter((a) => a.playState === 'running').length,
+    }))
+    expect(motion, 'transition durations other than 0s, running animations').toEqual({ transitions: [], running: 0 })
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('dialog')).toHaveCount(0)
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
   })
 })
@@ -4588,6 +4680,10 @@ test.describe('search palette', () => {
       await expect(page.getByRole('dialog')).toBeVisible()
       await expect(page.getByPlaceholder(placeholder)).toBeFocused()
       expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
+      // Escape closes it and the focus is back on the button (Decision 6).
+      await page.keyboard.press('Escape')
+      await expect(page.getByRole('dialog')).toBeHidden()
+      await expect(button).toBeFocused()
       await noProblems(page, problems)
     })
   }
@@ -4622,6 +4718,12 @@ test.describe('search palette', () => {
         await expect(page).toHaveURL(p.url)
         await expect(page.getByRole('dialog')).toBeHidden()
         await expect.poll(() => page.evaluate(() => (history.state as Record<string, unknown> | null)?.__sheet), 'the entry is gone').toBeUndefined()
+        // The route focus wins over the focus return (Decisions 4 and 6):
+        // the h1 keeps it once the palette has gone.
+        const h1 = page.locator('main h1')
+        await expect(h1).toBeFocused({ timeout: 5000 })
+        await page.waitForTimeout(500)
+        await expect(h1).toBeFocused()
         await noProblems(page, problems)
       })
     }

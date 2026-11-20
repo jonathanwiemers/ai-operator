@@ -2,7 +2,9 @@
 // One table that stacks on phones (docs/contributing/web-ui.md, "DataList"): below 760 px each
 // row is a card and each cell a label and value pair; from the tablet width up
 // it is a table. With `scroll` it stays a table at every width and scrolls
-// inside its own container, never the page.
+// inside its own container, never the page; the container takes the
+// keyboard focus, so a keyboard scrolls it too (unless tabbable is false: a
+// copy for screen readers only, ChartTable.vue).
 import { computed } from 'vue'
 
 export interface DataListColumn {
@@ -14,14 +16,19 @@ export interface DataListColumn {
   numeric?: boolean
 }
 
-const props = defineProps<{
-  columns: DataListColumn[]
-  rows: T[]
-  rowKey: (row: T) => string
-  scroll?: boolean
-  // expanded: the rows that show the `detail` slot in a full-width row below.
-  expanded?: (row: T) => boolean
-}>()
+const props = withDefaults(
+  defineProps<{
+    columns: DataListColumn[]
+    rows: T[]
+    rowKey: (row: T) => string
+    scroll?: boolean
+    tabbable?: boolean
+    // expanded: the rows that show the `detail` slot in a full-width row below.
+    expanded?: (row: T) => boolean
+  }>(),
+  // A boolean prop left out is false: tabbable is true unless set.
+  { tabbable: true, expanded: undefined },
+)
 
 defineSlots<Record<string, (props: { row: T }) => unknown>>()
 
@@ -33,7 +40,7 @@ function value(row: T, key: string): unknown {
 </script>
 
 <template>
-  <div class="overflow-x-auto">
+  <div class="overflow-x-auto" :tabindex="scroll && tabbable ? 0 : undefined">
     <table
       class="w-full border-collapse text-left"
       :class="stack ? 'block tablet:table' : 'table min-w-max'"

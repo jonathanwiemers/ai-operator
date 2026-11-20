@@ -98,3 +98,13 @@ export function strayBreakpoints(src) {
   }
   return [...new Set(hits)]
 }
+
+// A positive tabindex (Decision 6 of docs/specs/desk-accessible.spec.md):
+// the tab order follows the page's order. As an attribute (`tabindex="1"`,
+// `:tabindex="2"`), a property (`el.tabIndex = 1`) or an argument
+// (`setAttribute('tabindex', '1')`); 0 and -1 are fine.
+const TABINDEX = /\btab[iI]ndex["']?\s*[=:,]\s*["'`]?\s*\+?0*[1-9]/g
+
+export function positiveTabindex(src) {
+  return scan(src, TABINDEX)
+}

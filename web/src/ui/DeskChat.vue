@@ -112,7 +112,8 @@ const shown = computed(() =>
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col" :aria-label="label">
-    <div ref="scroller" class="min-h-0 flex-1 overflow-y-auto px-1" role="log" aria-live="polite" @scroll.passive="onScroll">
+    <!-- tabindex: a keyboard scrolls the thread too. -->
+    <div ref="scroller" class="min-h-0 flex-1 overflow-y-auto px-1" role="log" aria-live="polite" tabindex="0" @scroll.passive="onScroll">
       <div v-if="older" class="flex justify-center py-2">
         <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-history" :loading="loadingOlder" @click="emit('older')">
           Load older

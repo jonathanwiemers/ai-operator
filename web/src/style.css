@@ -394,6 +394,50 @@
   }
 }
 
+/* One focus colour (Decision 6 of docs/specs/desk-accessible.spec.md).
+   Nuxt UI draws its focus outline in a quarter tint of the component's
+   colour (outline-primary/25 with focus-visible:outline-3), on the control,
+   its ::before (UNavigationMenu links) or a parent that has the focus
+   (UCheckbox cards, UChatPrompt), and turns its ring to the component's
+   colour (focus-visible:ring-primary). Unlayered, so it beats those
+   utilities: the colours only, the outline still shows where Nuxt UI and
+   the base rule above draw one. Elements that draw no outline are not
+   touched: outline-color alone shows nothing. */
+:focus-visible,
+:focus-visible::before,
+[data-slot]:has(:focus-visible) {
+  outline-color: var(--focus);
+}
+
+:focus-visible,
+/* UChatPrompt rings its root while its textarea has the focus. */
+[data-slot='root']:has(> [data-slot='body'] textarea:focus-visible) {
+  --tw-ring-color: var(--focus);
+}
+
+/* Forced colours drop rings and shadows: every focused control keeps an
+   outline, also those that draw their focus as a ring only. The h1 and
+   main that a route change or the skip link focus keep none. */
+@media (forced-colors: active) {
+  :focus-visible:not(main, h1) {
+    outline: 2px solid Highlight;
+  }
+}
+
+/* Reduced motion (Decision 10): no transitions, animations or smooth
+   scrolling anywhere. A 0s animation still fires animationend, so Reka's
+   Presence unmounts closed sheets and menus. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0s !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 .mono {
   font-family: var(--mono);
   font-size: 12.5px;

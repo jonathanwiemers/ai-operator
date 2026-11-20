@@ -8,6 +8,7 @@ import { test } from 'node:test'
 import {
   apiCalls,
   htmlInjection,
+  positiveTabindex,
   rawControls,
   rawColours,
   stripComments,
@@ -25,6 +26,9 @@ const RULES = [
   // Nuxt UI first (docs/contributing/web-ui.md, "UI kit"): skip only the
   // files of documented custom components that need a raw control.
   { name: 'raw-control', enforce: true, find: rawControls, skip: [] },
+  // The tab order follows the page (Decision 6 of
+  // docs/specs/desk-accessible.spec.md): no tabindex above 0.
+  { name: 'positive-tabindex', enforce: true, find: positiveTabindex, skip: [] },
 ]
 
 function files(dir) {
@@ -113,6 +117,14 @@ test('matchers: api calls', () => {
   assert.deepEqual(apiCalls('await get(p)'), [1])
   // Prose in a template is not a call.
   assert.deepEqual(apiCalls('<p>Then post <code>/agent</code> commands.</p>'), [])
+})
+
+test('matchers: positive tabindex', () => {
+  const tpl = (body) => `<template>\n${body}\n</template>`
+  assert.deepEqual(positiveTabindex(tpl('<p tabindex="1" />\n<p :tabindex="2" />\n<p tabindex=3 />')), [2, 3, 4])
+  assert.deepEqual(positiveTabindex("el.tabIndex = 1\nel.setAttribute('tabindex', '4')\nh({ tabindex: 10 })"), [1, 2, 3])
+  assert.deepEqual(positiveTabindex(tpl('<p tabindex="0" />\n<p tabindex="-1" />\n<p :tabindex="open ? 0 : undefined" />')), [])
+  assert.deepEqual(positiveTabindex("h.setAttribute('tabindex', '-1')\nel.tabIndex = 0"), [])
 })
 
 test('matchers: breakpoints', () => {

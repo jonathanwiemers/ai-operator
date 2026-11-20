@@ -95,9 +95,4 @@ const successorTo = computed(() => ({ query: route.query, hash: `#${props.decisi
   box-shadow: 0 0 0 2px var(--focus);
   background: var(--tone-progress-bg);
 }
-@media (prefers-reduced-motion: reduce) {
-  .decision {
-    transition: none;
-  }
-}
 </style>
