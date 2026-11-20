@@ -309,6 +309,10 @@ build, so the CI `ui` job enforces it. It prints
   (`useStorage`) and the dashboard context land in the shared initial
   chunks. The cap rose to 134.8 kB, logged in the steering log of
   `docs/specs/desk-one-look.spec.md`.
+- 2026-11-20, the rail on `UNavigationMenu` (#625): 135.9 kB (JS 115.1,
+  CSS 20.8). `RailNav.vue` stays lazy; the stylesheet gains the theme
+  classes of `UNavigationMenu`, `UChip` and `UProgress`, and the icon set
+  gains the rail's icons. The cap rose to 136.0 kB, logged there too.
 - The cap only drops. A change that breaks it is reported, not answered by
   raising it.
 
@@ -1789,14 +1793,29 @@ view has loaded titles; they cost no extra request. On narrow screens the
 middle crumbs fold behind `…`. The Spend tab keeps its own drill-down
 crumbs.
 
-The rail lists the explicit projects first, then each AgentProjectSet
-(`GET /api/v1/projectsets`, loaded with the projects) as a header with
-its counts (active always, dormant, excluded and explicit when not zero)
-and last discovery, its children indented below it (`src/projectSets.ts`).
-The header takes the warning tone, with the reason as title, while its
-`Ready` or `Discovered` condition is False. Groups are always expanded. A
-child whose set is not loaded stays in the flat list; when the request
-fails, the rail shows the flat list.
+The rail (`components/RailNav.vue`) is a vertical `UNavigationMenu` in
+three groups, built by `src/railItems.ts` (unit-tested in
+`test/railItems.test.mjs`): the pages (Inbox with its count as a badge in
+the danger tone, none at 0; Overview; Metrics; Plans), *Projects* and
+*Research*. Every link's active state comes from the route's path: a
+project or research stays lit on the pages below it. A project shows its
+state as a chip on its icon, its needs-you count as a badge and its state
+line under the name; a research shows its schedule (raw cron), *running*
+or *one-off*. Selecting a link emits `navigate`, which closes the
+[sheet](#sheets). Below the menu, the footer holds the theme switch, the
+engine meters (`UProgress`), the live indicator, the user and the about
+line.
+
+The *Projects* group lists the explicit projects first, then each
+AgentProjectSet (`GET /api/v1/projectsets`, loaded with the projects) as
+an expandable item with its counts (active always, dormant, excluded and
+explicit when not zero) and last discovery under its name, its children
+inside it (`src/projectSets.ts`). A set is closed but on the pages of its
+children, where it opens by itself, also when the projects arrive after
+the menu (`openSets`); one the owner opened stays open. The set takes the
+warning tone, with the reason as tooltip, while its `Ready` or
+`Discovered` condition is False. A child whose set is not loaded stays in
+the flat list; when the request fails, the rail shows the flat list.
 
 The shell (`App.vue`) is Nuxt UI's dashboard layout: `UDashboardGroup`
 (`storage="local"`, `storage-key="desk"`) holds the `UDashboardSidebar`
@@ -1804,7 +1823,9 @@ with the rail and the `UDashboardPanel` with the crumb bar and the routed
 view. From 760 px the sidebar is a 248 px column (its `ui` classes move
 Nuxt UI's `lg` switch to `tablet:`); its header holds the brand, the
 search button and the collapse button. Collapsed it is 64 px wide and the
-rail shows Inbox, Overview, Metrics and Plans as icons. The collapsed state
+rail shows Inbox, Overview, Metrics and Plans as icons, their names as
+tooltips and the Inbox count as a chip on its icon; projects, research and
+the footer return when it is expanded. The collapsed state
 is kept in `localStorage` under `desk-sidebar-rail`, never in a cookie: the e2e
 cases `rail sheet collapse survives a reload@…` collapse it, reload and check
 that no cookie holds it.

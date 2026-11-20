@@ -4132,7 +4132,7 @@ it there, with `--keyboard-inset`, see [web-ui.md](web-ui.md#composer)).
   the stream search, the composers' buttons, the pause card's select) need
   no phone rule of their own; a view must not set `min-height` on a control
   with `!important`. Links styled as controls set it themselves (`min-h-11`): `UButton`s with `to` or `href`, *Sign in with SSO*, the rail
-  items (`RailNav.vue`), the mobile bar's brand and the bottom bar's items (`App.vue`) and the tab
+  links (`RailNav.vue`, the `UNavigationMenu` `link` class), the mobile bar's brand and the bottom bar's items (`App.vue`) and the tab
   strip (`RouteTabs`, `min-h-11`). Desktop and tablet keep their sizes. The
   e2e check `<route> hit areas of at least 44 px@375` counts the visible
   `button`, `[role=button]` and `input` elements under 44 px on the

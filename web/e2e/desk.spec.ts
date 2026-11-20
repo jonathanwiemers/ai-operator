@@ -1014,7 +1014,7 @@ test('costs filters live in the URL, no reload@1280', async ({ page, baseURL }) 
   await mockAPI(page, route, problems)
   await page.goto(route.path)
   await route.ready(page)
-  await expect(page.locator('[data-rail-metrics]').first()).toHaveClass(/active/)
+  await expect(page.locator('[data-rail-metrics]').first()).toHaveAttribute('aria-current', 'page')
   expect(Object.fromEntries(requests[0]!)).toMatchObject({ range: '30d', group: 'project', project: 'team-a/shop' })
   expect(requests[0]!.get('tz')).toBeTruthy()
 
@@ -1719,6 +1719,9 @@ test.describe('rail sheet', () => {
       await expect.poll(async () => (await rail.boundingBox())?.width).toBe(64)
       await expect(rail.getByRole('link', { name: /^shop/ })).toBeHidden()
       await expect(rail.getByRole('link', { name: /^Inbox/ })).toBeVisible()
+      // Icons only: the name shows as a tooltip.
+      await rail.getByRole('link', { name: /^Overview/ }).hover()
+      await expect(page.getByRole('tooltip')).toHaveText('Overview')
 
       await page.reload()
       await start.ready(page)
@@ -4291,8 +4294,14 @@ test.describe('project sets in the rail', () => {
         await expect(rail).toBeVisible()
         await rail.evaluate((e) => Promise.all(e.getAnimations().map((a) => a.finished)))
       }
+      // The set is closed outside its children; its header opens it.
       const head = rail.locator('[data-rail-set]')
       await expect(head).toHaveCount(1)
+      const trigger = rail.getByRole('button', { name: /^team-a-group/ })
+      await expect(trigger).toHaveAttribute('aria-expanded', 'false')
+      await expect(rail.getByRole('link', { name: /^docs/ })).toHaveCount(0)
+      await trigger.click()
+      await expect(trigger).toHaveAttribute('aria-expanded', 'true')
       await expect(head).toContainText('team-a-group')
       await expect(head.locator('[data-set-counts]')).toHaveText('3 active · 12 dormant · 2 excluded · 1 explicit')
       await expect(head).toContainText('discovered')
@@ -4300,7 +4309,7 @@ test.describe('project sets in the rail', () => {
       // The order: explicit projects, the header, the children by name.
       const order = await rail
         .locator('nav')
-        .locator('[data-rail-set], a.item[href^="/projects/"]')
+        .locator('[data-rail-set], a[href^="/projects/"]')
         .evaluateAll((els) => els.map((e) => (e.hasAttribute('data-rail-set') ? 'set' : e.getAttribute('href'))))
       expect(order).toEqual([
         '/projects/team-a/shop',
@@ -4320,4 +4329,32 @@ test.describe('project sets in the rail', () => {
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })
   }
+
+  // A set opens by itself on a child's page, also after a reload, when the
+  // projects arrive after the menu (src/railItems.ts, openSets). The child's
+  // own page has no fixtures: only CSP and page errors count here.
+  test('a set is open on the page of a child@1280', async ({ page, baseURL }) => {
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await page.setViewportSize({ width: 1280, height: 800 })
+    await page.clock.setFixedTime(now)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, start, problems)
+    await page.route((u) => u.pathname === '/api/v1/projects', (r) => r.fulfill({ status: 200, json: withSetProjects }))
+    await page.route((u) => u.pathname === '/api/v1/projectsets', (r) => r.fulfill({ status: 200, json: withSet }))
+    await page.goto(start.path)
+    await start.ready(page)
+
+    const rail = page.locator('.rail')
+    const trigger = rail.getByRole('button', { name: /^team-a-group/ })
+    await trigger.click()
+    await rail.getByRole('link', { name: /^docs/ }).click()
+    await expect(page).toHaveURL(/\/projects\/team-a\/docs$/)
+    await expect(rail.getByRole('link', { name: /^docs/ })).toHaveAttribute('aria-current', 'page')
+
+    await page.reload()
+    await expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    await expect(rail.getByRole('link', { name: /^docs/ })).toHaveAttribute('aria-current', 'page')
+    await expect(rail.getByRole('link', { name: /^shop/ })).not.toHaveAttribute('aria-current', 'page')
+    expect({ csp: problems.csp, pageErrors: problems.pageErrors, otherOrigin: problems.otherOrigin }).toEqual({ csp: [], pageErrors: [], otherOrigin: [] })
+  })
 })
