@@ -33,6 +33,7 @@ import TaskCalls from './TaskCalls.vue'
 import TaskLogs from './TaskLogs.vue'
 import RestartRun from './RestartRun.vue'
 import type { ProposalView, TaskResponse } from '../types'
+import { announceChange } from '../ui/useAnnounce'
 
 // What the Task page holds below its title: stage and links and banners,
 // then tabs by ?tab= (R10, decision 11): Overview (the last run's summary,
@@ -131,6 +132,8 @@ const heading = computed(() => {
   return `Plan: ${v.milestone?.title ?? v.name}`
 })
 const status = computed(() => taskStatus(t.value))
+// A change of the status on the open task is announced (useAnnounce.ts).
+announceChange(() => ({ key: `${props.namespace}/${props.name}/${props.task}`, text: `Task now ${status.value.label}` }))
 const health = computed(() => props.data.health)
 const step = computed(() => taskStep(run.value, health.value))
 const restarts = computed(() => restartsText(health.value))

@@ -62,6 +62,7 @@ import { useStreamNote } from '../streamNote'
 import { decisionsQuery, milestoneFromQuery } from '../decisions'
 import { milestoneTabFromRoute, milestoneTabs, milestoneTabsFor, projectTabsFor, tabFromQuery, tabQuery } from '../streamTabs'
 import NotFound from './NotFound.vue'
+import { announceChange } from '../ui/useAnnounce'
 
 const props = defineProps<{
   namespace?: string
@@ -406,6 +407,11 @@ const status = computed(() => {
   const m = milestone.value
   return milestoneIID.value && m?.iid === milestoneIID.value ? milestoneStatus(m) : null
 })
+
+// A change of the open milestone's status is announced (useAnnounce.ts).
+announceChange(() =>
+  status.value ? { key: `${props.namespace}/${props.name}#${milestoneIID.value}`, text: `Milestone now ${status.value.label}` } : null,
+)
 
 // metricsLink: a project's Metrics, filtered to it, with the history database.
 const metricsLink = computed(() =>

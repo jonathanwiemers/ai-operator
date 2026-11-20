@@ -108,3 +108,12 @@ const TABINDEX = /\btab[iI]ndex["']?\s*[=:,]\s*["'`]?\s*\+?0*[1-9]/g
 export function positiveTabindex(src) {
   return scan(src, TABINDEX)
 }
+
+// A live region of its own (Decision 7 of docs/specs/desk-accessible.spec.md):
+// components announce through useAnnounce(); App.vue renders its two regions.
+// aria-live="off" (turning a role's implicit one off) is fine.
+const LIVE = /\baria-live\s*=\s*["']?(?!off\b)\w/g
+
+export function liveRegions(src) {
+  return scan(src, LIVE)
+}

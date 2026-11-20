@@ -5,7 +5,9 @@
 // with a kept scroll anchor, following new messages only while the reader is
 // at the bottom, or operator events shown compact. Messages come from
 // chatView.ts (eventMessages, localMessage). The caller owns the draft, the
-// API call and the paging.
+// API call and the paging. A complete reply and a send error go to the
+// announcer (useAnnounce.ts); the log itself is not a live region, so
+// streamed text is not read word by word.
 import UButton from '@nuxt/ui/components/Button.vue'
 import UChatMessages from '@nuxt/ui/components/ChatMessages.vue'
 import UChatPrompt from '@nuxt/ui/components/ChatPrompt.vue'
@@ -14,7 +16,8 @@ import UEmpty from '@nuxt/ui/components/Empty.vue'
 import { computed, nextTick, onMounted, useTemplateRef, watch } from 'vue'
 import Markdown from '../components/Markdown.vue'
 import RelTime from '../components/RelTime.vue'
-import { anchoredTop, atBottom, chatChange, type DeskChatMessage } from '../chatView'
+import { anchoredTop, atBottom, chatChange, replyAnnouncement, type ChatSnapshot, type DeskChatMessage } from '../chatView'
+import { announce } from './useAnnounce'
 
 const props = withDefaults(
   defineProps<{
@@ -33,6 +36,9 @@ const props = withDefaults(
     error?: string
     empty?: string
     label?: string
+    // replier: who answers here ("Pilot"), for the reply's announcement
+    // when a message has no author.
+    replier?: string
   }>(),
   { placeholder: 'Write a message…', empty: 'No messages yet', label: 'Conversation' },
 )
@@ -82,6 +88,22 @@ watch(
   { flush: 'pre' },
 )
 
+// A reply once it is complete, never per change while it is written.
+let seen: ChatSnapshot = { messages: props.messages, waiting: props.waiting }
+watch(
+  () => ({ messages: props.messages, waiting: props.waiting }),
+  (next) => {
+    announce(replyAnnouncement(seen, next, props.replier))
+    seen = next
+  },
+)
+watch(
+  () => props.error,
+  (e) => {
+    if (e) announce(e, { assertive: true })
+  },
+)
+
 onMounted(() => {
   toBottom()
   onScroll()
@@ -113,7 +135,7 @@ const shown = computed(() =>
 <template>
   <div class="flex min-h-0 flex-1 flex-col" :aria-label="label">
     <!-- tabindex: a keyboard scrolls the thread too. -->
-    <div ref="scroller" class="min-h-0 flex-1 overflow-y-auto px-1" role="log" aria-live="polite" tabindex="0" @scroll.passive="onScroll">
+    <div ref="scroller" class="min-h-0 flex-1 overflow-y-auto px-1" role="log" aria-live="off" tabindex="0" @scroll.passive="onScroll">
       <div v-if="older" class="flex justify-center py-2">
         <UButton size="xs" color="neutral" variant="ghost" icon="i-lucide-history" :loading="loadingOlder" @click="emit('older')">
           Load older
@@ -169,7 +191,7 @@ const shown = computed(() =>
           @submit="submit"
         >
           <template #footer>
-            <span v-if="error" class="text-xs text-error" role="alert">{{ error }}</span>
+            <span v-if="error" class="text-xs text-error">{{ error }}</span>
             <UChatPromptSubmit class="ms-auto" :status="busy ? 'submitted' : 'ready'" :disabled="disabled || !draft.trim()" />
           </template>
         </UChatPrompt>

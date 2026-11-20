@@ -17,6 +17,7 @@ import RelTime from '../components/RelTime.vue'
 import { pageHeaderUi } from '../pageHeader'
 import ResearchResult from '../components/ResearchResult.vue'
 import NotFound from './NotFound.vue'
+import { announceChange } from '../ui/useAnnounce'
 
 // A research: its header (name, view, schedule, agent, feeds, actions), the
 // run in progress and the last result. Utilities only (docs/contributing/web-ui.md, "Research
@@ -57,6 +58,13 @@ const pending = computed<'starting' | 'waiting' | 'running' | null>(() => {
   if (x.oneOff && !x.lastRun && (!x.phase || x.phase === 'Scheduled')) return 'starting'
   return null
 })
+const pendingLabel = { starting: 'Starting', waiting: 'Waiting', running: 'Running' } as const
+// A change of the run is announced (useAnnounce.ts), not read from the card.
+announceChange(() =>
+  r.value
+    ? { key: `${props.namespace}/${props.name}`, text: pending.value ? `Research now ${pendingLabel[pending.value]}` : 'Research run done' }
+    : null,
+)
 const runAgent = computed(() => {
   const run = r.value?.run
   if (!run?.engine) return ''
@@ -166,7 +174,7 @@ async function remove() {
         <UAlert v-if="r.run?.outcome === 'failed' && r.run.message" :color="alertColor('danger')" variant="subtle" class="mt-3 [overflow-wrap:anywhere]" title="The last run failed" :description="r.run.message" />
       </header>
 
-      <div v-if="pending" class="card section flex flex-wrap items-center gap-x-3 gap-y-1.5 px-[18px] py-4" aria-live="polite">
+      <div v-if="pending" class="card section flex flex-wrap items-center gap-x-3 gap-y-1.5 px-[18px] py-4">
         <template v-if="pending === 'waiting'">
           <Badge tone="warning" dot>Waiting</Badge>
           <span v-if="r.waiting">

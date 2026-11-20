@@ -8,6 +8,7 @@ import { test } from 'node:test'
 import {
   apiCalls,
   htmlInjection,
+  liveRegions,
   positiveTabindex,
   rawControls,
   rawColours,
@@ -29,6 +30,8 @@ const RULES = [
   // The tab order follows the page (Decision 6 of
   // docs/specs/desk-accessible.spec.md): no tabindex above 0.
   { name: 'positive-tabindex', enforce: true, find: positiveTabindex, skip: [] },
+  // One announcer (Decision 7): no aria-live but its regions in App.vue.
+  { name: 'ad-hoc-live-region', enforce: true, find: liveRegions, skip: ['App.vue'] },
 ]
 
 function files(dir) {
@@ -125,6 +128,12 @@ test('matchers: positive tabindex', () => {
   assert.deepEqual(positiveTabindex("el.tabIndex = 1\nel.setAttribute('tabindex', '4')\nh({ tabindex: 10 })"), [1, 2, 3])
   assert.deepEqual(positiveTabindex(tpl('<p tabindex="0" />\n<p tabindex="-1" />\n<p :tabindex="open ? 0 : undefined" />')), [])
   assert.deepEqual(positiveTabindex("h.setAttribute('tabindex', '-1')\nel.tabIndex = 0"), [])
+})
+
+test('matchers: live regions', () => {
+  const tpl = (body) => `<template>\n${body}\n</template>`
+  assert.deepEqual(liveRegions(tpl('<p aria-live="polite" />\n<p aria-live="assertive" />\n<p :aria-live="x" />')), [2, 3, 4])
+  assert.deepEqual(liveRegions(tpl('<div role="log" aria-live="off" />')), [])
 })
 
 test('matchers: breakpoints', () => {

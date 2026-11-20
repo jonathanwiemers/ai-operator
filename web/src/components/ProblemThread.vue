@@ -200,6 +200,7 @@ const tones = { warning: 'warning', progress: 'info', success: 'success', neutra
         v-model="draft"
         class="min-h-[320px]"
         label="Problem thread"
+        replier="Pilot"
         :messages="messages"
         :older="!!olderCursor"
         :loading-older="loadingOlder"

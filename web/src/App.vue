@@ -11,7 +11,9 @@ import { textEntry } from './textEntry'
 import UApp from '@nuxt/ui/components/App.vue'
 import UDashboardGroup from '@nuxt/ui/components/DashboardGroup.vue'
 import { useBackClose } from './ui/useBackClose'
-import { useRouteFocus } from './ui/useRouteFocus'
+import { announcer, announce } from './ui/useAnnounce'
+import { onRouteDone, useRouteFocus } from './ui/useRouteFocus'
+import { inboxAnnouncement } from './announce'
 import SignIn from './views/SignIn.vue'
 import { crumbNames } from './crumbNames'
 import { breadcrumbItems, crumbsFor, showsBreadcrumb } from './crumbs'
@@ -88,6 +90,19 @@ const researches = ref<ResearchSummary[] | null>(null)
 const inboxCount = ref(0)
 // Focus on the new page's h1 after a navigation, and the tab title.
 useRouteFocus(router, inboxCount)
+// The title is announced only when focus did not move to the h1, which a
+// screen reader reads by itself (D640-P1).
+onRouteDone(({ title, focused }) => {
+  if (!focused) announce(title)
+})
+// Offline is announced once per drop of the event stream (D640-P3), not on
+// sign-out, which ends the stream too.
+watch(
+  () => live.connected,
+  (on, was) => {
+    if (was && !on && session.me && !session.loginRequired) announce('Offline', { assertive: true })
+  },
+)
 
 // The skip link moves focus to the page without a hash in the URL, which
 // the router would see as a navigation.
@@ -99,8 +114,12 @@ function skipToMain() {
 // notifications are on only seeds them; later loads notify once per new item.
 const seenInbox = new Set<string>()
 let inboxSeeded = false
+// The first load sets the count without announcing it.
+let inboxLoaded = false
 
 function onInbox(items: InboxItem[]) {
+  if (inboxLoaded && items.length !== inboxCount.value) announce(inboxAnnouncement(items.length))
+  inboxLoaded = true
   inboxCount.value = items.length
   refreshPermission()
   if (!notifyActive()) {
@@ -236,6 +255,10 @@ watch(notifyActive, (on) => {
 
 <template>
   <UApp>
+    <!-- The announcer's live regions (useAnnounce.ts), outside the sign-in
+         switch so they stay in the page. -->
+    <div class="sr-only" role="status" aria-live="polite" data-announce="polite">{{ announcer.polite }}</div>
+    <div class="sr-only" role="alert" aria-live="assertive" data-announce="assertive">{{ announcer.assertive }}</div>
     <!-- The first focusable element, shown while it has focus. -->
     <a
       v-if="!session.loginRequired"

@@ -55,7 +55,10 @@ export function useRouteFocus(router: Router, inboxCount: WatchSource<number>): 
   // The navigation waiting for its h1.
   let pending: { focus: boolean; was: Element | null } | null = null
   // The h1 focus went to, while a page that swaps its header once loaded
-  // may still take it away: focus then follows to the new h1.
+  // may still take it away: focus then follows to the new h1. A sheet that
+  // closes after the navigation (the phone's rail) gives focus back to its
+  // opener: until the user presses a key or the pointer, focus goes back to
+  // the h1.
   let held: { h: HTMLElement; until: number } | null = null
 
   function focusHeading(h: HTMLElement): boolean {
@@ -87,6 +90,20 @@ export function useRouteFocus(router: Router, inboxCount: WatchSource<number>): 
     }
   }
 
+  function release() {
+    held = null
+  }
+
+  function keep(e: FocusEvent) {
+    const h = held?.h
+    const to = e.target
+    if (!h || !h.isConnected || to === h || !(to instanceof Element) || Date.now() >= held!.until) return
+    if (to.closest('[role=dialog]') || document.querySelector('main')?.contains(to)) return
+    window.setTimeout(() => {
+      if (held?.h === h && document.activeElement === to) focusHeading(h)
+    })
+  }
+
   function schedule() {
     if (!frame) frame = window.requestAnimationFrame(update)
   }
@@ -114,9 +131,17 @@ export function useRouteFocus(router: Router, inboxCount: WatchSource<number>): 
   })
 
   const observer = new MutationObserver(schedule)
-  onMounted(() => observer.observe(document.body, { childList: true, subtree: true, characterData: true }))
+  onMounted(() => {
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true })
+    document.addEventListener('focusin', keep)
+    document.addEventListener('keydown', release, true)
+    document.addEventListener('pointerdown', release, true)
+  })
   onBeforeUnmount(() => {
     stop()
+    document.removeEventListener('focusin', keep)
+    document.removeEventListener('keydown', release, true)
+    document.removeEventListener('pointerdown', release, true)
     observer.disconnect()
     window.cancelAnimationFrame(frame)
     window.clearTimeout(timer)

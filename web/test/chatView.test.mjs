@@ -8,7 +8,9 @@ import {
   eventMessage,
   eventMessages,
   eventRole,
+  firstSentence,
   localMessage,
+  replyAnnouncement,
   stripPrefix,
   streamMessages,
 } from '../src/chatView.ts'
@@ -132,4 +134,46 @@ test('streamMessages turns newest-first items into oldest-first cards with a day
   assert.ok(m[1].metadata.day, 'a new day gets its label')
   assert.equal(m[2].metadata.day, undefined, 'the same day does not repeat it')
   assert.deepEqual(m[2].metadata.notes, [c])
+})
+
+const msg = (id, role, text, metadata = {}) => ({ id, role, parts: [{ type: 'text', text }], metadata })
+const asked = msg('chat:1', 'user', 'How is it going?')
+
+test('replyAnnouncement says nothing while the reply is written, once when it is complete', () => {
+  const partial = msg('chat:2', 'assistant', 'All good so')
+  const done = msg('chat:2', 'assistant', 'All good so far. Two issues merged.')
+  const waiting = { messages: [asked], waiting: true }
+  const streaming = { messages: [asked, partial], waiting: true }
+  const complete = { messages: [asked, done], waiting: false }
+  assert.equal(replyAnnouncement(waiting, streaming, 'Pilot'), '')
+  assert.equal(replyAnnouncement(streaming, complete, 'Pilot'), 'Pilot replied: All good so far.')
+  assert.equal(replyAnnouncement(complete, complete, 'Pilot'), '', 'the same reply again says nothing')
+})
+
+test('replyAnnouncement announces a reply that comes in complete', () => {
+  const r = msg('chat:2', 'assistant', 'Done!', { author: 'pilot-bot' })
+  assert.equal(replyAnnouncement({ messages: [asked], waiting: false }, { messages: [asked, r], waiting: false }), 'pilot-bot replied: Done!')
+  const anon = msg('chat:3', 'assistant', 'Yes')
+  assert.equal(replyAnnouncement({ messages: [asked], waiting: false }, { messages: [asked, anon], waiting: false }), 'Reply: Yes')
+})
+
+test('replyAnnouncement ignores the owner, operator events, the first load and older replies', () => {
+  const reply = msg('chat:2', 'assistant', 'Sure.')
+  const mine = msg('local:x', 'user', 'Thanks')
+  const event = msg('note:5', 'system', 'Run restarted')
+  const idle = { messages: [asked, reply], waiting: false }
+  assert.equal(replyAnnouncement(idle, { messages: [asked, reply, mine], waiting: false }, 'Pilot'), '', 'a user message')
+  assert.equal(replyAnnouncement(idle, { messages: [asked, reply, event], waiting: false }, 'Pilot'), '', 'an event after the reply')
+  assert.equal(replyAnnouncement({ messages: [], waiting: false }, idle, 'Pilot'), '', 'the first load')
+  // A send that failed ends the wait, with the old reply before the owner's message.
+  assert.equal(replyAnnouncement({ messages: [asked, reply, mine], waiting: true }, { messages: [asked, reply, mine], waiting: false }, 'Pilot'), '')
+})
+
+test('firstSentence cuts at the first sentence, and a long one at about 140 characters', () => {
+  assert.equal(firstSentence('One. Two.'), 'One.')
+  assert.equal(firstSentence('Version 1.2 is out! More later'), 'Version 1.2 is out!')
+  assert.equal(firstSentence('  no   end  '), 'no end')
+  const long = firstSentence(`${'word '.repeat(60)}end.`)
+  assert.ok(long.length <= 141, long)
+  assert.ok(long.endsWith('word…'), long)
 })

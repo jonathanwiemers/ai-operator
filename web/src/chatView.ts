@@ -132,6 +132,42 @@ export function localMessage(id: string, text: string, at: string, send: DeskCha
   return { id: `local:${id}`, role: 'user', parts: [{ type: 'text', text }], metadata: { at, send } }
 }
 
+// ChatSnapshot is what DeskChat shows at one time: its messages and whether
+// an answer is still expected.
+export interface ChatSnapshot {
+  messages: DeskChatMessage[]
+  waiting: boolean
+}
+
+// firstSentence is a text's first sentence, cut at about max characters.
+export function firstSentence(text: string, max = 140): string {
+  const t = text.replace(/\s+/g, ' ').trim()
+  const end = t.search(/[.!?…](\s|$)/)
+  const s = end >= 0 ? t.slice(0, end + 1) : t
+  if (s.length <= max) return s
+  const cut = s.slice(0, max)
+  const space = cut.lastIndexOf(' ')
+  return `${(space > max / 2 ? cut.slice(0, space) : cut).trimEnd()}…`
+}
+
+// replyAnnouncement is what the announcer says when a reply is complete
+// (Decision 7 of docs/specs/desk-accessible.spec.md): "<author> replied:
+// <first sentence>", once, never while it is written. A reply is complete
+// when nothing is expected any more (waiting is false). It is the newest
+// message that is not an operator event, by the pilot or an agent, and new
+// since prev or prev was still waiting. A first load (prev empty) says
+// nothing. The author is the message's, else replier, else "Reply".
+export function replyAnnouncement(prev: ChatSnapshot, next: ChatSnapshot, replier?: string): string {
+  if (next.waiting || !prev.messages.length) return ''
+  const m = [...next.messages].reverse().find((x) => x.role !== 'system')
+  if (!m || m.role !== 'assistant') return ''
+  if (!prev.waiting && prev.messages.some((x) => x.id === m.id)) return ''
+  const s = firstSentence(m.parts.map((p) => p.text).join(' '))
+  if (!s) return ''
+  const author = m.metadata.author || replier
+  return author ? `${author} replied: ${s}` : `Reply: ${s}`
+}
+
 // ChatChange is how a message list changed: older messages came in before
 // the first (prepend), new ones after the last (append), or something else.
 export type ChatChange = 'none' | 'prepend' | 'append' | 'replace'

@@ -758,9 +758,30 @@ test('theme switch in the rail sheet@375', async ({ page, baseURL }, testInfo) =
   expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
 })
 
+// recordAnnouncements keeps every text the announcer's live regions
+// (src/ui/useAnnounce.ts) show, as "polite: …" or "assertive: …", in
+// window.__said; said reads them.
+async function recordAnnouncements(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const said: string[] = []
+    const last: Record<string, string> = {}
+    ;(window as unknown as { __said: string[] }).__said = said
+    new MutationObserver(() => {
+      for (const el of document.querySelectorAll<HTMLElement>('[data-announce]')) {
+        const kind = el.dataset.announce!
+        const text = el.textContent?.trim() ?? ''
+        if (text && text !== last[kind]) said.push(`${kind}: ${text}`)
+        last[kind] = text
+      }
+    }).observe(document, { childList: true, subtree: true, characterData: true })
+  })
+}
+
+const said = (page: Page) => page.evaluate(() => [...(window as unknown as { __said: string[] }).__said])
+
 // The event stream ends at the session's expiry and reconnects at once
 // (src/live.ts): a reconnect within 5s keeps Live, a longer outage shows
-// Offline. A scripted EventSource stands in for the server's stream: the
+// Offline and announces it once, assertively. A scripted EventSource stands in for the server's stream: the
 // first opens and ends, the second opens and stays (or never opens).
 for (const reopens of [true, false]) {
   test(`event stream ${reopens ? 'reopens quietly' : 'down shows Offline'}@1280`, async ({ page, baseURL }) => {
@@ -770,6 +791,7 @@ for (const reopens of [true, false]) {
     await page.clock.setFixedTime(now)
     await watch(page, new URL(baseURL ?? '').origin, problems)
     await mockAPI(page, route, problems)
+    await recordAnnouncements(page)
     await page.addInitScript((reopens) => {
       const w = window as unknown as { __streams: number; EventSource: unknown }
       w.__streams = 0
@@ -814,10 +836,81 @@ for (const reopens of [true, false]) {
       await page.waitForTimeout(3500)
       await expect(indicator).toHaveText('Live')
       await expect(indicator).toHaveText('Offline', { timeout: 5000 })
+      await expect.poll(() => said(page)).toEqual(['assertive: Offline'])
+      await page.waitForTimeout(1000)
     }
+    expect(await said(page), 'announcements').toEqual(reopens ? [] : ['assertive: Offline'])
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
   })
 }
+
+// The pilot's reply on the milestone's Pilot tab comes in parts, one change
+// event each: the chat log is not a live region, and the announcer says
+// "Pilot replied: <first sentence>" once, after the reply is complete
+// (src/chatView.ts replyAnnouncement), never while it is written.
+test('a pilot reply in parts is announced once, when complete@1280', async ({ page, baseURL }) => {
+  const route = routes.find((r) => r.name === 'stream-milestone-pilot')!
+  const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.clock.setFixedTime(now)
+  await watch(page, new URL(baseURL ?? '').origin, problems)
+  await mockAPI(page, route, problems)
+  await recordAnnouncements(page)
+  // A scripted event stream that stays open; __change sends a change event.
+  await page.addInitScript(() => {
+    const w = window as unknown as { __change: () => void; EventSource: unknown }
+    class FakeEventSource extends EventTarget {
+      static CONNECTING = 0
+      static OPEN = 1
+      static CLOSED = 2
+      readyState = 0
+      constructor() {
+        super()
+        w.__change = () => this.dispatchEvent(new MessageEvent('change', { data: '{"kind":"task"}' }))
+        setTimeout(() => {
+          this.readyState = 1
+          this.dispatchEvent(new Event('open'))
+        }, 50)
+      }
+      close() {
+        this.readyState = 2
+      }
+    }
+    w.EventSource = FakeEventSource
+  })
+  const at = now.toISOString()
+  const question = { id: 521, at, role: 'user', kind: 'message', author: 'jo', authorName: 'Jo', body: 'Where is the queue?', state: 'delivered' }
+  const reply = (body: string, done: boolean) => ({ id: 522, at, role: 'agent', kind: 'message', authorName: 'pilot', body, ...(done ? { replyTo: 521 } : {}) })
+  const parts = [
+    [question],
+    [question, reply('Two issues', false)],
+    [question, reply('Two issues are in review. The third', false)],
+    [{ ...question, state: 'answered' }, reply('Two issues are in review. The third waits for CI.', true)],
+  ]
+  let part = 0
+  await page.route(
+    (url) => url.pathname === '/api/v1/projects/team-a/shop/tasks/shop-m14-pilot/chat',
+    (r) => (r.request().method() === 'GET' ? r.fulfill({ status: 200, json: { messages: parts[part] } }) : r.fallback()),
+  )
+  await page.goto(route.path)
+  await route.ready(page)
+  const chat = page.locator('main [data-task-chat]')
+  await expect(chat.locator('[data-chat-status]')).toBeVisible()
+  await expect(chat.getByRole('log')).toHaveAttribute('aria-live', 'off')
+  for (const [i, text] of ['Two issues', 'Two issues are in review. The third', 'Two issues are in review. The third waits for CI.'].entries()) {
+    part = i + 1
+    await page.evaluate(() => (window as unknown as { __change: () => void }).__change())
+    await expect(chat.getByText(text, { exact: true })).toBeVisible()
+    if (part < parts.length - 1) expect(await said(page), `announcements after part ${part}`).toEqual([])
+  }
+  await expect(chat.locator('[data-chat-status]')).toHaveCount(0)
+  await expect.poll(() => said(page)).toEqual(['polite: Pilot replied: Two issues are in review.'])
+  // The next change reloads the same reply: nothing more is said.
+  await page.evaluate(() => (window as unknown as { __change: () => void }).__change())
+  await page.waitForTimeout(1000)
+  expect(await said(page)).toEqual(['polite: Pilot replied: Two issues are in review.'])
+  expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+})
 
 // DataList (src/ui/DataList.vue): on a phone each run row shows its labels,
 // from the tablet width up they are hidden and the headers show instead.
@@ -2793,14 +2886,16 @@ test.describe('composer', () => {
       const text = page.getByPlaceholder('Message the agent…')
       await text.fill('Retry me')
       await text.press('Control+Enter')
-      await expect(page.getByText('Too many messages; try again in a minute.')).toBeVisible()
+      await expect(page.locator('main').getByText('Too many messages; try again in a minute.')).toBeVisible()
+      // The failed send is announced at once, as an error (src/ui/useAnnounce.ts).
+      await expect(page.locator('[data-announce=assertive]')).toHaveText('Too many messages; try again in a minute.')
       await expect(text).toHaveValue('Retry me')
       // A reload restores the draft, and the retry sends the same key.
       await page.reload()
       await route.ready(page)
       await expect(text).toHaveValue('Retry me')
       await page.locator('.composer.chat').getByRole('button', { name: 'Send' }).click()
-      await expect(page.getByText('Too many messages; try again in a minute.')).toBeVisible()
+      await expect(page.locator('main').getByText('Too many messages; try again in a minute.')).toBeVisible()
       expect(keys).toHaveLength(2)
       expect(keys[1]).toBe(keys[0])
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })

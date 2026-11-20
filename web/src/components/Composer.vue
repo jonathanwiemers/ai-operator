@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import UButton from '@nuxt/ui/components/Button.vue'
 import UTextarea from '@nuxt/ui/components/Textarea.vue'
-import { onBeforeUnmount, onMounted, ref, useTemplateRef } from 'vue'
+import { onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue'
 import { noteTargetLabel, slashOpens, slashPick, type NoteTarget, type SlashSuggestion } from '../stream'
+import { announce } from '../ui/useAnnounce'
 import { useKeyboardInset } from '../ui/useKeyboardInset'
 
 // Composer is the one text box of the Desk (docs/contributing/web-ui.md, "Composer"): the
@@ -42,6 +43,14 @@ const target = defineModel<NoteTarget | null>('target', { default: null })
 const emit = defineEmits<{ send: [payload: ComposerSend] }>()
 
 useKeyboardInset()
+
+// A send error is said at once (useAnnounce.ts); the error line shows it.
+watch(
+  () => props.error,
+  (e) => {
+    if (e) announce(e, { assertive: true })
+  },
+)
 
 const targetOpen = ref(false)
 const slashOpen = ref(false)

@@ -102,7 +102,7 @@ onUnmounted(() => window.clearInterval(timer))
 <template>
   <div class="card flex h-[min(72dvh,680px)] min-h-[360px] flex-col gap-2 overflow-clip p-3" data-plan-chat>
     <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" :description="error" />
-    <DeskChat label="Plan chat" :messages="shown" :waiting="!!waiting" empty="No messages yet.">
+    <DeskChat label="Plan chat" replier="Planner" :messages="shown" :waiting="!!waiting" empty="No messages yet.">
       <template #content="{ message }">
         <ChatTurn v-if="message.metadata.chat" :message="message.metadata.chat" :decisions="decisions" />
       </template>

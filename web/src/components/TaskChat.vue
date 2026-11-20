@@ -315,6 +315,7 @@ onUnmounted(() => {
     <DeskChat
       v-else
       label="Chat with the agent"
+      :replier="taskType === 'Coordinate' ? 'Pilot' : 'Agent'"
       :messages="shown"
       :older="hasOlder"
       :loading-older="loadingOlder"
