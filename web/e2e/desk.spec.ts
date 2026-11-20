@@ -1692,12 +1692,68 @@ test.describe('rail sheet', () => {
       await mockAPI(page, start, problems)
       await page.goto(start.path)
       await start.ready(page)
-      await expect(page.locator('aside.rail').getByRole('link', { name: /^shop/ })).toBeVisible()
+      await expect(page.locator('.rail').getByRole('link', { name: /^shop/ })).toBeVisible()
       await expect(page.locator('nav.bottombar')).toBeHidden()
       await expect(page.getByRole('dialog')).toHaveCount(0)
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })
   }
+
+  // The sidebar (App.vue, docs/contributing/web-ui.md "Navigation") collapses
+  // to its icons and stays so over a reload: the state is in localStorage,
+  // no cookie is set.
+  for (const size of widths.filter((w) => w.width >= 760)) {
+    test(`collapse survives a reload@${size.width}`, async ({ page, baseURL }) => {
+      const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+      await page.setViewportSize(size)
+      await page.clock.setFixedTime(now)
+      await watch(page, new URL(baseURL ?? '').origin, problems)
+      await mockAPI(page, start, problems)
+      await page.goto(start.path)
+      await start.ready(page)
+      const rail = page.locator('.rail')
+      await expect.poll(async () => (await rail.boundingBox())?.width).toBe(248)
+
+      await rail.getByRole('button', { name: 'Collapse sidebar' }).click()
+      await expect(rail).toHaveAttribute('data-collapsed', 'true')
+      await expect.poll(async () => (await rail.boundingBox())?.width).toBe(64)
+      await expect(rail.getByRole('link', { name: /^shop/ })).toBeHidden()
+      await expect(rail.getByRole('link', { name: /^Inbox/ })).toBeVisible()
+
+      await page.reload()
+      await start.ready(page)
+      await expect(rail).toHaveAttribute('data-collapsed', 'true')
+      await expect.poll(async () => (await rail.boundingBox())?.width).toBe(64)
+      expect(await page.evaluate(() => JSON.parse(localStorage.getItem('desk-sidebar-rail') ?? 'null')?.collapsed)).toBe(true)
+      expect(await page.evaluate(() => document.cookie), 'no cookie holds the sidebar').not.toMatch(/sidebar|desk/)
+      expect((await page.context().cookies()).map((c) => c.name).filter((n) => /sidebar|desk|dashboard/.test(n))).toEqual([])
+
+      await rail.getByRole('button', { name: 'Expand sidebar' }).click()
+      await expect(rail.getByRole('link', { name: /^shop/ })).toBeVisible()
+      await expect.poll(async () => (await rail.boundingBox())?.width).toBe(248)
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+  }
+
+  // Playwright's own back (not history.back()) closes the menu sheet and
+  // stays on the page.
+  test('page.goBack closes the sheet and stays@375', async ({ page, baseURL }) => {
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await page.setViewportSize({ width: 375, height: 812 })
+    await page.clock.setFixedTime(now)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, start, problems)
+    await page.goto(start.path)
+    await start.ready(page)
+    const url = page.url()
+    const sheet = await openSheet(page)
+    await page.goBack()
+    await expect(sheet).toBeHidden()
+    expect(page.url()).toBe(url)
+    await expect(page.locator('main').getByText(projectReady.stream).first()).toBeVisible()
+    await expect(page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Projects' })).toHaveAttribute('aria-expanded', 'false')
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
 })
 
 // The context layout (ContextLayout.vue, docs/contributing/web-ui.md "Sheets"): below
@@ -4228,7 +4284,7 @@ test.describe('project sets in the rail', () => {
       await page.goto(start.path)
       await start.ready(page)
 
-      let rail = page.locator('aside.rail')
+      let rail = page.locator('.rail')
       if (c.size.width < 760) {
         await page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Projects' }).click()
         rail = page.getByRole('dialog')

@@ -2,6 +2,7 @@
 // The rail's content (docs/contributing/web-ui.md, "Navigation"): Inbox, Overview, Metrics, Plans, projects,
 // research, engine meters and the user. App.vue renders it in the aside on
 // tablet and desktop and in the rail sheet on phones; App.vue loads the data.
+// Collapsed (the sidebar at 64 px) it shows only the four entries as icons.
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { hasFeature, session } from '../api'
@@ -13,6 +14,7 @@ import { milestoneCounts, projectDot, projectNeedsYou, projectStateLine } from '
 import type { EngineUsage, ProjectSummary, ResearchSummary } from '../types'
 import type { ProjectSetSummary } from '../generated/views'
 import { groupProjects, setCountsLine, setProblem } from '../projectSets'
+import UIcon from '@nuxt/ui/components/Icon.vue'
 import Truncated from '../ui/Truncated.vue'
 import RelTime from './RelTime.vue'
 import ThemeSwitch from './ThemeSwitch.vue'
@@ -23,6 +25,8 @@ const props = defineProps<{
   projectSets?: ProjectSetSummary[] | null
   researches: ResearchSummary[] | null
   inboxCount: number
+  // The sidebar is collapsed (App.vue): icons only, the rest hidden.
+  collapsed?: boolean
 }>()
 
 // navigate: a link was tapped. The sheet closes on it, also for a link to
@@ -76,25 +80,32 @@ function projectActive(namespace: string, name: string) {
 </script>
 
 <template>
-  <div class="railnav" @click="onClick">
-    <nav>
-      <RouterLink to="/inbox" class="item">
-        <span class="dot" :class="{ warn: inboxCount > 0 }" />
-        <span class="name">Inbox<span class="sub">needs you, across projects</span></span>
-        <span v-if="inboxCount" class="count">{{ inboxCount }}</span>
+  <div class="railnav" :class="{ collapsed }" @click="onClick">
+    <nav :class="{ 'px-2 pt-1': collapsed }">
+      <!-- Collapsed (the sidebar at 64 px, App.vue): the four entries as
+           icons, the name for screen readers; projects, research and the
+           footer show when it is expanded again. -->
+      <RouterLink to="/inbox" class="item top" :class="{ 'justify-center': collapsed }">
+        <UIcon v-if="collapsed" name="i-lucide-inbox" class="size-5 shrink-0" />
+        <span v-else class="dot" :class="{ warn: inboxCount > 0 }" />
+        <span class="name" :class="{ 'sr-only': collapsed }">Inbox<span class="sub">needs you, across projects</span></span>
+        <span v-if="inboxCount" class="count" :class="{ 'absolute -top-0.5 -right-1': collapsed }">{{ inboxCount }}</span>
       </RouterLink>
-      <RouterLink to="/" class="item" active-class="active">
-        <span class="dot" />
-        <span class="name">Overview<span class="sub">what runs, across projects</span></span>
+      <RouterLink to="/" class="item top" :class="{ 'justify-center': collapsed }" active-class="active">
+        <UIcon v-if="collapsed" name="i-lucide-layout-dashboard" class="size-5 shrink-0" />
+        <span v-else class="dot" />
+        <span class="name" :class="{ 'sr-only': collapsed }">Overview<span class="sub">what runs, across projects</span></span>
       </RouterLink>
       <!-- Metrics read the history database: the feature history says it is there. -->
-      <RouterLink v-if="hasFeature('history')" to="/metrics" class="item" active-class="active" data-rail-metrics>
-        <span class="dot" />
-        <span class="name">Metrics<span class="sub">cost, code, flow and pauses, across projects</span></span>
+      <RouterLink v-if="hasFeature('history')" to="/metrics" class="item top" :class="{ 'justify-center': collapsed }" active-class="active" data-rail-metrics>
+        <UIcon v-if="collapsed" name="i-lucide-receipt" class="size-5 shrink-0" />
+        <span v-else class="dot" />
+        <span class="name" :class="{ 'sr-only': collapsed }">Metrics<span class="sub">cost, code, flow and pauses, across projects</span></span>
       </RouterLink>
-      <RouterLink v-if="hasFeature('plans')" to="/plans" class="item" active-class="active" data-rail-plans>
-        <span class="dot" />
-        <span class="name">Plans<span class="sub">milestone plans, across projects</span></span>
+      <RouterLink v-if="hasFeature('plans')" to="/plans" class="item top" :class="{ 'justify-center': collapsed }" active-class="active" data-rail-plans>
+        <UIcon v-if="collapsed" name="i-lucide-map" class="size-5 shrink-0" />
+        <span v-else class="dot" />
+        <span class="name" :class="{ 'sr-only': collapsed }">Plans<span class="sub">milestone plans, across projects</span></span>
       </RouterLink>
 
       <div class="sect"><span>Projects</span></div>
@@ -382,6 +393,9 @@ nav {
   padding: 8px;
   font-size: 12.5px;
   color: var(--text-3);
+}
+.railnav.collapsed :is(.sect, .sethead, .empty-rail, .item:not(.top), .rail-foot) {
+  display: none;
 }
 
 /* Rail items are links styled as controls: 44 px on phones, like the

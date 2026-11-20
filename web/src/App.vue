@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { hasFeature, isResearchPath, session, setFeatures } from './api'
+import { defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
+import { hasFeature, session, setFeatures } from './api'
 import { getAbout, getFeatures, getInbox, getMe, getProjects, getProjectSets, getResearches, LoginRequiredError } from './client'
 import { deskTitle } from './format'
 import { inboxKey, newNotifications, notificationText } from './inboxNotify'
@@ -10,18 +10,24 @@ import { connectEvents, disconnectEvents, live } from './live'
 import { notifyActive, refreshPermission } from './notify'
 import { textEntry } from './textEntry'
 import UApp from '@nuxt/ui/components/App.vue'
-import UIcon from '@nuxt/ui/components/Icon.vue'
+import UDashboardGroup from '@nuxt/ui/components/DashboardGroup.vue'
 import { useBackClose } from './ui/useBackClose'
 import SignIn from './views/SignIn.vue'
 import Breadcrumbs from './components/Breadcrumbs.vue'
 import { isPaletteKey, paletteHint, paletteOpen } from './searchPalette'
-// Rail and ⌘K palette load after the shell: keeps the initial bundle under
-// budget when Plan entry points join the rail (docs/contributing/web-ui.md, "Bundle budget").
+// The panel, the sidebar, the rail, the buttons, the ⌘K palette and the
+// phone's bottom bar load after the shell, like the routes: they keep the
+// initial bundle near its budget (docs/contributing/web-ui.md, "Bundle
+// budget"). The sidebar loads its sheet, about 30 kB gzipped, only when it
+// opens on a phone.
+const UDashboardPanel = defineAsyncComponent(() => import('@nuxt/ui/components/DashboardPanel.vue'))
+const UDashboardSidebar = defineAsyncComponent(() => import('@nuxt/ui/components/DashboardSidebar.vue'))
+const UDashboardSidebarCollapse = defineAsyncComponent(() => import('@nuxt/ui/components/DashboardSidebarCollapse.vue'))
+const UButton = defineAsyncComponent(() => import('@nuxt/ui/components/Button.vue'))
+const UTooltip = defineAsyncComponent(() => import('@nuxt/ui/components/Tooltip.vue'))
 const RailNav = defineAsyncComponent(() => import('./components/RailNav.vue'))
 const SearchPalette = defineAsyncComponent(() => import('./components/SearchPalette.vue'))
-// The sheet is loaded on phones only: the dialog behind it would add about
-// 30 kB gzipped to the initial bundle (docs/contributing/web-ui.md, "Bundle budget").
-const USlideover = defineAsyncComponent(() => import('@nuxt/ui/components/Slideover.vue'))
+const BottomTabBar = defineAsyncComponent(() => import('./ui/BottomTabBar.vue'))
 import type { InboxItem, ProjectSummary, ResearchSummary } from './types'
 import type { ProjectSetSummary } from './generated/views'
 
@@ -139,25 +145,13 @@ async function loadRail() {
 }
 
 // The sheet is the phone's rail: it goes when the window widens to where
-// the aside shows.
+// the sidebar shows.
 const phone = window.matchMedia('(max-width: 759.98px)')
 const isPhone = ref(phone.matches)
 function onWidth() {
   isPhone.value = phone.matches
   if (!phone.matches) railOpen.value = false
 }
-
-// The phone's bottom bar (docs/contributing/web-ui.md, "Navigation") marks the section of the
-// current page with aria-current.
-const route = useRoute()
-const section = computed(() => {
-  if (route.name === 'inbox') return 'inbox'
-  if (route.name === 'overview') return 'overview'
-  if (route.name === 'metrics') return 'metrics'
-  if (isResearchPath(route.path)) return 'research'
-  return null
-})
-const current = (s: string) => (section.value === s ? 'page' : undefined)
 
 // While a text field has the focus the keyboard is up on a phone: the bottom
 // bar goes, so the composers get the room.
@@ -226,304 +220,117 @@ watch(notifyActive, (on) => {
 <template>
   <UApp>
     <SignIn v-if="session.loginRequired" />
-    <div v-else class="app" :class="{ typing }">
-      <!-- Phones: the brand on top, the navigation in the bottom bar. -->
-      <header class="mobilebar">
-        <RouterLink to="/" class="brand-m">
+    <!-- The shell (docs/contributing/web-ui.md, "Navigation"): Nuxt UI's dashboard
+         layout. From 760 px the sidebar is a column, below it a sheet; the
+         group is fixed there and the panel scrolls. On phones the page
+         scrolls, with the mobile bar on top and the bottom tab bar.
+         --bottombar is the bottom bar's height above the bottom inset, its
+         border included; 0 while the keyboard is up and the bar is gone
+         (Composer.vue reads it). -->
+    <UDashboardGroup
+      v-else
+      storage="local"
+      storage-key="desk"
+      :class="[
+        'max-tablet:static max-tablet:min-h-dvh max-tablet:flex-col max-tablet:overflow-visible',
+        typing ? 'max-tablet:[--bottombar:0px]' : 'max-tablet:[--bottombar:56px]',
+      ]"
+    >
+      <!-- Phones: the brand and search on top, the navigation in the bottom bar. -->
+      <header
+        class="mobilebar sticky top-0 z-10 flex items-center gap-2.5 border-b border-(--border) bg-(--surface) ps-[max(16px,env(safe-area-inset-left))] pe-[max(16px,env(safe-area-inset-right))] pt-[calc(6px+env(safe-area-inset-top))] pb-1.5 font-bold tablet:hidden"
+      >
+        <!-- A link styled as a control: 44 px, like the buttons (style.css, "Hit areas"). -->
+        <RouterLink to="/" class="brand-m flex min-h-11 items-center gap-2 text-(--text) hover:no-underline">
           <img src="/logo.svg" alt="" width="22" height="22" />
           ai-operator
         </RouterLink>
-        <button type="button" class="searchbtn searchbtn-m" aria-label="Search" aria-haspopup="dialog" @click="paletteOpen = true">
-          <UIcon name="i-lucide-search" class="size-5" />
-        </button>
+        <UButton
+          icon="i-lucide-search"
+          color="neutral"
+          variant="ghost"
+          aria-label="Search"
+          aria-haspopup="dialog"
+          class="ms-auto size-11 justify-center"
+          :ui="{ leadingIcon: 'size-5' }"
+          @click="paletteOpen = true"
+        />
       </header>
-      <nav class="bottombar" aria-label="Sections">
-        <RouterLink
-          to="/inbox"
-          class="tab"
-          :aria-current="current('inbox')"
-          :aria-label="inboxCount ? `Inbox (${inboxCount})` : undefined"
-        >
-          <span class="tab-icon">
-            <UIcon name="i-lucide-inbox" class="size-5" />
-            <span v-if="inboxCount" class="count">{{ inboxCount }}</span>
-          </span>
-          Inbox
-        </RouterLink>
-        <RouterLink to="/" class="tab" :aria-current="current('overview')">
-          <UIcon name="i-lucide-layout-dashboard" class="size-5" />
-          Overview
-        </RouterLink>
-        <button type="button" class="tab" aria-haspopup="dialog" :aria-expanded="railOpen" @click="railOpen = true">
-          <UIcon name="i-lucide-folders" class="size-5" />
-          Projects
-        </button>
-        <RouterLink v-if="hasFeature('history')" to="/metrics" class="tab" :aria-current="current('metrics')">
-          <UIcon name="i-lucide-receipt" class="size-5" />
-          Metrics
-        </RouterLink>
-        <RouterLink v-if="hasFeature('research')" to="/research" class="tab" :aria-current="current('research')">
-          <UIcon name="i-lucide-telescope" class="size-5" />
-          Research
-        </RouterLink>
-      </nav>
+      <BottomTabBar v-if="isPhone" v-show="!typing" :inbox-count="inboxCount" :menu-open="railOpen" @menu="railOpen = true" />
 
-      <aside class="rail">
-        <div class="railhead">
-          <RouterLink to="/" class="brand">
-            <img src="/logo.svg" alt="" width="24" height="24" />
-            <span>ai-operator</span>
-          </RouterLink>
-          <button
-            type="button"
-            class="searchbtn"
-            :aria-label="`Search (${paletteHint})`"
-            :title="`Search (${paletteHint})`"
-            aria-haspopup="dialog"
-            @click="paletteOpen = true"
-          >
-            <UIcon name="i-lucide-search" class="size-4" />
-          </button>
-        </div>
-        <RailNav :projects="projects" :project-sets="projectSets" :researches="researches" :inbox-count="inboxCount" />
-      </aside>
-
-      <!-- Phones: the rail as a sheet from the left (docs/contributing/web-ui.md, "Sheets").
-           Its links navigate and close it; useBackClose leaves no entry. -->
-      <USlideover
-        v-if="isPhone"
+      <!-- The rail: a column from 760 px, collapsible, its state in
+           localStorage (desk-sidebar-rail). Below 760 px a sheet from the left
+           (docs/contributing/web-ui.md, "Sheets"): its links navigate and close
+           it, useBackClose leaves no history entry. -->
+      <UDashboardSidebar
+        id="rail"
         v-model:open="railOpen"
-        side="left"
-        title="ai-operator"
-        description="Projects, research and engines"
-        close-icon="i-lucide-x"
+        class="rail"
+        mode="slideover"
+        collapsible
+        toggle-side="right"
+        :menu="{ title: 'ai-operator', description: 'Projects, research and engines' }"
         :ui="{
-          // Above the sticky mobile bar (z-index 10); Nuxt UI sets none.
-          overlay: 'z-40',
-          content:
-            'z-40 w-[min(280px,88vw)] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]',
-          header: 'min-h-0 gap-2 py-1 ps-4 pe-1 sm:ps-4 sm:pe-1',
-          title: 'text-[15px] font-bold',
-          description: 'sr-only',
-          close: 'static ms-auto',
-          body: 'flex min-h-0 flex-col overflow-hidden p-0 pt-2 sm:p-0 sm:pt-2',
+          // Nuxt UI switches at lg (1024 px); the Desk at 760 (tablet:).
+          root: 'group z-20 min-h-0 w-62 bg-(--surface) pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] ps-[env(safe-area-inset-left)] tablet:flex data-[collapsed=true]:w-16',
+          header: 'h-auto gap-1 px-0 pe-2.5 sm:px-0 sm:pe-2.5 group-data-[collapsed=true]:flex-col group-data-[collapsed=true]:pe-0 group-data-[collapsed=true]:pb-2',
+          body: 'min-h-0 gap-0 overflow-hidden p-0 sm:p-0',
+          // Above the sticky mobile bar and the bottom bar (z-index 10).
+          overlay: 'z-40 tablet:hidden',
+          content: 'z-40 w-[min(280px,88vw)] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] ps-[env(safe-area-inset-left)] tablet:hidden',
         }"
       >
-        <template #body>
-          <RailNav :projects="projects" :project-sets="projectSets" :researches="researches" :inbox-count="inboxCount" @navigate="railOpen = false" />
+        <template #header="{ collapsed }">
+          <RouterLink
+            to="/"
+            class="flex items-center gap-2.5 px-4 pt-3.5 pb-2.5 text-[15px] font-bold text-(--text) hover:no-underline"
+            :aria-label="collapsed ? 'ai-operator' : undefined"
+          >
+            <img src="/logo.svg" alt="" width="24" height="24" class="rounded-[7px]" />
+            <span v-if="!collapsed">ai-operator</span>
+          </RouterLink>
+          <template v-if="!isPhone">
+            <UTooltip :text="`Search (${paletteHint})`">
+              <UButton
+                icon="i-lucide-search"
+                color="neutral"
+                variant="ghost"
+                :aria-label="`Search (${paletteHint})`"
+                aria-haspopup="dialog"
+                :class="collapsed ? undefined : 'ms-auto'"
+                @click="paletteOpen = true"
+              />
+            </UTooltip>
+            <UDashboardSidebarCollapse
+              class="tablet:flex"
+              :icon="collapsed ? 'i-lucide-panel-left-open' : 'i-lucide-panel-left-close'"
+            />
+          </template>
         </template>
-      </USlideover>
+        <template #default="{ collapsed }">
+          <RailNav
+            :projects="projects"
+            :project-sets="projectSets"
+            :researches="researches"
+            :inbox-count="inboxCount"
+            :collapsed="collapsed"
+            @navigate="railOpen = false"
+          />
+        </template>
+      </UDashboardSidebar>
 
       <SearchPalette v-if="paletteUsed" :projects="projects" :features="session.features" :fullscreen="isPhone" />
 
-      <main class="main">
-        <header class="crumbbar"><Breadcrumbs /></header>
-        <RouterView />
-      </main>
-    </div>
+      <!-- The page; last in the group, so Nuxt UI draws no border after it.
+           Each view fills the pane's height (flex: 1), the crumb bar keeps its own. -->
+      <UDashboardPanel id="main" :ui="{ root: 'min-h-0' }">
+        <main
+          class="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto pt-[env(safe-area-inset-top)] pe-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] *:min-h-0 *:flex-1 max-tablet:overflow-visible max-tablet:pt-0 max-tablet:ps-[env(safe-area-inset-left)] max-tablet:pb-[calc(var(--bottombar)+env(safe-area-inset-bottom))]"
+        >
+          <header class="crumbbar flex-none! px-6 pt-2.5 max-tablet:px-4 max-tablet:pt-2"><Breadcrumbs /></header>
+          <RouterView />
+        </main>
+      </UDashboardPanel>
+    </UDashboardGroup>
   </UApp>
 </template>
-
-<style scoped>
-.app {
-  display: grid;
-  grid-template-columns: 248px minmax(0, 1fr);
-  /* dvh follows the browser's bars and, with interactive-widget=
-     resizes-content (index.html), the keyboard. 100vh for browsers without
-     it (docs/contributing/design.md, "Phones"). */
-  height: 100vh;
-  height: 100dvh;
-  min-height: 0;
-}
-/* Safe areas (viewport-fit=cover): env() is 0 but on notched screens, so
-   desktop is unchanged. The rail holds the left edge, the pane the rest. */
-.rail {
-  padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom) env(safe-area-inset-left);
-  border-right: 1px solid var(--border);
-  background: var(--surface);
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  z-index: 20;
-}
-.railhead {
-  display: flex;
-  align-items: center;
-  padding-right: 10px;
-}
-.searchbtn {
-  margin-inline-start: auto;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px;
-  border: 0;
-  border-radius: 6px;
-  background: none;
-  color: var(--text-2);
-  cursor: pointer;
-}
-.searchbtn:hover {
-  background: var(--surface-2);
-  color: var(--text);
-}
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 16px 10px;
-  font-weight: 700;
-  font-size: 15px;
-  color: var(--text);
-}
-.brand:hover {
-  text-decoration: none;
-}
-.brand img {
-  border-radius: 7px;
-}
-.count {
-  font-size: 11px;
-  font-weight: 700;
-  min-width: 18px;
-  text-align: center;
-  padding: 1px 6px;
-  border-radius: 9px;
-  /* Counts take the danger tone, never the primary colour of the buttons. */
-  background: var(--tone-danger-bg);
-  color: var(--tone-danger-fg);
-}
-.main {
-  min-width: 0;
-  min-height: 0;
-  overflow: auto;
-  display: flex;
-  flex-direction: column;
-  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) 0;
-}
-.main > :deep(*) {
-  flex: 1;
-  min-height: 0;
-}
-.main > .crumbbar {
-  flex: none;
-  padding: 10px 24px 0;
-}
-.mobilebar,
-.bottombar {
-  display: none;
-}
-
-@media (max-width: 759.98px) {
-  .app {
-    /* The bottom bar's height above the bottom inset, its border included. */
-    --bottombar: 56px;
-    grid-template-columns: minmax(0, 1fr);
-    /* The bar keeps its height, the pane takes what is left: with two auto
-       rows a short page would stretch the bar. */
-    grid-template-rows: auto 1fr;
-    height: auto;
-    min-height: 100vh;
-    min-height: 100dvh;
-  }
-  /* The mobile bar holds the top edge, so the pane's top inset goes; the
-     pane's end clears the bottom bar. */
-  .main {
-    padding: 0 env(safe-area-inset-right) calc(var(--bottombar) + env(safe-area-inset-bottom))
-      env(safe-area-inset-left);
-    /* The pane grows with its content and the page scrolls. visible, not
-       auto: a pane that never scrolls would still hold its sticky children
-       (the chat composer) instead of the viewport. */
-    overflow: visible;
-  }
-  /* A text field has the focus, so the keyboard is up: the bottom bar goes
-     and the composer gets its room. */
-  .app.typing {
-    --bottombar: 0px;
-  }
-  .app.typing .bottombar {
-    display: none;
-  }
-  /* The rail is the sheet on phones. */
-  .rail {
-    display: none;
-  }
-  .mobilebar {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: calc(6px + env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 6px
-      max(16px, env(safe-area-inset-left));
-    border-bottom: 1px solid var(--border);
-    background: var(--surface);
-    font-weight: 700;
-    position: sticky;
-    top: 0;
-    z-index: 10;
-  }
-  .bottombar {
-    display: flex;
-    position: fixed;
-    inset: auto 0 0;
-    z-index: 10;
-    padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
-    border-top: 1px solid var(--border);
-    background: var(--surface);
-  }
-  /* Each item fills its share of the bar, the whole height a hit area; the
-     bar's border takes the last pixel of --bottombar. */
-  .tab {
-    flex: 1;
-    min-width: 0;
-    height: calc(var(--bottombar) - 1px);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 2px;
-    border: 0;
-    background: none;
-    font: inherit;
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-2);
-    cursor: pointer;
-  }
-  .tab:hover {
-    text-decoration: none;
-  }
-  .tab[aria-current='page'] {
-    color: var(--accent);
-  }
-  .tab-icon {
-    position: relative;
-    display: flex;
-  }
-  .tab-icon .count {
-    position: absolute;
-    top: -6px;
-    left: 12px;
-  }
-  /* The brand is a link styled as a control: 44 px, like the buttons
-     (style.css, "Hit areas"). */
-  .brand-m {
-    min-height: 44px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    color: var(--text);
-  }
-  .brand-m:hover {
-    text-decoration: none;
-  }
-  .searchbtn-m {
-    width: 44px;
-    height: 44px;
-    justify-content: center;
-    padding: 0;
-  }
-  .main > .crumbbar {
-    padding: 8px 16px 0;
-  }
-}
-</style>

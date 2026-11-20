@@ -302,6 +302,13 @@ build, so the CI `ui` job enforces it. It prints
   (Desk polish R3 to R7): 132.3 kB (JS 113.0, CSS 19.2), up from 129.3 kB.
   The palette itself (`SearchPalette.vue`, `UCommandPalette`) is lazy and not
   in it; the cap stays at 132.3 kB.
+- 2026-11-20, the shell on `UDashboardGroup`, `UDashboardSidebar` and
+  `UDashboardPanel` (#624): 134.7 kB (JS 114.9, CSS 19.8), up from 131.9 kB.
+  Only the group is static; the panel, the sidebar, `UButton`, `UTooltip`
+  and the bottom bar are lazy. Even so, the sidebar's `localStorage` state
+  (`useStorage`) and the dashboard context land in the shared initial
+  chunks. The cap rose to 134.8 kB, logged in the steering log of
+  `docs/specs/desk-one-look.spec.md`.
 - The cap only drops. A change that breaks it is reported, not answered by
   raising it.
 
@@ -379,7 +386,7 @@ the files of the custom components that must render one.
 | `useBackClose` | `web/src/ui/useBackClose.ts` | Lets the Back button close a [sheet](#sheets); Nuxt UI overlays do not touch history. |
 | `useKeyboardInset` | `web/src/ui/useKeyboardInset.ts` | Lifts the [composer](#composer) above the phone keyboard; Nuxt UI has no such helper. |
 | Charts | `web/src/ui/charts/` | [Charts](#charts) draw with Chart.js; Nuxt UI has no chart component. |
-| Phone bottom tab bar | `web/src/App.vue` | Nuxt UI has no bottom tab bar. |
+| BottomTabBar | `web/src/ui/BottomTabBar.vue` | The phone's [bottom bar](#navigation); Nuxt UI has no bottom tab bar. |
 
 ### Adding a custom component
 
@@ -636,8 +643,9 @@ A sheet is a `USlideover` (dialogs are `UModal`; `UDrawer` is not used,
 its `vaul-vue` is unmaintained). Every sheet closes by its scrim, its close
 button, Escape and the browser's back button. There are no swipe gestures.
 The rail on phones is the first sheet: the bottom bar's *Projects* opens it from the
-left with the rail's content (`components/RailNav.vue`, which the aside
-renders on tablet and desktop). A project row reads the state line (`projectStateLine`) and
+left with the rail's content (`components/RailNav.vue`, which the sidebar
+renders on tablet and desktop). It is the `UDashboardSidebar`'s own slideover
+(see [Navigation](#navigation)). A project row reads the state line (`projectStateLine`) and
 `milestoneCounts` (`N active · M settling`, zero parts left out). Below 1180 px the stream header's
 *Context* button opens the context panel (`components/ContextPanel.vue`)
 from the right, the side it has on desktop; widening the window to 1180 px
@@ -1790,7 +1798,20 @@ The header takes the warning tone, with the reason as title, while its
 child whose set is not loaded stays in the flat list; when the request
 fails, the rail shows the flat list.
 
-The phone's bottom bar (`App.vue`, under 760 px) is 56 px high; the item
+The shell (`App.vue`) is Nuxt UI's dashboard layout: `UDashboardGroup`
+(`storage="local"`, `storage-key="desk"`) holds the `UDashboardSidebar`
+with the rail and the `UDashboardPanel` with the crumb bar and the routed
+view. From 760 px the sidebar is a 248 px column (its `ui` classes move
+Nuxt UI's `lg` switch to `tablet:`); its header holds the brand, the
+search button and the collapse button. Collapsed it is 64 px wide and the
+rail shows Inbox, Overview, Metrics and Plans as icons. The collapsed state
+is kept in `localStorage` under `desk-sidebar-rail`, never in a cookie: the e2e
+cases `rail sheet collapse survives a reload@…` collapse it, reload and check
+that no cookie holds it.
+Below 760 px the sidebar is the rail [sheet](#sheets); the page scrolls,
+with the mobile bar on top.
+
+The phone's bottom bar (`ui/BottomTabBar.vue`, under 760 px) is 56 px high; the item
 of the section shown has `aria-current="page"`. It keeps clear of the
 bottom safe-area inset, and the content pane has as much bottom padding.
 While a text field has the focus (`src/textEntry.ts`) the bar and the
