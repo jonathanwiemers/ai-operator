@@ -2,21 +2,24 @@
 import Markdown from './Markdown.vue'
 import { computed } from 'vue'
 import { hasFeature } from '../api'
-import { ciLabel, ciTone, cost, deferringEngine, phaseTone, shortSHA } from '../format'
+import { ciLabel, ciTone, cost, deferringEngine, shortSHA } from '../format'
 import { useNow } from '../live'
 import { queueDone } from '../milestoneQueue'
 import { useRoute } from 'vue-router'
 import { promptOpen, taskPrompts } from '../promptCard'
-import { restartsText, runInProgress, showHealthLine, stepAgeText } from '../taskHealth'
+import { restartsText, runInProgress, stepAgeText, taskStatus, taskStep } from '../taskHealth'
+import { toneText } from '../badgeTone'
+import { pageHeaderUi } from '../pageHeader'
 import { tabQuery, taskTabFromRoute, taskTabs, type TaskTab } from '../streamTabs'
 import DataList, { type DataListColumn } from '../ui/DataList.vue'
 import RouteTabs from '../ui/RouteTabs.vue'
+import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
 import Badge from './Badge.vue'
+import HeaderActions from './HeaderActions.vue'
 import CostChip from './CostChip.vue'
 import CompanionChip from './CompanionChip.vue'
 import ExtLink from './ExtLink.vue'
 import RelTime from './RelTime.vue'
-import StageBadge from './StageBadge.vue'
 import Truncated from '../ui/Truncated.vue'
 import LiveTranscript from './LiveTranscript.vue'
 import Conversation from './Conversation.vue'
@@ -34,7 +37,9 @@ import type { ProposalView, TaskResponse } from '../types'
 // mounted, so the live transcript and the chat poll only while shown
 // (D318-P1). The Task page and the issue page (with a live task) both
 // render it from the task they loaded.
-const props = defineProps<{ namespace: string; name: string; task: string; data: TaskResponse }>()
+// page: on the Task page, where the header has the title; the issue page
+// shows the header without it, under its own.
+const props = defineProps<{ namespace: string; name: string; task: string; data: TaskResponse; page?: boolean }>()
 
 const t = computed(() => props.data.task)
 const project = computed(() => props.data.project)
@@ -111,42 +116,77 @@ const overviewEmpty = computed(
 // Where the chat's "Live transcript" link goes: the Live tab, on this page.
 const transcriptTo = computed(() => (tabs.value.some((x) => x.id === 'live') ? tabTo('live') : undefined))
 
-// Run health above the tabs (R8): pod phase, restarts, step age, Stalled.
+// The header (decision 4, D627-P1): one status, then the run's step with
+// its age, restarts only when there were any, and Stalled (R8).
+const heading = computed(() => {
+  const v = t.value
+  if (v.issue) return v.issue.title || `Issue #${v.issue.iid}`
+  return `Plan: ${v.milestone?.title ?? v.name}`
+})
+const status = computed(() => taskStatus(t.value))
 const health = computed(() => props.data.health)
-const showHealth = computed(() => showHealthLine(health.value))
+const step = computed(() => taskStep(run.value, health.value))
+const restarts = computed(() => restartsText(health.value))
 const now = useNow()
-const stepAge = computed(() => stepAgeText(health.value?.stepSince, now.value))
+const stepAge = computed(() => stepAgeText(step.value.since, now.value))
+const canRestart = computed(() => !!props.data.permissions?.restart)
+// The links out: the merge request first, then the issue and the pipeline.
+const actions = computed(() => [
+  ...(run.value.mergeRequestURL ? [{ label: `Merge request !${run.value.mergeRequestIID}`, href: run.value.mergeRequestURL }] : []),
+  ...(t.value.issue ? [{ label: 'Issue', href: t.value.issue.webURL || issueURL(t.value.issue.iid) }] : []),
+  ...(t.value.status.ci?.pipelineURL ? [{ label: 'Pipeline', href: t.value.status.ci.pipelineURL }] : []),
+])
 </script>
 
 <template>
-  <div class="mt-2.5 flex flex-wrap items-center gap-x-3.5 gap-y-2">
-    <StageBadge :stage="t.stage" />
-    <Badge v-if="t.autopilot" tone="progress">Autopilot</Badge>
-    <Badge v-if="t.suspend" tone="warning">Suspended</Badge>
-    <CostChip :cost="data.cost" />
-    <span class="grow" />
-    <ExtLink v-if="t.issue" :href="t.issue.webURL || issueURL(t.issue.iid)">Issue</ExtLink>
-    <ExtLink v-if="run.mergeRequestURL" :href="run.mergeRequestURL">Merge request !{{ run.mergeRequestIID }}</ExtLink>
-    <CompanionChip v-if="t.companion" :companion="t.companion" />
-    <ExtLink v-if="t.status.ci?.pipelineURL" :href="t.status.ci.pipelineURL">Pipeline</ExtLink>
-  </div>
-
-  <!-- The status line (D319-P1): phase · current step · last result · last
-       activity. It wraps on a phone and never scrolls; a long step is
-       clamped and opens on tap. -->
-  <div data-status-line class="mt-2.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-(--text-2)">
-    <Badge :tone="phaseTone(t.status.phase)">{{ t.status.phase || '—' }}</Badge>
-    <template v-if="run.currentStep">
-      <span aria-hidden="true" class="text-(--text-3)">·</span>
-      <Truncated class="max-w-full min-w-0 font-[550] text-(--text)" :text="run.currentStep" />
+  <!-- The header (decision 4, D627-P1): the one status as eyebrow, the
+       title on the Task page (the issue page has its own), the meta line
+       and the actions. The meta line (data-status-line): step and its age,
+       last result, last activity, restarts when there were any, then the
+       chips. It wraps on a phone and never scrolls; a long step is clamped
+       and opens on tap. -->
+  <UPageHeader :ui="pageHeaderUi" data-task-head>
+    <template #headline>
+      <span :class="toneText[status.tone]" data-task-status>{{ status.label }}</span>
     </template>
-    <span aria-hidden="true" class="text-(--text-3)">·</span>
-    <Badge :tone="resultTone(run.lastResult)">{{ run.lastResult || 'No run yet' }}</Badge>
-    <template v-if="run.lastActivityTime">
-      <span aria-hidden="true" class="text-(--text-3)">·</span>
-      <span>active <RelTime :time="run.lastActivityTime" /></span>
+    <template v-if="page" #title>
+      <span v-if="t.issue" class="me-2 font-mono font-normal text-(--text-3)">#{{ t.issue.iid }}</span>{{ heading }}
     </template>
-  </div>
+    <template #description>
+      <div data-status-line class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+        <template v-if="step.text">
+          <Truncated class="max-w-full min-w-0 font-[550] text-(--text)" :text="step.text" />
+          <span v-if="stepAge">for {{ stepAge }}</span>
+          <span aria-hidden="true" class="text-(--text-3)">·</span>
+        </template>
+        <span :class="toneText[resultTone(run.lastResult)]">{{ run.lastResult ? `last run ${run.lastResult}` : 'no run yet' }}</span>
+        <template v-if="run.lastActivityTime">
+          <span aria-hidden="true" class="text-(--text-3)">·</span>
+          <span>active <RelTime :time="run.lastActivityTime" /></span>
+        </template>
+        <template v-if="restarts">
+          <span aria-hidden="true" class="text-(--text-3)">·</span>
+          <span class="min-w-0 break-words text-(--tone-warning-fg)" data-restarts>{{ restarts }}</span>
+        </template>
+        <template v-if="t.autopilot">
+          <span aria-hidden="true" class="text-(--text-3)">·</span>
+          <span>autopilot</span>
+        </template>
+        <Badge v-if="health?.stalled" tone="danger" :title="health.stalledMessage || undefined">
+          Stalled<template v-if="health.stalledReason"> · {{ health.stalledReason }}</template>
+        </Badge>
+        <CostChip :cost="data.cost" />
+        <CompanionChip v-if="t.companion" :companion="t.companion" />
+      </div>
+    </template>
+    <!-- Restart run (owners) is the secondary action beside the merge
+         request; the other links out are in ⋯. -->
+    <template #links>
+      <HeaderActions :actions="actions" :shown="canRestart ? 1 : 2">
+        <RestartRun v-if="canRestart" :namespace="namespace" :name="name" :task="task" :running="runInProgress(run)" />
+      </HeaderActions>
+    </template>
+  </UPageHeader>
 
   <div v-if="t.runPending && run.deferredUntil" class="banner warning">
     <strong>Waiting for a usage limit</strong>
@@ -170,36 +210,7 @@ const stepAge = computed(() => stepAgeText(health.value?.stepSince, now.value))
     </span>
   </div>
 
-  <!-- Run health (R8): pod · restarts · step age · Stalled. Wraps on a
-       phone; hidden with no health or neither pod nor step. Owners get
-       the Restart run button at its end. -->
-  <div
-    v-if="showHealth && health"
-    data-health-line
-    class="mt-2.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-(--text-2)"
-  >
-    <template v-if="health.podPhase">
-      <span class="min-w-0 break-words">{{ health.podPhase }}</span>
-      <span aria-hidden="true" class="text-(--text-3)">·</span>
-      <span class="min-w-0 break-words">{{ restartsText(health) }}</span>
-    </template>
-    <template v-if="health.step">
-      <span v-if="health.podPhase" aria-hidden="true" class="text-(--text-3)">·</span>
-      <span class="min-w-0 break-words"
-        >step <span class="font-[550] text-(--text)">{{ health.step }}</span
-        ><template v-if="stepAge"> for {{ stepAge }}</template></span
-      >
-    </template>
-    <template v-if="health.stalled">
-      <span aria-hidden="true" class="text-(--text-3)">·</span>
-      <Badge tone="danger" :title="health.stalledMessage || undefined">
-        Stalled<template v-if="health.stalledReason"> · {{ health.stalledReason }}</template>
-      </Badge>
-    </template>
-    <RestartRun v-if="data.permissions?.restart" :namespace="namespace" :name="name" :task="task" :running="runInProgress(run)" />
-  </div>
-
-  <RouteTabs class="mt-5 w-fit" :tabs="tabs" :active="tab" :to="tabTo" :badges="badges" label="Task" />
+  <RouteTabs class="mt-2 w-fit" :tabs="tabs" :active="tab" :to="tabTo" :badges="badges" label="Task" />
 
   <template v-if="tab === 'overview'">
     <section v-if="run.summary" class="section">

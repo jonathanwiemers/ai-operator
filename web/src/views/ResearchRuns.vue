@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import UButton from '@nuxt/ui/components/Button.vue'
+import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
+import { pageHeaderUi } from '../pageHeader'
 import { computed, onMounted, ref, watch } from 'vue'
 import { getResearchRuns, LoginRequiredError, NotFoundError } from '../client'
 import { absTime, cost, runLine, type Tone } from '../format'
@@ -101,7 +103,7 @@ watch(
   <NotFound v-if="notFound" />
   <div v-else class="page">
 
-    <h1 class="mb-3.5">Run history</h1>
+    <UPageHeader title="Run history" :description="name" :ui="pageHeaderUi" />
 
     <div v-if="error" class="banner danger">{{ error }}</div>
     <div v-if="loading && !runs.length" class="card empty">Loading…</div>

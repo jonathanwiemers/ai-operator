@@ -4,8 +4,10 @@ import { setCrumbNames } from '../crumbNames'
 import { getResearchRun } from '../client'
 import { useResource } from '../live'
 import { absTime, cost, runLine, type Tone } from '../format'
-import Badge from '../components/Badge.vue'
+import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
 import RelTime from '../components/RelTime.vue'
+import { toneText } from '../badgeTone'
+import { pageHeaderUi } from '../pageHeader'
 import ResearchResult from '../components/ResearchResult.vue'
 import NotFound from './NotFound.vue'
 import type { ResearchRun } from '../types'
@@ -50,12 +52,11 @@ const duration = computed(() => {
     <div v-if="loading && !run" class="card empty">Loading…</div>
 
     <template v-if="run && data">
-      <div class="flex flex-wrap items-center gap-2">
-        <h1 class="[overflow-wrap:anywhere]">Run of {{ absTime(run.startedAt) }}</h1>
-        <Badge :tone="statusTone[run.status] ?? 'muted'" :dot="run.status === 'running'" :pulse="run.status === 'running'">
-          {{ run.status }}
-        </Badge>
-      </div>
+      <UPageHeader :title="`Run of ${absTime(run.startedAt)}`" :ui="pageHeaderUi">
+        <template #headline>
+          <span class="capitalize" :class="toneText[statusTone[run.status] ?? 'muted']" data-run-status>{{ run.status }}</span>
+        </template>
+      </UPageHeader>
       <div v-if="run.status === 'degraded'" class="banner warning">
         <strong>Degraded</strong>
         <span>The agent's answer failed validation; it is shown as plain text.</span>

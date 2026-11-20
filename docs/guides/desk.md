@@ -302,13 +302,13 @@ with live tasks, and no spend or per-issue figures.
 
 ![Task chat between a user and the implementing agent](../assets/screenshots/task-chat.webp)
 
-A task page shows the task's stage, badges, cost and links (issue, merge
-request, companion, pipeline), one status line (phase, current step, last
-result, last activity) and banners for a block, a usage limit or an
-out-of-memory restart. While a run is going, a health line shows the pod,
-its restarts, the step and how long it runs, and *Stalled* when the
-[watchdog](../concepts/glossary.md#watchdog) sees no progress. Owners with
-the `chat` grant get *Restart run* there.
+A task page states the task's status once, above the title (its phase, such
+as *Running*). The line below has the step and how long it runs, the last
+result and activity, restarts if any, *Stalled* when the
+[watchdog](../concepts/glossary.md#watchdog) sees no progress, and the cost.
+On the right are the merge request and *Restart run* (owners with the `chat`
+grant); other links are in the ⋯ menu. Banners show a block, a usage limit or
+an out-of-memory restart.
 
 Its tabs, each shown when there is something in it:
 

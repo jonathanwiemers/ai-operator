@@ -391,6 +391,14 @@ test.describe('breadcrumb only below the top level', () => {
       await page.goto(milestone.path)
       await milestone.ready(page)
       await expect(crumb).toHaveCount(1)
+      // The milestone states its status once, as the header's eyebrow
+      // (decision 4, D627-P2): no badge row on the Issues tab repeats it.
+      await expect(page.locator('main [data-stream-head] [data-slot=headline]')).toHaveText('Autopilot paused')
+      // The issue table's Paused column (paused time) is not a status.
+      const statusText = page.locator('main').getByText(/^(autopilot )?paused$/i).and(page.locator(':not([role=columnheader])'))
+      await expect(statusText).toHaveCount(1)
+      await expect(page.locator('main [data-milestone-summary]')).toBeVisible()
+      await expect(page.locator('main [data-milestone-summary]')).not.toContainText(/paused/i)
       // It links to the project; on a phone that middle crumb is hidden and
       // the trail is Overview › milestone, on one line.
       const projectLink = crumb.locator('a[href="/projects/team-a/shop"]')
@@ -786,7 +794,8 @@ test('stream-milestone RouteTabs scroll inside the strip@375', async ({ page, ba
 
 // The stream header (Stream.vue, docs/contributing/web-ui.md "Stream header"): on a phone the
 // title, the tab strip and the search each take a full-width row, in that
-// order, and the search is 16 px; from 760 px they share the first row.
+// order, and the search is 16 px; from 760 px the search sits beside the
+// tabs, on the right. The tabs follow the page header on every width.
 for (const { width, height, phone } of [
   { width: 375, height: 812, phone: true },
   { width: 1280, height: 900, phone: false },
@@ -803,22 +812,22 @@ for (const { width, height, phone } of [
 
     const head = page.locator('[data-stream-head]')
     const box = async (sel: string) => (await head.locator(sel).first().boundingBox())!
-    const row = (await head.locator('h1').evaluate((h) => h.parentElement!.getBoundingClientRect().toJSON())) as DOMRect
-    const title = await box('h1')
+    const tabsRow = head.locator('nav[aria-label="View"]').locator('xpath=..')
+    const row = (await tabsRow.evaluate((r) => r.getBoundingClientRect().toJSON())) as DOMRect
+    const title = await box('h1[data-slot=title]')
     const tabs = await box('nav[aria-label="View"]')
     const search = await box('input[type="search"]')
     const size = await head.locator('input[type="search"]').evaluate((i) => getComputedStyle(i).fontSize)
+    // The tab strip follows the page header (decision 4).
+    expect(tabs.y, 'the tabs sit below the title').toBeGreaterThanOrEqual(title.y + title.height)
     if (phone) {
-      expect(title.width, 'the title takes the full row').toBeCloseTo(row.width, 0)
-      expect(tabs.y, 'the tabs sit below the title').toBeGreaterThanOrEqual(title.y + title.height)
       expect(tabs.width, 'the tabs take the full row').toBeCloseTo(row.width, 0)
       expect(search.y, 'the search sits below the tabs').toBeGreaterThanOrEqual(tabs.y + tabs.height)
       expect(search.width, 'the search takes the full row').toBeGreaterThan(row.width - 2)
       expect(size).toBe('16px')
     } else {
       const mid = (b: { y: number; height: number }) => b.y + b.height / 2
-      expect(Math.abs(mid(tabs) - mid(title)), 'the tabs sit beside the title').toBeLessThan(8)
-      expect(Math.abs(mid(search) - mid(title)), 'the search sits beside the title').toBeLessThan(8)
+      expect(Math.abs(mid(search) - mid(tabs)), 'the search sits beside the tabs').toBeLessThan(8)
       expect(search.x + search.width, 'the search is on the right').toBeGreaterThan(row.x + row.width - 60)
     }
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
@@ -2167,12 +2176,18 @@ test.describe('task tabs', () => {
         await page.goto(route.path)
         await route.ready(page)
 
-        // The header's status line (D319-P1): phase · current step · last
-        // result · last activity, above the tabs. It wraps, never wider than
-        // the page; on a phone the long step is clamped and opens on tap.
+        // The header (decision 4, D627-P1): the phase once, as eyebrow; the
+        // meta line (D319-P1) has the current step · last result · last
+        // activity, above the tabs. It wraps, never wider than the page; on
+        // a phone the long step is clamped and opens on tap. No other line
+        // repeats the status.
+        await expect(page.locator('main [data-task-status]')).toHaveText('Idle')
+        await expect(page.locator('main [data-health-line]')).toHaveCount(0)
         const status = page.locator('main [data-status-line]')
         await expect(status).toBeVisible()
-        await expect(status).toContainText(/Idle\s*·\s*Waiting for an answer on refunds.*currency\s*·\s*NeedsInput\s*·\s*active \S/)
+        await expect(status).toContainText(/Waiting for an answer on refunds.*currency.*·\s*last run NeedsInput\s*·\s*active \S/)
+        await expect(status).not.toContainText('Idle')
+        await expect(status).not.toContainText(/\b0 restarts/)
         expect(await status.evaluate((e) => e.scrollWidth <= e.clientWidth), 'the status line wraps').toBe(true)
         const step = status.getByRole('button')
         if (width < 760) {
@@ -3907,7 +3922,7 @@ test.describe('research pages', () => {
       expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
       if (phone) {
         const heights = await main.evaluate((m) =>
-          [...m.querySelectorAll('[data-research-facts] a, [data-research-feeds] a, [data-run-line] a, [data-block=items] li > div:first-child a')].map(
+          [...m.querySelectorAll('[data-research-head] [data-slot=links] a, [data-research-feeds] a, [data-run-line] a, [data-block=items] li > div:first-child a')].map(
             (e) => e.getBoundingClientRect().height,
           ),
         )

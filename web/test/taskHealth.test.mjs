@@ -1,23 +1,35 @@
 // Tests of src/taskHealth.ts: npm test (node --test, no extra dependencies).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { restartsText, runInProgress, showHealthLine, stepAgeText } from '../src/taskHealth.ts'
+import { restartsText, runInProgress, stepAgeText, taskStatus, taskStep } from '../src/taskHealth.ts'
 
-test('showHealthLine hides when there is no health, pod or step', () => {
-  assert.equal(showHealthLine(undefined), false)
-  assert.equal(showHealthLine(null), false)
-  assert.equal(showHealthLine({}), false)
-  assert.equal(showHealthLine({ stalled: true, stalledReason: 'Silent' }), false)
+test('taskStatus is the phase, Suspended while suspended, Pending without a phase', () => {
+  assert.deepEqual(taskStatus({ status: { phase: 'Running' } }), { label: 'Running', tone: 'progress' })
+  assert.deepEqual(taskStatus({ status: { phase: 'Idle' } }), { label: 'Idle', tone: 'info' })
+  assert.deepEqual(taskStatus({ status: { phase: 'Blocked' } }), { label: 'Blocked', tone: 'danger' })
+  assert.deepEqual(taskStatus({ suspend: true, status: { phase: 'Running' } }), { label: 'Suspended', tone: 'warning' })
+  assert.deepEqual(taskStatus({ status: {} }), { label: 'Pending', tone: 'muted' })
+  assert.deepEqual(taskStatus({}), { label: 'Pending', tone: 'muted' })
 })
 
-test('showHealthLine shows when there is a pod phase or a step', () => {
-  assert.equal(showHealthLine({ podPhase: 'Running' }), true)
-  assert.equal(showHealthLine({ step: '18 push' }), true)
-  assert.equal(showHealthLine({ podPhase: 'Pending', step: '1 clone' }), true)
+test('taskStep takes the run status step, then the health step, with the age of the health step only', () => {
+  assert.deepEqual(taskStep(undefined, undefined), { text: '' })
+  assert.deepEqual(taskStep({}, {}), { text: '' })
+  assert.deepEqual(taskStep(undefined, null), { text: '' })
+  const since = '2026-11-15T12:00:00Z'
+  assert.deepEqual(taskStep({ currentStep: '7 review' }, { step: '18 push', stepSince: since }), { text: '7 review' })
+  assert.deepEqual(taskStep({}, { step: '18 push', stepSince: since }), { text: '18 push', since })
+  assert.deepEqual(taskStep({ currentStep: '18 push' }, { step: '18 push', stepSince: since }), { text: '18 push', since })
+})
+
+test('restartsText is empty without restarts', () => {
+  assert.equal(restartsText(undefined), '')
+  assert.equal(restartsText(null), '')
+  assert.equal(restartsText({}), '')
+  assert.equal(restartsText({ restarts: 0, podPhase: 'Running' }), '')
 })
 
 test('restartsText counts and adds the last termination reason', () => {
-  assert.equal(restartsText({}), '0 restarts')
   assert.equal(restartsText({ restarts: 1 }), '1 restart')
   assert.equal(restartsText({ restarts: 3, lastTermination: 'OOMKilled' }), '3 restarts (OOMKilled)')
 })

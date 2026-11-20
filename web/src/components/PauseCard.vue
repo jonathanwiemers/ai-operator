@@ -47,10 +47,18 @@ import RelTime from './RelTime.vue'
 // head, review errors and exits come from it, and Resume lifts only it.
 // noReason: a problem card's cause line replaces the (generic) reason.
 // facts: the problem's facts, for the warnings of its prompt's options.
-const props = defineProps<{ namespace: string; name: string; milestone: MilestoneView; hold?: HoldView; noReason?: boolean; facts?: Facts }>()
+// noStatus: in a problem card, whose page states the status once (decision
+// 4): no "Autopilot paused" heading, which only repeats it (D627-P2); a
+// kind's heading ("CI is red") names the cause and stays, as does a hold's.
+const props = defineProps<{ namespace: string; name: string; milestone: MilestoneView; hold?: HoldView; noReason?: boolean; facts?: Facts; noStatus?: boolean }>()
 
 const ap = computed(() => props.milestone.autopilot)
 const kind = computed(() => (props.hold ? props.hold.kind : ap.value?.pauseKind))
+// A pause of no known kind is titled "Autopilot paused", the status itself.
+const heading = computed(() => {
+  const t = pauseTitle(kind.value, props.hold?.iid)
+  return props.noStatus && t === pauseTitle(undefined) ? '' : t
+})
 const issue = computed(() => (props.hold ? props.hold.iid : ap.value?.pausedFor) || 0)
 const reason = computed(() => (props.hold ? props.hold.reason : ap.value?.pausedReason) || '')
 const head = computed(() => ((props.hold ? props.hold.head : ap.value?.head) || '').trim())
@@ -258,7 +266,7 @@ const wrap = '[overflow-wrap:anywhere]'
     data-pause-card
     :data-hold="hold?.iid"
   >
-    <h2 class="m-0">{{ pauseTitle(kind, hold?.iid) }}</h2>
+    <h2 v-if="heading" class="m-0">{{ heading }}</h2>
     <template v-if="noReason" />
     <Markdown v-else-if="reason" :class="wrap" :text="reason" />
     <p v-else-if="!kind" class="muted">Waiting for a human.</p>

@@ -88,8 +88,8 @@ the label. See [Labels](labels.md).
 
 ### Restart a stuck run
 
-Restarting is a **Desk** action only. On the task page, use *Restart run* on
-the health line, or the chat command `{"cmd":"restart"}`. Only the
+Restarting is a **Desk** action only. On the task page, use *Restart run* in
+the page header, or the chat command `{"cmd":"restart"}`. Only the
 milestone's `owner-subjects` may restart. It works on an implementer's,
 planner's or pilot's task.
 

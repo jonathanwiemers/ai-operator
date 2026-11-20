@@ -42,7 +42,7 @@ Buttons above the box send short commands, by task type:
 The command shows as a short line in the thread, with the operator's answer
 under it.
 
-**A run that hangs.** On the task's health line, owners get *Restart run*
+**A run that hangs.** In the task page's header, owners get *Restart run*
 while a run is in progress. It asks first, then stops the run and starts it
 again. This is a Desk action only, there is no GitLab command for it. See
 [Restart a stuck run](../reference/commands.md#restart-a-stuck-run).

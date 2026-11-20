@@ -2,12 +2,14 @@
 import UButton from '@nuxt/ui/components/Button.vue'
 import UFormField from '@nuxt/ui/components/FormField.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
+import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
 import USelect from '@nuxt/ui/components/Select.vue'
 import UTextarea from '@nuxt/ui/components/Textarea.vue'
 import { computed, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ApiError, createResearch, getResearchForm } from '../client'
 import { useResource } from '../live'
+import { pageHeaderUi } from '../pageHeader'
 
 // The one-off research form. Nuxt UI fields (docs/contributing/web-ui.md, "Research list and
 // form"): inputs are 16 px and controls 44 px high on phones, the fields
@@ -126,7 +128,7 @@ const selectProps = {
 
 <template>
   <div class="page">
-    <h1>New research</h1>
+    <UPageHeader title="New research" :ui="pageHeaderUi" />
 
     <div v-if="loadError" class="banner danger [overflow-wrap:anywhere]">{{ loadError }}</div>
     <div v-if="!form && !loadError" class="card empty">Loading…</div>

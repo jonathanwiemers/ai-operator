@@ -18,3 +18,16 @@ export const badgeLook: Record<Tone, BadgeLook> = {
   warning: { color: 'warning', variant: 'soft', class: 'bg-(--tone-warning-bg) text-(--tone-warning-fg)' },
   danger: { color: 'error', variant: 'soft', class: 'bg-(--tone-danger-bg) text-(--tone-danger-fg)' },
 }
+
+// toneText is the text colour of a tone, as a Badge of that tone has it:
+// a page's status in the headline (decision 4: the status is stated once,
+// there) and a result in a meta line.
+export const toneText: Record<Tone, string> = {
+  neutral: 'text-(--tone-neutral-fg)',
+  info: 'text-(--tone-info-fg)',
+  progress: 'text-(--tone-progress-fg)',
+  success: 'text-(--tone-success-fg)',
+  warning: 'text-(--tone-warning-fg)',
+  danger: 'text-(--tone-danger-fg)',
+  muted: 'text-(--text-3)',
+}

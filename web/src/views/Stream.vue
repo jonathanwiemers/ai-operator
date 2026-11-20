@@ -3,6 +3,7 @@ import { computed, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
+import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
 import USelect from '@nuxt/ui/components/Select.vue'
 import Badge from '../components/Badge.vue'
 import { hasFeature } from '../api'
@@ -51,6 +52,9 @@ import type {
   ProjectDetail,
   StreamEvent,
 } from '../types'
+import { milestoneStatus } from '../milestoneRows'
+import { toneText } from '../badgeTone'
+import { pageHeaderUi } from '../pageHeader'
 import { useStreamNote } from '../streamNote'
 import { decisionsQuery, milestoneFromQuery } from '../decisions'
 import { milestoneTabFromRoute, milestoneTabs, projectTabsFor, storedMilestoneTabs, tabFromQuery, tabQuery } from '../streamTabs'
@@ -362,10 +366,23 @@ function setFilter(id: StreamFilter) {
 }
 
 const title = computed(() => {
-  if (everything.value) return 'Everything'
   if (milestoneIID.value && milestone.value) return milestone.value.title
   return props.name ?? 'Stream'
 })
+
+// status: a milestone's one status, the header's eyebrow (decision 4); a
+// project has none.
+const status = computed(() => {
+  const m = milestone.value
+  return milestoneIID.value && m?.iid === milestoneIID.value ? milestoneStatus(m) : null
+})
+
+// metricsLink: a project's Metrics, filtered to it, with the history database.
+const metricsLink = computed(() =>
+  !everything.value && !milestoneIID.value && props.namespace && props.name && hasFeature('history')
+    ? { path: '/metrics', query: { project: `${props.namespace}/${props.name}` } }
+    : undefined,
+)
 
 // headerCost is the cost chip of the stream's project or milestone.
 const headerCost = computed((): Cost | null => {
@@ -436,31 +453,50 @@ function showDay(i: number): string | null {
   >
     <template #default="{ sheet }">
     <div class="stream">
-      <!-- Phones: the title has a row of its own and wraps, the cost and the
-           Context button follow, then the tab strip and the search take a
-           full row each. From 760 px they share one row; the search
-           shrinks from 180 px to 64 px before it would wrap. -->
+      <!-- The page header (decision 4): the milestone's status as eyebrow,
+           the title, the cost as meta line, Metrics (a project) and Context
+           (below 1180 px) on the right. The tab strip follows; on phones it
+           and the search take a full row each, from 760 px they share one
+           row, the search on the right, shrinking from 180 px to 64 px
+           before it would wrap. On the dashboard's Stream tab (everything)
+           the dashboard has the header. -->
       <div data-stream-head class="bg-(--bg) px-4 pt-3.5 tablet:px-7">
-        <div v-if="milestone?.autopilot" class="flex items-center gap-1.5 text-[12.5px] text-(--text-3)">
-          <span class="font-semibold text-(--tone-progress-fg)">Autopilot {{ milestone.autopilot.phase.toLowerCase() }}</span>
-        </div>
-        <div class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-2">
-          <h1 class="max-w-full min-w-0 shrink-0 basis-full text-xl tracking-[-0.01em] break-words tablet:basis-auto">{{ title }}</h1>
-          <CostChip :cost="headerCost" />
-          <UButton
-            v-if="!everything && !milestoneIID && namespace && name && hasFeature('history')"
-            color="neutral"
-            variant="outline"
-            size="xs"
-            icon="i-lucide-receipt"
-            aria-label="Metrics"
-            title="Metrics"
-            :to="{ path: '/metrics', query: { project: `${namespace}/${name}` } }"
-            data-project-metrics
-          />
+        <UPageHeader v-if="!everything" :title="title" :ui="pageHeaderUi">
+          <template v-if="status" #headline>
+            <span :class="toneText[status.tone]" data-stream-status>{{ status.label }}</span>
+          </template>
+          <template v-if="headerCost" #description><CostChip :cost="headerCost" /></template>
+          <template v-if="metricsLink || sheet" #links>
+            <UButton
+              v-if="metricsLink"
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-receipt"
+              label="Metrics"
+              :to="metricsLink"
+              data-project-metrics
+            />
+            <UButton
+              v-if="sheet"
+              color="neutral"
+              variant="outline"
+              icon="i-lucide-panel-right"
+              label="Context"
+              aria-haspopup="dialog"
+              :aria-expanded="contextOpen"
+              :aria-label="projectInbox.length ? `Context, ${projectInbox.length} need you` : 'Context'"
+              @click="contextOpen = true"
+            >
+              <template v-if="projectInbox.length" #trailing>
+                <Badge tone="warning">{{ projectInbox.length }}</Badge>
+              </template>
+            </UButton>
+          </template>
+        </UPageHeader>
+        <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
           <RouteTabs
             v-if="!everything"
-            class="order-1 basis-full tablet:order-none tablet:basis-auto"
+            class="basis-full tablet:basis-auto"
             :tabs="tabs"
             :active="tab"
             :to="(id) => ({ query: tabQuery(route.query, id, tabs) })"
@@ -469,7 +505,7 @@ function showDay(i: number): string | null {
           <form
             v-if="tab === 'stream'"
             role="search"
-            class="order-2 basis-full tablet:order-none tablet:max-w-45 tablet:grow tablet:basis-16"
+            class="basis-full tablet:max-w-45 tablet:grow tablet:basis-16"
             @submit.prevent="applySearch"
           >
             <UInput
@@ -482,22 +518,6 @@ function showDay(i: number): string | null {
               :ui="{ base: 'tablet:text-sm/5' }"
             />
           </form>
-          <UButton
-            v-if="sheet"
-            class="ms-auto tablet:ms-0"
-            color="neutral"
-            variant="outline"
-            icon="i-lucide-panel-right"
-            label="Context"
-            aria-haspopup="dialog"
-            :aria-expanded="contextOpen"
-            :aria-label="projectInbox.length ? `Context, ${projectInbox.length} need you` : 'Context'"
-            @click="contextOpen = true"
-          >
-            <template v-if="projectInbox.length" #trailing>
-              <Badge tone="warning">{{ projectInbox.length }}</Badge>
-            </template>
-          </UButton>
         </div>
         <div v-if="tab === 'stream' && heatDays.length" class="heat" title="Activity per day; click to jump">
           <span>{{ heatRange.start }}</span>

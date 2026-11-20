@@ -5,9 +5,11 @@ import { costTooltip } from '../format'
 import { getMilestoneIssue, getTask } from '../client'
 import { useResource } from '../live'
 import { issueStateTone, issueTime, rowCost, rowTokens } from '../milestoneRows'
-import Badge from '../components/Badge.vue'
-import ExtLink from '../components/ExtLink.vue'
+import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
+import HeaderActions from '../components/HeaderActions.vue'
 import IssueStream from '../components/IssueStream.vue'
+import { toneText } from '../badgeTone'
+import { pageHeaderUi } from '../pageHeader'
 import TaskBody from '../components/TaskBody.vue'
 import NotFound from './NotFound.vue'
 
@@ -52,6 +54,19 @@ const gone = computed(() => {
   if (x.state === 'planned' || x.state === 'pending') return 'No task works on this issue yet.'
   return 'The task of this issue is gone, and its live transcript went with its pod.'
 })
+
+// The header's actions: the Task page, and the issue and its merge request
+// on GitLab, which the task's header below holds with a live task.
+const actions = computed(() => {
+  const x = v.value
+  if (!x) return []
+  const { namespace, name } = props
+  return [
+    ...(!task.value && x.mergeRequestIID ? [{ label: `Merge request !${x.mergeRequestIID}`, href: x.mergeRequestURL }] : []),
+    ...(x.task ? [{ label: 'Task page', to: { name: 'task' as const, params: { namespace, name, task: x.task } } }] : []),
+    ...(task.value ? [] : [{ label: 'Issue', href: x.webURL }]),
+  ]
+})
 </script>
 
 <template>
@@ -61,22 +76,16 @@ const gone = computed(() => {
     <div v-if="loading && !v" class="card empty">Loading…</div>
 
     <template v-if="v">
-      <div class="row">
-        <span class="iid">#{{ v.iid }}</span>
-        <h1>{{ v.title || `Issue #${v.iid}` }}</h1>
-      </div>
-      <div class="row links">
-        <Badge :tone="issueStateTone(v.state)">{{ v.state }}</Badge>
-        <span class="spacer" />
-        <RouterLink v-if="v.task" :to="{ name: 'task', params: { namespace, name, task: v.task } }">
-          Task page
-        </RouterLink>
-        <!-- With a live task, the task's row below holds these links. -->
-        <template v-if="!task">
-          <ExtLink :href="v.webURL">Issue</ExtLink>
-          <ExtLink v-if="v.mergeRequestIID" :href="v.mergeRequestURL">Merge request !{{ v.mergeRequestIID }}</ExtLink>
+      <!-- The state is the eyebrow (decision 4). -->
+      <UPageHeader :ui="pageHeaderUi">
+        <template #headline>
+          <span class="capitalize" :class="toneText[issueStateTone(v.state)]" data-issue-state>{{ v.state }}</span>
         </template>
-      </div>
+        <template #title>
+          <span class="me-2 font-mono font-normal text-(--text-3)">#{{ v.iid }}</span>{{ v.title || `Issue #${v.iid}` }}
+        </template>
+        <template #links><HeaderActions :actions="actions" /></template>
+      </UPageHeader>
 
       <div class="facts section">
         <div class="fact">
@@ -127,21 +136,6 @@ const gone = computed(() => {
 </template>
 
 <style scoped>
-h1 {
-  overflow-wrap: anywhere;
-}
-
-.iid {
-  font-family: var(--mono);
-  font-size: 18px;
-  color: var(--text-3);
-}
-
-.links {
-  margin-top: 10px;
-  gap: 14px;
-}
-
 .note {
   margin: 14px 0 0;
   font-size: 13px;

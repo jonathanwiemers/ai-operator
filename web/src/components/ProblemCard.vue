@@ -72,7 +72,7 @@ const chevron = 'inline-block text-(--text-3) transition-transform motion-reduce
     </div>
     <p v-if="cause" class="m-0 min-w-0 font-medium wrap-anywhere" data-problem-cause>{{ cause }}</p>
     <ProblemFacts v-if="facts" :namespace="namespace" :name="name" :facts="facts" />
-    <PauseCard v-if="problem.paused" :namespace="namespace" :name="name" :milestone="milestone" :no-reason="hidesReason(cause, milestone.autopilot?.pauseKind)" :facts="facts" />
+    <PauseCard v-if="problem.paused" :namespace="namespace" :name="name" :milestone="milestone" :no-reason="hidesReason(cause, milestone.autopilot?.pauseKind)" :facts="facts" no-status />
     <PauseCard v-if="problem.hold" :namespace="namespace" :name="name" :milestone="milestone" :hold="problem.hold" :no-reason="hidesReason(cause, problem.hold.kind)" :facts="facts" />
     <PromptCard v-for="p in problem.prompts" :key="p.id" :namespace="namespace" :name="name" :prompt="p" :facts="facts" />
     <div v-if="chats" class="grid min-w-0 gap-1.5" data-problem-chat>

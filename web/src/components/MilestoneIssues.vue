@@ -8,7 +8,7 @@ import RelTime from './RelTime.vue'
 import { costTooltip } from '../format'
 import { mergedLabel, mergedTooltip, writtenLabel } from '../lines'
 import { queueDone, waitingForTurn } from '../milestoneQueue'
-import { issueProgress, issueStateTone, issueTime, progressPct, rowCost, rowTokens, stateTone } from '../milestoneRows'
+import { issueProgress, issueStateTone, issueTime, progressPct, rowCost, rowTokens } from '../milestoneRows'
 import {
   interleaveReleases,
   releaseBy,
@@ -22,7 +22,8 @@ import {
 } from '../releaseRows'
 import type { MilestoneIssueRow, MilestoneView } from '../types'
 
-// A milestone's Issues tab (R9, decision 8): its state, progress and cost,
+// A milestone's Issues tab (R9, decision 8): its progress and cost (its
+// state is the page header's eyebrow, decision 4),
 // then one row per issue with its state, merge request, wall, agent and
 // paused time, cost and tokens, written and merged lines (R16), and the
 // version it shipped in. Releases are
@@ -64,8 +65,7 @@ const sectionHead =
 
 <template>
   <section>
-    <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px]">
-      <Badge :tone="stateTone(milestone.state)">{{ milestone.state }}</Badge>
+    <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-[13px]" data-milestone-summary>
       <span class="flex min-w-[200px] items-center gap-2" :title="`${pct}% merged`">
         <span
           class="h-1.5 flex-1 overflow-hidden rounded-full bg-(--surface-3)"

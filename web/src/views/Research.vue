@@ -6,8 +6,10 @@ import { useRouter } from 'vue-router'
 import { deleteResearch, getResearch } from '../client'
 import { useNow, useResource } from '../live'
 import { clockTime, duration, safeURL } from '../format'
+import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
 import Badge from '../components/Badge.vue'
 import RelTime from '../components/RelTime.vue'
+import { pageHeaderUi } from '../pageHeader'
 import ResearchResult from '../components/ResearchResult.vue'
 import NotFound from './NotFound.vue'
 
@@ -88,26 +90,41 @@ async function remove() {
 
     <template v-if="r && data">
       <header class="flex min-w-0 flex-col gap-2" data-research-head>
-        <div class="flex flex-col gap-2 tablet:flex-row tablet:flex-wrap tablet:items-center">
-          <div class="flex min-w-0 flex-wrap items-baseline gap-x-2">
-            <h1 class="[overflow-wrap:anywhere]">{{ r.name }}</h1>
-            <span class="text-xs text-(--text-3)">{{ r.namespace }}</span>
-          </div>
-          <div class="flex flex-wrap items-center gap-2 tablet:ms-auto">
-            <Badge>{{ r.view === 'newsflash' ? 'News flash' : 'Report' }}</Badge>
-            <Badge tone="muted">{{ r.depth }}</Badge>
-          </div>
-          <UButton
-            v-if="r.canDelete"
-            color="neutral"
-            variant="outline"
-            size="sm"
-            class="min-h-11 justify-center text-(--tone-danger-fg) tablet:min-h-0"
-            :disabled="deleting"
-            :label="deleting ? 'Deleting…' : 'Delete'"
-            @click="remove"
-          />
-        </div>
+        <!-- Eyebrow: the kind and depth; the meta line: namespace,
+             schedule, agent and runs; Run history and Delete on the right. -->
+        <UPageHeader :title="r.name" :ui="pageHeaderUi">
+          <template #headline>{{ r.view === 'newsflash' ? 'News flash' : 'Report' }} · {{ r.depth }}</template>
+          <template #description>
+            <span class="flex flex-col gap-1.5 tablet:flex-row tablet:flex-wrap tablet:gap-x-[18px]" data-research-facts>
+              <span class="[overflow-wrap:anywhere]">{{ r.namespace }}</span>
+              <span v-if="r.schedule" class="[overflow-wrap:anywhere]"><code>{{ r.schedule }}</code> {{ r.timeZone || 'UTC' }}</span>
+              <span v-else>one-off<template v-if="r.createdBy"> by {{ r.createdBy }}</template></span>
+              <span class="[overflow-wrap:anywhere]">agent <code>{{ agent }}</code></span>
+              <span>last run <RelTime :time="r.lastRun" /></span>
+              <span v-if="r.nextRun">next run <RelTime :time="r.nextRun" /></span>
+            </span>
+          </template>
+          <template #links>
+            <UButton
+              :to="`/research/${encodeURIComponent(r.namespace)}/${encodeURIComponent(r.name)}/runs`"
+              color="neutral"
+              variant="outline"
+              size="sm"
+              class="min-h-11 justify-center tablet:min-h-0"
+              label="Run history"
+            />
+            <UButton
+              v-if="r.canDelete"
+              color="neutral"
+              variant="outline"
+              size="sm"
+              class="min-h-11 justify-center text-(--tone-danger-fg) tablet:min-h-0"
+              :disabled="deleting"
+              :label="deleting ? 'Deleting…' : 'Delete'"
+              @click="remove"
+            />
+          </template>
+        </UPageHeader>
         <Markdown class="mt-1 max-w-[920px] text-(--text-2)" :class="{ 'line-clamp-3': !showPrompt }" :text="r.prompt" />
         <button
           v-if="r.prompt.length > 240"
@@ -118,19 +135,6 @@ async function remove() {
         >
           {{ showPrompt ? 'Show less' : 'Show the whole prompt' }}
         </button>
-        <div class="flex flex-col gap-1.5 text-[13px] text-(--text-2) tablet:flex-row tablet:flex-wrap tablet:gap-x-[18px]" data-research-facts>
-          <span v-if="r.schedule" class="[overflow-wrap:anywhere]"><code>{{ r.schedule }}</code> {{ r.timeZone || 'UTC' }}</span>
-          <span v-else>one-off<template v-if="r.createdBy"> by {{ r.createdBy }}</template></span>
-          <span class="[overflow-wrap:anywhere]">agent <code>{{ agent }}</code></span>
-          <span>last run <RelTime :time="r.lastRun" /></span>
-          <span v-if="r.nextRun">next run <RelTime :time="r.nextRun" /></span>
-          <RouterLink
-            :to="`/research/${encodeURIComponent(r.namespace)}/${encodeURIComponent(r.name)}/runs`"
-            class="inline-flex min-h-11 items-center self-start font-[550] tablet:min-h-0"
-          >
-            Run history
-          </RouterLink>
-        </div>
         <div v-if="r.sources?.length" class="flex flex-wrap items-center gap-x-2 text-[13px] text-(--text-2)" data-research-feeds>
           <span>Feeds:</span>
           <template v-for="(s, i) in r.sources" :key="s.url">

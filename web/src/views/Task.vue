@@ -6,6 +6,8 @@ import { useResource } from '../live'
 import TaskBody from '../components/TaskBody.vue'
 import NotFound from './NotFound.vue'
 
+// The Task page: TaskBody holds its header (UPageHeader, with the title)
+// and everything below it.
 const props = defineProps<{ namespace: string; name: string; task: string }>()
 // The props are read outside the closure, so another task loads again.
 const { data, error, notFound, loading } = useResource(() => {
@@ -26,13 +28,6 @@ watchEffect(() => {
     issue: v.issue && { ...at, iid: v.issue.iid, title: v.issue.title },
   })
 })
-
-const heading = computed(() => {
-  const v = t.value
-  if (!v) return ''
-  if (v.issue) return v.issue.title || `Issue #${v.issue.iid}`
-  return `Plan: ${v.milestone?.title ?? v.name}`
-})
 </script>
 
 <template>
@@ -41,24 +36,6 @@ const heading = computed(() => {
     <div v-if="error" class="banner danger">{{ error }}</div>
     <div v-if="loading && !t" class="card empty">Loading…</div>
 
-    <template v-if="data && t">
-      <div class="row">
-        <span v-if="t.issue" class="iid">#{{ t.issue.iid }}</span>
-        <h1>{{ heading }}</h1>
-      </div>
-      <TaskBody :namespace="namespace" :name="name" :task="task" :data="data" />
-    </template>
+    <TaskBody v-if="data && t" page :namespace="namespace" :name="name" :task="task" :data="data" />
   </div>
 </template>
-
-<style scoped>
-h1 {
-  overflow-wrap: anywhere;
-}
-
-.iid {
-  font-family: var(--mono);
-  font-size: 18px;
-  color: var(--text-3);
-}
-</style>

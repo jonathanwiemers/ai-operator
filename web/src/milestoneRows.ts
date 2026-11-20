@@ -31,7 +31,16 @@ export function leftoversLabel(row: Pick<MilestoneRow, 'followUpsOpen'>): string
   return n === 1 ? '1 leftover' : `${n} leftovers`
 }
 
-// stateTone is the state badge's tone.
+// milestoneStatus is a milestone's one status, the eyebrow of its page
+// (decision 4: no badge row repeats it): its state ("Paused"), named for the
+// autopilot while one drives it ("Autopilot paused").
+export function milestoneStatus(m: { state: MilestoneState; autopilot?: { phase: string } }): { label: string; tone: Tone } {
+  const auto = !!m.autopilot && m.autopilot.phase !== 'Off'
+  const label = auto ? `Autopilot ${m.state}` : m.state.charAt(0).toUpperCase() + m.state.slice(1)
+  return { label, tone: stateTone(m.state) }
+}
+
+// stateTone is the state's tone.
 export function stateTone(s: MilestoneState): Tone {
   switch (s) {
     case 'running':

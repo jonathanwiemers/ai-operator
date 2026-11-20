@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// One plan (R11): header with phase, spend / cap, budget raise and delete;
+// One plan (R11): header with phase, spend / cap, budget raise and (in ⋯) delete;
 // chat left, the right pane with the tabs Draft / Decisions, on phones the
 // tabs Chat / Decisions / Draft (R6). One ?tab= serves both layouts.
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
@@ -9,12 +9,15 @@ import { planPhaseTone, planSpendLabel, planTitle, raiseBudgetError } from '../p
 import { planPaneTab, planPaneTabs, planTabs, tabFromQuery, tabQuery, type PlanPaneTab, type PlanTab } from '../streamTabs'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
-import Badge from '../components/Badge.vue'
+import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
+import HeaderActions from '../components/HeaderActions.vue'
 import PlanChat from '../components/PlanChat.vue'
 import PlanDecisions from '../components/PlanDecisions.vue'
 import PlanDecisionWizard from '../components/PlanDecisionWizard.vue'
 import PlanDraft from '../components/PlanDraft.vue'
 import PlanWizardButton from '../components/PlanWizardButton.vue'
+import { toneText } from '../badgeTone'
+import { pageHeaderUi } from '../pageHeader'
 import RouteTabs from '../ui/RouteTabs.vue'
 import type { PlanView } from '../generated/views'
 import NotFound from './NotFound.vue'
@@ -82,19 +85,26 @@ onUnmounted(() => window.clearInterval(timer))
 <template>
   <NotFound v-if="notFound" />
   <div v-else class="page">
-    <div class="mb-3 flex flex-wrap items-center gap-2">
-      <h1 class="m-0">{{ view ? planTitle(view.title, view.createdAt) : plan }}</h1>
-      <template v-if="view">
-        <Badge :tone="planPhaseTone(view.phase)">{{ view.phase }}</Badge>
-        <span class="text-(--text-2)" data-plan-spend>{{ planSpendLabel(view.spendUSD, view.budgetUSD) }}</span>
-        <a v-if="view.createdMilestoneIID" :href="view.createdMilestoneURL">Milestone %{{ view.createdMilestoneIID }}</a>
-        <form v-if="owner" class="ml-auto flex items-center gap-1.5" @submit.prevent="onRaise">
-          <UInput v-model="raise" class="w-24" size="sm" inputmode="decimal" :placeholder="`≤ ${view.budgetLimitUSD}`" aria-label="New budget in USD" />
-          <UButton type="submit" color="neutral" variant="outline" size="sm" label="Raise budget" />
-          <UButton color="neutral" variant="outline" size="sm" class="text-(--tone-danger-fg)" label="Delete" @click="onDelete" />
-        </form>
+    <UPageHeader :title="view ? planTitle(view.title, view.createdAt) : plan" :ui="pageHeaderUi">
+      <template v-if="view" #headline>
+        <span :class="toneText[planPhaseTone(view.phase)]" data-plan-phase>{{ view.phase }}</span>
       </template>
-    </div>
+      <template v-if="view" #description>
+        <span data-plan-spend>{{ planSpendLabel(view.spendUSD, view.budgetUSD) }}</span>
+        <template v-if="view.createdMilestoneIID">
+          · <a :href="view.createdMilestoneURL">Milestone %{{ view.createdMilestoneIID }}</a>
+        </template>
+      </template>
+      <!-- Raise budget is the one action; Delete is in ⋯. -->
+      <template v-if="view && owner" #links>
+        <HeaderActions :actions="[{ label: 'Delete', color: 'error', onSelect: onDelete }]" :shown="0">
+          <form class="flex items-center gap-1.5" @submit.prevent="onRaise">
+            <UInput v-model="raise" class="w-24" size="sm" inputmode="decimal" :placeholder="`≤ ${view.budgetLimitUSD}`" aria-label="New budget in USD" />
+            <UButton type="submit" color="neutral" variant="outline" size="sm" label="Raise budget" />
+          </form>
+        </HeaderActions>
+      </template>
+    </UPageHeader>
     <div v-if="raiseError" class="banner danger">{{ raiseError }}</div>
     <div v-if="error" class="banner danger">{{ error }}</div>
     <div v-if="!view" class="empty">Loading…</div>

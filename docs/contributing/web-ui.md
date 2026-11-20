@@ -233,7 +233,8 @@ How it works:
   the aside` checks there is no bar at 768 and 1280 px.
 
   The `task tabs …` cases open the task and the issue page at 375 and
-  1280 px: the status line comes before the tabs, shows phase, step,
+  1280 px: the header's eyebrow is the phase, once, with no health line;
+  its meta line comes before the tabs, shows step,
   result and activity and is no wider than its box (at 375 px the long
   step is clamped and opens on tap), *Overview* is current with the open
   questions' count and the
@@ -867,15 +868,19 @@ do, and that on a phone a row stacks inside its width
 The header of the project and milestone pages (`web/src/views/Stream.vue`)
 is Tailwind utilities and Nuxt UI, without scoped CSS.
 
-- On phones the title has a row of its own and wraps. The cost chip and the
-  *Context* button follow it, then the [RouteTabs](#routetabs) strip and the
-  stream search (a full-width `UInput`, 16 px; 14 px from tablet width as
-  before) take a full row each. The
+- The `UPageHeader` comes first: the milestone's status as eyebrow
+  (`milestoneStatus` of `src/milestoneRows.ts`: *Autopilot paused*, or the
+  state), the title, the cost chip as meta line, and *Metrics* (a project)
+  and *Context* (below 1180 px) on the right. On the dashboard's *Stream*
+  tab the dashboard has the header, and Stream.vue shows none.
+- On phones the [RouteTabs](#routetabs) strip and the stream search (a
+  full-width `UInput`, 16 px; 14 px from tablet width as before) take a
+  full row each below the header. The
   scope links (the project's *Everything* and its milestones) wrap onto more
   lines, a long milestone title inside its link.
-- From tablet width (760 px) the title, the cost, the tabs, the search and
-  the *Context* button share one row as before, and the scope links stay
-  on one line that scrolls inside itself.
+- From tablet width (760 px) the tabs and the search share one row below
+  the header, the search on the right, and the scope links stay on one
+  line that scrolls inside itself.
 - Stream rows (`stream/EventCard.vue`) break long URLs, branches and SHAs
   anywhere, so a row never widens the stream.
 
@@ -1796,10 +1801,23 @@ they cost no extra request. The trail stays on one line: below 760 px only the f
 crumb show, and each label is cut at 28 characters. The Spend tab keeps its own drill-down
 crumbs.
 
-Top-level views open with `UPageHeader`, with the shared `:ui` of
-`src/pageHeader.ts` (`pageHeaderUi`) and no wrapper component: the title,
-one meta line as `description`, and the actions in the `links` slot (at
-most one primary and one secondary). `RouteTabs` follow it directly.
+Every routed view opens with `UPageHeader`, with the shared `:ui` of
+`src/pageHeader.ts` (`pageHeaderUi`) and no wrapper component (decision 4):
+the status as `headline` (eyebrow, coloured by `toneText` of
+`src/badgeTone.ts`), the title, one meta line as `description`, and the
+actions in the `links` slot. `components/HeaderActions.vue` shows at most
+one primary and one secondary action as buttons and puts the rest in a ⋯
+`UDropdownMenu`; a link out opens a new tab. `RouteTabs` follow the header
+directly. A page states its status once, there: the milestone page's
+Issues tab has no state badge, a problem card's pause card drops its bare
+*Autopilot paused* heading, and the task page shows its phase (or
+*Suspended*) once, with step, step age, last result, activity and
+restarts (only when there were any, `src/taskHealth.ts`) in the meta line.
+The task page and the issue page with a live task render the header in
+`components/TaskBody.vue` (the issue page without its title). The node
+test `test/pageHeader.test.mjs` reads the routes of `src/main.ts` and fails
+when a routed view, or the component in `components/` it imports for its
+header, has an `<h1>` or no `<UPageHeader`.
 
 The rail (`components/RailNav.vue`) is a vertical `UNavigationMenu` in
 three groups, built by `src/railItems.ts` (unit-tested in

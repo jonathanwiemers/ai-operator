@@ -7,6 +7,7 @@ import {
   issueTime,
   leftoversLabel,
   milestoneRowKey,
+  milestoneStatus,
   progressPct,
   rowCost,
   rowTokens,
@@ -92,4 +93,12 @@ test('issueTime: a dash without figures or a run', () => {
   assert.equal(issueTime({ figures }, 'pausedSec'), '0m')
   assert.equal(issueTime({ figures: { ...figures, wallSec: 0 } }, 'wallSec'), '—')
   assert.equal(issueTime({}, 'agentSec'), '—')
+})
+
+test('milestoneStatus: the state, named for the autopilot while one drives it', () => {
+  assert.deepEqual(milestoneStatus({ state: 'paused', autopilot: { phase: 'Paused' } }), { label: 'Autopilot paused', tone: 'warning' })
+  assert.deepEqual(milestoneStatus({ state: 'running', autopilot: { phase: 'Running' } }), { label: 'Autopilot running', tone: 'progress' })
+  assert.deepEqual(milestoneStatus({ state: 'done', autopilot: { phase: 'Off' } }), { label: 'Done', tone: 'success' })
+  assert.deepEqual(milestoneStatus({ state: 'planned' }), { label: 'Planned', tone: 'neutral' })
+  assert.deepEqual(milestoneStatus({ state: 'waiting' }), { label: 'Waiting', tone: 'neutral' })
 })
