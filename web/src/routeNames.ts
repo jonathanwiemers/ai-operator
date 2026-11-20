@@ -1,7 +1,8 @@
 // The names of the Desk's routes (web/src/main.ts types its route records
 // against RouteName, so a route whose name is missing here does not
 // compile). Kept free of Vue imports so node --test can iterate it:
-// crumbs.test.mjs fails for a route without breadcrumbs.
+// crumbs.test.mjs fails for a route without breadcrumbs; crumbs.ts names
+// the top-level ones, which show none.
 export const routeNames = [
   'overview',
   'inbox',

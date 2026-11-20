@@ -1,7 +1,7 @@
 // Tests of src/crumbs.ts: npm test (node --test, no extra dependencies).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { crumbsFor, issueLabel, milestoneLabel } from '../src/crumbs.ts'
+import { breadcrumbItems, crumbsFor, phoneHidden, issueLabel, milestoneLabel, showsBreadcrumb, topLevelRoutes } from '../src/crumbs.ts'
 import { isRouteName, routeNames } from '../src/routeNames.ts'
 
 // Params every route can take: a route ignores the ones it has none of.
@@ -142,4 +142,37 @@ test('isRouteName', () => {
   assert.ok(isRouteName('task'))
   assert.ok(!isRouteName('nope'))
   assert.ok(!isRouteName(undefined))
+})
+
+test('top-level routes show no breadcrumb, every other route does', () => {
+  assert.deepEqual([...topLevelRoutes].sort(), ['all-plans', 'inbox', 'metrics', 'not-found', 'overview', 'researches'])
+  for (const name of routeNames) assert.equal(showsBreadcrumb(name), !topLevelRoutes.has(name), name)
+  for (const name of ['stream-project', 'stream-milestone', 'issue', 'task', 'plans', 'research-new', 'research', 'research-run']) {
+    assert.ok(showsBreadcrumb(name), `${name}: no breadcrumb`)
+  }
+})
+
+test('breadcrumbItems: links up, the last item is the current page, the middle hidden on phones', () => {
+  const route = { name: 'stream-milestone', params: { ...at, iid: '3' } }
+  assert.deepEqual(breadcrumbItems(crumbsFor(route)), [
+    { label: 'Overview', to: { name: 'overview', params: {} } },
+    { label: 'p', to: { name: 'stream-project', params: at }, ui: phoneHidden },
+    { label: '%3', active: true },
+  ])
+  // Two crumbs: nothing hides on phones.
+  assert.deepEqual(breadcrumbItems(crumbsFor({ name: 'stream-project', params: at })), [
+    { label: 'Overview', to: { name: 'overview', params: {} } },
+    { label: 'p', active: true },
+  ])
+  assert.deepEqual(breadcrumbItems([{ label: 'Inbox' }]), [{ label: 'Inbox', active: true }])
+  assert.deepEqual(breadcrumbItems([]), [])
+  for (const name of routeNames) {
+    const items = breadcrumbItems(crumbsFor({ name, params }))
+    assert.equal(items.filter((i) => i.active).length, 1, name)
+    assert.ok(items.slice(0, -1).every((i) => i.to && !i.active), name)
+    // Phones keep the first and the last item, so the trail is one line.
+    assert.equal(items[0].ui, undefined, name)
+    assert.equal(items.at(-1).ui, undefined, name)
+    assert.ok(items.slice(1, -1).every((i) => i.ui === phoneHidden), name)
+  }
 })

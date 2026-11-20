@@ -344,6 +344,79 @@ for (const route of routes) {
   }
 }
 
+// Page headers and breadcrumbs (decisions 4 and 5): a top-level page opens
+// with its UPageHeader title and shows no breadcrumb; a page below the top
+// level shows one UBreadcrumb, whose links lead back up.
+test.describe('breadcrumb only below the top level', () => {
+  const topLevel: [string, string][] = [
+    ['overview', 'Overview'],
+    ['inbox', 'Inbox'],
+    ['metrics', 'Metrics'],
+    ['all-plans', 'Plans'],
+    ['researches', 'Research'],
+    ['not-found', 'Not found'],
+  ]
+  for (const size of [widths[0]!, widths[2]!]) {
+    for (const [name, title] of topLevel) {
+      test(`${name} has a page header and no breadcrumb@${size.width}`, async ({ page, baseURL }) => {
+        const route = routes.find((r) => r.name === name)!
+        const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+        await page.setViewportSize(size)
+        await page.clock.setFixedTime(now)
+        await watch(page, new URL(baseURL ?? '').origin, problems)
+        await mockAPI(page, route, problems)
+        if (route.features) await page.route('**/api/v1/features', (r) => r.fulfill({ status: 200, json: { features: route.features } }))
+        await page.goto(route.path)
+        await route.ready(page)
+        await expect(page.locator('main h1[data-slot=title]')).toHaveText(title)
+        await expect(page.getByRole('navigation', { name: 'breadcrumb' })).toHaveCount(0)
+        expect(problems.csp, 'CSP violations').toEqual([])
+        expect(problems.pageErrors, 'uncaught errors').toEqual([])
+      })
+    }
+
+    test(`nested pages show one breadcrumb@${size.width}`, async ({ page, baseURL }) => {
+      const phone = size.width < 760
+      const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+      const milestone = routes.find((r) => r.name === 'stream-milestone-issues')!
+      await page.setViewportSize(size)
+      await page.clock.setFixedTime(now)
+      await watch(page, new URL(baseURL ?? '').origin, problems)
+      // The plan page needs the plans feature; its plan has no fixture,
+      // the breadcrumb comes from the route alone.
+      await mockAPI(page, { ...milestone, features: [...features.features, { name: 'plans' }] }, problems)
+      await page.route('**/api/v1/features', (r) => r.fulfill({ status: 200, json: { features: [...features.features, { name: 'plans' }] } }))
+      const crumb = page.getByRole('navigation', { name: 'breadcrumb' })
+
+      await page.goto(milestone.path)
+      await milestone.ready(page)
+      await expect(crumb).toHaveCount(1)
+      // It links to the project; on a phone that middle crumb is hidden and
+      // the trail is Overview › milestone, on one line.
+      const projectLink = crumb.locator('a[href="/projects/team-a/shop"]')
+      await expect(projectLink).toHaveText('shop')
+      if (phone) await expect(projectLink).toBeHidden()
+      else await expect(projectLink).toBeVisible()
+      await expect(crumb.getByRole('link', { name: 'Overview' })).toBeVisible()
+      await expect(crumb.locator('[aria-current=page]')).toHaveCount(1)
+      await expect(crumb.locator('[aria-current=page]')).toBeVisible()
+      if (phone) expect((await crumb.boundingBox())!.height, 'one line').toBeLessThan(32)
+
+      const task = routes.find((r) => r.name === 'task')!
+      await page.goto(task.path)
+      await task.ready(page)
+      await expect(crumb).toHaveCount(1)
+      await expect(crumb.getByRole('link', { name: 'Overview' })).toHaveAttribute('href', '/')
+
+      await page.goto('/projects/team-a/shop/plans/plan-guest')
+      await expect(crumb).toHaveCount(1)
+      await expect(crumb.locator('a[href="/projects/team-a/shop?tab=plans"]')).toHaveText('Plans')
+      await expect(crumb.locator('[aria-current=page]')).toHaveText('plan-guest')
+      expect(problems.csp, 'CSP violations').toEqual([])
+    })
+  }
+})
+
 // freshSignInMarker: an automatic sign-in was tried a moment ago
 // (src/signInAgain.ts), so a 401 shows the sign-in page.
 async function freshSignInMarker(page: Page): Promise<void> {

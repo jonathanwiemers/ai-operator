@@ -2,6 +2,7 @@
 import UButton from '@nuxt/ui/components/Button.vue'
 import UFormField from '@nuxt/ui/components/FormField.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
+import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
 import USelect from '@nuxt/ui/components/Select.vue'
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -25,6 +26,7 @@ import {
 } from '../costs'
 import { chartSummary, cumulativeMonth, monthSummary, stackedChart, thisMonth, tokensChart, tokensSummary } from '../chartData'
 import { cost, tokenCount } from '../format'
+import { pageHeaderUi } from '../pageHeader'
 import { basisNote, basisTitle, shareLabel, spendTokens, spendUSD, tokenBreakdown, unmeteredNote } from '../spend'
 import type { CostsTopView, CostsView, MetricsCodeView, MetricsFlowView, MetricsPausesView, MetricsView } from '../generated/views'
 import BudgetsSection from '../components/BudgetsSection.vue'
@@ -178,6 +180,7 @@ const monthChart = computed(() => (data.value ? cumulativeMonth(data.value.month
 const tokens = computed(() => (data.value ? tokensChart(data.value.buckets, data.value.bucket, data.value.series) : null))
 
 // Download CSV (R16): built here from the response, no request.
+// It is the header's secondary action (decision 4), a menu of the two files.
 const csvMenu = ref<HTMLDetailsElement | null>(null)
 function download(what: 'series' | 'breakdowns') {
   const d = data.value
@@ -186,6 +189,12 @@ function download(what: 'series' | 'breakdowns') {
   else downloadCsv(`costs-breakdowns-${d.from}-${d.to}.csv`, breakdownsCsv(d))
   if (csvMenu.value) csvMenu.value.open = false
 }
+// The meta line: the range shown, and Loading… while a new one loads.
+const rangeLine = computed(() => {
+  const d = data.value
+  if (!d) return undefined
+  return `${d.from} to ${d.to}, ${d.tz}${loading.value ? ' · Loading…' : ''}`
+})
 
 const fieldUI = { label: 'font-semibold text-[13px]' }
 const control = 'text-base/5 tablet:text-sm/5'
@@ -203,18 +212,19 @@ const kpiSub = 'text-[13px] text-(--text-2) [overflow-wrap:anywhere]'
 
 <template>
   <div class="page">
-    <div class="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-      <h1>Metrics</h1>
-      <span v-if="data" class="faint">{{ data.from }} to {{ data.to }}, {{ data.tz }}</span>
-      <span v-if="loading && data" class="faint">Loading…</span>
-      <details v-if="data && data.totals.calls > 0" ref="csvMenu" class="relative ms-auto" data-costs-csv>
-        <summary class="card flex min-h-11 cursor-pointer list-none items-center px-3 text-sm font-semibold tablet:min-h-0 tablet:py-1.5">Download CSV</summary>
-        <div class="card absolute end-0 z-10 mt-1 flex w-52 flex-col gap-1 p-2">
-          <UButton color="neutral" variant="ghost" label="Series" data-csv="series" @click="download('series')" />
-          <UButton color="neutral" variant="ghost" label="Breakdowns" data-csv="breakdowns" @click="download('breakdowns')" />
-        </div>
-      </details>
-    </div>
+    <UPageHeader title="Metrics" :description="rangeLine" :ui="pageHeaderUi">
+      <template v-if="data && data.totals.calls > 0" #links>
+        <!-- A <details> menu, not UDropdownMenu: that adds 16 kB gzipped to
+             this route, past its bundle budget. -->
+        <details ref="csvMenu" class="relative" data-costs-csv>
+          <summary class="card flex min-h-11 cursor-pointer list-none items-center px-3 text-sm font-semibold tablet:min-h-0 tablet:py-1.5">Download CSV</summary>
+          <div class="card absolute end-0 z-10 mt-1 flex w-52 flex-col gap-1 p-2">
+            <UButton color="neutral" variant="ghost" label="Series" data-csv="series" @click="download('series')" />
+            <UButton color="neutral" variant="ghost" label="Breakdowns" data-csv="breakdowns" @click="download('breakdowns')" />
+          </div>
+        </details>
+      </template>
+    </UPageHeader>
 
     <form class="mb-4 flex flex-col gap-3 tablet:flex-row tablet:flex-wrap tablet:items-end" aria-label="Filters" data-costs-filters @submit.prevent>
       <UFormField label="Range" name="range" :ui="fieldUI">

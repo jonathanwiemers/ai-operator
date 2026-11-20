@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 import DashboardOverview from '../components/DashboardOverview.vue'
+import { pageHeaderUi } from '../pageHeader'
 import RouteTabs from '../ui/RouteTabs.vue'
 import { dashboardTabs, tabFromQuery, tabQuery } from '../streamTabs'
 import Stream from './Stream.vue'
@@ -14,10 +16,10 @@ const tab = computed(() => tabFromQuery(route.query.tab, dashboardTabs))
 
 <template>
   <!-- The Stream view sizes itself to the screen: here it fills what the
-       tab bar leaves. -->
+       header and the tab row leave. -->
   <div class="flex min-h-0 min-w-0 flex-col">
-    <div class="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 pt-3.5 tablet:px-7">
-      <h1 class="m-0 text-xl tracking-[-0.01em]">Overview</h1>
+    <div class="px-4 pt-3.5 tablet:px-7">
+      <UPageHeader title="Overview" :ui="pageHeaderUi" />
       <RouteTabs
         :tabs="dashboardTabs"
         :active="tab"

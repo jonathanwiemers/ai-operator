@@ -127,7 +127,7 @@ write rule must match names there (for example `agents/*`). A user may start
   of each [engine's](../concepts/glossary.md#engine) usage window is used. Its footer has
   the theme, *Light*, *Dark* or *Auto* (follows your system; this browser remembers
   it), and the operator's version, with a note when an update is rolling out or out.
-- **Breadcrumbs** at the top lead back up, one click per level: *Overview* ›
+- **Breadcrumbs** lead back up from pages below the top level: *Overview* ›
   project › milestone › issue, or *Overview* › project › *Plans* › plan.
 - **Search**: ⌘K (macOS) or Ctrl+K opens the search from anywhere. It finds
   projects, milestones, issues and merge requests, and pages such as the

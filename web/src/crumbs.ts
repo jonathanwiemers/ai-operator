@@ -168,3 +168,40 @@ export function crumbsFor(route: CrumbRoute, names: CrumbNames = {}): Crumb[] {
   const last = trail[trail.length - 1]!
   return [...trail.slice(0, -1), { label: last.label }]
 }
+
+// The top-level routes (decision 5, D626-P1): the sidebar's first level and
+// Not found. Their header names the page, so they show no breadcrumb; every
+// route below them does.
+export const topLevelRoutes: ReadonlySet<RouteName> = new Set<RouteName>([
+  'overview',
+  'inbox',
+  'metrics',
+  'all-plans',
+  'researches',
+  'not-found',
+])
+
+export function showsBreadcrumb(name: RouteName): boolean {
+  return !topLevelRoutes.has(name)
+}
+
+// BreadcrumbItem is what UBreadcrumb takes: a link per level, and the last
+// item, the current page, without one and active (aria-current="page").
+// On phones the trail stays on one line, as the page heights below it
+// assume: the middle items and the separators after them are hidden, so
+// the first and the last remain.
+export interface BreadcrumbItem {
+  label: string
+  to?: CrumbLink
+  active?: true
+  ui?: { item: string; separator: string }
+}
+
+export const phoneHidden = { item: 'max-tablet:hidden', separator: 'max-tablet:hidden' }
+
+export function breadcrumbItems(crumbs: Crumb[]): BreadcrumbItem[] {
+  const last = crumbs.length - 1
+  return crumbs.map((c, i) =>
+    i === last ? { label: c.label, active: true } : i > 0 ? { label: c.label, to: c.to, ui: phoneHidden } : { label: c.label, to: c.to },
+  )
+}

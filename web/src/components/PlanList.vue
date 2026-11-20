@@ -17,7 +17,9 @@ import type { PlanOverview, PlanProject } from '../generated/views'
 // project, also on an empty list. It starts an untitled plan and opens it:
 // right away with one such project (always so with project set), after a
 // pick from an inline list with more. A 403 hides it until the next load.
-const props = defineProps<{ project?: { namespace: string; name: string } }>()
+// actionsTo: a selector in the host's page header; the button moves there
+// (Teleport), the picker stays above the list.
+const props = defineProps<{ project?: { namespace: string; name: string }; actionsTo?: string }>()
 const emit = defineEmits<{ notFound: [] }>()
 
 const overview = ref<PlanOverview | null>(null)
@@ -70,15 +72,17 @@ async function start(p: PlanProject) {
 
 <template>
   <div data-plan-list>
-    <div v-if="starts.length && !forbidden" class="mb-3 flex flex-wrap items-center gap-2" data-plan-start>
-      <UButton
-        color="primary"
-        size="sm"
-        :disabled="busy"
-        :label="busy ? '…' : 'Plan milestone'"
-        :aria-expanded="starts.length > 1 ? picking : undefined"
-        @click="onPlan"
-      />
+    <div v-if="starts.length && !forbidden" :class="['flex flex-wrap items-center gap-2', (!actionsTo || picking) && 'mb-3']" data-plan-start>
+      <Teleport defer :to="actionsTo || 'body'" :disabled="!actionsTo">
+        <UButton
+          color="primary"
+          :size="actionsTo ? 'md' : 'sm'"
+          :disabled="busy"
+          :label="busy ? '…' : 'Plan milestone'"
+          :aria-expanded="starts.length > 1 ? picking : undefined"
+          @click="onPlan"
+        />
+      </Teleport>
       <!-- The picker: one button per steer project, wrapping on phones. -->
       <div
         v-if="picking && starts.length > 1"

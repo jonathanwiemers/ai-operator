@@ -1782,16 +1782,24 @@ current tasks, without tokens.
 
 ### Navigation
 
-Breadcrumbs are built from the URL: *Overview* › project › milestone ›
-issue, *Overview* › project › *Plans* › plan, *Research* › research ›
-*Runs* › run. A task page sits under its issue page; a task without an
-issue under the project. The Inbox, Costs, Plans (`/plans`), the research
-list and *Not found* show one crumb. Every crumb but the last links to that
-level's default tab, but a plan's *Plans*, which opens the project's Plans
-tab. Crumbs show `%<iid>`, `#<iid>` or the task's name until the
-view has loaded titles; they cost no extra request. On narrow screens the
-middle crumbs fold behind `…`. The Spend tab keeps its own drill-down
+Breadcrumbs are built from the URL (`src/crumbs.ts`) and drawn by
+`UBreadcrumb` in the shell: *Overview* › project › milestone › issue,
+*Overview* › project › *Plans* › plan, *Research* › research › *Runs* ›
+run. A task page sits under its issue page; a task without an issue under
+the project. The top-level routes (`topLevelRoutes`: Overview, Inbox,
+Metrics, Plans at `/plans`, the research list and *Not found*) show no
+breadcrumb, since their page header already names them. Every crumb but the
+last links to that level's default tab, but a plan's *Plans*, which opens
+the project's Plans tab; the last is the current page. Crumbs show
+`%<iid>`, `#<iid>` or the task's name until the view has loaded titles;
+they cost no extra request. The trail stays on one line: below 760 px only the first and the last
+crumb show, and each label is cut at 28 characters. The Spend tab keeps its own drill-down
 crumbs.
+
+Top-level views open with `UPageHeader`, with the shared `:ui` of
+`src/pageHeader.ts` (`pageHeaderUi`) and no wrapper component: the title,
+one meta line as `description`, and the actions in the `links` slot (at
+most one primary and one secondary). `RouteTabs` follow it directly.
 
 The rail (`components/RailNav.vue`) is a vertical `UNavigationMenu` in
 three groups, built by `src/railItems.ts` (unit-tested in

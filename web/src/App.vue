@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { hasFeature, session, setFeatures } from './api'
 import { getAbout, getFeatures, getInbox, getMe, getProjects, getProjectSets, getResearches, LoginRequiredError } from './client'
 import { deskTitle } from './format'
@@ -13,7 +13,9 @@ import UApp from '@nuxt/ui/components/App.vue'
 import UDashboardGroup from '@nuxt/ui/components/DashboardGroup.vue'
 import { useBackClose } from './ui/useBackClose'
 import SignIn from './views/SignIn.vue'
-import Breadcrumbs from './components/Breadcrumbs.vue'
+import { crumbNames } from './crumbNames'
+import { breadcrumbItems, crumbsFor, showsBreadcrumb } from './crumbs'
+import { isRouteName } from './routeNames'
 import { isPaletteKey, paletteHint, paletteOpen } from './searchPalette'
 // The panel, the sidebar, the rail, the buttons, the ⌘K palette and the
 // phone's bottom bar load after the shell, like the routes: they keep the
@@ -25,6 +27,7 @@ const UDashboardSidebar = defineAsyncComponent(() => import('@nuxt/ui/components
 const UDashboardSidebarCollapse = defineAsyncComponent(() => import('@nuxt/ui/components/DashboardSidebarCollapse.vue'))
 const UButton = defineAsyncComponent(() => import('@nuxt/ui/components/Button.vue'))
 const UTooltip = defineAsyncComponent(() => import('@nuxt/ui/components/Tooltip.vue'))
+const UBreadcrumb = defineAsyncComponent(() => import('@nuxt/ui/components/Breadcrumb.vue'))
 const RailNav = defineAsyncComponent(() => import('./components/RailNav.vue'))
 const SearchPalette = defineAsyncComponent(() => import('./components/SearchPalette.vue'))
 const BottomTabBar = defineAsyncComponent(() => import('./ui/BottomTabBar.vue'))
@@ -56,6 +59,14 @@ async function loadAbout(): Promise<void> {
 let aboutTimer: number | undefined
 
 const router = useRouter()
+// The breadcrumb (decision 5): only below the top level, where the page's
+// header alone does not say where it sits.
+const route = useRoute()
+const crumbs = computed(() =>
+  isRouteName(route.name) && showsBreadcrumb(route.name)
+    ? breadcrumbItems(crumbsFor({ name: route.name, params: route.params, query: route.query }, crumbNames))
+    : [],
+)
 // The rail sheet on phones (docs/contributing/web-ui.md, "Sheets"): back closes it, and a
 // link inside it closes it before it navigates.
 const railOpen = ref(false)
@@ -327,7 +338,13 @@ watch(notifyActive, (on) => {
         <main
           class="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto pt-[env(safe-area-inset-top)] pe-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] *:min-h-0 *:flex-1 max-tablet:overflow-visible max-tablet:pt-0 max-tablet:ps-[env(safe-area-inset-left)] max-tablet:pb-[calc(var(--bottombar)+env(safe-area-inset-bottom))]"
         >
-          <header class="crumbbar flex-none! px-6 pt-2.5 max-tablet:px-4 max-tablet:pt-2"><Breadcrumbs /></header>
+          <header v-if="crumbs.length" class="flex-none! px-6 pt-2.5 max-tablet:px-4 max-tablet:pt-2">
+            <!-- One line: phones show the first and the last crumb; each label is cut at 28ch. -->
+            <UBreadcrumb
+              :items="crumbs"
+              :ui="{ list: 'min-w-0 gap-1', link: 'text-[13px]', linkLabel: 'max-w-[28ch]', separatorIcon: 'size-4' }"
+            />
+          </header>
           <RouterView />
         </main>
       </UDashboardPanel>

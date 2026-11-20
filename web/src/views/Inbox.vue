@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import UButton from '@nuxt/ui/components/Button.vue'
+import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
 import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import Badge from '../components/Badge.vue'
@@ -13,6 +14,7 @@ import { inboxRoute } from '../inboxRoute'
 import { pausedStrip } from '../inboxStrip'
 import { getInbox } from '../client'
 import { useResource } from '../live'
+import { pageHeaderUi } from '../pageHeader'
 import { disableNotify, enableNotify, notify, notifyActive, refreshPermission } from '../notify'
 import RouteTabs from '../ui/RouteTabs.vue'
 import Truncated from '../ui/Truncated.vue'
@@ -47,31 +49,30 @@ const reason = 'muted min-w-0 text-[13px] [&[role=button]]:relative [&[role=butt
 
 <template>
   <div class="page">
-    <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
-      <h1 class="mb-1">Inbox</h1>
-      <span class="flex-1" />
-      <span v-if="notify.permission === 'denied'" class="faint text-[13px]">Notifications are blocked in this browser</span>
-      <UButton
-        v-else-if="notify.permission !== 'unsupported' && notifyActive()"
-        color="success"
-        variant="soft"
-        icon="i-lucide-bell-ring"
-        label="Notifications on"
-        aria-pressed="true"
-        @click="disableNotify"
-      />
-      <UButton
-        v-else-if="notify.permission !== 'unsupported'"
-        color="neutral"
-        variant="outline"
-        icon="i-lucide-bell"
-        label="Notify me"
-        aria-pressed="false"
-        @click="enableNotify"
-      />
-    </div>
-    <p class="muted">What needs you now, across projects.</p>
-    <RouteTabs class="mt-2 w-fit" :tabs="views" :active="view" :to="viewTo" label="Inbox view" />
+    <UPageHeader title="Inbox" description="What needs you now, across projects." :ui="pageHeaderUi">
+      <template #links>
+        <span v-if="notify.permission === 'denied'" class="faint text-[13px]">Notifications are blocked in this browser</span>
+        <UButton
+          v-else-if="notify.permission !== 'unsupported' && notifyActive()"
+          color="success"
+          variant="soft"
+          icon="i-lucide-bell-ring"
+          label="Notifications on"
+          aria-pressed="true"
+          @click="disableNotify"
+        />
+        <UButton
+          v-else-if="notify.permission !== 'unsupported'"
+          color="neutral"
+          variant="outline"
+          icon="i-lucide-bell"
+          label="Notify me"
+          aria-pressed="false"
+          @click="enableNotify"
+        />
+      </template>
+    </UPageHeader>
+    <RouteTabs class="w-fit" :tabs="views" :active="view" :to="viewTo" label="Inbox view" />
     <div v-if="strip.count" class="banner warning">
       <span
         ><b>{{ strip.count }} {{ strip.count === 1 ? 'autopilot' : 'autopilots' }} paused</b

@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import UButton from '@nuxt/ui/components/Button.vue'
+import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
 import { canStartResearch } from '../api'
 import { getResearches } from '../client'
 import { useNow, useResource } from '../live'
+import { pageHeaderUi } from '../pageHeader'
 import { clockTime, runLine, type Tone } from '../format'
 import Badge from '../components/Badge.vue'
 import RelTime from '../components/RelTime.vue'
@@ -33,11 +35,12 @@ function lastRunLine(r: ResearchSummary): string {
 
 <template>
   <div class="page">
-    <div class="mb-[18px] flex flex-wrap items-center gap-3">
-      <h1>Research</h1>
-      <!-- A link, so the phone rule for buttons misses it: min-h-11 makes it 44 px high on phones. -->
-      <UButton v-if="canStartResearch()" to="/research/new" color="primary" class="ms-auto min-h-11 tablet:min-h-0" label="New research" />
-    </div>
+    <UPageHeader title="Research" :ui="pageHeaderUi">
+      <template v-if="canStartResearch()" #links>
+        <!-- A link, so the phone rule for buttons misses it: min-h-11 makes it 44 px high on phones. -->
+        <UButton to="/research/new" color="primary" class="min-h-11 tablet:min-h-0" label="New research" />
+      </template>
+    </UPageHeader>
 
     <div v-if="error" class="banner danger [overflow-wrap:anywhere]">{{ error }}</div>
 
