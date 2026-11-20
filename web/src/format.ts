@@ -267,10 +267,13 @@ export function runLine(
   return parts.join(' · ')
 }
 
-// deskTitle is the tab title: "(3) Desk" while the Inbox has items, else the
-// page's original title.
-export function deskTitle(n: number, base: string): string {
-  return n > 0 ? `(${n}) Desk` : base
+// deskTitle is the tab title: the page's h1 text before "Desk", "Milestone
+// 14 · Desk", or "Desk" on a page without one, with "(3) " in front while
+// the Inbox has items.
+export function deskTitle(n: number, page: string | null | undefined): string {
+  const name = page?.replace(/\s+/g, ' ').trim()
+  const title = name ? `${name} · Desk` : 'Desk'
+  return n > 0 ? `(${n}) ${title}` : title
 }
 
 // durationShort is a span of seconds in at most two units: "<1m", "45m",

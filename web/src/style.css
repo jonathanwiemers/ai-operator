@@ -292,6 +292,13 @@
     border-radius: 4px;
   }
 
+  /* Focus moved by the skip link or a route change (useRouteFocus.ts) is
+     no control's focus: no ring. */
+  main[tabindex='-1']:focus,
+  main h1[tabindex='-1']:focus {
+    outline: none;
+  }
+
   h1,
   h2,
   h3 {

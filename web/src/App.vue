@@ -3,7 +3,6 @@ import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch 
 import { useRoute, useRouter } from 'vue-router'
 import { hasFeature, session, setFeatures } from './api'
 import { getAbout, getFeatures, getInbox, getMe, getProjects, getProjectSets, getResearches, LoginRequiredError } from './client'
-import { deskTitle } from './format'
 import { inboxKey, newNotifications, notificationText } from './inboxNotify'
 import { inboxRoute } from './inboxRoute'
 import { connectEvents, disconnectEvents, live } from './live'
@@ -12,6 +11,7 @@ import { textEntry } from './textEntry'
 import UApp from '@nuxt/ui/components/App.vue'
 import UDashboardGroup from '@nuxt/ui/components/DashboardGroup.vue'
 import { useBackClose } from './ui/useBackClose'
+import { useRouteFocus } from './ui/useRouteFocus'
 import SignIn from './views/SignIn.vue'
 import { crumbNames } from './crumbNames'
 import { breadcrumbItems, crumbsFor, showsBreadcrumb } from './crumbs'
@@ -86,8 +86,14 @@ const projects = ref<ProjectSummary[] | null>(null)
 const projectSets = ref<ProjectSetSummary[] | null>(null)
 const researches = ref<ResearchSummary[] | null>(null)
 const inboxCount = ref(0)
-const baseTitle = document.title
-watch(inboxCount, (n) => { document.title = deskTitle(n, baseTitle) }, { immediate: true })
+// Focus on the new page's h1 after a navigation, and the tab title.
+useRouteFocus(router, inboxCount)
+
+// The skip link moves focus to the page without a hash in the URL, which
+// the router would see as a navigation.
+function skipToMain() {
+  document.getElementById('main')?.focus()
+}
 
 // Keys of the Inbox items this tab has seen. The first load while
 // notifications are on only seeds them; later loads notify once per new item.
@@ -230,6 +236,14 @@ watch(notifyActive, (on) => {
 
 <template>
   <UApp>
+    <!-- The first focusable element, shown while it has focus. -->
+    <a
+      v-if="!session.loginRequired"
+      href="#main"
+      class="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:flex focus:min-h-11 focus:items-center focus:rounded-md focus:border focus:border-(--border) focus:bg-(--surface) focus:px-4 focus:font-semibold focus:text-(--text) focus:shadow-lg"
+      @click.prevent="skipToMain"
+      >Skip to content</a
+    >
     <SignIn v-if="session.loginRequired" />
     <!-- The shell (docs/contributing/web-ui.md, "Navigation"): Nuxt UI's dashboard
          layout. From 760 px the sidebar is a column, below it a sheet; the
@@ -334,17 +348,20 @@ watch(notifyActive, (on) => {
 
       <!-- The page; last in the group, so Nuxt UI draws no border after it.
            Each view fills the pane's height (flex: 1), the crumb bar keeps its own. -->
-      <UDashboardPanel id="main" :ui="{ root: 'min-h-0' }">
+      <UDashboardPanel id="page" :ui="{ root: 'min-h-0' }">
         <main
+          id="main"
+          tabindex="-1"
           class="flex min-h-0 min-w-0 flex-1 flex-col overflow-auto pt-[env(safe-area-inset-top)] pe-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] *:min-h-0 *:flex-1 max-tablet:overflow-visible max-tablet:pt-0 max-tablet:ps-[env(safe-area-inset-left)] max-tablet:pb-[calc(var(--bottombar)+env(safe-area-inset-bottom))]"
         >
-          <header v-if="crumbs.length" class="flex-none! px-6 pt-2.5 max-tablet:px-4 max-tablet:pt-2">
+          <!-- A div: the mobile bar is the only header, UBreadcrumb has its own nav. -->
+          <div v-if="crumbs.length" class="flex-none! px-6 pt-2.5 max-tablet:px-4 max-tablet:pt-2">
             <!-- One line: phones show the first and the last crumb; each label is cut at 28ch. -->
             <UBreadcrumb
               :items="crumbs"
               :ui="{ list: 'min-w-0 gap-1', link: 'text-[13px]', linkLabel: 'max-w-[28ch]', separatorIcon: 'size-4' }"
             />
-          </header>
+          </div>
           <RouterView />
         </main>
       </UDashboardPanel>

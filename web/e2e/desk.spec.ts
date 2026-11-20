@@ -2319,6 +2319,121 @@ test.describe('bottom bar', () => {
   })
 })
 
+// Landmarks, the skip link, focus on the new page's h1 and the tab title
+// (R2, Decisions 3 and 4 of docs/specs/desk-accessible.spec.md).
+test.describe('landmarks and route focus', () => {
+  const overview = routes.find((r) => r.name === 'overview')!
+  const metrics = routes.find((r) => r.name === 'metrics')!
+  const project = routes.find((r) => r.name === 'stream-project-stream')!
+  const milestone = routes.find((r) => r.name === 'stream-milestone-issues')!
+  const sizes = [
+    { width: 375, height: 812 },
+    { width: 1280, height: 800 },
+  ]
+
+  async function load(page: Page, baseURL: string | undefined, route: Route, size: { width: number; height: number }) {
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await page.setViewportSize(size)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, route, problems)
+    await page.goto(route.path)
+    await route.ready(page)
+    return problems
+  }
+
+  // Two frames: whatever useRouteFocus would do after a navigation is done.
+  const frames = (page: Page) =>
+    page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
+
+  // The h1 has focus and names the tab, after the Inbox count.
+  async function landedOn(page: Page) {
+    const h1 = page.locator('main h1')
+    await expect(h1).toBeFocused()
+    const text = await h1.evaluate((e) => e.textContent!.replace(/\s+/g, ' ').trim())
+    expect(text).not.toBe('')
+    await expect(page).toHaveTitle(`(${inbox.items.length}) ${text} · Desk`)
+  }
+
+  for (const size of sizes) {
+    test(`the first Tab focuses Skip to content, Enter moves to main@${size.width}`, async ({ page, baseURL }) => {
+      const problems = await load(page, baseURL, overview, size)
+      const url = page.url()
+      await page.keyboard.press('Tab')
+      const skip = page.getByRole('link', { name: 'Skip to content' })
+      await expect(skip).toBeFocused()
+      expect((await skip.boundingBox())!.height, 'shown while focused').toBeGreaterThanOrEqual(44)
+      await page.keyboard.press('Enter')
+      await expect(page.locator('main')).toBeFocused()
+      expect(page.url(), 'no hash, no navigation').toBe(url)
+      await expect(page.locator('#main')).toHaveCount(1)
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+
+    test(`a tab switch keeps focus on the tab@${size.width}`, async ({ page, baseURL }) => {
+      const problems = await load(page, baseURL, milestone, size)
+      const tab = page.locator('main').getByRole('navigation', { name: 'View' }).getByRole('link', { name: 'Decisions' })
+      await tab.focus()
+      await page.keyboard.press('Enter')
+      await expect(page).toHaveURL(/\?tab=decisions$/)
+      await expect(page.locator('main').getByText(milestoneReady.decisions).first()).toBeVisible()
+      await frames(page)
+      await expect(tab).toBeFocused()
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+  }
+
+  test('a sidebar link lands on the new page h1@1280', async ({ page, baseURL }) => {
+    const problems = await load(page, baseURL, overview, { width: 1280, height: 800 })
+    await expect(page).toHaveTitle(/^\(\d+\) .+ · Desk$/)
+    await page.locator('.rail').getByRole('link', { name: /^shop/ }).click()
+    await expect(page).toHaveURL(/\/projects\/team-a\/shop$/)
+    await project.ready(page)
+    await landedOn(page)
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+
+  test('a bottom bar link lands on the new page h1@375', async ({ page, baseURL }) => {
+    const problems = await load(page, baseURL, overview, { width: 375, height: 812 })
+    await page.getByRole('navigation', { name: 'Sections' }).getByRole('link', { name: 'Metrics' }).click()
+    await expect(page).toHaveURL(/\/metrics$/)
+    await expect(page.locator('main').getByText('Research counted since').first()).toBeVisible()
+    await landedOn(page)
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+
+  for (const route of [project, milestone, metrics]) {
+    test(`landmarks on ${route.name}@1280`, async ({ page, baseURL }) => {
+      const problems = await load(page, baseURL, route, { width: 1280, height: 800 })
+      await expect(page.getByRole('navigation', { name: 'Main', exact: true })).toBeVisible()
+      await expect(page.getByRole('main')).toHaveCount(1)
+      await expect(page.getByRole('banner'), 'no top bar at desktop width').toHaveCount(0)
+      await expect(page.getByRole('navigation', { name: 'Sections' })).toHaveCount(0)
+      // A column on the project page only: the milestone page's tabs take
+      // the full width, its panel is a sheet below 1180 px (ContextLayout).
+      await expect(page.getByRole('complementary', { name: 'Context' })).toHaveCount(route === project ? 1 : 0)
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+
+    test(`landmarks on ${route.name}@375`, async ({ page, baseURL }) => {
+      const problems = await load(page, baseURL, route, { width: 375, height: 812 })
+      await expect(page.getByRole('banner')).toHaveCount(1)
+      await expect(page.getByRole('navigation', { name: 'Sections' })).toBeVisible()
+      await expect(page.getByRole('main')).toHaveCount(1)
+      await expect(page.getByRole('navigation', { name: 'Main', exact: true }), 'in the closed rail sheet').toHaveCount(0)
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+  }
+
+  test('the milestone page context sheet is the Context landmark@760', async ({ page, baseURL }) => {
+    const problems = await load(page, baseURL, milestone, { width: 760, height: 1024 })
+    await expect(page.getByRole('complementary', { name: 'Context' }), 'closed').toHaveCount(0)
+    await page.locator('main').getByRole('button', { name: /^Context/ }).click()
+    const sheet = page.getByRole('dialog', { name: 'Context' })
+    await expect(sheet.getByRole('complementary', { name: 'Context' })).toBeVisible()
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+})
+
 // Task tabs (R10, decision 11): the task page and the issue page open on
 // Overview with the last run's summary first and the open questions' count
 // on the tab; every tab is one tap away and lives in ?tab=; an old

@@ -90,6 +90,7 @@ const engineMeters = computed(() => {
     <!-- Links are controls: 44 px on phones, like the buttons (style.css,
          "Hit areas"). -->
     <UNavigationMenu
+      aria-label="Main"
       :model-value="open"
       type="multiple"
       orientation="vertical"

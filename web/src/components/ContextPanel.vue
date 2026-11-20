@@ -83,7 +83,7 @@ function inboxTo(item: InboxItem) {
 </script>
 
 <template>
-  <aside class="ctxp">
+  <aside class="ctxp" aria-label="Context">
     <div class="panel">
       <h3>
         <span>Needs you</span>

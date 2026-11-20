@@ -16,9 +16,17 @@ test('fullTime is empty for a missing or invalid time', () => {
   assert.equal(fullTime('not a time'), '')
 })
 
-test('deskTitle shows the Inbox count, and the base title at 0', () => {
-  assert.equal(deskTitle(3, 'ai-operator'), '(3) Desk')
-  assert.equal(deskTitle(0, 'ai-operator'), 'ai-operator')
+test('deskTitle puts the page title before Desk, the Inbox count in front', () => {
+  assert.equal(deskTitle(3, 'Milestone 14'), '(3) Milestone 14 · Desk')
+  assert.equal(deskTitle(0, 'Milestone 14'), 'Milestone 14 · Desk')
+  assert.equal(deskTitle(0, '\n  Milestone\n  14 '), 'Milestone 14 · Desk')
+})
+
+test('deskTitle is Desk on a page without a title', () => {
+  for (const page of [undefined, null, '', '  ']) {
+    assert.equal(deskTitle(0, page), 'Desk')
+    assert.equal(deskTitle(2, page), '(2) Desk')
+  }
 })
 
 test('tokenCount abbreviates with k, M and B', () => {
