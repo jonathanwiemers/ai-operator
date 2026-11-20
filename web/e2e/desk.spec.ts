@@ -13,11 +13,22 @@ import { refundsPrompt, refundsResponse } from './fixtures/task'
 import { taskTabs, type TaskTab } from '../src/streamTabs'
 import type { Feature } from '../src/types'
 import { knownOverflow } from './known-overflow'
+import { longBranch } from './fixtures/long'
 
 const widths = [
   { width: 375, height: 812 },
   { width: 768, height: 1024 },
   { width: 1280, height: 800 },
+]
+
+// The overflow check of the dashboard, project, milestone, task and issue
+// routes runs at each width's lower edge (phone, tablet from 760 px, desktop
+// from 1180 px), where columns are narrowest, with the long data of
+// e2e/fixtures/long.ts (#622).
+const edgeWidths = [
+  { width: 375, height: 812 },
+  { width: 760, height: 1024 },
+  { width: 1180, height: 800 },
 ]
 
 interface Route {
@@ -281,8 +292,10 @@ async function watch(page: Page, origin: string, problems: Problems): Promise<vo
   )
 }
 
+const atEdges = (name: string) => /^(overview|stream-project|stream-milestone|task|issue)(-|$)/.test(name)
+
 for (const route of routes) {
-  for (const size of widths) {
+  for (const size of atEdges(route.name) ? edgeWidths : widths) {
     const id = `${route.name}@${size.width}`
     test(id, async ({ page, baseURL }, testInfo) => {
       const known = knownOverflow[id]
@@ -814,7 +827,7 @@ test.describe('touch', () => {
     await page.goto(route.path)
     await route.ready(page)
 
-    const branch = 'agent/281-support-refunds-through-the-payment-provider'
+    const branch = longBranch
     const value = page.locator('main .fact').filter({ hasText: 'Branch' }).getByRole('button')
     await expect(value).toHaveAttribute('aria-expanded', 'false')
     await expect(value).not.toHaveAttribute('title', /.+/)
@@ -1595,13 +1608,16 @@ test.describe('rail sheet', () => {
   }
 })
 
-// The context sheet below 1180 px (Stream.vue, docs/contributing/web-ui.md "Sheets"): the
+// The context layout (ContextLayout.vue, docs/contributing/web-ui.md "Sheets"): below
+// 1180 px the panel is closed and the content has the full width; the
 // Context button in the header carries the Needs-you count and opens the
 // context panel from the right, on project and milestone pages. The sheet
 // shows Needs you, the milestone's queue, its companions and the last 30
-// days, fits the width, and back (or scrim, close button, Escape) closes it
+// days, fits the width with the long branch and URL of a Needs-you card
+// (e2e/fixtures/long.ts), and back (or scrim, close button, Escape) closes it
 // without leaving an entry. From 1180 px the project page keeps the panel at
-// its side and neither page has the button.
+// its side without a click, the board beside it does not scroll sideways,
+// and neither page has the button.
 test.describe('context sheet', () => {
   const pages = [
     { page: 'project', route: routes.find((r) => r.name === 'stream-project-stream')!, milestone: /^Checkout without account/ },
@@ -1634,10 +1650,16 @@ test.describe('context sheet', () => {
   }
 
   for (const { page: name, route, milestone } of pages) {
-    for (const size of widths.filter((w) => w.width < 1180)) {
+    for (const size of edgeWidths.filter((w) => w.width < 1180)) {
       test(`${name} page opens it, back closes it@${size.width}`, async ({ page, baseURL }, testInfo) => {
         const problems = await load(page, baseURL, route, size)
         const url = page.url()
+        await expect(page.locator('aside.ctxp'), 'closed until the Context button is clicked').toBeHidden()
+        const full = await page.locator('[data-context-layout]').evaluate((l) => {
+          const content = l.firstElementChild!.getBoundingClientRect()
+          return Math.abs(content.width - l.getBoundingClientRect().width) < 1
+        })
+        expect(full, 'the content has the full width').toBe(true)
         const sheet = await openSheet(page)
 
         for (const heading of sections(milestone)) {
@@ -1699,17 +1721,70 @@ test.describe('context sheet', () => {
     })
   }
 
-  for (const { page: name, route, milestone } of pages) {
-    const project = name === 'project'
-    test(`${name} page ${project ? 'keeps the side panel' : 'has no panel'} and no button@1280`, async ({ page, baseURL }) => {
-      const problems = await load(page, baseURL, route, widths[2]!)
-      await expect(page.locator('main').getByRole('button', { name: /^Context/ })).toHaveCount(0)
+  for (const size of [edgeWidths[2]!, widths[2]!]) {
+    for (const { page: name, route, milestone } of pages) {
+      const project = name === 'project'
+      test(`${name} page ${project ? 'keeps the side panel' : 'has no panel'} and no button@${size.width}`, async ({ page, baseURL }) => {
+        const problems = await load(page, baseURL, route, size)
+        await expect(page.locator('main').getByRole('button', { name: /^Context/ })).toHaveCount(0)
+        const panel = page.locator('aside.ctxp')
+        if (project) {
+          for (const heading of sections(milestone)) await expect(panel.getByRole('heading', { name: heading })).toBeVisible()
+        } else {
+          await expect(panel).toHaveCount(0)
+        }
+        expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+      })
+    }
+  }
+
+  // The project's stream and board beside the open panel: neither the
+  // content column nor a scroller in it scrolls sideways, and the panel
+  // itself does not either.
+  for (const tab of ['stream', 'board'] as const) {
+    test(`project ${tab} beside the panel does not scroll sideways@1180`, async ({ page, baseURL }, testInfo) => {
+      const problems = await load(page, baseURL, routes.find((r) => r.name === `stream-project-${tab}`)!, edgeWidths[2]!)
       const panel = page.locator('aside.ctxp')
-      if (project) {
-        for (const heading of sections(milestone)) await expect(panel.getByRole('heading', { name: heading })).toBeVisible()
-      } else {
-        await expect(panel).toHaveCount(0)
+      await expect(panel).toBeVisible()
+      if (tab === 'stream') {
+        // The paused queue entry: a short badge, the reason on a line of its own.
+        const paused = page.locator('[data-queue-entry]').filter({ hasText: 'Payment providers' })
+        await expect(paused.getByText('Paused', { exact: true })).toBeVisible()
+        await expect(paused.locator('[data-queue-reason]')).toContainText('partial refunds')
+        await expect(paused.locator('[data-queue-reason]')).not.toContainText('**')
       }
+      const shot = join(testInfo.project.outputDir, '..', 'screenshots', `context-column-${tab}@1180.png`)
+      await page.screenshot({ path: shot })
+      await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
+      const sideways = await page.locator('[data-context-layout]').evaluate((l) => {
+        const over = (e: Element) => e.scrollWidth - e.clientWidth
+        // What reaches past a box's content edge without a clipping box in
+        // between: the innermost such elements, so a failure names them.
+        const wide = (c: Element) => {
+          const edge = c.getBoundingClientRect().left + c.clientLeft + c.clientWidth - parseFloat(getComputedStyle(c).paddingRight)
+          const clipped = (e: Element) => {
+            for (let p = e.parentElement; p && p !== c; p = p.parentElement) {
+              if (getComputedStyle(p).overflowX !== 'visible') return true
+            }
+            return false
+          }
+          const hits = [...c.querySelectorAll('*')].filter((e) => !clipped(e) && e.getBoundingClientRect().right > edge + 0.5)
+          return hits
+            .filter((e) => !hits.some((h) => h !== e && e.contains(h)))
+            .slice(0, 6)
+            .map((e) => `${e.tagName.toLowerCase()}.${[...e.classList].join('.')} +${Math.round(e.getBoundingClientRect().right - edge)}px "${(e.textContent ?? '').trim().slice(0, 40)}"`)
+        }
+        const content = l.firstElementChild!
+        const scrollers = [...content.querySelectorAll('.scroll')]
+        const panel = l.querySelector('aside.ctxp')!
+        return {
+          content: over(content),
+          scrollers: scrollers.map(over).filter((d) => d > 0),
+          panel: over(panel),
+          wide: [content, ...scrollers, panel].filter((b) => over(b) > 0).flatMap(wide),
+        }
+      })
+      expect(sideways, 'sideways scroll in px, and what is too wide').toEqual({ content: 0, scrollers: [], panel: 0, wide: [] })
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })
   }
@@ -2380,20 +2455,22 @@ test.describe('note thread', () => {
   }
 })
 
-// Milestone rows (MilestoneList.vue, R11): from tablet width each row is a
+// Milestone rows (MilestoneList.vue, R11): from desktop width each row is a
 // subgrid of the list's one column grid, so its cells start where the
-// column heads do. On a phone the heads are hidden and the row stacks:
-// title and state on one line, the figures below.
+// column heads do, the heads do not overlap and the title's column keeps
+// room beside the context panel (the long title of e2e/fixtures/long.ts).
+// Below desktop width the heads are hidden and the row stacks: title and
+// state on one line, the figures below.
 test.describe('milestone rows', () => {
   const pages = [
     { name: 'overview', project: true },
     { name: 'stream-project-stream', project: false },
   ]
   for (const { name, project } of pages) {
-    for (const size of widths) {
-      const phone = size.width < 760
+    for (const size of edgeWidths) {
+      const stacked = size.width < 1180
 
-      test(`${name} ${phone ? 'rows stack' : 'rows follow the heads'}@${size.width}`, async ({ page, baseURL }, testInfo) => {
+      test(`${name} ${stacked ? 'rows stack' : 'rows follow the heads'}@${size.width}`, async ({ page, baseURL }, testInfo) => {
         const route = routes.find((r) => r.name === name)!
         const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
         await page.setViewportSize(size)
@@ -2406,14 +2483,18 @@ test.describe('milestone rows', () => {
         const list = page.locator('main ul[aria-label="In progress"]')
         await expect(list.locator('li').first()).toBeVisible()
         const heads = list.locator('xpath=preceding-sibling::*[@data-heads]')
-        const layout = await list.evaluate((ul) => {
+        const layout = await list.evaluate((ul, project) => {
           const left = (e: Element) => Math.round(e.getBoundingClientRect().left)
           // A row's cells, the figures' wrapper (display: contents from
           // tablet width) unfolded.
           const cells = (li: Element) =>
             [...li.children].flatMap((c) => (getComputedStyle(c).display === 'contents' ? [...c.children] : [c]))
           const head = ul.previousElementSibling!
+          // A head whose text is wider than its column runs into the next.
+          const heads = [...head.children]
           return {
+            headsApart: heads.every((h) => h.scrollWidth <= h.clientWidth),
+            titleWidth: Math.round(heads[project ? 1 : 0]?.getBoundingClientRect().width ?? 0),
             heads: [...head.children].map(left),
             rows: [...ul.children].map((li) => cells(li).map(left)),
             stacked: [...ul.children].map((li) => {
@@ -2426,14 +2507,16 @@ test.describe('milestone rows', () => {
               }
             }),
           }
-        })
+        }, project)
 
-        if (phone) {
+        if (stacked) {
           await expect(heads).toBeHidden()
           for (const s of layout.stacked) expect(s).toEqual({ titleStateOneLine: true, figuresBelow: true, inside: true })
         } else {
           await expect(heads).toBeVisible()
           expect(layout.heads).toHaveLength(project ? 8 : 7)
+          expect(layout.headsApart, 'the column heads do not overlap').toBe(true)
+          expect(layout.titleWidth, 'the milestone column keeps room for its title').toBeGreaterThanOrEqual(110)
           for (const row of layout.rows) expect(row).toEqual(layout.heads)
         }
 
@@ -3616,8 +3699,8 @@ test.describe('research pages', () => {
 })
 
 // The Board tab (Board.vue, TaskCard.vue, ProjectBoards.vue, R12),
-// utilities only: four columns side by side on desktop, two on a tablet,
-// stacked on a phone. Every column keeps its heading and count, the cards
+// utilities only: four columns side by side on desktop (beside the context
+// panel too, from 1280 px), two on a tablet, stacked on a phone. Every column keeps its heading and count, the cards
 // stay inside their column with wrapping titles and are at least 44 px
 // high, and on a phone the milestone headings' links are 44 px high.
 test.describe('board', () => {

@@ -9,6 +9,7 @@ import type {
 } from '../../src/types'
 import type { IssueFiguresView } from '../../src/generated/views'
 import { ago, cost, now } from './clock'
+import { longCode, longTitle } from './long'
 import { stream as dashboardStream } from './overview'
 import { checkout, implementTask, payments, refunds, refundsPrompt, refundsTitle, shop, shopURL } from './task'
 
@@ -50,7 +51,8 @@ function specTask(m: { iid: number; title: string }, phase: 'Running' | 'Paused'
 const pausedReason = `Issue #281 needs an answer: **partial refunds** across captures.
 
 - Answer the question on the [task page](${issueURL(281)})
-- or skip #281 and continue with #282`
+- or skip #281 and continue with #282
+- the last image was \`${longCode}\``
 
 // The implement tasks of %14 and %12.
 const paymentsTasks: Task[] = [
@@ -127,6 +129,17 @@ export const shopDetail: ProjectDetail = {
       pausedReason,
       done: 0,
       total: 0,
+    },
+    // Long data (long.ts): the title wraps in its row on a phone.
+    {
+      ...cost('0.00', 0),
+      iid: 15,
+      title: longTitle,
+      task: 'shop-m15-spec',
+      state: 'waiting',
+      markedBy: 'jo',
+      done: 0,
+      total: 4,
     },
   ],
   queueCommands: true,

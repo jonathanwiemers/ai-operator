@@ -5,8 +5,10 @@ import type { Stage, Task } from '../types'
 
 // The issues of a milestone in columns like the GitLab board.
 //
-// Utilities only (docs/contributing/web-ui.md, "Board"): four columns on desktop, two on a
-// tablet, stacked on a phone. Every column keeps its heading and count; on
+// Utilities only (docs/contributing/web-ui.md, "Board"): stacked on a phone, two on a
+// tablet; from desktop width as many columns of at least 9.5rem as fit, up
+// to four, so a board beside the context panel never scrolls sideways
+// (three at 1180 px, four from about 1270 px). Every column keeps its heading and count; on
 // a phone an empty one is only its heading.
 const props = defineProps<{ tasks: Task[] }>()
 
@@ -23,7 +25,7 @@ const filled = computed(() =>
 </script>
 
 <template>
-  <div class="grid grid-cols-1 gap-3 tablet:grid-cols-2 desktop:grid-cols-4" data-board>
+  <div class="grid grid-cols-1 gap-3 tablet:grid-cols-2 desktop:grid-cols-[repeat(auto-fit,minmax(9.5rem,1fr))]" data-board>
     <section
       v-for="c in filled"
       :key="c.key"

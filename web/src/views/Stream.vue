@@ -1,15 +1,15 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch, watchEffect } from 'vue'
+import { computed, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
 import USelect from '@nuxt/ui/components/Select.vue'
 import Badge from '../components/Badge.vue'
-import { useBackClose } from '../ui/useBackClose'
 import { hasFeature } from '../api'
 import { getInbox, getMilestone, getProject, getProjectHistory, getStream, LoginRequiredError, NotFoundError } from '../client'
 import { setCrumbNames } from '../crumbNames'
 import Board from '../components/Board.vue'
+import ContextLayout from '../components/ContextLayout.vue'
 import ContextPanel from '../components/ContextPanel.vue'
 import CostChip from '../components/CostChip.vue'
 import PauseCardCompact from '../components/PauseCardCompact.vue'
@@ -55,8 +55,6 @@ import { useStreamNote } from '../streamNote'
 import { decisionsQuery, milestoneFromQuery } from '../decisions'
 import { milestoneTabFromRoute, milestoneTabs, projectTabsFor, storedMilestoneTabs, tabFromQuery, tabQuery } from '../streamTabs'
 import NotFound from './NotFound.vue'
-// The sheet is loaded below 1180 px only, where the Context button is.
-const USlideover = defineAsyncComponent(() => import('@nuxt/ui/components/Slideover.vue'))
 
 const props = defineProps<{
   namespace?: string
@@ -162,21 +160,12 @@ const projectInbox = computed(() => {
   return items.filter((i) => i.namespace === props.namespace && i.project === props.name)
 })
 
-// The context panel (docs/contributing/web-ui.md, "Context panel and pause history"): beside a project stream
-// from 1180 px; below, on project and milestone pages, the Context button
-// opens it as a sheet. The button's count is projectInbox's, so the sheet
-// loads nothing of its own.
+// The context panel (docs/contributing/web-ui.md, "Context panel and pause history"), laid out by
+// ContextLayout: beside a project stream from 1180 px; below, on project
+// and milestone pages, the Context button opens it as a sheet. The
+// button's count is projectInbox's, so the sheet loads nothing of its own.
 const hasContext = computed(() => !everything.value && !!props.namespace && !!props.name)
-const narrowQuery = window.matchMedia('(max-width: 1179.98px)')
-const narrow = ref(narrowQuery.matches)
 const contextOpen = ref(false)
-useBackClose(contextOpen)
-function onWidth() {
-  narrow.value = narrowQuery.matches
-  if (!narrowQuery.matches) contextOpen.value = false
-}
-onMounted(() => narrowQuery.addEventListener('change', onWidth))
-onBeforeUnmount(() => narrowQuery.removeEventListener('change', onWidth))
 
 const canSteer = computed(() => !!milestone.value?.permissions?.steer)
 
@@ -439,7 +428,13 @@ function showDay(i: number): string | null {
 
 <template>
   <NotFound v-if="notFound" />
-  <div v-else class="desk" :class="{ solo: milestoneIID }">
+  <ContextLayout
+    v-else
+    v-model:open="contextOpen"
+    :column="!milestoneIID"
+    description="Needs you, the milestone's queue and companions, the last 30 days"
+  >
+    <template #default="{ sheet }">
     <div class="stream">
       <!-- Phones: the title has a row of its own and wraps, the cost and the
            Context button follow, then the tab strip and the search take a
@@ -488,7 +483,7 @@ function showDay(i: number): string | null {
             />
           </form>
           <UButton
-            v-if="hasContext && narrow"
+            v-if="sheet"
             class="ms-auto tablet:ms-0"
             color="neutral"
             variant="outline"
@@ -700,64 +695,24 @@ function showDay(i: number): string | null {
         <div v-if="!project && !error" class="empty">Loading…</div>
       </div>
     </div>
+    </template>
 
-    <ContextPanel
-      v-if="!everything && !milestoneIID && namespace && name"
-      class="ctx-wrap"
-      :namespace="namespace"
-      :name="name"
-      :inbox="projectInbox"
-      :milestone="milestone"
-      :history="history"
-    />
-
-    <!-- Below 1180 px: the context panel as a sheet from the right
-         (docs/contributing/web-ui.md, "Sheets"), on project and milestone pages. -->
-    <USlideover
-      v-if="hasContext && narrow"
-      v-model:open="contextOpen"
-      side="right"
-      title="Context"
-      description="Needs you, the milestone's queue and companions, the last 30 days"
-      close-icon="i-lucide-x"
-      :ui="{
-        overlay: 'z-40',
-        content:
-          'z-40 w-[min(360px,88vw)] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pr-[env(safe-area-inset-right)]',
-        header: 'min-h-0 gap-2 py-1 ps-4 pe-1 sm:ps-4 sm:pe-1',
-        title: 'text-[15px] font-bold',
-        description: 'sr-only',
-        close: 'static ms-auto',
-        body: 'min-h-0 p-0 sm:p-0',
-      }"
-    >
-      <template #body>
-        <ContextPanel
-          class="ctx-sheet"
-          :namespace="namespace!"
-          :name="name!"
-          :inbox="projectInbox"
-          :milestone="milestone"
-          :history="history"
-        />
-      </template>
-    </USlideover>
-  </div>
+    <!-- A project's or a milestone's context: a column from 1180 px on
+         project pages, a sheet below on both. -->
+    <template v-if="hasContext" #panel="{ sheet }">
+      <ContextPanel
+        :class="{ 'ctx-sheet': sheet }"
+        :namespace="namespace!"
+        :name="name!"
+        :inbox="projectInbox"
+        :milestone="milestone"
+        :history="history"
+      />
+    </template>
+  </ContextLayout>
 </template>
 
 <style scoped>
-.desk {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  min-height: 100vh;
-  min-height: 100dvh;
-  height: 100%;
-  min-width: 0;
-}
-/* A milestone page has no context panel: the tabs use the full width. */
-.desk.solo {
-  grid-template-columns: minmax(0, 1fr);
-}
 .stream {
   display: flex;
   flex-direction: column;
@@ -876,14 +831,6 @@ function showDay(i: number): string | null {
 .ctx-sheet {
   border-left: 0;
   overflow-y: visible;
-}
-@media (max-width: 1179.98px) {
-  .desk {
-    grid-template-columns: minmax(0, 1fr);
-  }
-  .ctx-wrap {
-    display: none;
-  }
 }
 @media (max-width: 759.98px) {
   .scroll {

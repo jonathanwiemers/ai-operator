@@ -10,7 +10,9 @@ export function needsEstimate(e: Pick<QueueEntry, 'state' | 'done' | 'costUSD' |
   return (e.state === 'waiting' || e.state === 'holding') && e.done === 0 && !spent
 }
 
-export function queueStateLabel(e: Pick<QueueEntry, 'state' | 'holdingFor' | 'pausedReason'>): string {
+// The badge stays one short word or two: a paused entry's reason is
+// markdown of any length and has a line of its own below the row.
+export function queueStateLabel(e: Pick<QueueEntry, 'state' | 'holdingFor'>): string {
   switch (e.state) {
     case 'running':
       return 'Running'
@@ -19,7 +21,7 @@ export function queueStateLabel(e: Pick<QueueEntry, 'state' | 'holdingFor' | 'pa
     case 'waiting':
       return 'Waiting to plan'
     case 'paused':
-      return e.pausedReason ? `Paused: ${e.pausedReason}` : 'Paused'
+      return 'Paused'
     case 'budget':
       return 'Budget'
   }

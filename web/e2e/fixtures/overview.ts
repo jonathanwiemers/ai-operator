@@ -1,5 +1,6 @@
 import type { MilestoneList, OverviewView, StreamPage } from '../../src/types'
 import { ago, cost } from './clock'
+import { longProject, longTitle } from './long'
 
 // GET /api/v1/overview: the dashboard's summary strip and Working now.
 export const overview: OverviewView = {
@@ -83,6 +84,20 @@ export const openMilestones: MilestoneList = {
       webURL: 'https://gitlab.example.com/team-b/a-project-with-a-rather-long-name.example/-/milestones/1',
       state: 'planned',
       progress: { merged: 0, total: 3, open: 3 },
+      followUpsOpen: 0,
+      needsYou: false,
+      stored: false,
+    },
+    // Long data (long.ts): the title and the project name wrap in their columns.
+    {
+      ...cost('0.00', 0),
+      namespace: 'team-b',
+      project: longProject,
+      iid: 2,
+      title: longTitle,
+      webURL: `https://gitlab.example.com/team-b/${longProject}/-/milestones/2`,
+      state: 'planned',
+      progress: { merged: 0, total: 4, open: 4 },
       followUpsOpen: 0,
       needsYou: false,
       stored: false,

@@ -25,7 +25,9 @@ const Rendered = () =>
 </template>
 
 <style scoped>
-.md {
+/* Refs, URLs and code tokens break anywhere rather than widen their row. */
+.md,
+.md-inline {
   overflow-wrap: anywhere;
 }
 

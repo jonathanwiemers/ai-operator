@@ -34,10 +34,10 @@ async function close(m: number, i: number) {
 </script>
 
 <template>
-  <section v-if="finishing.length" class="grid gap-1 text-[13px]" aria-labelledby="project-finishing">
+  <section v-if="finishing.length" class="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-1 text-[13px]" aria-labelledby="project-finishing">
     <h2 id="project-finishing" class="m-0 text-sm font-semibold">Finishing</h2>
-    <ul class="m-0 grid list-none gap-0.5 p-0">
-      <li v-for="e in finishing" :key="e.iid" class="grid gap-0.5 rounded-md px-1.5 py-1 hover:bg-(--surface-2)" data-finishing-entry>
+    <ul class="m-0 grid min-w-0 list-none grid-cols-[minmax(0,1fr)] gap-0.5 p-0">
+      <li v-for="e in finishing" :key="e.iid" class="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-0.5 rounded-md px-1.5 py-1 hover:bg-(--surface-2)" data-finishing-entry>
         <RouterLink :to="{ name: 'stream-milestone', params: { namespace, name, iid: String(e.iid) } }" class="[overflow-wrap:anywhere]">
           <span class="font-mono text-xs">%{{ e.iid }}</span> {{ e.title }}
         </RouterLink>

@@ -10,6 +10,7 @@ import type {
 } from '../../src/types'
 import type { SearchResponse, SearchResult } from '../../src/generated/views'
 import { ago, cost } from './clock'
+import { longBranch, longURL } from './long'
 import { projects } from './rail'
 
 // The tasks of team-a/shop and the task page's API. The task page's case is
@@ -58,6 +59,7 @@ export const refundsSummary = `Implemented **full refunds** through the provider
 - Added \`RefundService\` with the provider client and a retry on \`429\`
 - Stored each refund with its provider reference, see [the provider's refund docs](https://docs.example.com/payments/refunds)
 - Tests for the full refund and for a failed provider call
+- Coverage report: ${longURL}
 
 **Open:** the issue does not say whether a partial refund may exceed the captured amount of one capture.`
 
@@ -142,7 +144,7 @@ export const refunds: Task = implementTask(281, refundsTitle, payments, 'needs-i
     questions: [{ question: refundsPrompt.question, allowFreeText: true }],
     needsInputCause: 'agentQuestion',
     costUSD: '3.42',
-    branch: 'agent/281-support-refunds-through-the-payment-provider',
+    branch: longBranch,
     mergeRequestIID: 305,
     mergeRequestURL: `${shopURL}/-/merge_requests/305`,
     pushedSHA: '4f1c9e2a7b3d5f60812a4c6e8b0d2f4a6c8e0b1d',

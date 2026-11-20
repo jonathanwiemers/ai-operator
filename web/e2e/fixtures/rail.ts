@@ -1,6 +1,7 @@
 import type { ProjectSummary, ResearchSummary } from '../../src/types'
 import type { InboxResponse, ProjectSetSummary } from '../../src/generated/views'
 import { ago, cost } from './clock'
+import { longBranch, longURL } from './long'
 
 // GET /api/v1/projects: the rail's projects.
 export const projects: ProjectSummary[] = [
@@ -117,7 +118,8 @@ export const inbox: InboxResponse = {
       kind: 'pause',
       milestoneIID: 14,
       title: 'Payment providers',
-      reason: 'Issue #281 needs an answer to its question **before** autopilot can continue with the next issue.',
+      // Long data (long.ts): a branch and a URL that wrap in the context panel's card.
+      reason: `Issue #281 needs an answer to its question **before** autopilot can continue with the next issue. Its branch is \`${longBranch}\`, the failed job ${longURL}.`,
       at: ago(24),
       pauseKind: 'needsInput',
       pausedSince: ago(24),

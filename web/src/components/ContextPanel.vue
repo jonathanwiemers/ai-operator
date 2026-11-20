@@ -10,8 +10,10 @@ import RelTime from './RelTime.vue'
 
 // ContextPanel sits beside a project stream: what needs you, the active
 // milestone's queue and companions, and the last 30 days. A milestone page has
-// no side panel: its parts live in the Issues and Pilot tabs. Below 1180 px
-// Stream.vue's Context button opens it as a sheet, on milestone pages too.
+// no side panel: its parts live in the Issues and Pilot tabs. ContextLayout
+// lays it out: a column from 1180 px, below a sheet that Stream.vue's
+// Context button opens, on milestone pages too. Refs, URLs and titles
+// wrap anywhere, so the panel never scrolls sideways.
 const props = defineProps<{
   namespace: string
   name: string
@@ -86,7 +88,7 @@ function inboxTo(item: InboxItem) {
       </h3>
       <div v-if="!inbox.length" class="empty-sm">Nothing waiting.</div>
       <div v-else class="need">
-        <RouterLink v-for="(item, i) in inbox" :key="i" class="n-item" :to="inboxTo(item)">
+        <RouterLink v-for="(item, i) in inbox" :key="i" class="n-item min-w-0 [overflow-wrap:anywhere]" :to="inboxTo(item)">
           <b>{{ item.kind === 'proposal' && item.proposalID != null ? `P${item.proposalID}` : item.issueIID ? `#${item.issueIID}` : item.project }}</b>
           {{ item.title }}
           <small><Markdown mode="inline" :text="item.reason" /><template v-if="item.at"> · <RelTime :time="item.at" /></template></small>
@@ -96,10 +98,10 @@ function inboxTo(item: InboxItem) {
 
     <div v-if="milestone" class="panel">
       <h3>
-        <span>{{ milestone.title }}</span>
+        <span class="min-w-0 [overflow-wrap:anywhere]">{{ milestone.title }}</span>
         <span v-if="total">{{ done }} / {{ total }}</span>
       </h3>
-      <p v-if="waiting" class="waiting">
+      <p v-if="waiting" class="waiting [overflow-wrap:anywhere]">
         ⏳ {{ waiting }}.
         <small>Comment <code>/agent start</code> on the tracking issue to plan it now (owners).</small>
       </p>
@@ -173,6 +175,7 @@ function inboxTo(item: InboxItem) {
   min-height: 0;
 }
 .panel h3 {
+  gap: 8px;
   font-size: 11.5px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -183,6 +186,7 @@ function inboxTo(item: InboxItem) {
   font-weight: 600;
 }
 .panel {
+  min-width: 0;
   border-bottom: 1px solid var(--border);
   padding-bottom: 14px;
 }
@@ -224,11 +228,13 @@ function inboxTo(item: InboxItem) {
 }
 .stats {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin-top: 10px;
 }
 .stat {
+  min-width: 0;
+  overflow-wrap: anywhere;
   background: var(--surface-2);
   border-radius: 8px;
   padding: 8px 10px;
@@ -259,6 +265,7 @@ function inboxTo(item: InboxItem) {
 }
 .legend {
   display: flex;
+  flex-wrap: wrap;
   gap: 12px;
   font-size: 11.5px;
   color: var(--text-3);

@@ -57,7 +57,7 @@ const way = computed(() => wayOutLine(props.exits))
       <strong class="min-w-0 tablet:whitespace-nowrap">{{ pauseTitle(kind, hold ? issue : undefined) }}</strong>
       <span
         v-if="project || milestoneTitle || (issue && !hold)"
-        class="muted order-last flex min-w-0 basis-full flex-wrap gap-x-2 text-[13px] break-words tablet:order-none tablet:flex-1 tablet:basis-auto"
+        class="muted order-last flex min-w-0 basis-full flex-wrap gap-x-2 text-[13px] [overflow-wrap:anywhere] tablet:order-none tablet:flex-1 tablet:basis-auto"
       >
         <span v-if="project" class="min-w-0 font-semibold">{{ project }}</span>
         <span v-if="milestoneTitle" class="min-w-0 before:me-2 before:content-['·'] first:before:hidden">{{ milestoneTitle }}</span>
@@ -65,7 +65,7 @@ const way = computed(() => wayOutLine(props.exits))
       </span>
       <UButton :to="to" color="neutral" variant="ghost" size="sm" class="ms-auto min-h-11 shrink-0 text-[13px] text-(--link) tablet:-my-1 tablet:min-h-0" label="Open" />
     </div>
-    <Truncated v-if="reasonText" :lines="2"><Markdown mode="inline" :text="reasonText" /></Truncated>
+    <Truncated v-if="reasonText" class="min-w-0 [overflow-wrap:anywhere] [&_code]:whitespace-normal" :lines="2"><Markdown mode="inline" :text="reasonText" /></Truncated>
     <p v-else-if="!kind" class="muted">Waiting for a human.</p>
     <p v-if="waiting" class="text-[13px] text-(--tone-info-fg)">A run is working on #{{ waiting }} now.</p>
     <Truncated v-if="way" class="faint text-[12.5px]" :text="way" />

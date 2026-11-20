@@ -24,7 +24,7 @@ test('queueStateLabel: one label per state', () => {
   assert.equal(queueStateLabel(entry({ state: 'running' })), 'Running')
   assert.equal(queueStateLabel(entry({ state: 'holding', holdingFor: 3 })), 'Holding for %3')
   assert.equal(queueStateLabel(entry({ state: 'waiting', holdingFor: 3 })), 'Waiting to plan')
-  assert.equal(queueStateLabel(entry({ state: 'paused', pausedReason: 'CI is red' })), 'Paused: CI is red')
+  assert.equal(queueStateLabel(entry({ state: 'paused', pausedReason: 'CI is red' })), 'Paused')
   assert.equal(queueStateLabel(entry({ state: 'paused' })), 'Paused')
   assert.equal(queueStateLabel(entry({ state: 'budget' })), 'Budget')
 })
