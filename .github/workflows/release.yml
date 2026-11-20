@@ -131,6 +131,33 @@ jobs:
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
             org.opencontainers.image.revision=${{ steps.sha.outputs.sha }}
 
+      # Projects that build their own agent image FROM ai-operator-agent can
+      # let Renovate look its tags up here on ghcr. This asks their
+      # renovate-operator for a run now instead of at its next schedule:
+      # POST <RENOVATE_WEBHOOK_URL>&project=<path> per path in RENOVATE_PROJECTS
+      # (repository variables), Bearer RENOVATE_WEBHOOK_TOKEN (secret). Unset
+      # (e.g. in a fork) skips it, and a failed call never fails the release.
+      - name: Trigger Renovate on dependent projects
+        if: steps.version.outputs.skip == 'false' && vars.RENOVATE_WEBHOOK_URL != ''
+        continue-on-error: true
+        env:
+          URL: ${{ vars.RENOVATE_WEBHOOK_URL }}
+          PROJECTS: ${{ vars.RENOVATE_PROJECTS }}
+          TOKEN: ${{ secrets.RENOVATE_WEBHOOK_TOKEN }}
+        run: |
+          if [[ -z "${TOKEN}" || -z "${PROJECTS}" ]]; then
+            echo "RENOVATE_WEBHOOK_TOKEN or RENOVATE_PROJECTS is unset; skipping"
+            exit 0
+          fi
+          for project in ${PROJECTS}; do
+            echo "Renovate run for ${project}"
+            curl --fail-with-body --silent --show-error --max-time 30 \
+              --request POST --get --data-urlencode "project=${project}" \
+              --header "Authorization: Bearer ${TOKEN}" "${URL}" \
+              || echo "::warning::Renovate trigger for ${project} failed"
+            echo
+          done
+
       - name: Package and push chart
         if: steps.version.outputs.skip == 'false'
         env:

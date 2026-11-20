@@ -71,7 +71,8 @@ gh workflow run release.yml -R jonathanwiemers/ai-operator -f tag=2026.11.256
 If a GitHub release for the tag exists already, the run ends without
 building, so a second run of the same tag does nothing. It runs no tests:
 GitLab tags only commits of `main` whose pipeline passed. It needs no secret
-beyond the built-in `GITHUB_TOKEN`. Runs never overlap (`concurrency`). A
+beyond the built-in `GITHUB_TOKEN` (the optional Renovate trigger below has
+its own). Runs never overlap (`concurrency`). A
 release:
 
 1. checks out the tag
@@ -81,6 +82,17 @@ release:
 3. packages the chart with `version` = `appVersion` = `<version>` and pushes it
    to `oci://ghcr.io/jonathanwiemers/charts/ai-operator`
 4. creates a GitHub release for the existing tag with the chart attached
+
+After the agent image push, the release asks a renovate-operator webhook for a
+Renovate run on projects that build their agent image `FROM`
+`ghcr.io/jonathanwiemers/ai-operator-agent` (or look its tags up there), so
+their base bump opens right away. It is optional and never fails the release:
+
+| Name | Kind | Value |
+|------|------|-------|
+| `RENOVATE_WEBHOOK_URL` | variable | `https://<host>/webhook/v1/schedule?job=<RenovateJob>&namespace=<ns>` |
+| `RENOVATE_PROJECTS` | variable | space-separated project paths, e.g. `jo.wiemers/Bloop` |
+| `RENOVATE_WEBHOOK_TOKEN` | secret | the RenovateJob's `spec.webhook.authentication` token |
 
 The chart's default image tags are its `appVersion`, so a chart version always
 deploys the operator and agent images built from the same commit.
