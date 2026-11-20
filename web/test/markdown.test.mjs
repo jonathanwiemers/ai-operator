@@ -7,15 +7,16 @@ import { renderInline, renderMarkdown } from '../src/markdown.ts'
 
 const link = (href, label) => h('a', { href, rel: 'noopener noreferrer nofollow' }, label)
 
-async function md(src) {
-  const html = await renderToString(createSSRApp({ render: () => h('div', renderMarkdown(src, link)) }))
+async function md(src, headingLevel) {
+  const html = await renderToString(createSSRApp({ render: () => h('div', renderMarkdown(src, link, headingLevel)) }))
   // Drop the div and the fragment comments of SSR.
   return html.replace(/^<div>|<\/div>$/g, '').replaceAll('<!--[-->', '').replaceAll('<!--]-->', '')
 }
 
 const cases = [
   ['paragraphs', 'one\ntwo\n\nthree', '<p>one\ntwo</p><p>three</p>'],
-  ['headings', '# a\n## b\n### c\n#### d', '<h3>a</h3><h4>b</h4><h5>c</h5><h5>d</h5>'],
+  ['headings are bold paragraphs', '# a *b*\n### c', '<p class="font-semibold">a <em>b</em></p><p class="font-semibold">c</p>'],
+  ['headings in a list and a quote too', '- # a\n\n> ## b', '<ul><li><p class="font-semibold">a</p></li></ul><blockquote><p class="font-semibold">b</p></blockquote>'],
   ['no heading without a space', '#tag', '<p>#tag</p>'],
   ['emphasis and strong', '*a* _b_ **c** __d__ ***e***', '<p><em>a</em> <em>b</em> <strong>c</strong> <strong>d</strong> <strong><em>e</em></strong></p>'],
   ['strong inside emphasis', '*a **b** c*', '<p><em>a <strong>b</strong> c</em></p>'],
@@ -66,6 +67,18 @@ for (const [name, src, want] of cases) {
   test(name, async () => assert.equal(await md(src), want))
 }
 
+// A heading level (research reports): "#" at the level, deeper ones below it,
+// clamped at h6.
+const levelled = [
+  ['base 3', '# a\n### c', 3, '<h3>a</h3><h5>c</h5>'],
+  ['clamped at h6', '## b\n#### d\n###### f', 3, '<h4>b</h4><h6>d</h6><h6>f</h6>'],
+  ['inside details', '<details>\n\n# a\n\n</details>', 2, '<details><h2>a</h2></details>'],
+]
+
+for (const [name, src, level, want] of levelled) {
+  test(`headings: ${name}`, async () => assert.equal(await md(src, level), want))
+}
+
 test('deep nesting stays text and terminates', async () => {
   const html = await md('>'.repeat(5000) + ' x\n' + '- '.repeat(5000) + 'y\n' + '*'.repeat(5000) + 'z' + '*'.repeat(5000))
   assert.ok(html.includes('x') && html.includes('y') && html.includes('z'))
@@ -96,7 +109,7 @@ test('a retrospective reads as on GitLab, its HTML as text', async () => {
   ].join('\n')
   assert.equal(
     await md(src),
-    '<p>🧭 <strong>Retrospective</strong></p><h5>Merged</h5><ul><li><p>#12 Add the <code>store</code> (!40)</p></li></ul>' +
+    '<p>🧭 <strong>Retrospective</strong></p><p class="font-semibold">Merged</p><ul><li><p>#12 Add the <code>store</code> (!40)</p></li></ul>' +
       '<div class="table-scroll"><table><thead><tr><th>Cost driver</th><th style="text-align:right;">USD</th><th style="text-align:right;">Tokens</th></tr></thead>' +
       '<tbody><tr><td>#12</td><td style="text-align:right;">$1.20</td><td style="text-align:right;">1.2M</td></tr></tbody></table></div>' +
       '<ol><li><p>Follow-up &lt;img src=x onerror=alert(1)&gt;</p></li></ol>',

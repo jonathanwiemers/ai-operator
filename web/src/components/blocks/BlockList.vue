@@ -10,11 +10,14 @@ import LinksBlock from './LinksBlock.vue'
 
 // The blocks of a research result, one component per type. Unknown types
 // (from a newer schema) are skipped; the server drops them already.
-defineProps<{ blocks: Block[] }>()
+// headingLevel: the level of the result's top headings (HeadingBlock's base,
+// a markdown block's "#"); without it they are bold paragraphs.
+const props = defineProps<{ blocks: Block[]; headingLevel?: number }>()
 
 // A markdown block is a document: the doc variant's spacing and headings.
-const MarkdownBlock: FunctionalComponent<{ text: string }> = (p) => h(Markdown, { text: p.text, variant: 'doc' })
-MarkdownBlock.props = ['text']
+const MarkdownBlock: FunctionalComponent<{ text: string; headingLevel?: number }> = (p) =>
+  h(Markdown, { text: p.text, variant: 'doc', headingLevel: p.headingLevel })
+MarkdownBlock.props = ['text', 'headingLevel']
 
 const components: Record<string, Component> = {
   heading: HeadingBlock,
@@ -25,9 +28,11 @@ const components: Record<string, Component> = {
   links: LinksBlock,
 }
 
-// The block's fields are the component's props.
+// The block's fields are the component's props, with the heading level.
 function fields(b: Block): Record<string, unknown> {
   const { type: _, ...rest } = b
+  if (b.type === 'heading') return { ...rest, base: props.headingLevel }
+  if (b.type === 'markdown') return { ...rest, headingLevel: props.headingLevel }
   return rest
 }
 </script>

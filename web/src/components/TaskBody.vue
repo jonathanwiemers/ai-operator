@@ -67,7 +67,10 @@ const conditionTone = (type: string, status: string) => {
 // desktop width, stacked below it; a grid item's min-w-0 keeps a long value
 // from widening the page.
 const cols = 'grid gap-4 desktop:grid-cols-2'
-const h3 = 'mb-2.5'
+// A section's heading: an h2 on the Task page, an h3 inside the issue
+// page's Task section; the .h3 look either way.
+const sec = computed(() => (props.page ? 'h2' : 'h3'))
+const h3 = 'h3 mb-2.5'
 // A definition grid (no preflight: m-0 and ms-0 drop the browser margins of
 // dl and dd): label above value on a phone, side by side from the
 // tablet width. The phone's one column is minmax(0, 1fr), so a nowrap value
@@ -217,12 +220,12 @@ const actions = computed(() => [
 
   <template v-if="tab === 'overview'">
     <section v-if="run.summary" class="section">
-      <h3 :class="h3">Summary of the last run</h3>
+      <component :is="sec" :class="h3">Summary of the last run</component>
       <Markdown class="card px-4 py-3.5" :text="run.summary" />
     </section>
 
     <section v-if="prompts.length" class="section">
-      <h3 :class="h3">Questions from the agent</h3>
+      <component :is="sec" :class="h3">Questions from the agent</component>
       <div class="mb-3 grid gap-2.5">
         <PromptCard v-for="p in prompts" :key="p.id" :namespace="namespace" :name="name" :prompt="p" />
       </div>
@@ -230,7 +233,7 @@ const actions = computed(() => [
 
     <div v-if="t.type === 'Implement'" :class="['section', cols]">
       <section class="min-w-0">
-        <h3 :class="h3">Review</h3>
+        <component :is="sec" :class="h3">Review</component>
         <dl :class="['card px-4 py-3.5', dl]">
           <dt :class="dt">Blocking findings</dt>
           <dd :class="dd">
@@ -250,7 +253,7 @@ const actions = computed(() => [
         </dl>
       </section>
       <section class="min-w-0">
-        <h3 :class="h3">CI</h3>
+        <component :is="sec" :class="h3">CI</component>
         <dl v-if="t.status.ci" :class="['card px-4 py-3.5', dl]">
           <dt :class="dt">Pipeline</dt>
           <dd :class="dd">
@@ -275,7 +278,7 @@ const actions = computed(() => [
     </div>
 
     <section v-if="t.status.plan?.length" class="section">
-      <h3 :class="h3">Plan</h3>
+      <component :is="sec" :class="h3">Plan</component>
       <div class="card">
         <DataList :columns="planColumns" :rows="t.status.plan" :row-key="(pi) => pi.key">
           <template #cell-iid="{ row: pi }"><ExtLink :href="issueURL(pi.iid)">#{{ pi.iid }}</ExtLink></template>
@@ -289,7 +292,7 @@ const actions = computed(() => [
 
     <section v-if="t.status.autopilot" class="section">
       <div class="row section-head">
-        <h3>Autopilot</h3>
+        <component :is="sec" class="h3">Autopilot</component>
         <Badge :tone="t.status.autopilot.phase === 'Paused' ? 'warning' : 'progress'">{{ t.status.autopilot.phase }}</Badge>
         <span v-if="autopilotItems.length" class="faint">{{ queueDone(autopilotItems) }} / {{ autopilotItems.length }} done</span>
         <span class="grow" />
@@ -319,7 +322,7 @@ const actions = computed(() => [
 
   <template v-else-if="tab === 'chat'">
     <section v-if="showChat" class="section">
-      <h3 :class="h3">Chat with the agent</h3>
+      <component :is="sec" :class="h3">Chat with the agent</component>
       <TaskChat
         :namespace="namespace"
         :name="name"
@@ -337,7 +340,7 @@ const actions = computed(() => [
     </section>
 
     <section v-if="data.permissions?.gitlab" class="section">
-      <h3 :class="h3">Conversation</h3>
+      <component :is="sec" :class="h3">Conversation</component>
       <Conversation
         :namespace="namespace"
         :name="name"
@@ -349,7 +352,7 @@ const actions = computed(() => [
   </template>
 
   <section v-else-if="tab === 'live'" id="live-transcript" class="section">
-    <h3 :class="h3">Live</h3>
+    <component :is="sec" :class="h3">Live</component>
     <LiveTranscript
       :namespace="namespace"
       :name="name"
@@ -361,7 +364,7 @@ const actions = computed(() => [
 
   <TaskLogs v-else-if="tab === 'logs'" :namespace="namespace" :name="name" :task="task" />
 
-  <TaskCalls v-else-if="tab === 'calls'" :namespace="namespace" :name="name" :task="task" />
+  <TaskCalls v-else-if="tab === 'calls'" :namespace="namespace" :name="name" :task="task" :level="page ? 2 : 3" />
 
   <template v-else>
     <!-- Phase, current step, last result and last activity are the
@@ -381,7 +384,7 @@ const actions = computed(() => [
 
     <div :class="['section', cols]">
       <section class="min-w-0">
-        <h3 :class="h3">Pod</h3>
+        <component :is="sec" :class="h3">Pod</component>
         <dl :class="['card px-4 py-3.5', dl]">
           <dt :class="dt">Pod</dt>
           <dd :class="[dd, 'mono']">{{ t.status.podName || 'not running' }}</dd>
@@ -406,7 +409,7 @@ const actions = computed(() => [
         </dl>
       </section>
       <section v-if="t.status.conditions?.length" class="min-w-0">
-        <h3 :class="h3">Conditions</h3>
+        <component :is="sec" :class="h3">Conditions</component>
         <div class="card">
           <DataList :columns="conditionColumns" :rows="t.status.conditions" :row-key="(c) => c.type">
             <template #cell-status="{ row: c }">

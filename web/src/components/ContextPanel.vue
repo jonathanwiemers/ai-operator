@@ -85,10 +85,10 @@ function inboxTo(item: InboxItem) {
 <template>
   <aside class="ctxp" aria-label="Context">
     <div class="panel">
-      <h3>
+      <h2>
         <span>Needs you</span>
         <span>{{ inbox.length }}</span>
-      </h3>
+      </h2>
       <UEmpty v-if="!inbox.length" icon="i-lucide-inbox" title="Nothing waiting." variant="naked" size="xs" />
       <div v-else class="need">
         <RouterLink v-for="(item, i) in inbox" :key="i" class="n-item min-w-0 [overflow-wrap:anywhere]" :to="inboxTo(item)">
@@ -100,10 +100,10 @@ function inboxTo(item: InboxItem) {
     </div>
 
     <div v-if="milestone" class="panel">
-      <h3>
+      <h2>
         <span class="min-w-0 [overflow-wrap:anywhere]">{{ milestone.title }}</span>
         <span v-if="total">{{ done }} / {{ total }}</span>
-      </h3>
+      </h2>
       <p v-if="waiting" class="waiting [overflow-wrap:anywhere]">
         ⏳ {{ waiting }}.
         <small>Comment <code>/agent start</code> on the tracking issue to plan it now (owners).</small>
@@ -112,15 +112,15 @@ function inboxTo(item: InboxItem) {
     </div>
 
     <div v-if="milestone && milestone.companions?.length" class="panel">
-      <h3>
+      <h2>
         <span>Companions</span>
         <span>{{ milestone.companions.length }}</span>
-      </h3>
+      </h2>
       <CompanionsList :namespace="namespace" :name="name" :milestone="milestone" />
     </div>
 
     <div v-if="history" class="panel">
-      <h3><span>Last 30 days</span></h3>
+      <h2><span>Last 30 days</span></h2>
       <svg class="chart" viewBox="0 0 300 64" preserveAspectRatio="none" aria-label="Runs per day and spend">
         <rect v-for="(b, i) in chart.bars" :key="i" :x="b.x" :y="b.y" :width="b.w" :height="b.h" rx="1.5" fill="var(--tone-progress-fg)" opacity=".55" />
         <polyline v-if="chart.line" fill="none" stroke="var(--accent-2)" stroke-width="2" vector-effect="non-scaling-stroke" :points="chart.line" />
@@ -177,7 +177,7 @@ function inboxTo(item: InboxItem) {
   align-content: start;
   min-height: 0;
 }
-.panel h3 {
+.panel h2 {
   gap: 8px;
   font-size: 11.5px;
   text-transform: uppercase;

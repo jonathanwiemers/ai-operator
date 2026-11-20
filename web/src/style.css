@@ -316,7 +316,10 @@
     font-weight: 650;
   }
 
-  h3 {
+  /* .h3: a section heading at another level (an h2 on one page, an h3 on
+     another) that keeps the h3 look (docs/contributing/web-ui.md). */
+  h3,
+  .h3 {
     font-size: 13px;
     font-weight: 650;
     text-transform: uppercase;
@@ -435,7 +438,7 @@
   margin-top: 28px;
 }
 
-.section > h2,
+.section > h2:not(.h3),
 .section-head {
   margin-bottom: 12px;
 }

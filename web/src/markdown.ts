@@ -3,13 +3,17 @@ import { safeURL } from './format.ts'
 
 // A markdown subset rendered straight to VNodes: agent text never becomes an
 // HTML string, so whatever it contains shows as text. Supported are
-// paragraphs, headings (as h3–h5), lists (with task items), blockquotes,
+// paragraphs, headings, lists (with task items), blockquotes,
 // tables, rules, details/summary, emphasis, strong, strikethrough, code
 // spans, fenced code, entities, a few attribute-free inline tags and links to
 // http(s) URLs; HTML comments are dropped and everything else is text.
 
 // LinkFn renders a link to a safe http(s) URL.
 export type LinkFn = (href: string, label: VNodeChild[]) => VNodeChild
+
+// renderMarkdown's headingLevel is the level of a "#" heading; deeper ones
+// follow it, clamped at h6. Without one (0), a heading is a bold paragraph:
+// user text never adds a second h1 or skips a level in the page's outline.
 
 // Nesting deeper than this (blockquotes, lists, emphasis) stays text.
 const maxDepth = 12
@@ -25,8 +29,8 @@ const detailsRe = /^ {0,3}<details(\s+open)?\s*>/i
 const detailsTagRe = /<(\/?)details(?:\s+open)?\s*>/gi
 const taskRe = /^\[([ xX])\](?:[ \t]+|$)/
 
-export function renderMarkdown(src: string, link: LinkFn): VNode[] {
-  return blocks(src.replace(/\r\n?/g, '\n').split('\n'), link, 0)
+export function renderMarkdown(src: string, link: LinkFn, headingLevel = 0): VNode[] {
+  return blocks(src.replace(/\r\n?/g, '\n').split('\n'), link, headingLevel, 0)
 }
 
 // renderInline renders src as one line for rows that are links already:
@@ -63,7 +67,7 @@ function startsBlock(line: string): boolean {
 
 const indentOf = (line: string) => line.length - line.trimStart().length
 
-function blocks(lines: string[], link: LinkFn, depth: number): VNode[] {
+function blocks(lines: string[], link: LinkFn, base: number, depth: number): VNode[] {
   const out: VNode[] = []
   let i = 0
   while (i < lines.length) {
@@ -95,7 +99,7 @@ function blocks(lines: string[], link: LinkFn, depth: number): VNode[] {
       continue
     }
     if (depth < maxDepth && detailsRe.test(line)) {
-      i = details(lines, i, link, depth, out)
+      i = details(lines, i, link, base, depth, out)
       continue
     }
     if (tableAt(lines, i)) {
@@ -104,19 +108,20 @@ function blocks(lines: string[], link: LinkFn, depth: number): VNode[] {
     }
     const heading = headingRe.exec(line)
     if (heading) {
-      out.push(h(`h${Math.min(heading[1]!.length + 2, 5)}`, inline(heading[2] ?? '', link, 0)))
+      const text = inline(heading[2] ?? '', link, 0)
+      out.push(base ? h(`h${Math.min(base + heading[1]!.length - 1, 6)}`, text) : h('p', { class: 'font-semibold' }, text))
       i++
       continue
     }
     if (depth < maxDepth && quoteRe.test(line)) {
       const inner: string[] = []
       for (; i < lines.length && quoteRe.test(lines[i]!); i++) inner.push(lines[i]!.replace(quoteRe, ''))
-      out.push(h('blockquote', blocks(inner, link, depth + 1)))
+      out.push(h('blockquote', blocks(inner, link, base, depth + 1)))
       continue
     }
     const item = itemRe.exec(line)
     if (depth < maxDepth && item) {
-      i = list(lines, i, link, depth, out)
+      i = list(lines, i, link, base, depth, out)
       continue
     }
     const para: string[] = [line.trim()]
@@ -134,7 +139,7 @@ function blocks(lines: string[], link: LinkFn, depth: number): VNode[] {
 // and returns the index of the line to go on with. It ends at the matching
 // </details> (or the end of the text); text after that on the same line is
 // left in lines for the caller.
-function details(lines: string[], start: number, link: LinkFn, depth: number, out: VNode[]): number {
+function details(lines: string[], start: number, link: LinkFn, base: number, depth: number, out: VNode[]): number {
   const open = detailsRe.exec(lines[start]!)!
   const body: string[] = []
   let line = lines[start]!.slice(open[0].length)
@@ -163,7 +168,7 @@ function details(lines: string[], start: number, link: LinkFn, depth: number, ou
     children.push(h('summary', inline(text.slice(summary[0].length, close).trim(), link, 0)))
     text = text.slice(close + '</summary>'.length)
   }
-  children.push(...blocks(text.split('\n'), link, depth + 1))
+  children.push(...blocks(text.split('\n'), link, base, depth + 1))
   out.push(h('details', open[1] ? { open: true } : null, children))
   return i
 }
@@ -218,7 +223,7 @@ function table(lines: string[], start: number, link: LinkFn, out: VNode[]): numb
 // list renders the list that starts at lines[start] into out and returns the
 // index of the first line after it. An item's further lines are indented to
 // its text or continue its paragraph.
-function list(lines: string[], start: number, link: LinkFn, depth: number, out: VNode[]): number {
+function list(lines: string[], start: number, link: LinkFn, base: number, depth: number, out: VNode[]): number {
   // Items of one list share their bullet, or the delimiter after their number.
   const kind = (m: RegExpExecArray | null) => m && (/\d/.test(m[2]!) ? m[2]!.slice(-1) : m[2]!)
   const first = itemRe.exec(lines[start]!)!
@@ -261,8 +266,8 @@ function list(lines: string[], start: number, link: LinkFn, depth: number, out: 
   }
   const children = items.map((it, k) =>
     tasks[k] === null
-      ? h('li', blocks(it, link, depth + 1))
-      : h('li', { class: 'task' }, [h('input', { type: 'checkbox', disabled: true, checked: tasks[k] }), ...blocks(it, link, depth + 1)]),
+      ? h('li', blocks(it, link, base, depth + 1))
+      : h('li', { class: 'task' }, [h('input', { type: 'checkbox', disabled: true, checked: tasks[k] }), ...blocks(it, link, base, depth + 1)]),
   )
   const n = Number.parseInt(first[2]!, 10)
   out.push(/\d/.test(first[2]!) ? h('ol', n !== 1 ? { start: n } : null, children) : h('ul', children))

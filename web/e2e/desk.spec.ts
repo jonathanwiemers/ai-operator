@@ -358,6 +358,25 @@ async function expectA11y(page: Page, id: string): Promise<void> {
   expect(violations, 'axe violations (WCAG 2.2 AA) as "rule: targets"; fix them or list the check in e2e/known-a11y.ts').toEqual([])
 }
 
+// headings reads the page's headings from the accessibility tree, in order,
+// as "h<level> <name>".
+async function headings(page: Page): Promise<string[]> {
+  const tree = await page.locator('body').ariaSnapshot()
+  return [...tree.matchAll(/heading (?:"(.*)" )?\[level=(\d)\]/g)].map((m) => `h${m[2]} ${m[1] ?? ''}`)
+}
+
+// expectOutline: one h1, and no heading more than one level deeper than the
+// one before it, the first being the h1 (docs/contributing/web-ui.md, "Checks").
+async function expectOutline(page: Page): Promise<void> {
+  const outline = await headings(page)
+  const levels = outline.map((h) => Number(h[1]))
+  expect(outline.filter((h) => h.startsWith('h1 ')), 'h1 headings in the accessibility tree').toHaveLength(1)
+  expect(
+    outline.filter((_, i) => levels[i]! > (levels[i - 1] ?? 0) + 1),
+    `headings that skip a level, in the outline ${JSON.stringify(outline)}`,
+  ).toEqual([])
+}
+
 for (const route of routes) {
   const sizes = atEdges(route.name) ? edgeWidths : widths
   // axe runs at the phone size and at the widest of the route's sizes.
@@ -397,7 +416,10 @@ for (const route of routes) {
       })
       expect(overflow, 'sideways scroll in px of the page and of the content pane').toEqual({ page: 0, pane: 0 })
 
-      if (size === sizes[0] || size === desktop) await expectA11y(page, id)
+      if (size === sizes[0] || size === desktop) {
+        await expectOutline(page)
+        await expectA11y(page, id)
+      }
     })
   }
   // The dark pass: axe at the desktop size in the dark tokens, for the
@@ -2488,7 +2510,7 @@ test.describe('task tabs', () => {
         await expect(overview).toHaveAttribute('aria-current', 'page')
         expect(openQuestions, 'the fixture has an open question').toBeGreaterThan(0)
         await expect(overview).toHaveText(`Overview ${openQuestions}`)
-        await expect(page.locator('main nav[aria-label="Task"] + section > h3')).toHaveText('Summary of the last run')
+        await expect(page.locator(`main nav[aria-label="Task"] + section > ${pageName === 'task' ? 'h2' : 'h3'}`)).toHaveText('Summary of the last run')
 
         for (const t of taskTabs.slice(1)) {
           await strip.getByRole('link', { name: t.label, exact: true }).click()
@@ -3229,11 +3251,11 @@ test.describe('milestone decisions', () => {
       const cards = main.locator('[data-decision]')
       const groups = main.locator('[data-decision-group]')
       await expect(groups).toHaveCount(2)
-      await expect(groups.nth(0).locator('h3')).toContainText('Provider SDK 4 with refund support')
-      await expect(groups.nth(0).locator('h3')).toContainText('#280')
-      await expect(groups.nth(0).locator('h3')).toContainText('closed')
-      await expect(groups.nth(0).locator('h3 a')).toHaveAttribute('href', '/projects/team-a/shop/milestones/14/issues/280')
-      await expect(groups.nth(1).locator('h3')).toContainText('open')
+      await expect(groups.nth(0).locator('h2')).toContainText('Provider SDK 4 with refund support')
+      await expect(groups.nth(0).locator('h2')).toContainText('#280')
+      await expect(groups.nth(0).locator('h2')).toContainText('closed')
+      await expect(groups.nth(0).locator('h2 a')).toHaveAttribute('href', '/projects/team-a/shop/milestones/14/issues/280')
+      await expect(groups.nth(1).locator('h2')).toContainText('open')
       expect(await cards.evaluateAll((els) => els.map((e) => e.id))).toEqual(['D280-1', 'D280-2', 'D281-P1', 'D281-2'])
 
       // Chosen first, then the alternatives; markdown without HTML.
@@ -3261,7 +3283,7 @@ test.describe('milestone decisions', () => {
       expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
       if (phone) {
         const taps = await main
-          .locator('[data-decisions] button, [data-decision-group] h3 a, [data-decision] footer a, [data-chain] a, [data-revisit] a')
+          .locator('[data-decisions] button, [data-decision-group] h2 a, [data-decision] footer a, [data-chain] a, [data-revisit] a')
           .evaluateAll((els) => els.map((e) => e.getBoundingClientRect().height))
         for (const h of taps) expect(h, 'tap height on a phone').toBeGreaterThanOrEqual(44)
       }

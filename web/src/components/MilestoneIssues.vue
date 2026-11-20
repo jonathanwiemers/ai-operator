@@ -62,7 +62,7 @@ const tap = 'min-h-11 tablet:min-h-0'
 // (px-3.5) is taken from them.
 const columns = 'desktop:grid-cols-[minmax(0,1fr)_90px_64px_64px_64px_64px_72px_64px_84px_112px]'
 const sectionHead =
-  'm-0 mb-2 flex justify-between text-[11.5px] font-semibold tracking-[0.06em] text-(--text-3) uppercase'
+  'h3 m-0 mb-2 flex justify-between text-[11.5px] font-semibold tracking-[0.06em] text-(--text-3) uppercase'
 </script>
 
 <template>
@@ -242,13 +242,13 @@ const sectionHead =
         </small>
       </p>
       <div v-if="milestone.autopilot?.items?.length" class="mt-[18px]" data-queue>
-        <h3 :class="sectionHead">
+        <h2 :class="sectionHead">
           Queue <span>{{ queueDone(milestone.autopilot.items) }} / {{ milestone.autopilot.items.length }}</span>
-        </h3>
+        </h2>
         <QueueList :namespace="namespace" :name="name" :milestone="milestone" grouped />
       </div>
       <div v-if="milestone.companions?.length" class="mt-[18px]">
-        <h3 :class="sectionHead">Companions <span>{{ milestone.companions.length }}</span></h3>
+        <h2 :class="sectionHead">Companions <span>{{ milestone.companions.length }}</span></h2>
         <CompanionsList :namespace="namespace" :name="name" :milestone="milestone" />
       </div>
     </template>

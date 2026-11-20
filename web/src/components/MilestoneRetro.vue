@@ -282,7 +282,7 @@ const descriptionUI = { root: 'w-full', base: 'min-h-[220px] resize-y font-mono 
       <p v-else-if="!r.failed" class="mt-3 mb-0 text-[13px] text-(--text-3)">The text of this retrospective is not stored.</p>
 
       <div v-if="drivers.length" class="mt-4" data-drivers>
-        <h3>Cost drivers</h3>
+        <h2 class="h3">Cost drivers</h2>
         <div class="overflow-hidden text-[13px]" :class="box">
           <DataList :columns="driverColumns" :rows="driverRows" :row-key="(d) => d.key">
             <template #cell-kind="{ row }"><Badge tone="muted">{{ row.kind }}</Badge></template>
@@ -293,7 +293,7 @@ const descriptionUI = { root: 'w-full', base: 'min-h-[220px] resize-y font-mono 
       </div>
 
       <div v-if="followUps.length" class="mt-4">
-        <h3>Leftovers <span>{{ followUps.length }}</span></h3>
+        <h2 class="h3">Leftovers <span>{{ followUps.length }}</span></h2>
         <ul class="m-0 list-none p-0" :class="box">
           <li
             v-for="f in followUps"
@@ -371,7 +371,7 @@ const descriptionUI = { root: 'w-full', base: 'min-h-[220px] resize-y font-mono 
         <UAlert v-if="error" role="alert" :color="alertColor('danger')" variant="subtle" class="mt-3 [overflow-wrap:anywhere]" :description="error" />
 
         <div v-if="step === 'editing'" class="mt-4" data-editor>
-          <h3>Follow-up milestone <span class="font-normal">from leftovers {{ edited.join(', ') }}</span></h3>
+          <h2 class="h3">Follow-up milestone <span class="font-normal">from leftovers {{ edited.join(', ') }}</span></h2>
           <div class="grid grid-cols-1 gap-3 tablet:grid-cols-2">
             <div class="flex min-w-0 flex-col gap-1.5">
               <label for="fu-title" :class="fieldLabel">Title</label>
@@ -385,7 +385,7 @@ const descriptionUI = { root: 'w-full', base: 'min-h-[220px] resize-y font-mono 
             <div class="flex min-w-0 flex-col gap-1.5">
               <span :class="fieldLabel">Preview</span>
               <div class="flex-1 px-3.5 py-3 text-sm [overflow-wrap:anywhere]" :class="box">
-                <h4 class="m-0 mb-2.5 text-base">{{ title.trim() || 'Untitled' }}</h4>
+                <p class="m-0 mb-2.5 text-base">{{ title.trim() || 'Untitled' }}</p>
                 <Markdown variant="doc" :text="description" />
               </div>
             </div>

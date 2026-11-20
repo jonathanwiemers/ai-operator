@@ -281,7 +281,7 @@ function rowKey(b: SpendBreakdown): string {
 
 // A section's heading, a card around each table, and the drill-down links
 // (crumbs, unit, a row's level), 44 px high on phones.
-const heading = 'mb-2 text-sm font-semibold'
+const heading = 'h3 mb-2 text-sm font-semibold'
 const tableCard = 'card overflow-hidden'
 const tap = 'inline-flex min-h-11 items-center tablet:min-h-0'
 const mark = 'ms-1.5 rounded-full px-1.5 text-[11px] font-semibold'
@@ -356,7 +356,7 @@ const mark = 'ms-1.5 rounded-full px-1.5 text-[11px] font-semibold'
 
       <section class="mt-5">
         <div class="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1">
-          <h3 class="text-sm font-semibold">{{ level.title }}</h3>
+          <h2 class="h3 text-sm font-semibold">{{ level.title }}</h2>
           <div v-if="children.length" class="flex flex-wrap gap-3 text-[11.5px] text-(--text-3)">
             <span><i class="me-1 inline-block size-2 rounded-xs align-[-1px]" :style="{ background: barColors[0] }" />main model</span>
             <span v-for="[m, slot] in subagents" :key="m">
@@ -459,7 +459,7 @@ const mark = 'ms-1.5 rounded-full px-1.5 text-[11px] font-semibold'
 
       <section v-if="totals.calls" class="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-x-4">
         <div v-for="b in breakdowns" :key="b.title" class="mt-5 min-w-0">
-          <h3 :class="heading">{{ b.title }}</h3>
+          <h2 :class="heading">{{ b.title }}</h2>
           <div :class="tableCard">
             <DataList :columns="b.columns" :rows="b.rows" :row-key="(r) => r.key" scroll :data-spend="b.title.slice(3)">
               <template #cell-key="{ row }">{{ b.label(row) }}</template>
@@ -481,7 +481,7 @@ const mark = 'ms-1.5 rounded-full px-1.5 text-[11px] font-semibold'
       </section>
 
       <section v-if="totals.calls" class="mt-5">
-        <h3 :class="heading">By kind and model</h3>
+        <h2 :class="heading">By kind and model</h2>
         <div :class="tableCard">
           <DataList :columns="kindModelColumns" :rows="kindModels" :row-key="(r) => r.key" scroll data-spend="kind-model">
             <template #cell-kind="{ row }">{{ kindModel(row.key).kind || '—' }}</template>
@@ -497,7 +497,7 @@ const mark = 'ms-1.5 rounded-full px-1.5 text-[11px] font-semibold'
       </section>
 
       <section v-if="conflictRuns.length" class="mt-5">
-        <h3 :class="heading">Conflict calls per run</h3>
+        <h2 :class="heading">Conflict calls per run</h2>
         <div :class="tableCard">
           <DataList :columns="conflictColumns" :rows="conflictRuns" :row-key="(r) => r.key" scroll data-spend="conflict">
             <template #cell-run="{ row }">{{ conflictRunLabel(row.key) }}</template>
@@ -516,7 +516,7 @@ const mark = 'ms-1.5 rounded-full px-1.5 text-[11px] font-semibold'
 
       <section v-if="totals.calls" class="grid grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-x-4">
         <div class="mt-5 min-w-0">
-          <h3 :class="heading">Review rounds</h3>
+          <h2 :class="heading">Review rounds</h2>
           <div v-if="rounds.length" :class="tableCard">
             <DataList :columns="roundColumns" :rows="rounds" :row-key="(r) => r.key" scroll data-spend="rounds">
               <template #cell-calls="{ row }">{{ row.totals.calls }}</template>
@@ -528,7 +528,7 @@ const mark = 'ms-1.5 rounded-full px-1.5 text-[11px] font-semibold'
           <p v-else class="muted">No review calls here.</p>
         </div>
         <div class="mt-5 min-w-0">
-          <h3 :class="heading">Implementer steps: resumed vs fresh</h3>
+          <h2 :class="heading">Implementer steps: resumed vs fresh</h2>
           <div v-if="sessions.length" :class="tableCard">
             <DataList :columns="sessionColumns" :rows="sessions" :row-key="(r) => r.key" scroll data-spend="sessions">
               <template #cell-calls="{ row }">{{ row.totals.calls }}</template>
@@ -545,7 +545,7 @@ const mark = 'ms-1.5 rounded-full px-1.5 text-[11px] font-semibold'
           </p>
         </div>
         <div class="mt-5 min-w-0">
-          <h3 :class="heading">With vs without subagents</h3>
+          <h2 :class="heading">With vs without subagents</h2>
           <div v-if="subagentRows.length" :class="tableCard">
             <DataList :columns="subagentColumns" :rows="subagentRows" :row-key="subagentKey" scroll data-spend="subagents">
               <template #cell-with="{ row }">{{ row.withSubagents ? 'with' : 'without' }}</template>

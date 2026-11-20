@@ -114,14 +114,14 @@ const issueURL = (iid: number) => props.milestone.webURL.replace(/\/-\/milestone
 // tap: a link in a row, at least 44 px high on phones.
 const tap = 'inline-flex min-h-11 items-center tablet:min-h-0'
 const note = 'text-[13px] text-(--text-3)'
-// laneHead: a lane's heading, spaced from the lane above it.
-const laneHead = 'm-0 mb-1 px-1.5 text-xs font-semibold text-(--text-2)'
+// laneHead: a lane's heading (h3, below the section's h2), spaced from the lane above it.
+const laneHead = 'm-0 mb-1 px-1.5 text-xs font-semibold tracking-normal text-(--text-2) normal-case'
 </script>
 
 <template>
   <p v-if="grouped && waves" :class="[laneHead, 'mt-0 mb-2 font-normal text-(--text-3)']" data-waves>{{ waves }}</p>
   <template v-for="(g, n) in groups" :key="g.lane">
-    <h4
+    <h3
       v-if="g.lane === 'running' && canParallel"
       :class="[laneHead, n ? 'mt-3' : 'mt-0', 'flex flex-wrap items-center gap-x-1']"
       data-lane-head
@@ -155,8 +155,8 @@ const laneHead = 'm-0 mb-1 px-1.5 text-xs font-semibold text-(--text-2)'
           @click="step(1)"
         />
       </span>
-    </h4>
-    <h4 v-else-if="g.label" :class="[laneHead, n ? 'mt-3' : 'mt-0']" data-lane-head>{{ g.label }}</h4>
+    </h3>
+    <h3 v-else-if="g.label" :class="[laneHead, n ? 'mt-3' : 'mt-0']" data-lane-head>{{ g.label }}</h3>
     <ol
       v-if="g.items.length || !g.label"
       class="m-0 grid list-none gap-0.5 p-0 text-[13px]"

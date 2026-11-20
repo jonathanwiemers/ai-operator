@@ -116,7 +116,9 @@ onBeforeUnmount(() => {
   clearTimeout(flash)
 })
 
-const sectionHead = 'm-0 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 text-sm font-semibold'
+// An issue's group is a section (h2) with the look it had as an h3.
+const sectionHead =
+  'm-0 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 text-sm font-semibold tracking-[0.04em] text-(--text-2) uppercase'
 </script>
 
 <template>
@@ -154,7 +156,7 @@ const sectionHead = 'm-0 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 t
       <UEmpty v-else-if="!groups.length" icon="i-lucide-scale" :title="emptyText" variant="naked" size="sm" />
       <template v-else>
         <div v-for="g in groups" :key="g.key" class="mt-[18px] flex min-w-0 flex-col gap-2.5" data-decision-group>
-          <h3 :class="sectionHead">
+          <h2 :class="sectionHead">
             <RouterLink
               v-if="!milestone"
               :to="milestoneTo(g)"
@@ -171,7 +173,7 @@ const sectionHead = 'm-0 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 t
             <Badge class="self-center" :tone="g.issue.state === 'opened' ? 'progress' : 'muted'">
               {{ issueStateLabel(g.issue.state) }}
             </Badge>
-          </h3>
+          </h2>
           <DecisionCard
             v-for="d in g.decisions"
             :key="d.id"

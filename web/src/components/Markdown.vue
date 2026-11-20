@@ -7,16 +7,17 @@ import ExtLink from './ExtLink.vue'
 // to http(s) URLs. block renders paragraphs, lists, code and tables; inline
 // renders one line for rows that are links already (links show as their
 // label). variant picks the block spacing: note for chat, events and prompts,
-// doc for research results and retrospectives.
-const props = withDefaults(defineProps<{ text: string; mode?: 'block' | 'inline'; variant?: 'note' | 'doc' }>(), {
-  mode: 'block',
-  variant: 'note',
-})
+// doc for research results and retrospectives. headingLevel: the level of a
+// "#" heading (research reports); without it headings are bold paragraphs.
+const props = withDefaults(
+  defineProps<{ text: string; mode?: 'block' | 'inline'; variant?: 'note' | 'doc'; headingLevel?: number }>(),
+  { mode: 'block', variant: 'note' },
+)
 
 const Rendered = () =>
   props.mode === 'inline'
     ? renderInline(props.text)
-    : renderMarkdown(props.text, (href, label) => h(ExtLink, { href, nofollow: true }, () => label))
+    : renderMarkdown(props.text, (href, label) => h(ExtLink, { href, nofollow: true }, () => label), props.headingLevel)
 </script>
 
 <template>
@@ -83,7 +84,8 @@ const Rendered = () =>
 
 .md-doc :deep(h3),
 .md-doc :deep(h4),
-.md-doc :deep(h5) {
+.md-doc :deep(h5),
+.md-doc :deep(h6) {
   margin: 14px 0 6px;
   font-size: 15px;
   text-transform: none;
@@ -95,7 +97,8 @@ const Rendered = () =>
   font-size: 14px;
 }
 
-.md-doc :deep(h5) {
+.md-doc :deep(h5),
+.md-doc :deep(h6) {
   font-size: 13px;
   color: var(--text-2);
 }

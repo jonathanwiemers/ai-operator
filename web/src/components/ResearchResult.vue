@@ -13,6 +13,8 @@ import type { ResearchDetail, ResearchResult, ResearchRun } from '../types'
 // A stored result in the research's view: a news flash groups its items by
 // topic, a report shows its blocks in order. runLink: the run line links to
 // the run's page.
+// Its title is an h2, its topics and blocks h3 and below (the report keeps
+// its outline).
 const props = defineProps<{
   research: ResearchDetail
   run: ResearchRun | null
@@ -61,8 +63,8 @@ const flash = computed(() =>
         <h3 class="mb-2">{{ g.topic || 'Other' }} <span class="ms-1 font-medium text-(--text-3)">{{ g.items.length }}</span></h3>
         <ItemsBlock :items="g.items" hide-topic />
       </section>
-      <BlockList v-if="flash.rest.length" :blocks="flash.rest" class="mt-2" />
+      <BlockList v-if="flash.rest.length" :blocks="flash.rest" :heading-level="3" class="mt-2" />
     </template>
-    <BlockList v-else :blocks="result.blocks" />
+    <BlockList v-else :blocks="result.blocks" :heading-level="3" />
   </article>
 </template>

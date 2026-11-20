@@ -99,7 +99,7 @@ async function decide(cmd: 'accept' | 'reject', proposal: number) {
 
 const tones = { warning: 'warning', progress: 'info', success: 'success', neutral: 'neutral' } as const
 const sectionHead =
-  'm-0 mb-2 flex justify-between gap-2 text-[11.5px] font-semibold tracking-[0.06em] text-(--text-3) uppercase'
+  'h3 m-0 mb-2 flex justify-between gap-2 text-[11.5px] font-semibold tracking-[0.06em] text-(--text-3) uppercase'
 const quiet = 'text-[13px] text-(--text-3)'
 const chip = { color: 'neutral', variant: 'outline', size: 'sm' } as const
 </script>
@@ -108,10 +108,10 @@ const chip = { color: 'neutral', variant: 'outline', size: 'sm' } as const
   <div class="grid min-w-0 gap-[18px] min-[1024px]:grid-cols-[minmax(240px,300px)_minmax(0,1fr)]">
     <div class="grid min-w-0 content-start gap-[18px]">
       <section class="min-w-0" data-needs-problems>
-        <h3 :class="sectionHead">
+        <h2 :class="sectionHead">
           <span>Problems</span>
           <span v-if="open.count">{{ open.count }}</span>
-        </h3>
+        </h2>
         <UAlert v-if="failed" :color="alertColor('danger')" variant="subtle" description="The problems could not be loaded." />
         <UEmpty v-else-if="!problems.length" icon="i-lucide-inbox" title="Nothing needs you." variant="naked" size="sm" />
         <nav v-else class="grid gap-1" aria-label="Problems">
@@ -138,7 +138,7 @@ const chip = { color: 'neutral', variant: 'outline', size: 'sm' } as const
       </section>
 
       <section v-if="open.proposals.length" class="min-w-0" data-needs-proposals>
-        <h3 :class="sectionHead"><span>Proposals</span></h3>
+        <h2 :class="sectionHead"><span>Proposals</span></h2>
         <div class="grid gap-2.5">
           <div v-for="p in open.proposals" :key="`P${p.id}`" class="card grid gap-2 px-3.5 py-3 text-[13.5px]" :data-proposal="p.id">
             <div class="flex flex-wrap items-baseline gap-x-2">

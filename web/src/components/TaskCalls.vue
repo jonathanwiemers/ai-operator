@@ -32,7 +32,8 @@ import DataList, { type DataListColumn } from '../ui/DataList.vue'
 // TaskCalls is the "Agent calls" section of the Task page: the task's
 // totals, its runs newest first and, per expanded run, its calls (loaded
 // on demand). It hides itself when research is off (404 / 503).
-const props = defineProps<{ namespace: string; name: string; task: string }>()
+// level: its heading's level, 2 on the Task page, 3 inside the issue page.
+const props = defineProps<{ namespace: string; name: string; task: string; level?: 2 | 3 }>()
 const now = useNow()
 
 const data = ref<Spend | null>(null)
@@ -109,7 +110,7 @@ async function toggle(r: SpendChild) {
 
 <template>
   <section v-if="!hidden && (data || error)" class="section">
-    <h3>Agent calls</h3>
+    <component :is="`h${level ?? 3}`" class="h3">Agent calls</component>
     <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
     <template v-if="data">
       <div v-if="data.totals.calls || data.totals.checkpoints" class="card mb-2.5 flex flex-wrap gap-x-4.5 gap-y-1.5 px-4 py-2.5">

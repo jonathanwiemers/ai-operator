@@ -39,9 +39,9 @@ const successorTo = computed(() => ({ query: route.query, hash: `#${props.decisi
     data-decision
   >
     <header class="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
-      <h4 class="m-0 min-w-0 text-sm font-semibold [overflow-wrap:anywhere]" data-decision-title>
+      <h3 class="m-0 min-w-0 text-sm font-semibold tracking-normal text-inherit normal-case [overflow-wrap:anywhere]" data-decision-title>
         <Markdown :text="decision.title || decision.id" mode="inline" />
-      </h4>
+      </h3>
       <span class="font-medium whitespace-nowrap tabular-nums text-(--text-3)" data-decision-id>{{ decision.id }}</span>
       <Badge class="self-center" :tone="decision.kind === 'planner' ? 'info' : 'neutral'">{{ kindLabel(decision.kind) }}</Badge>
     </header>

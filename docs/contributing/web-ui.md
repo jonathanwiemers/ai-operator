@@ -472,6 +472,17 @@ Every page has the same frame, from the outside in (decisions 3 to 6 of
 `<UPageHeader`; the e2e checks that top-level routes have no breadcrumb and
 nested ones do.
 
+**Headings** (decision 5 of [the accessible spec](../specs/desk-accessible.spec.md)):
+the header's title is the page's only `h1`. A page section is an `h2`, a
+card inside it an `h3`, and no level is skipped. A card title that heads no
+section is styled text, not a heading. Where a component's sections sit at
+different depths (`TaskBody` on the Task page and inside the issue page's
+*Task* section), it picks the element by level and keeps the look with the
+`.h3` class of `style.css`. Markdown headings render as bold paragraphs;
+only research reports pass a `headingLevel` (`h3`, clamped at `h6`). The
+route loop in `desk.spec.ts` reads the outline from the accessibility tree:
+one `h1`, and no heading more than one level below the one before it.
+
 ### Building blocks
 
 - **Stat tiles.** Key figures (the Overview strip, the Metrics tiles, the

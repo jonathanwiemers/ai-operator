@@ -35,7 +35,7 @@ const note = useStreamNote(() => ({
 // Pilot task link is 44 px high; the composer and the chat bring their own
 // touch sizes.
 const sectionHead =
-  'm-0 mb-2 flex justify-between gap-2 text-[11.5px] font-semibold tracking-[0.06em] text-(--text-3) uppercase'
+  'h3 m-0 mb-2 flex justify-between gap-2 text-[11.5px] font-semibold tracking-[0.06em] text-(--text-3) uppercase'
 const tap = 'inline-flex min-h-11 items-center tablet:min-h-0'
 const quiet = 'text-[13px] text-(--text-3)'
 </script>
@@ -57,7 +57,7 @@ const quiet = 'text-[13px] text-(--text-3)'
       </div>
 
       <section class="min-w-0">
-        <h3 :class="sectionHead"><span>Message the pilot</span></h3>
+        <h2 :class="sectionHead"><span>Message the pilot</span></h2>
         <AskPilot v-if="showChat" :namespace="namespace" :name="name" :milestone="milestone" />
         <Composer
           v-else-if="perms?.steer"
@@ -80,7 +80,7 @@ const quiet = 'text-[13px] text-(--text-3)'
     </template>
 
     <section class="min-w-0">
-      <h3 :class="sectionHead"><span>Pilot events</span></h3>
+      <h2 :class="sectionHead"><span>Pilot events</span></h2>
       <IssueStream :namespace="namespace" :name="name" :milestone="milestone.iid" :kinds="pilotStreamKinds" :prompts="milestone.prompts" :can-steer="active && !!perms?.steer" />
     </section>
   </div>

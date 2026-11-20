@@ -46,9 +46,9 @@ const time = (t?: string) => (t ? new Date(t).toLocaleTimeString() : '')
         Prompt to <strong>{{ e.role || 'agent' }}</strong>
         <span class="mono faint">{{ e.engine }}/{{ e.model || 'default' }}</span>
       </summary>
-      <h4 v-if="e.system">System prompt</h4>
+      <p v-if="e.system" class="prompt-label">System prompt</p>
       <pre v-if="e.system">{{ e.system }}</pre>
-      <h4>Prompt</h4>
+      <p class="prompt-label">Prompt</p>
       <pre>{{ e.prompt }}</pre>
     </details>
   </div>
@@ -112,7 +112,7 @@ const time = (t?: string) => (t ? new Date(t).toLocaleTimeString() : '')
   cursor: pointer;
 }
 
-.prompt h4 {
+.prompt .prompt-label {
   margin: 10px 0 4px;
   font-size: 12px;
   color: var(--text-3);
