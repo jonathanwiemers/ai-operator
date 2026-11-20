@@ -117,3 +117,22 @@ const LIVE = /\baria-live\s*=\s*["']?(?!off\b)\w/g
 export function liveRegions(src) {
   return scan(src, LIVE)
 }
+
+// A status dot with no text (Decision 8 of docs/specs/desk-accessible.spec.md:
+// no status by colour alone): a <Badge> with `dot` (or `:dot`) whose slot has
+// no text once tags are removed, and no `label` (or `:label`) to name the
+// state. Run it on stripComments output.
+const BADGE = /<Badge\b((?:[^>"']|"[^"]*"|'[^']*')*?)(\/?)>/g
+
+export function silentDots(src) {
+  return scan(src, BADGE, (m) => {
+    const attrs = m[1].replace(/"[^"]*"|'[^']*'/g, '""')
+    if (!/(?:^|\s)(?::|v-bind:)?dot(?=[\s=]|$)/.test(attrs)) return false
+    if (/(?:^|\s)(?::|v-bind:)?label\s*=/.test(attrs)) return false
+    if (m[2] === '/') return true
+    const start = m.index + m[0].length
+    const end = src.indexOf('</Badge>', start)
+    const slot = src.slice(start, end < 0 ? src.length : end)
+    return slot.replace(/<[^>]*>/g, '').trim() === ''
+  })
+}

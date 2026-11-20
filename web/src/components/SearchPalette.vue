@@ -8,6 +8,7 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import UCommandPalette from '@nuxt/ui/components/CommandPalette.vue'
 import UModal from '@nuxt/ui/components/Modal.vue'
+import type { InputProps } from '@nuxt/ui'
 import { getMilestones, getSearch } from '../client'
 import { paletteGroups, searchQuery } from '../searchItems'
 import { paletteOpen } from '../searchPalette'
@@ -15,6 +16,9 @@ import type { Feature, MilestoneRow, ProjectSummary, SearchResult } from '../gen
 
 const props = defineProps<{ projects: ProjectSummary[] | null; features: Feature[] | null; fullscreen: boolean }>()
 const route = useRoute()
+// The search field's accessible name (the placeholder is not one). UInput
+// passes attributes on to the input; its props type does not list them.
+const searchInput = { 'aria-label': 'Search' } as InputProps
 const openProject = computed(() => {
   const namespace = route.params.namespace
   const name = route.params.name
@@ -73,6 +77,7 @@ const groups = computed(() =>
         v-model:search-term="term"
         :groups="groups"
         placeholder="Search projects, milestones, issues, !MR"
+        :input="searchInput"
         :close="{ class: 'min-h-11 min-w-11 justify-center tablet:min-h-0 tablet:min-w-0' }"
         close-icon="i-lucide-x"
         class="h-full tablet:h-auto tablet:max-h-[min(32rem,80dvh)]"

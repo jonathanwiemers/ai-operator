@@ -12,6 +12,7 @@ import {
   positiveTabindex,
   rawControls,
   rawColours,
+  silentDots,
   stripComments,
   strayBreakpoints,
 } from './conventions.mjs'
@@ -32,6 +33,8 @@ const RULES = [
   { name: 'positive-tabindex', enforce: true, find: positiveTabindex, skip: [] },
   // One announcer (Decision 7): no aria-live but its regions in App.vue.
   { name: 'ad-hoc-live-region', enforce: true, find: liveRegions, skip: ['App.vue'] },
+  // Not by colour alone (Decision 8): a Badge dot has slot text or a label.
+  { name: 'silent-dot', enforce: true, find: silentDots, skip: [] },
 ]
 
 function files(dir) {
@@ -134,6 +137,20 @@ test('matchers: live regions', () => {
   const tpl = (body) => `<template>\n${body}\n</template>`
   assert.deepEqual(liveRegions(tpl('<p aria-live="polite" />\n<p aria-live="assertive" />\n<p :aria-live="x" />')), [2, 3, 4])
   assert.deepEqual(liveRegions(tpl('<div role="log" aria-live="off" />')), [])
+})
+
+// A dot with neither slot text nor a label fails npm test.
+test('conventions: silent-dot is enforced', () => {
+  assert.equal(RULES.find((r) => r.name === 'silent-dot').enforce, true)
+})
+
+test('matchers: silent dots', () => {
+  const tpl = (body) => `<template>\n${body}\n</template>`
+  assert.deepEqual(silentDots(tpl('<Badge dot />\n<Badge tone="ok" :dot="live" />\n<Badge dot>\n  <span class="x" />\n</Badge>')), [2, 3, 4])
+  assert.deepEqual(silentDots(tpl('<Badge dot label="Running" />\n<Badge dot :label="stageLabel(s)" />\n<Badge dot>Failed</Badge>')), [])
+  assert.deepEqual(silentDots(tpl('<Badge :dot="a > b">\n  {{ label }}\n</Badge>\n<Badge tone="ok" />\n<Badge title="dot" />')), [])
+  assert.deepEqual(silentDots(tpl('<StageBadge dot />\n<Badges dot />')), [])
+  assert.deepEqual(silentDots(stripComments(tpl('<!-- <Badge dot /> -->\n<p/>'), 'vue')), [])
 })
 
 test('matchers: breakpoints', () => {

@@ -286,6 +286,14 @@
     text-decoration: underline;
   }
 
+  /* A link inside running text is underlined: told apart from the text
+     around it by more than its colour (Decision 8 of
+     docs/specs/desk-accessible.spec.md, axe's link-in-text-block). */
+  :where(p, .md) a:not([data-slot]) {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
   :focus-visible {
     outline: 2px solid var(--focus);
     outline-offset: 2px;

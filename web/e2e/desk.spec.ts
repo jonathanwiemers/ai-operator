@@ -1372,6 +1372,11 @@ test('metrics filters inline from 760 px@1180', async ({ page, baseURL }) => {
   await expect(page.getByRole('option')).toHaveText(['cursor'])
   await page.getByRole('option', { name: 'cursor' }).click()
   await expect(page).toHaveURL(/engine=cursor/)
+  // A custom range shows the dates, each named by its label.
+  await page.getByRole('combobox', { name: 'Range' }).click()
+  await page.getByRole('option', { name: 'Custom' }).click()
+  await expect(page.getByRole('textbox', { name: 'From' })).toBeVisible()
+  await expect(page.getByRole('textbox', { name: 'To' })).toBeVisible()
   problems.csp.push(...(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)))
   expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
 })
@@ -4480,6 +4485,12 @@ test.describe('board', () => {
             expect(c.inside, 'card inside its column').toBe(true)
             expect(c.titleInside, 'title wraps').toBe(true)
           }
+        }
+        // Not by colour alone: each card's status dot comes with the stage
+        // in text (stageInfo in format.ts), which a screen reader reads.
+        const stages = /^(Pending|Working|Waiting|Needs input|CI|Review|Planned|Failed|Blocked)$/
+        for (const card of await page.locator('main [data-task-card]').all()) {
+          await expect(card.getByText(stages)).toHaveCount(1)
         }
         if (phone) {
           const links = await page

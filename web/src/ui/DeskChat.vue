@@ -13,7 +13,7 @@ import UChatMessages from '@nuxt/ui/components/ChatMessages.vue'
 import UChatPrompt from '@nuxt/ui/components/ChatPrompt.vue'
 import UChatPromptSubmit from '@nuxt/ui/components/ChatPromptSubmit.vue'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
-import { computed, nextTick, onMounted, useTemplateRef, watch } from 'vue'
+import { computed, nextTick, onMounted, useId, useTemplateRef, watch } from 'vue'
 import Markdown from '../components/Markdown.vue'
 import RelTime from '../components/RelTime.vue'
 import { anchoredTop, atBottom, chatChange, replyAnnouncement, type ChatSnapshot, type DeskChatMessage } from '../chatView'
@@ -44,6 +44,9 @@ const props = withDefaults(
 )
 const draft = defineModel<string>({ default: '' })
 const emit = defineEmits<{ submit: [text: string]; older: [] }>()
+// The send error stays in the prompt's footer, tied to the text by id: a
+// UFormField would move it below the prompt.
+const errorId = useId()
 defineSlots<{
   // content: a message's body instead of its text (e.g. an event card).
   content?(props: { message: DeskChatMessage }): unknown
@@ -185,13 +188,16 @@ const shown = computed(() =>
           v-if="!noPrompt"
           v-model="draft"
           :placeholder="placeholder"
+          aria-label="Message"
+          :aria-invalid="error ? true : undefined"
+          :aria-describedby="error ? errorId : undefined"
           :disabled="disabled"
           :autofocus="false"
           variant="subtle"
           @submit="submit"
         >
           <template #footer>
-            <span v-if="error" class="text-xs text-error">{{ error }}</span>
+            <span v-if="error" :id="errorId" class="text-xs text-error">{{ error }}</span>
             <UChatPromptSubmit class="ms-auto" :status="busy ? 'submitted' : 'ready'" :disabled="disabled || !draft.trim()" />
           </template>
         </UChatPrompt>

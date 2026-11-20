@@ -12,8 +12,9 @@ import { assertKnownKeys } from './knownKeys.ts'
 
 // The issue of each requirement that has entries here.
 const issue = (n: number) => `https://gitlab.com/jo.wiemers/ai-operator/-/issues/${n}`
-// R6: not by colour alone and labels. It also holds color-contrast and
-// target-size, which no requirement covers (steering log, 2026-11-20).
+// color-contrast and target-size, which no requirement covers: R6 (#641)
+// fixed its own rules and left these until they have an issue of their own
+// (steering log, 2026-11-20).
 const R6 = issue(641)
 
 export const knownA11y: Record<string, string> = {
@@ -35,9 +36,9 @@ export const knownA11y: Record<string, string> = {
   'stream-project-stream@375': `${R6} R6: color-contrast`,
   'stream-project-stream@1180': `${R6} R6: target-size`,
   'stream-project-stream@1180-dark': `${R6} R6: target-size`,
-  'stream-project-decisions@375': `${R6} R6: color-contrast, link-in-text-block`,
-  'stream-project-decisions@1180': `${R6} R6: color-contrast, link-in-text-block`,
-  'stream-project-decisions@1180-dark': `${R6} R6: color-contrast, link-in-text-block`,
+  'stream-project-decisions@375': `${R6} R6: color-contrast`,
+  'stream-project-decisions@1180': `${R6} R6: color-contrast`,
+  'stream-project-decisions@1180-dark': `${R6} R6: color-contrast`,
   'stream-project-board@375': `${R6} R6: color-contrast`,
   'stream-project-board@1180': `${R6} R6: color-contrast`,
   'stream-project-board@1180-dark': `${R6} R6: color-contrast`,
@@ -49,13 +50,13 @@ export const knownA11y: Record<string, string> = {
   'stream-milestone-needs@375': `${R6} R6: color-contrast`,
   'stream-milestone-needs@1180': `${R6} R6: color-contrast`,
   'stream-milestone-needs@1180-dark': `${R6} R6: color-contrast`,
-  'stream-milestone-decisions@375': `${R6} R6: color-contrast, link-in-text-block`,
-  'stream-milestone-decisions@1180': `${R6} R6: color-contrast, link-in-text-block`,
-  'stream-milestone-decisions@1180-dark': `${R6} R6: color-contrast, link-in-text-block`,
+  'stream-milestone-decisions@375': `${R6} R6: color-contrast`,
+  'stream-milestone-decisions@1180': `${R6} R6: color-contrast`,
+  'stream-milestone-decisions@1180-dark': `${R6} R6: color-contrast`,
   'stream-milestone-pilot@375': `${R6} R6: color-contrast`,
-  'stream-milestone-retrospective@375': `${R6} R6: color-contrast, link-in-text-block`,
-  'stream-milestone-retrospective@1180': `${R6} R6: color-contrast, link-in-text-block`,
-  'stream-milestone-retrospective@1180-dark': `${R6} R6: color-contrast, link-in-text-block`,
+  'stream-milestone-retrospective@375': `${R6} R6: color-contrast`,
+  'stream-milestone-retrospective@1180': `${R6} R6: color-contrast`,
+  'stream-milestone-retrospective@1180-dark': `${R6} R6: color-contrast`,
   'stream-milestone-stream@375': `${R6} R6: color-contrast`,
   'stream-milestone-stream@1180': `${R6} R6: color-contrast`,
   'stream-milestone-stream@1180-dark': `${R6} R6: color-contrast`,
@@ -92,14 +93,12 @@ export const knownA11y: Record<string, string> = {
   'research@375': `${R6} R6: color-contrast`,
   'research@1280': `${R6} R6: color-contrast`,
   'research@1280-dark': `${R6} R6: color-contrast`,
-  'research-report@375': `${R6} R6: color-contrast, link-in-text-block`,
-  'research-report@1280': `${R6} R6: link-in-text-block`,
-  'research-report@1280-dark': `${R6} R6: color-contrast, link-in-text-block`,
+  'research-report@375': `${R6} R6: color-contrast`,
+  'research-report@1280-dark': `${R6} R6: color-contrast`,
   'research-runs@375': `${R6} R6: color-contrast`,
   'research-runs@1280-dark': `${R6} R6: color-contrast`,
-  'research-run@375': `${R6} R6: color-contrast, link-in-text-block`,
-  'research-run@1280': `${R6} R6: link-in-text-block`,
-  'research-run@1280-dark': `${R6} R6: color-contrast, link-in-text-block`,
+  'research-run@375': `${R6} R6: color-contrast`,
+  'research-run@1280-dark': `${R6} R6: color-contrast`,
   'not-found@1280-dark': `${R6} R6: color-contrast`,
 }
 

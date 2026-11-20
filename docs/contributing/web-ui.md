@@ -2406,7 +2406,7 @@ over results is in the API only (`GET /api/v1/research/search`).
 ### Conventions check
 
 `web/test/conventions.test.mjs` (part of `npm test`, so `make ui`) walks
-`web/src` (not `generated/`) and checks five rules, listed in the `RULES`
+`web/src` (not `generated/`) and checks the rules listed in the `RULES`
 table at its top; the matchers are in `web/test/conventions.mjs`:
 
 - `html-injection`: `v-html`, `innerHTML`, `outerHTML`, `insertAdjacentHTML`.
@@ -2424,8 +2424,13 @@ table at its top; the matchers are in `web/test/conventions.mjs`:
   `<script>` and comments are ignored). **Enforced.** Its `skip` list holds
   only files of the custom components in the [UI kit](#ui-kit) table, and a
   test checks that each entry exists; today it is empty.
+- `silent-dot`: a `<Badge>` with `dot` (or `:dot`) and neither slot text nor
+  a `label` (Decision 8 of
+  [desk-accessible.spec.md](../specs/desk-accessible.spec.md): no status by
+  colour alone). **Enforced.** Give the badge visible text, or a `label`,
+  which Badge renders visually hidden next to the dot.
 
-All five rules are enforced: any hit fails `npm test`. A rule with
+All rules are enforced: any hit fails `npm test`. A rule with
 `enforce: false` in its `RULES` entry prints each hit as `file:line rule` (a
 test diagnostic and a `console.warn`) with a count, and passes. Comments are
 ignored.

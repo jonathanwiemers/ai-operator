@@ -160,7 +160,9 @@ const selectProps = {
         </template>
       </UFormField>
 
-      <div class="flex min-w-0 flex-col gap-1.5" data-field="depth">
+      <!-- No label: the radio group is named by its legend. The field ties the
+           error to the group (aria-describedby, aria-invalid). -->
+      <UFormField name="depth" :error="errors.depth" :ui="{ ...fieldUI, root: 'min-w-0', error: 'mt-1.5 text-[13px] text-(--tone-danger-fg) [overflow-wrap:anywhere]' }" data-field="depth">
         <!-- The item is the 44 px hit area on phones; the radio keeps its size. -->
         <URadioGroup
           v-model="depth"
@@ -178,8 +180,7 @@ const selectProps = {
             {{ item.label }} <span class="text-(--text-3)">(up to {{ timeouts[String(item.value)] ?? '?' }})</span>
           </template>
         </URadioGroup>
-        <p v-if="errors.depth" class="m-0 text-[13px] text-(--tone-danger-fg) [overflow-wrap:anywhere]" role="alert">{{ errors.depth }}</p>
-      </div>
+      </UFormField>
 
       <UFormField label="View" name="view" :error="errors.view" :ui="fieldUI">
         <USelect v-model="view" :items="viewItems" v-bind="selectProps" />

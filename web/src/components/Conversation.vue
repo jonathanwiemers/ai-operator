@@ -205,6 +205,7 @@ watch(() => props.stamp, loadThread)
           autoresize
           :maxrows="12"
           class="w-full"
+          :aria-label="chat ? 'Message to the pilot' : 'Comment'"
           :placeholder="
             chat
               ? `Message the pilot as @${status.username}, e.g. why are we paused?`

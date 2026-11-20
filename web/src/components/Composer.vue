@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import UButton from '@nuxt/ui/components/Button.vue'
+import UFormField from '@nuxt/ui/components/FormField.vue'
 import UTextarea from '@nuxt/ui/components/Textarea.vue'
 import { onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue'
 import { noteTargetLabel, slashOpens, slashPick, type NoteTarget, type SlashSuggestion } from '../stream'
@@ -100,89 +101,92 @@ const option = 'flex w-full items-baseline gap-2.5 rounded-[7px] px-2 py-1.5 tex
       <p class="mt-0 mb-2.5">{{ blocked }}</p>
       <UButton v-if="connectUrl" :href="connectUrl" color="primary" label="Connect GitLab" />
     </div>
-    <div
-      v-else
-      ref="box"
-      class="relative rounded-xl border border-(--border-strong) bg-(--surface) shadow-(--shadow) focus-within:border-(--focus) focus-within:ring-3 focus-within:ring-(--focus)/20"
-    >
-      <UTextarea
-        v-model="body"
-        variant="none"
-        autoresize
-        :rows="mode === 'chat' ? 3 : 2"
-        :maxrows="12"
-        :placeholder="placeholder"
-        :disabled="disabled"
-        :ui="{ root: 'flex w-full', base: 'px-3.5 pt-3 pb-1 text-base/5 text-(--text) tablet:text-sm/5' }"
-        @input="onInput"
-        @keydown.meta.enter="send()"
-        @keydown.ctrl.enter="send()"
-      />
-      <div class="flex items-center gap-2 pt-1.5 pr-2 pb-2" :class="mode === 'note' ? 'pl-2.5' : 'pl-3.5'">
-        <UButton
-          v-if="targets"
-          color="neutral"
-          variant="outline"
-          size="sm"
-          trailing-icon="i-lucide-chevron-down"
-          class="max-w-[46%] rounded-full bg-(--pilot-bg) text-[12.5px] font-semibold text-(--text) ring-(--pilot-border)"
+    <!-- The field ties the error line to the text (aria-describedby and
+         aria-invalid); its root keeps the composer's own type size. -->
+    <UFormField v-else :error="error" :ui="{ root: 'text-[length:inherit]', error: 'mt-1.5 text-[13px] text-(--tone-danger-fg)' }">
+      <div
+        ref="box"
+        class="relative rounded-xl border border-(--border-strong) bg-(--surface) shadow-(--shadow) focus-within:border-(--focus) focus-within:ring-3 focus-within:ring-(--focus)/20"
+      >
+        <UTextarea
+          v-model="body"
+          variant="none"
+          autoresize
+          :rows="mode === 'chat' ? 3 : 2"
+          :maxrows="12"
+          :placeholder="placeholder"
+          :aria-label="mode === 'chat' ? 'Message' : 'Note'"
           :disabled="disabled"
-          :aria-expanded="targetOpen"
-          @click.stop="targetOpen = !targetOpen"
-        >
-          <span class="truncate">{{ noteTargetLabel(target) }}</span>
-        </UButton>
-        <span class="min-w-0 flex-1 truncate text-xs text-(--text-3)">{{ hint }}</span>
-        <UButton
-          v-if="canInterrupt"
-          color="warning"
-          variant="subtle"
-          label="Interrupt"
-          :disabled="busy || disabled"
-          @mousedown.prevent
-          @click="send('interrupt')"
+          :ui="{ root: 'flex w-full', base: 'px-3.5 pt-3 pb-1 text-base/5 text-(--text) tablet:text-sm/5' }"
+          @input="onInput"
+          @keydown.meta.enter="send()"
+          @keydown.ctrl.enter="send()"
         />
-        <UButton
-          color="primary"
-          class="justify-center"
-          :label="busy ? '…' : 'Send'"
-          :disabled="busy || disabled || !body.trim()"
-          @mousedown.prevent
-          @click="send()"
-        />
+        <div class="flex items-center gap-2 pt-1.5 pr-2 pb-2" :class="mode === 'note' ? 'pl-2.5' : 'pl-3.5'">
+          <UButton
+            v-if="targets"
+            color="neutral"
+            variant="outline"
+            size="sm"
+            trailing-icon="i-lucide-chevron-down"
+            class="max-w-[46%] rounded-full bg-(--pilot-bg) text-[12.5px] font-semibold text-(--text) ring-(--pilot-border)"
+            :disabled="disabled"
+            :aria-expanded="targetOpen"
+            @click.stop="targetOpen = !targetOpen"
+          >
+            <span class="truncate">{{ noteTargetLabel(target) }}</span>
+          </UButton>
+          <span class="min-w-0 flex-1 truncate text-xs text-(--text-3)">{{ hint }}</span>
+          <UButton
+            v-if="canInterrupt"
+            color="warning"
+            variant="subtle"
+            label="Interrupt"
+            :disabled="busy || disabled"
+            @mousedown.prevent
+            @click="send('interrupt')"
+          />
+          <UButton
+            color="primary"
+            class="justify-center"
+            :label="busy ? '…' : 'Send'"
+            :disabled="busy || disabled || !body.trim()"
+            @mousedown.prevent
+            @click="send()"
+          />
+        </div>
+        <div v-if="targetOpen" :class="menu" @click.stop>
+          <div class="px-2 pt-1.5 pb-0.5 text-[11px] tracking-[0.05em] text-(--text-3) uppercase">Send to</div>
+          <UButton
+            v-for="(t, i) in targets"
+            :key="i"
+            color="neutral"
+            variant="ghost"
+            :class="option"
+            @click="pickTarget(t)"
+          >
+            <b class="font-mono text-[12.5px] font-semibold whitespace-nowrap">
+              {{ t.type === 'pilot' ? `Pilot · %${t.milestoneIID}` : `#${t.issueIID}` }}
+            </b>
+            <span class="truncate text-xs text-(--text-3)">{{ t.title }}</span>
+          </UButton>
+        </div>
+        <div v-if="slashOpen" :class="menu" @click.stop>
+          <div class="px-2 pt-1.5 pb-0.5 text-[11px] tracking-[0.05em] text-(--text-3) uppercase">Commands</div>
+          <UButton
+            v-for="s in suggestions"
+            :key="s.cmd"
+            color="neutral"
+            variant="ghost"
+            :class="option"
+            @click="pickSlash(s.cmd)"
+          >
+            <b class="font-mono text-[12.5px] font-semibold whitespace-nowrap">{{ s.cmd }}</b>
+            <span class="truncate text-xs text-(--text-3)">{{ s.hint }}</span>
+          </UButton>
+        </div>
       </div>
-      <div v-if="targetOpen" :class="menu" @click.stop>
-        <div class="px-2 pt-1.5 pb-0.5 text-[11px] tracking-[0.05em] text-(--text-3) uppercase">Send to</div>
-        <UButton
-          v-for="(t, i) in targets"
-          :key="i"
-          color="neutral"
-          variant="ghost"
-          :class="option"
-          @click="pickTarget(t)"
-        >
-          <b class="font-mono text-[12.5px] font-semibold whitespace-nowrap">
-            {{ t.type === 'pilot' ? `Pilot · %${t.milestoneIID}` : `#${t.issueIID}` }}
-          </b>
-          <span class="truncate text-xs text-(--text-3)">{{ t.title }}</span>
-        </UButton>
-      </div>
-      <div v-if="slashOpen" :class="menu" @click.stop>
-        <div class="px-2 pt-1.5 pb-0.5 text-[11px] tracking-[0.05em] text-(--text-3) uppercase">Commands</div>
-        <UButton
-          v-for="s in suggestions"
-          :key="s.cmd"
-          color="neutral"
-          variant="ghost"
-          :class="option"
-          @click="pickSlash(s.cmd)"
-        >
-          <b class="font-mono text-[12.5px] font-semibold whitespace-nowrap">{{ s.cmd }}</b>
-          <span class="truncate text-xs text-(--text-3)">{{ s.hint }}</span>
-        </UButton>
-      </div>
-    </div>
-    <p v-if="error" class="mt-1.5 mb-0 text-[13px] text-(--tone-danger-fg)">{{ error }}</p>
+    </UFormField>
   </div>
 </template>
 
