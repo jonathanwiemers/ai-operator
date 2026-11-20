@@ -39,7 +39,7 @@ const num = 'text-right whitespace-nowrap text-(--text-2) tabular-nums'
       {{ row.project }}
     </RouterLink>
     <span class="flex min-w-0 flex-1 flex-wrap items-baseline gap-2 font-semibold [overflow-wrap:anywhere]">
-      <RouterLink :to="to">{{ row.title || `%${row.iid}` }}</RouterLink>
+      <RouterLink class="row-link" :to="to">{{ row.title || `%${row.iid}` }}</RouterLink>
       <span v-if="leftovers" class="text-xs font-medium whitespace-nowrap text-(--tone-warning-fg)">{{ leftovers }}</span>
     </span>
     <span class="flex shrink-0 flex-wrap items-center gap-x-1.5">

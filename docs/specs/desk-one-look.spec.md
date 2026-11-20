@@ -102,3 +102,5 @@ disagree, the docs win.
 ## Steering log
 
 One line per narrowed requirement: `- YYYY-MM-DD, Rn: what was narrowed and why; follow-up #n`.
+
+- 2026-11-20, R4: the bundle budget's `costs` route cap rises from 126 to 127 kB (measured 126.6, was 125.9). `UTabs` in the rail's theme switch shares `UAvatar`, `useId` and `useDirection` with `USelect`, so Vite splits them out of the Metrics chunks, and the extra chunks cost 0.7 kB gzipped. The initial bundle shrinks (132.0 to 131.9 kB), and nothing the Metrics page loads is new; no follow-up.

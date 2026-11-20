@@ -3,13 +3,24 @@ import uiIcons from '@nuxt/ui/runtime/vue/plugins/icons.js'
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import App from './App.vue'
 import { canStartResearch, featuresLoaded, hasFeature, isResearchPath } from './api'
-import { darkQuery, followColorScheme } from './colorScheme'
+import { darkQuery, themeController, themeInjectionKey, type ThemeStorage } from './colorScheme'
 import { costsRedirect } from './costsRedirect'
 import type { RouteName } from './routeNames'
 import { listenForSheets } from './ui/useBackClose'
 import './style.css'
 
-followColorScheme(document.documentElement.classList, window.matchMedia(darkQuery))
+// Reading window.localStorage itself throws where storage is blocked; the
+// theme then is Auto and is not kept.
+function localStore(): ThemeStorage | null {
+  try {
+    return window.localStorage
+  } catch {
+    return null
+  }
+}
+
+// Before the app mounts, so the first paint has the chosen theme.
+const theme = themeController(document.documentElement.classList, window.matchMedia(darkQuery), localStore())
 
 // Views load with their route, each as its own chunk. Only App.vue (the shell,
 // with SignIn.vue) is in the initial bundle, which scripts/bundle-budget.mjs
@@ -112,4 +123,4 @@ router.beforeEach(async (to) => {
 // plugin would add the colour plugin, whose <style> the CSP refuses
 // (style.css holds the colours instead), and an unhead instance nothing here
 // uses (docs/contributing/web-ui.md, "UI kit"). Links need no plugin, they use vue-router.
-createApp(App).use(router).use(uiIcons).mount('#app')
+createApp(App).use(router).use(uiIcons).provide(themeInjectionKey, theme).mount('#app')

@@ -34,7 +34,7 @@ const href = loginURL()
            A link, so the phone rule for buttons misses it: min-h-11 makes it 44 px high. -->
       <a
         :href="href"
-        class="mt-2 inline-flex min-h-11 w-full items-center justify-center rounded-(--radius-sm) bg-(--accent) px-3.5 font-[550] text-white hover:bg-(--ui-color-primary-600) hover:no-underline tablet:min-h-10"
+        class="mt-2 inline-flex min-h-11 w-full items-center justify-center rounded-(--radius-sm) bg-(--primary) px-3.5 font-[550] text-white hover:bg-(--ui-color-primary-600) hover:no-underline tablet:min-h-10"
       >
         Sign in with SSO
       </a>

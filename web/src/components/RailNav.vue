@@ -15,6 +15,7 @@ import type { ProjectSetSummary } from '../generated/views'
 import { groupProjects, setCountsLine, setProblem } from '../projectSets'
 import Truncated from '../ui/Truncated.vue'
 import RelTime from './RelTime.vue'
+import ThemeSwitch from './ThemeSwitch.vue'
 
 const props = defineProps<{
   projects: ProjectSummary[] | null
@@ -161,6 +162,7 @@ function projectActive(namespace: string, name: string) {
     </nav>
 
     <div class="rail-foot">
+      <ThemeSwitch />
       <div v-for="u in engineMeters" :key="u.engine" class="meters">
         <div v-for="w in u.windows ?? []" :key="w.name" class="meter">
           <span>{{ u.engine }} {{ windowLabel(w.name) }}</span>
@@ -313,8 +315,9 @@ nav {
   text-align: center;
   padding: 1px 6px;
   border-radius: 9px;
-  background: var(--accent);
-  color: var(--on-accent);
+  /* Counts take the danger tone, never the primary colour of the buttons. */
+  background: var(--tone-danger-bg);
+  color: var(--tone-danger-fg);
 }
 .rail-foot {
   border-top: 1px solid var(--border);

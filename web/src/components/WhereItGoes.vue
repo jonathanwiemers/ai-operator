@@ -53,7 +53,7 @@ const tableRows = computed(() =>
 )
 type TableRow = (typeof tableRows.value)[number]
 
-const link = 'text-(--accent) underline-offset-2 hover:underline'
+const link = 'row-link underline-offset-2 hover:underline'
 const keyOf = (r: BreakdownRow) => (r.key === '\u0000other' ? 'other' : r.key)
 </script>
 

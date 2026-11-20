@@ -70,7 +70,7 @@ const viaKey = (r: PauseViaRow) => r.via
 const projectKey = (r: PauseProjectRow) => r.project
 const longKey = (r: LongPauseRow) => r.id
 
-const link = 'text-(--accent) underline-offset-2 hover:underline'
+const link = 'row-link underline-offset-2 hover:underline'
 const kpi = 'card flex min-w-0 flex-col gap-1 px-4 py-3'
 const kpiLabel = 'text-[11.5px] text-(--text-3)'
 const kpiValue = 'text-xl font-semibold tabular-nums'

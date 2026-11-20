@@ -25,10 +25,13 @@
   --border-strong: #cfcbd9;
   --text: #1d1a29;
   --text-2: #5b5670;
-  --text-3: #8a85a0;
+  --text-3: #67627f;
+  /* The logo and the brand; buttons take --primary, which white text
+     reaches 4.5:1 on (docs/contributing/design.md, "Colour tokens"). */
   --accent: #e24329;
   --accent-2: #fc6d26;
   --on-accent: #ffffff;
+  --primary: #c4361f;
   --brand-ink: #2d1f5e;
   --link: #4b3aa8;
   --focus: #7b68ee;
@@ -55,14 +58,16 @@
 
   /* Chart series (docs/contributing/web-ui.md, "UI kit"): six slots plus Other, assigned per
      key by chartData.ts's colorSlots. Checked on --surface for every pair,
-     not only neighbours, since any two slots can meet in a stack. */
-  --chart-1: #637be9;
-  --chart-2: #f06b20;
-  --chart-3: #35a368;
-  --chart-4: #8e5c02;
-  --chart-5: #ad4675;
-  --chart-6: #882dc2;
-  --chart-other: #8a85a0;
+     not only neighbours, since any two slots can meet in a stack; each
+     keeps 3:1 on --surface and away from --primary and the danger tone
+     (test/contrast.test.mjs). */
+  --chart-1: #3a81b9;
+  --chart-2: #f717ff;
+  --chart-3: #00a700;
+  --chart-4: #845d00;
+  --chart-5: #aa006e;
+  --chart-6: #6800d6;
+  --chart-other: #7c7987;
 
   --radius: 10px;
   --radius-sm: 6px;
@@ -87,7 +92,7 @@
   --border-strong: #423d55;
   --text: #ece9f5;
   --text-2: #b0aac6;
-  --text-3: #7f7996;
+  --text-3: #958fac;
   --link: #b3a6ff;
   --brand-ink: #c9bfff;
   --me-bg: #2a2348;
@@ -110,13 +115,13 @@
   --tone-danger-bg: #431815;
   --tone-danger-fg: #ff9b91;
 
-  --chart-1: #2868ce;
-  --chart-2: #df7016;
-  --chart-3: #47aa72;
-  --chart-4: #9b6022;
-  --chart-5: #c14170;
-  --chart-6: #9276cb;
-  --chart-other: #7f7996;
+  --chart-1: #579cd0;
+  --chart-2: #d600ff;
+  --chart-3: #3daa00;
+  --chart-4: #826800;
+  --chart-5: #ed5691;
+  --chart-6: #8a53b0;
+  --chart-other: #8b8797;
 
   --shadow: 0 1px 2px rgb(0 0 0 / 40%);
   --shadow-hover: 0 6px 18px rgb(0 0 0 / 45%);
@@ -129,7 +134,7 @@
    They are set once: the tokens they name change in .dark, so they follow.
    Unlayered, they win over the defaults in Nuxt UI's theme layer. */
 :root {
-  --ui-primary: var(--accent);
+  --ui-primary: var(--primary);
   --ui-secondary: var(--focus);
   --ui-success: var(--tone-success-fg);
   --ui-info: var(--tone-info-fg);
@@ -398,6 +403,17 @@
 
 .faint {
   color: var(--text-3);
+}
+
+/* A row's name in a table or list: text colour, the link colour only on
+   hover or keyboard focus (docs/contributing/design.md, "Colour tokens"). */
+.row-link {
+  color: var(--text);
+}
+
+.row-link:hover,
+.row-link:focus-visible {
+  color: var(--link);
 }
 
 .card {

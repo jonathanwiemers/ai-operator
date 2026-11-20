@@ -41,7 +41,7 @@ const key = (b: BudgetRowView) => `${b.namespace}/${b.project}/${b.milestoneIID}
       <ul class="card m-0 flex list-none flex-col divide-y divide-(--border) p-0">
         <li v-for="b in rows" :key="key(b)" class="flex min-w-0 flex-col gap-1.5 px-3.5 py-3" :data-budget="key(b)" :data-warn="warn(b) || undefined">
           <div class="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-            <RouterLink :to="to(b)" class="min-w-0 text-(--accent) underline-offset-2 hover:underline [overflow-wrap:anywhere]">{{ title(b) }}</RouterLink>
+            <RouterLink :to="to(b)" class="row-link min-w-0 underline-offset-2 hover:underline [overflow-wrap:anywhere]">{{ title(b) }}</RouterLink>
             <span class="whitespace-nowrap text-[13px] tabular-nums" :class="{ italic: !known(b) }">{{ amount(b) }}</span>
           </div>
           <span

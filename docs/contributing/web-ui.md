@@ -344,6 +344,11 @@ loads anyway.
   request. With the *Code* and *Flow* sections (#608, R14, `MetricsCode.vue`,
   `MetricsFlow.vue`, `metricsCode.ts`, `metricsFlow.ts`): 125.0 kB, the cap
   raised to 126 kB on the same grounds and reported on its merge request.
+  2026-11-20, with the theme switch in the rail (#623, `UTabs`): 126.6 kB.
+  `UTabs` shares `UAvatar`, `useId` and `useDirection` with `USelect`, and
+  Vite splits them into chunks of their own, which compress worse. The cap was
+  raised to 127 kB, logged in the
+  [Desk one-look spec](../specs/desk-one-look.spec.md#steering-log).
 
 ## UI kit
 
@@ -440,13 +445,15 @@ slot: the FNV-1a hash of the key mod 6, probing to the next free slot in
 sorted key order. A key keeps its colour across reloads, ranges and key
 orders without storage, and adding a key rarely moves another. Since any
 two slots can meet, the palette was checked for every pair, not only
-neighbours (OKLab ΔE, the dataviz validator): on the light card
-(`--surface`, white) every pair is at least 9.0 apart for red-green colour
-blindness and 16.3 for normal vision, and every colour has 3:1 contrast. On
-the dark card (`#1c1a25`) the worst pairs are 7.4 (purple and blue, red-green
-blindness) and 13.5 (brown and orange), and every colour has 3:1 contrast;
-colour is never alone (legend with values, table view, decision 8 of the
-Costs page spec), which those pairs rely on. `chartData.ts` also shapes the
+neighbours (OKLab ΔE ×100, the dataviz validator): on the light card
+(`--surface`, white) every pair is at least 12.1 apart for red-green colour
+blindness and 22.7 for normal vision, on the dark card (`#1c1a25`) 10.3 and
+19.0. No series is orange or red: each keeps an OKLab distance of at least
+0.1 from `--primary` and from the danger tone of its mode, so a series never
+reads as a button or an error. `web/test/contrast.test.mjs` checks that
+distance and 3:1 contrast on `--surface` for every series and Other, light
+and dark. Colour is never alone (legend with values, table view, decision 8
+of the Costs page spec). `chartData.ts` also shapes the
 data, without Vue or Chart.js: `topKeys` (six keys by known cost),
 `seriesFromPoints` (a series per key over every bucket, the rest and the
 server's folded points as *Other*, unknown and unmetered calls per bucket),

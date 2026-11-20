@@ -389,8 +389,9 @@ watch(notifyActive, (on) => {
   text-align: center;
   padding: 1px 6px;
   border-radius: 9px;
-  background: var(--accent);
-  color: var(--on-accent);
+  /* Counts take the danger tone, never the primary colour of the buttons. */
+  background: var(--tone-danger-bg);
+  color: var(--tone-danger-fg);
 }
 .main {
   min-width: 0;

@@ -58,7 +58,7 @@ watch(() => live.version, () => void loadAnswer())
     <ol class="m-0 grid min-w-0 list-none grid-cols-[minmax(0,1fr)] gap-0.5 p-0">
       <li v-for="(e, i) in queue" :key="e.iid" class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 rounded-md px-1.5 py-1 hover:bg-(--surface-2)" data-queue-entry>
         <span class="w-5 shrink-0 text-right tabular-nums text-(--text-3)">{{ i + 1 }}</span>
-        <RouterLink :to="{ name: 'stream-milestone', params: { namespace, name, iid: String(e.iid) } }" class="min-w-0 flex-[1_1_12rem] [overflow-wrap:anywhere]">
+        <RouterLink :to="{ name: 'stream-milestone', params: { namespace, name, iid: String(e.iid) } }" class="row-link min-w-0 flex-[1_1_12rem] [overflow-wrap:anywhere]">
           <span class="font-mono text-xs">%{{ e.iid }}</span> {{ e.title }}
         </RouterLink>
         <Badge :tone="queueTone(e)">{{ queueStateLabel(e) }}</Badge>

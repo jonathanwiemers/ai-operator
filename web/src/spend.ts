@@ -336,7 +336,7 @@ export function modelOrder(models: Split[]): Split[] {
 
 // The colors of the bars: slot 0 the main models, 1 and 2 the first two
 // subagent models of a table by name, 3 any further ones.
-export const barColors = ['var(--tone-progress-fg)', 'var(--accent-2)', 'var(--tone-info-fg)', 'var(--text-3)'] as const
+export const barColors = ['var(--tone-progress-fg)', 'var(--accent-2)', 'var(--tone-info-fg)', 'var(--chart-other)'] as const
 
 // modelSlots gives each subagent model of a table its color slot, by name,
 // so a model keeps its color in every row.

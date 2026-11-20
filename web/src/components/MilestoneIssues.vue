@@ -174,7 +174,7 @@ const sectionHead =
           <span class="flex min-w-0 basis-full items-baseline gap-2 font-semibold desktop:basis-auto" role="cell">
             <span class="font-medium whitespace-nowrap tabular-nums text-(--text-3)" data-iid>#{{ row.issue.iid }}</span>
             <span class="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
-              <RouterLink :to="issueTo(row.issue)" class="inline-flex items-center [overflow-wrap:anywhere]" :class="tap">
+              <RouterLink :to="issueTo(row.issue)" class="row-link inline-flex items-center [overflow-wrap:anywhere]" :class="tap">
                 {{ row.issue.title || `#${row.issue.iid}` }}
               </RouterLink>
               <Badge

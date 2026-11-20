@@ -36,7 +36,7 @@ const project = computed(() => ({
     >
       {{ item.project }}
     </RouterLink>
-    <RouterLink class="min-w-0 flex-1 font-semibold [overflow-wrap:anywhere]" :to="to">{{ title }}</RouterLink>
+    <RouterLink class="row-link min-w-0 flex-1 font-semibold [overflow-wrap:anywhere]" :to="to">{{ title }}</RouterLink>
     <Badge :tone="planPhaseTone(item.phase)">{{ item.phase }}</Badge>
     <span class="flex basis-full flex-wrap items-center gap-x-3 gap-y-1.5 text-(--text-2)">
       <span class="whitespace-nowrap tabular-nums" title="Spend of budget">{{ planSpendLabel(item.spendUSD, item.budgetUSD) }}</span>

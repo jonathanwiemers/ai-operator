@@ -467,11 +467,15 @@ for (const path of ['/everything', '/projects/acme/shop/board', '/projects/acme/
   })
 }
 
-// The Desk follows the system's colour scheme while it is open
-// (src/colorScheme.ts): .dark on <html>, the dark tokens on the page.
-test('colour scheme follows the system live', async ({ page, baseURL }) => {
+// The theme switch in the rail's footer (src/colorScheme.ts,
+// ThemeSwitch.vue): Auto follows the system live, Light and Dark hold over
+// a reload and ignore the system, Auto follows it again. Only .dark on
+// <html> changes, so the CSP is the same.
+test('theme switch: auto follows the system, a choice holds over a reload@1280', async ({ page, baseURL }) => {
   const route = routes.find((r) => r.name === 'overview')!
   const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+  await page.setViewportSize({ width: 1280, height: 800 })
+  await page.emulateMedia({ colorScheme: 'light' })
   await page.clock.setFixedTime(now)
   await watch(page, new URL(baseURL ?? '').origin, problems)
   await mockAPI(page, route, problems)
@@ -480,16 +484,103 @@ test('colour scheme follows the system live', async ({ page, baseURL }) => {
 
   const html = page.locator('html')
   const bodyBackground = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor)
+  const stored = () => page.evaluate(() => localStorage.getItem('desk.theme'))
+  const tab = (name: string) => page.locator('[data-theme-switch]').getByRole('tab', { name })
+  const csp = async () => problems.csp.push(...(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)))
+
+  // A fresh browser: Auto, following the system live.
+  expect(await stored()).toBeNull()
+  await expect(tab('Auto')).toHaveAttribute('aria-selected', 'true')
   await expect(html).not.toHaveClass(/\bdark\b/)
   expect(await bodyBackground(), '--bg light').toBe('rgb(246, 246, 248)')
-
   await page.emulateMedia({ colorScheme: 'dark' })
   await expect(html).toHaveClass(/\bdark\b/)
   expect(await bodyBackground(), '--bg dark').toBe('rgb(19, 17, 25)')
-
   await page.emulateMedia({ colorScheme: 'light' })
   await expect(html).not.toHaveClass(/\bdark\b/)
-  expect(await bodyBackground(), '--bg light again').toBe('rgb(246, 246, 248)')
+
+  // The three choices fit the rail, labels uncut.
+  const fit = await page.locator('[data-theme-switch]').evaluate((e) => {
+    const rail = e.closest('.rail-foot')!.getBoundingClientRect()
+    const r = e.getBoundingClientRect()
+    const cut = [...e.querySelectorAll<HTMLElement>('[role=tab] span')].filter((s) => s.scrollWidth > s.clientWidth).length
+    return { inside: r.left >= rail.left && r.right <= rail.right, cut }
+  })
+  expect(fit).toEqual({ inside: true, cut: 0 })
+
+  // Dark holds over a reload and ignores a light system.
+  await tab('Dark').click()
+  await expect(html).toHaveClass(/\bdark\b/)
+  expect(await stored()).toBe('dark')
+  await csp()
+  await page.reload()
+  await route.ready(page)
+  await expect(html).toHaveClass(/\bdark\b/)
+  await expect(tab('Dark')).toHaveAttribute('aria-selected', 'true')
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await page.emulateMedia({ colorScheme: 'light' })
+  await expect(html).toHaveClass(/\bdark\b/)
+
+  // Light holds against a dark system.
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await tab('Light').click()
+  await expect(html).not.toHaveClass(/\bdark\b/)
+  await csp()
+  await page.reload()
+  await route.ready(page)
+  await expect(html).not.toHaveClass(/\bdark\b/)
+  expect(await bodyBackground(), '--bg light under a dark system').toBe('rgb(246, 246, 248)')
+
+  // Auto follows the system again, at once.
+  await tab('Auto').click()
+  await expect(html).toHaveClass(/\bdark\b/)
+  expect(await stored()).toBe('auto')
+  await page.emulateMedia({ colorScheme: 'light' })
+  await expect(html).not.toHaveClass(/\bdark\b/)
+
+  await csp()
+  expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+})
+
+// On a phone the switch is in the rail sheet: it fits the sheet, its tabs
+// are 44 px high, and a choice there holds over a reload.
+test('theme switch in the rail sheet@375', async ({ page, baseURL }, testInfo) => {
+  const route = routes.find((r) => r.name === 'overview')!
+  const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.emulateMedia({ colorScheme: 'light' })
+  await page.clock.setFixedTime(now)
+  await watch(page, new URL(baseURL ?? '').origin, problems)
+  await mockAPI(page, route, problems)
+  await page.goto(route.path)
+  await route.ready(page)
+
+  await page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Projects' }).click()
+  const sheet = page.getByRole('dialog')
+  await expect(sheet).toBeVisible()
+  await sheet.evaluate((e) => Promise.all(e.getAnimations().map((a) => a.finished)))
+  const control = sheet.locator('[data-theme-switch]')
+  await control.scrollIntoViewIfNeeded()
+  const fit = await control.evaluate((e) => {
+    const box = e.closest('[role=dialog]')!.getBoundingClientRect()
+    const r = e.getBoundingClientRect()
+    const tabs = [...e.querySelectorAll<HTMLElement>('[role=tab]')]
+    return {
+      inside: r.left >= box.left && r.right <= box.right,
+      low: tabs.filter((t) => t.getBoundingClientRect().height < 44).length,
+      cut: [...e.querySelectorAll<HTMLElement>('[role=tab] span')].filter((s) => s.scrollWidth > s.clientWidth).length,
+    }
+  })
+  expect(fit).toEqual({ inside: true, low: 0, cut: 0 })
+  const shot = join(testInfo.project.outputDir, '..', 'screenshots', 'theme-switch-sheet@375.png')
+  await page.screenshot({ path: shot })
+  await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
+
+  await control.getByRole('tab', { name: 'Dark' }).click()
+  await expect(page.locator('html')).toHaveClass(/\bdark\b/)
+  await page.reload()
+  await route.ready(page)
+  await expect(page.locator('html')).toHaveClass(/\bdark\b/)
 
   problems.csp.push(...(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)))
   expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
@@ -852,7 +943,7 @@ test.describe('touch', () => {
 // these pages is at least 44 px high at 375 px. Not counted: what cannot be
 // tapped (hidden from assistive technology, transparent, or a disabled
 // checkbox of a markdown task list). Exceptions are listed in hitAllowlist.
-const hitRoutes = ['overview', 'inbox', 'metrics', 'metrics-filtered', 'researches', 'research-new', 'task', 'task-chat', 'task-logs', 'task-calls', 'task-details', 'stream-milestone-retrospective', 'stream-milestone-metrics', 'research', 'research-report', 'research-run']
+const hitRoutes = ['overview', 'overview-dark', 'inbox', 'metrics', 'metrics-filtered', 'researches', 'research-new', 'task', 'task-chat', 'task-logs', 'task-calls', 'task-details', 'stream-milestone-retrospective', 'stream-milestone-metrics', 'research', 'research-report', 'research-run']
 
 // "<route> <element as reported>" → why it may stay under 44 px.
 const hitAllowlist: Record<string, string> = {
@@ -868,6 +959,7 @@ for (const name of hitRoutes) {
     const route = routes.find((r) => r.name === name)!
     const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
     await page.setViewportSize({ width: 375, height: 812 })
+    if (route.colorScheme) await page.emulateMedia({ colorScheme: route.colorScheme })
     await page.clock.setFixedTime(now)
     await watch(page, new URL(baseURL ?? '').origin, problems)
     await mockAPI(page, route, problems)

@@ -4011,19 +4011,35 @@ the kit use utilities, the others add scoped CSS on top.
 **Tokens.** CSS custom properties hold the palette and the shared sizes:
 `--bg`, `--surface`, `--surface-2`, `--surface-3`, `--border`,
 `--border-strong`, `--text`, `--text-2`, `--text-3`, `--accent`,
-`--accent-2`, `--brand-ink`, `--link`, `--focus`, `--me-*`, `--pilot-*`,
-`--tone-<tone>-bg`/`-fg` (neutral, muted, info, progress, success, warning,
-danger), `--radius`, `--radius-sm`, `--shadow`, `--shadow-hover`, `--font`
-and `--mono`. The light values are on `:root`, the dark ones on `.dark`, with
+`--accent-2`, `--primary`, `--brand-ink`, `--link`, `--focus`, `--me-*`,
+`--pilot-*`, `--tone-<tone>-bg`/`-fg` (neutral, muted, info, progress,
+success, warning, danger), `--chart-1` … `--chart-6`, `--chart-other`,
+`--radius`, `--radius-sm`, `--shadow`, `--shadow-hover`, `--font` and
+`--mono`. The light values are on `:root`, the dark ones on `.dark`, with
 the same names; a token missing from `.dark` is the same in both schemes.
 Colours outside `style.css` are flagged by the conventions check
 ([web-ui.md](web-ui.md#conventions-check)).
 
-**Light and dark.** The Desk follows the system, there is no toggle.
-`web/src/colorScheme.ts`, called first in `main.ts`, sets the `dark` class
-on `<html>` while `prefers-color-scheme: dark` matches and follows its
-`change` event, so switching the OS scheme switches an open Desk. The CSP
-allows no inline script, so this runs with the app's module. Until then
+**Colour tokens.** `--text`, `--text-2` and `--text-3` reach 4.5:1 (WCAG
+AA) on `--bg`, `--surface` and `--surface-2`, light and dark. `--primary`
+(`#c4361f`, both modes) is the colour of the main buttons, with white text
+at 5.39:1; `--accent` stays the logo's and the brand's. Errors and counts
+(the rail's and the phone tabs' counts, `Badge` with `danger`) take the
+danger tone, never `--primary`. A row's name in a table or list carries
+`.row-link`: the text colour, the link colour only on hover or keyboard
+focus. `web/test/contrast.test.mjs` measures all of this from `style.css`.
+
+**Light and dark.** The owner picks Light, Dark or Auto in the rail's footer
+(`components/ThemeSwitch.vue`, `UTabs`; on phones in the rail sheet). The
+choice is kept per browser in `localStorage` under `desk.theme` (`light`,
+`dark`, `auto`); missing, unknown or unreadable is Auto, and every read and
+write is in try/catch. `themeController` in `web/src/colorScheme.ts`, created
+first in `main.ts` and provided to the app (`themeInjectionKey`), sets only
+the `dark` class on `<html>`. It registers one `change` listener on
+`prefers-color-scheme: dark`, which acts only in Auto, so an open Desk
+follows the OS scheme in Auto and ignores it in Light and Dark. Nuxt UI's
+`colorMode` stays off. The CSP allows no inline script, so this runs with
+the app's module. Until then
 `:root` has `color-scheme: light dark` and `html` the system's `Canvas`
 background, and `body` paints `--bg`: a page loading in dark mode does not
 flash light. `.dark` sets `color-scheme: dark` for form controls.
@@ -4131,7 +4147,7 @@ in Nuxt UI's `theme` layer). Each names a palette token, so it follows
 
 | Nuxt UI | Token |
 |---------|-------|
-| `--ui-primary` | `--accent` |
+| `--ui-primary` | `--primary` |
 | `--ui-secondary` | `--focus` |
 | `--ui-success`, `--ui-info`, `--ui-warning`, `--ui-error` | `--tone-success-fg`, `--tone-info-fg`, `--tone-warning-fg`, `--tone-danger-fg` |
 | `--ui-neutral` | `--tone-muted-fg` |

@@ -28,7 +28,7 @@ function columns(level: TopLevel): DataListColumn[] {
 }
 
 const rowKey = (r: CostTopRowView) => `${r.namespace}/${r.project}/${r.milestoneIID ?? 0}/${r.issueIID ?? 0}/${r.task ?? ''}/${r.run ?? 0}`
-const link = 'text-(--accent) underline-offset-2 hover:underline [overflow-wrap:anywhere]'
+const link = 'row-link underline-offset-2 hover:underline [overflow-wrap:anywhere]'
 </script>
 
 <template>
