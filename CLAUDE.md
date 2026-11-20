@@ -53,5 +53,10 @@
 - When you add a page, update that folder's README and `docs/README.md`.
   List a new spec in `docs/specs/README.md`. Keep the chart README in sync
   when Helm values change.
+- Desk UI is built from Nuxt UI components: use one whenever it fits, even
+  with small compromises in look. A custom component is allowed only when
+  nothing in Nuxt UI fits; it is listed with its reason in the
+  [UI kit](docs/contributing/web-ui.md#ui-kit) section, and `npm test`
+  (`raw-control`) fails on raw controls elsewhere.
 - Write and review milestone specs with the `milestone-spec` skill
   (`skills/milestone-spec/`).

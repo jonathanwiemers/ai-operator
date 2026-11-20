@@ -8,6 +8,7 @@ import { test } from 'node:test'
 import {
   apiCalls,
   htmlInjection,
+  rawControls,
   rawColours,
   stripComments,
   strayBreakpoints,
@@ -21,6 +22,8 @@ const RULES = [
   { name: 'raw-colour', enforce: true, find: rawColours, skip: ['style.css'] },
   { name: 'api-call-outside-client', enforce: true, find: apiCalls, skip: ['client.ts'] },
   { name: 'breakpoint', enforce: true, find: strayBreakpoints, skip: [] },
+  // Report-only until the raw controls are gone (milestone "Desk: one look", R9).
+  { name: 'raw-control', enforce: false, find: rawControls, skip: [] },
 ]
 
 function files(dir) {
@@ -43,6 +46,8 @@ function hitsOf(rule) {
     // Colours and breakpoints are a CSS matter, calls and HTML a script one.
     if (rule.name === 'raw-colour' || rule.name === 'breakpoint') {
       if (ext === 'ts') continue
+    } else if (rule.name === 'raw-control') {
+      if (ext !== 'vue') continue
     } else if (ext === 'css') continue
     const src = stripComments(readFileSync(f, 'utf8'), ext)
     for (const line of rule.find(src)) hits.push(`${rel}:${line} ${rule.name}`)
@@ -55,6 +60,7 @@ for (const rule of RULES) {
     const hits = hitsOf(rule)
     for (const h of hits) t.diagnostic(h)
     t.diagnostic(`${rule.name}: ${hits.length} hit(s)`)
+    if (!rule.enforce) for (const h of hits) console.warn(`warning: ${h}`)
     if (rule.enforce) assert.deepEqual(hits, [])
   })
 }
@@ -63,6 +69,16 @@ test('matchers: colours', () => {
   assert.deepEqual(rawColours('a { color: #fff; }\nb { c: #a1b2c3d4 }\nd { e: rgba(0,0,0,.5) }'), [1, 2, 3])
   assert.deepEqual(rawColours('a { color: var(--fg) } &#123;'), [])
   assert.deepEqual(rawColours(stripComments('/* #fff */\na { c: red } // #000', 'ts')), [])
+})
+
+test('matchers: raw controls', () => {
+  const tpl = (body) => `<template>\n${body}\n</template>`
+  assert.deepEqual(rawControls(tpl('<button>a</button>\n<button class="x">b</button>')), [2, 3])
+  assert.deepEqual(rawControls(tpl('<select>\n</select>\n<textarea />\n<progress />')), [2, 4, 5])
+  assert.deepEqual(rawControls(tpl('<input type="checkbox">\n<input class="a" type="range">\n<input type=radio>')), [2, 3, 4])
+  assert.deepEqual(rawControls(tpl('<UButton />\n<USelect />\n<UTextarea />\n<buttonish />\n<input type="text">\n<input>')), [])
+  assert.deepEqual(rawControls(stripComments(tpl('<!-- <button> -->\n<p/>'), 'vue')), [])
+  assert.deepEqual(rawControls("<script setup>\nconst a = '<button>'\nconst b = `x\n<select>`\n</script>\n<template><p/></template>"), [])
 })
 
 test('matchers: html injection', () => {

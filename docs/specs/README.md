@@ -59,6 +59,7 @@ git history does; otherwise "no milestone".
 15. [One Decisions tab to read, search and revisit decisions](desk-decisions.spec.md) — Stored copies of every decision, a Decisions tab per milestone and project, the revisit chain and what Revisit does. Milestone: Desk: one Decisions tab to read, search and revisit what the agents decided.
 16. [One Metrics page, with lines of code next to cost](metrics-page.spec.md) — `/metrics` replaces `/costs`: written and merged lines, the cost per 100 merged production lines, Code, Flow and Pauses sections, and the Metrics tab. Milestone: Desk: one Metrics page, with lines of code next to cost, for all projects and each project.
 17. [Answer a plan's decisions step by step](plan-decisions.spec.md) — The plan turn returns decisions as data, a wizard with the agent's pick preselected, versions with decided-by and sign-off, and a history. Milestone: Desk: answer a plan's decisions step by step, with the agent's pick preselected.
+18. [Desk: one look on every page](desk-one-look.spec.md) — One shell, header and set of building blocks from Nuxt UI, readable text, a light/dark/auto switch, and the rule that enforces it. Milestone: Desk: one look on every page, built from Nuxt UI, with readable text and a light/dark/auto switch.
 
 ## Research
 

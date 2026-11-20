@@ -353,9 +353,37 @@ the Nuxt framework). The packages are pinned in `web/package.json`; the
 Vite plugin is `ui()` from `@nuxt/ui/vite` in `web/vite.config.ts`, and
 `App.vue` wraps the app in `<UApp>`. Views moved to the kit use components
 and utilities and drop their scoped CSS, except what utilities cannot
-express. `web/src/ui/` holds only what Nuxt UI lacks ([DataList](#datalist),
-[RouteTabs](#routetabs), [Truncated](#truncated), `useBackClose` for
-[sheets](#sheets) and `useKeyboardInset` for the [composer](#composer)).
+express.
+
+**The rule: Nuxt UI first.** Use a Nuxt UI component whenever one fits, even
+if the look is a small compromise. Write a custom component only when
+nothing in Nuxt UI fits, and list it below with the reason. `web/src/ui/`
+holds what Nuxt UI lacks. The `raw-control` rule of the
+[conventions check](#conventions-check) (`npm test`) reports a raw
+`<button>`, `<select>`, `<textarea>`, `<progress>` and
+`<input type="checkbox|radio|range">` in a `.vue` file; its `skip` list is
+the files of the custom components that must render one.
+
+### Custom components
+
+| Component | File | Why Nuxt UI does not cover it |
+| --- | --- | --- |
+| [DataList](#datalist) | `web/src/ui/DataList.vue` | Shows cards below 760 px; `UTable` has no card layout. |
+| [RouteTabs](#routetabs) | `web/src/ui/RouteTabs.vue` | Keeps the tab in the URL; `UTabs` state is local. |
+| [Truncated](#truncated) | `web/src/ui/Truncated.vue` | Cuts long text and shows the whole of it on demand; no Nuxt UI component does both. |
+| `useBackClose` | `web/src/ui/useBackClose.ts` | Lets the Back button close a [sheet](#sheets); Nuxt UI overlays do not touch history. |
+| `useKeyboardInset` | `web/src/ui/useKeyboardInset.ts` | Lifts the [composer](#composer) above the phone keyboard; Nuxt UI has no such helper. |
+| Charts | `web/src/ui/charts/` | [Charts](#charts) draw with Chart.js; Nuxt UI has no chart component. |
+| Phone bottom tab bar | `web/src/App.vue` | Nuxt UI has no bottom tab bar. |
+
+### Adding a custom component
+
+1. Check Nuxt UI first, including its dashboard, page and navigation components.
+2. Put the component in `web/src/ui/`.
+3. Add a row to the table above with the reason Nuxt UI does not fit.
+4. Add its file to the `skip` list of `raw-control` in
+   `web/test/conventions.test.mjs` only if it must render a raw control.
+
 **Imports are explicit.** Auto-imports and component resolution are off
 (`autoImport: false`, `components: false`): `npm run build` runs `vue-tsc`
 before Vite, so the declaration files they generate would not exist yet.
@@ -2055,7 +2083,7 @@ over results is in the API only (`GET /api/v1/research/search`).
 ### Conventions check
 
 `web/test/conventions.test.mjs` (part of `npm test`, so `make ui`) walks
-`web/src` (not `generated/`) and checks four rules, listed in the `RULES`
+`web/src` (not `generated/`) and checks five rules, listed in the `RULES`
 table at its top; the matchers are in `web/test/conventions.mjs`:
 
 - `html-injection`: `v-html`, `innerHTML`, `outerHTML`, `insertAdjacentHTML`.
@@ -2068,8 +2096,13 @@ table at its top; the matchers are in `web/test/conventions.mjs`:
 - `breakpoint`: `@media` widths other than the three widths of
   [design.md](design.md#desk-styles): `min-width` 760 or 1180 px,
   `max-width` 759.98 or 1179.98 px, nothing else in px. **Enforced.**
+- `raw-control`: a raw `<button>`, `<select>`, `<textarea>`, `<progress>` or
+  `<input type="checkbox|radio|range">` in a `.vue` file (strings in
+  `<script>` and comments are ignored). **Report-only** until the raw controls
+  are gone: it prints each hit as a warning and passes. See the
+  [UI kit](#ui-kit).
 
-All four rules are enforced: any hit fails `npm test`. A rule with
-`enforce: false` in its `RULES` entry would only print each hit as
-`file:line rule` (as a test diagnostic) with a count, and pass. Comments are
+The other four rules are enforced: any hit fails `npm test`. A rule with
+`enforce: false` in its `RULES` entry prints each hit as `file:line rule` (a
+test diagnostic and a `console.warn`) with a count, and passes. Comments are
 ignored.

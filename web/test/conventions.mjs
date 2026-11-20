@@ -46,6 +46,23 @@ function scan(src, re, filter) {
   return hits
 }
 
+// Blank out quoted strings in the <script> blocks of a .vue file (keeping line
+// structure), so a tag named in a string literal is not a hit. The template's
+// attributes are quoted too, so it is left alone.
+function blankScriptStrings(src) {
+  const blank = (m) => m.replace(/[^\n]/g, ' ')
+  const strings = /'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\.)*`/g
+  return src.replace(/(<script\b[^>]*>)([\s\S]*?)(<\/script>)/g, (_, a, body, c) => a + body.replace(strings, blank) + c)
+}
+
+const RAW_TAG = /<(?:button|select|textarea|progress)\b|<input\b[^>]*?\btype\s*=\s*["']?(?:checkbox|radio|range)\b/g
+
+// Raw form controls in a .vue file, which Nuxt UI has components for. Run it
+// on stripComments output.
+export function rawControls(src) {
+  return scan(blankScriptStrings(src), RAW_TAG)
+}
+
 export function htmlInjection(src) {
   return scan(src, HTML)
 }
