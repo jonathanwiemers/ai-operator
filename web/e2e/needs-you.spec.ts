@@ -64,6 +64,10 @@ async function open(page: Page, baseURL: string | undefined, path: string, size:
   const origin = new URL(baseURL ?? '').origin
   const problems: string[] = []
   const warms = opts.warms ?? []
+  // A second open on the same page: unload the old document first, so its
+  // late fetches (a thread reload after a chat POST) never reach the new
+  // route handler and its fixture (#646).
+  if (page.url() !== 'about:blank') await page.goto('about:blank')
   await page.setViewportSize(size)
   await page.clock.install({ time: now })
   page.on('pageerror', (err) => problems.push(err.message))
