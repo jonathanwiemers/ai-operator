@@ -252,6 +252,21 @@ export function heatLevel(events: number, max: number): 0 | 1 | 2 | 3 {
   return 3
 }
 
+// heatCellLabel is a heatmap cell's aria-label and tooltip: the date as the
+// heatmap shows it (locale, short month) and the count, "12 Nov: 3 events" (the count is the stream events the cell colours by).
+export function heatCellLabel(day: string, events: number, locale?: string): string {
+  const date = new Date(day + 'T12:00:00').toLocaleDateString(locale, { day: 'numeric', month: 'short' })
+  return `${date}: ${events} ${events === 1 ? 'event' : 'events'}`
+}
+
+// heatSummary is the heatmap's text: the total and the busiest day.
+export function heatSummary(days: { day: string; events: number }[], locale?: string): string {
+  const total = days.reduce((a, d) => a + d.events, 0)
+  if (!days.length || total === 0) return 'No activity in this range'
+  const top = days.reduce((a, d) => (d.events > a.events ? d : a))
+  return `${total} ${total === 1 ? 'event' : 'events'} in ${days.length} days; busiest day ${heatCellLabel(top.day, top.events, locale)}`
+}
+
 // Stream notes (the Composer's note mode, docs/contributing/web-ui.md "Composer"): a comment
 // on a milestone's tracking issue as /pilot …, or on a task's issue.
 export type NoteTarget =

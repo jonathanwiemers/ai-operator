@@ -1433,7 +1433,7 @@ for (const { width, height } of [widths[0]!, widths[2]!]) {
     const chart = page.locator('[data-chart=spend]')
     await expect(chart.locator('canvas')).toHaveAttribute(
       'aria-label',
-      /^Known cost per day by project, .+: \$114\.68 known in total, 10 calls of unknown cost\. Largest: team-a\/shop, \$105\.00\./,
+      /^Known cost per day by project, .+: \$114\.68 known in total\. Largest: team-a\/shop, \$105\.00\./,
     )
     const legend = chart.locator('[data-chart-legend] li')
     await expect(legend).toHaveText([/team-a\/shop\s*\$105\.00/, /rather-long-name\.example\s*\$8\.00/, /research\/payments-news\s*\$1\.68/])
@@ -1443,7 +1443,7 @@ for (const { width, height } of [widths[0]!, widths[2]!]) {
     await expect(table).toBeAttached()
     await expect(chart.locator('[data-chart-table] > [role=group]')).toHaveClass(/\bsr-only\b/)
     await expect(table.getByRole('row')).toHaveCount(31)
-    await chart.getByRole('button', { name: 'Table' }).click()
+    await chart.getByRole('button', { name: 'Show as table' }).click()
     await expect(table).toBeVisible()
     const first = table.getByRole('row').nth(1)
     for (const text of ['$1.50', '$0.80', '$0', '$2.30', '+ 1 unknown call']) await expect(first).toContainText(text)
@@ -1499,7 +1499,7 @@ for (const { width, height } of [widths[0]!, widths[2]!]) {
     await expect(legend.nth(1).locator('i')).toHaveClass(/border-dashed/)
 
     const table = chart.getByRole('table')
-    await chart.getByRole('button', { name: 'Table' }).click()
+    await chart.getByRole('button', { name: 'Show as table' }).click()
     await expect(table).toBeVisible()
     const head = table.getByRole('row').first()
     for (const text of ['Day', 'This month (Nov 2026)', 'Last month (Oct 2026), dashed']) await expect(head).toContainText(text)
@@ -1589,7 +1589,7 @@ for (const { width, height } of [widths[0]!, widths[2]!]) {
     await expect(page.locator('[data-costs-basis]')).toHaveCount(1)
     await expect(chart.locator('[data-costs-basis]')).toContainText('on the old token basis')
     await expect(chart.locator('[data-costs-unmetered]')).toContainText('3 calls not metered')
-    await chart.getByRole('button', { name: 'Table' }).click()
+    await chart.getByRole('button', { name: 'Show as table' }).click()
     await expect(chart.getByRole('table')).toBeVisible()
 
     problems.csp.push(...(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)))
@@ -1629,7 +1629,7 @@ for (const { width, height } of [widths[0]!, widths[2]!]) {
     // The project filter is set: no per-project table.
     await expect(section.locator('[data-pauses-table=project]')).toHaveCount(0)
     await expect(section.locator('[data-metrics-filter-note], [data-pauses-truncated]')).toHaveCount(0)
-    await section.locator('[data-chart=pauses]').getByRole('button', { name: 'Table' }).click()
+    await section.locator('[data-chart=pauses]').getByRole('button', { name: 'Show as table' }).click()
     await expect(section.locator('[data-chart=pauses]').getByRole('table')).toBeVisible()
 
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0)
@@ -1691,7 +1691,7 @@ for (const { width, height } of [widths[0]!, widths[2]!]) {
     await expect(code.locator('[data-tile=per100] dd').first()).toHaveText('$4.32')
     await expect(code.locator('[data-chart=code] canvas[role=img]')).toBeVisible()
     await expect(code.locator('[data-code-table=project]')).toHaveCount(0)
-    await code.locator('[data-chart=code]').getByRole('button', { name: 'Table' }).click()
+    await code.locator('[data-chart=code]').getByRole('button', { name: 'Show as table' }).click()
     await expect(code.locator('[data-chart=code]').getByRole('table')).toBeVisible()
 
     const flow = page.locator('[data-metrics-flow]')
@@ -4966,4 +4966,53 @@ test.describe('project sets in the rail', () => {
     await expect(rail.getByRole('link', { name: /^shop/ })).not.toHaveAttribute('aria-current', 'page')
     expect({ csp: problems.csp, pageErrors: problems.pageErrors, otherOrigin: problems.otherOrigin }).toEqual({ csp: [], pageErrors: [], otherOrigin: [] })
   })
+})
+
+// Charts as one sentence each (R7): every canvas on Metrics is an image with a
+// label, and "Show as table" is the next Tab stop after the chart's section
+// control.
+test('metrics: canvases are labelled images and Show as table is one Tab away', async ({ page, baseURL }) => {
+  const route = routes.find((r) => r.name === 'metrics')!
+  const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await page.clock.setFixedTime(now)
+  await watch(page, new URL(baseURL ?? '').origin, problems)
+  await mockAPI(page, route, problems)
+  await page.goto(route.path)
+  await route.ready(page)
+
+  const canvases = page.locator('main canvas')
+  expect(await canvases.count()).toBeGreaterThan(0)
+  for (const c of await canvases.all()) {
+    await expect(c).toHaveAttribute('role', 'img')
+    await expect(c).toHaveAttribute('aria-label', /\S/)
+  }
+  // Tab from the control before the Spend chart reaches its toggle.
+  const spend = page.locator('[data-chart=spend]')
+  const toggle = spend.getByRole('button', { name: 'Show as table' })
+  await spend.locator('[data-chart-legend]').scrollIntoViewIfNeeded()
+  await toggle.focus()
+  await page.keyboard.press('Shift+Tab')
+  await page.keyboard.press('Tab')
+  await expect(toggle).toBeFocused()
+  await page.keyboard.press('Enter')
+  await expect(spend.getByRole('table')).toBeVisible()
+  await expect(spend.getByRole('button', { name: 'Hide table' })).toBeVisible()
+})
+
+// Heatmap cells (views/Stream.vue, R7): a label with the date and the count,
+// and a text summary.
+test('heatmap cells carry a date and count label@1280', async ({ page, baseURL }) => {
+  const route = routes.find((r) => r.name === 'stream-project-stream')!
+  const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await page.clock.setFixedTime(now)
+  await watch(page, new URL(baseURL ?? '').origin, problems)
+  await mockAPI(page, route, problems)
+  await page.goto(route.path)
+  await route.ready(page)
+  const cells = page.locator('[data-heat-day]')
+  expect(await cells.count()).toBe(30)
+  for (const c of await cells.all()) await expect(c).toHaveAttribute('aria-label', /^(\d{1,2} \p{L}+\.?|\p{L}+\.? \d{1,2}): \d+ events?$/u)
+  await expect(page.locator('[data-heat-summary]')).toHaveText(/^\d+ events in 30 days; busiest day /)
 })

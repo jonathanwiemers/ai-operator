@@ -261,3 +261,12 @@ test('slashOpens and slashPick', () => {
   assert.equal(slashPick('/pilot skip #'), '/pilot skip #')
   assert.equal(slashPick('/agent revisit '), '/agent revisit ')
 })
+
+test('heatCellLabel and heatSummary', async () => {
+  const { heatCellLabel, heatSummary } = await import('../src/stream.ts')
+  assert.equal(heatCellLabel('2026-11-12', 3, 'en-GB'), '12 Nov: 3 events')
+  assert.equal(heatCellLabel('2026-11-12', 1, 'en-GB'), '12 Nov: 1 event')
+  const days = [{ day: '2026-11-12', events: 3 }, { day: '2026-11-13', events: 5 }]
+  assert.equal(heatSummary(days, 'en-GB'), '8 events in 2 days; busiest day 13 Nov: 5 events')
+  assert.equal(heatSummary([], 'en-GB'), 'No activity in this range')
+})

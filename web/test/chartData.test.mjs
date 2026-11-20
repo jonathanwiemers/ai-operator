@@ -252,11 +252,11 @@ test('chartSummary: range, known total, unknown calls and the largest series', (
   )
   assert.equal(
     chartSummary('Known cost per day by project', c),
-    'Known cost per day by project, 1 Nov to 2 Nov: $4.50 known in total, 2 calls of unknown cost. Largest: ns/b, $3.50. The table view lists every value.',
+    'Known cost per day by project, 1 Nov to 2 Nov: $4.50 known in total. Largest: ns/b, $3.50. 2 calls of unknown cost. The table view lists every value.',
   )
   assert.equal(
     chartSummary('Known cost', { labels: [], series: [], unknown: [] }),
-    'Known cost: $0 known in total. The table view lists every value.',
+    'No data for Known cost. The table view lists every value.',
   )
 })
 
@@ -395,7 +395,7 @@ test('breakdownSummary: names the total, the unknown calls and the largest row',
   const rows = breakdownRows([by('claude', '5.00', 1), by('cursor', '2.00')], 'engine', { range: '30d', group: 'engine' })
   assert.equal(
     breakdownSummary('engine', rows),
-    'Known cost by engine: $7.00 in total, 1 call of unknown cost. Largest: claude, $5.00. The list below has every value.',
+    'Known cost by engine: $7.00 in total. Largest: claude, $5.00. 1 call of unknown cost. The table below has every value.',
   )
 })
 
@@ -429,4 +429,33 @@ test('tokensChart: bars equal the sums, share matches the range, unmetered is na
   const empty = tokensChart(b, 'day', [], 'en-GB')
   assert.equal(empty.share, null)
   assert.deepEqual(empty.line.values, [null])
+})
+
+test('breakdownSummary: no data, one series, many series name Other', () => {
+  const f = { range: '30d', group: 'project' }
+  assert.equal(breakdownSummary('project', []), 'No data for Known cost by project. The table below has every value.')
+  assert.equal(
+    breakdownSummary('project', breakdownRows([by('a', '2.00')], 'project', f)),
+    'Known cost by project: $2.00 in total. Largest: a, $2.00. The table below has every value.',
+  )
+  const many = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map((k, i) => by(k, String(8 - i) + '.00'))
+  assert.match(breakdownSummary('project', breakdownRows(many, 'project', f)), /Largest: a, \$8\.00\. Other: \$3\.00\. The table below/)
+})
+
+test('monthSummary: no data', () => {
+  assert.equal(
+    monthSummary({ labels: [], series: [], unknown: [], today: 1, sameDays: 1, compare: { change: null } }),
+    'No data for This month. The table view lists every day.',
+  )
+})
+
+test('chartSummary: names Other', () => {
+  const c = stackedChart(
+    ['2026-11-01'],
+    'day',
+    [point('2026-11-01', 'ns/a', '3.00'), point('2026-11-01', 'b', '1.00'), point('2026-11-01', 'c', '1.00'), point('2026-11-01', 'd', '1.00'), point('2026-11-01', 'e', '1.00'), point('2026-11-01', 'f', '1.00'), point('2026-11-01', 'g', '1.00'), point('2026-11-01', 'h', '1.00')],
+    'cost',
+    'en-GB',
+  )
+  assert.match(chartSummary('Cost', c), /Largest: ns\/a, \$3\.00\. Other: \$2\.00\./)
 })

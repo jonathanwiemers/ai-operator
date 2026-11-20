@@ -156,6 +156,6 @@ const options = computed<ChartOptions<'bar' | 'line'>>(() => {
 <template>
   <!-- Chart.js fills the container: the height is fixed, the width follows it. -->
   <div class="relative h-60 min-w-0 tablet:h-72" data-chart-canvas>
-    <Chart type="bar" :data="data" :options="options" :aria-label="summary" />
+    <Chart role="img" type="bar" :data="data" :options="options" :aria-label="summary" />
   </div>
 </template>

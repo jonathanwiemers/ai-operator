@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // A chart's table view (docs/contributing/web-ui.md, "Charts"): a row per bucket, a column per
-// series, the total and the calls of unknown cost. The "Table" toggle shows
+// series, the total and the calls of unknown cost. The "Show as table" toggle shows
 // it; hidden, it is visually hidden only, so screen readers always reach the
 // values a canvas cannot give them. Without sum (a line chart's cumulative
 // values) there is no total column; a value null (no point) is "–".
@@ -45,7 +45,7 @@ const rows = computed(() =>
 <template>
   <div data-chart-table>
     <UButton
-      label="Table"
+      :label="open ? 'Hide table' : 'Show as table'"
       icon="i-lucide-table"
       color="neutral"
       :variant="open ? 'soft' : 'outline'"

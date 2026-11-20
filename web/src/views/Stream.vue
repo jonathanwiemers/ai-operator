@@ -39,7 +39,9 @@ import { pausePrompt } from '../pauseCard'
 import {
   dayEndCursor,
   groupThreads,
+  heatCellLabel,
   heatLevel,
+  heatSummary,
   kindsForFilter,
   runtimeKindsForFilter,
   runtimeStreamFilters,
@@ -249,7 +251,8 @@ const heatDays = computed(() => {
 // One tooltip for the whole heatmap (decision 7: no tooltip per cell),
 // anchored to the cell under the pointer or with focus.
 const heatHint = ref<{ el: HTMLElement; text: string } | null>(null)
-const heatText = (d: { day: string; events: number }) => `${d.day} · ${d.events} events`
+const heatText = (d: { day: string; events: number }) => heatCellLabel(d.day, d.events)
+const heatDescription = computed(() => heatSummary(heatDays.value))
 function showHeatHint(e: Event) {
   const el = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-heat-day]')
   heatHint.value = el ? { el, text: el.getAttribute('aria-label') ?? '' } : null
@@ -547,6 +550,7 @@ watch(
         </div>
         <div v-if="tab === 'stream' && heatDays.length" class="heat" title="Activity per day; click to jump">
           <span>{{ heatRange.start }}</span>
+          <span class="sr-only" data-heat-summary>{{ heatDescription }}</span>
           <div class="cells" @pointerover="showHeatHint" @focusin="showHeatHint" @pointerleave="heatHint = null" @focusout="heatHint = null">
             <!-- A cell's look is the heatmap's (.cells button below), not a button's. -->
             <UButton

@@ -4,14 +4,13 @@
 // values and a table view. Each row of a project, kind or engine is a link
 // that filters the whole page (costs.ts's breakdownLink); a click on its bar
 // does the same. Model rows and Other are not links.
-import UButton from '@nuxt/ui/components/Button.vue'
 import UTabs from '@nuxt/ui/components/Tabs.vue'
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { breakdownRows, breakdownSummary, formatUSD, unknownNote, type BreakdownRow, type ChartToken } from '../chartData'
+import { breakdownRows, breakdownSummary, formatUSD, unknownNote, type BreakdownRow, type ChartToken, type ChartView } from '../chartData'
 import { costGroups, type CostFilters, type CostGroup } from '../costs'
 import type { CostsView } from '../generated/views'
-import DataList, { type DataListColumn } from '../ui/DataList.vue'
+import ChartTable from '../ui/charts/ChartTable.vue'
 import HorizontalBars from '../ui/charts/HorizontalBars.vue'
 
 const props = defineProps<{ data: CostsView; filters: CostFilters }>()
@@ -24,7 +23,6 @@ function setDimension(v: string | number) {
   const g = costGroups.find((x) => x === v)
   if (g) dimension.value = g
 }
-const tableOpen = ref(false)
 
 const source = computed(() => {
   const d = props.data
@@ -50,17 +48,13 @@ const swatch: Record<ChartToken, string> = {
   '--chart-other': 'bg-(--chart-other)',
 }
 
-const columns: DataListColumn[] = [
-  { key: 'label', label: 'Name' },
-  { key: 'cost', label: 'Known cost', numeric: true },
-  { key: 'unknown', label: 'Unknown cost' },
-]
-const tableRows = computed(() =>
-  rows.value.map((r, i) => ({ id: String(i), row: r, label: r.label, cost: r.total === null ? 'n/a' : formatUSD(r.total), unknown: unknownNote(r.unknown) })),
-)
-type TableRow = (typeof tableRows.value)[number]
+// The table view: a row per bar. The legend above keeps the links.
+const tableChart = computed<ChartView>(() => ({
+  labels: rows.value.map((r) => r.label),
+  series: [{ key: 'cost', label: 'Known cost', token: '--chart-1', total: total.value, values: rows.value.map((r) => (r.total === null ? null : r.total)) }],
+  unknown: rows.value.map((r) => r.unknown),
+}))
 
-const link = 'row-link underline-offset-2 hover:underline'
 const keyOf = (r: BreakdownRow) => (r.key === '\u0000other' ? 'other' : r.key)
 </script>
 
@@ -86,34 +80,14 @@ const keyOf = (r: BreakdownRow) => (r.key === '\u0000other' ? 'other' : r.key)
       <ul class="m-0 flex list-none flex-col gap-1 p-0 text-[13px]" aria-label="Legend" data-chart-legend>
         <li v-for="r in rows" :key="r.key" class="flex min-w-0 items-baseline gap-1.5" :data-legend-key="keyOf(r)">
           <i class="inline-block size-2.5 shrink-0 self-center rounded-xs" :class="swatch[r.token]" aria-hidden="true" />
-          <RouterLink v-if="r.link" :to="r.link" :class="[link, 'min-w-0 [overflow-wrap:anywhere]']">{{ r.label }}</RouterLink>
+          <RouterLink v-if="r.link" :to="r.link" :class="['row-link underline-offset-2 hover:underline', 'min-w-0 [overflow-wrap:anywhere]']">{{ r.label }}</RouterLink>
           <span v-else class="min-w-0 [overflow-wrap:anywhere]">{{ r.label }}</span>
           <span class="font-semibold tabular-nums" :class="{ italic: r.total === null }">{{ r.total === null ? 'n/a' : formatUSD(r.total) }}</span>
           <span v-if="r.unknown" class="text-(--text-2)">{{ unknownNote(r.unknown) }}</span>
         </li>
       </ul>
-      <div data-chart-table>
-        <UButton
-          label="Table"
-          icon="i-lucide-table"
-          color="neutral"
-          :variant="tableOpen ? 'soft' : 'outline'"
-          size="sm"
-          class="min-h-11 tablet:min-h-0"
-          :aria-pressed="tableOpen"
-          data-chart-table-toggle
-          @click="tableOpen = !tableOpen"
-        />
-        <div :class="tableOpen ? 'mt-3 max-h-96 overflow-y-auto' : 'sr-only'" role="group" :aria-label="`Known cost by ${dimension}, as a table`">
-          <DataList :columns="columns" :rows="tableRows" :row-key="(r: TableRow) => r.id">
-            <template #cell-label="{ row }">
-              <RouterLink v-if="row.row.link" :to="row.row.link" :class="link">{{ row.label }}</RouterLink>
-              <template v-else>{{ row.label }}</template>
-            </template>
-          </DataList>
-        </div>
-        <p class="faint mt-2">Total known: {{ formatUSD(total) }}</p>
-      </div>
+      <ChartTable :chart="tableChart" :label="`Known cost by ${dimension}, as a table`" :sum="false" row-label="Name" />
+      <p class="faint">Total known: {{ formatUSD(total) }}</p>
     </div>
   </section>
 </template>

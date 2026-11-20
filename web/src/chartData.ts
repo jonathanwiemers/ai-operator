@@ -264,18 +264,47 @@ export function stackedChart(
   }
 }
 
+// summaryText is the one rule set of every chart's aria-label: a title, the
+// range, the total, the largest series, the Other series when it exists, then
+// the unknown or not-metered note. An empty chart starts with "No data".
+function summaryText(o: {
+  title: string
+  range?: string
+  total: string
+  empty: boolean
+  largest?: string
+  other?: string
+  unknown?: string
+  tail: string
+}): string {
+  if (o.empty) return `No data for ${o.title}. ${o.tail}`
+  let out = `${o.title}${o.range ? `, ${o.range}` : ''}: ${o.total}`
+  if (o.largest) out += `. Largest: ${o.largest}`
+  if (o.other) out += `. Other: ${o.other}`
+  if (o.unknown) out += `. ${o.unknown}`
+  return `${out}. ${o.tail}`
+}
+
+const callsNote = (n: number, what: string) => (n ? `${n} ${n === 1 ? 'call' : 'calls'} ${what}` : undefined)
+const rangeOf = (labels: string[]) => (labels.length ? `${labels[0]} to ${labels[labels.length - 1]}` : undefined)
+
 // chartSummary is a stacked cost chart's text for screen readers (the
-// canvas's aria-label): the range, the known total, the calls of unknown
-// cost and the largest series.
+// canvas's aria-label), by summaryText's rules.
 export function chartSummary(title: string, chart: StackedChart): string {
   const total = chart.series.reduce((a, s) => a + s.total, 0)
   const unknown = chart.unknown.reduce((a, n) => a + n, 0)
-  const range = chart.labels.length ? `, ${chart.labels[0]} to ${chart.labels[chart.labels.length - 1]}` : ''
-  let out = `${title}${range}: ${formatUSD(total)} known in total`
-  if (unknown) out += `, ${unknown} ${unknown === 1 ? 'call' : 'calls'} of unknown cost`
   const top = [...chart.series].filter((s) => s.key !== OTHER).sort((a, b) => b.total - a.total)[0]
-  if (top && top.total > 0) out += `. Largest: ${top.label}, ${formatUSD(top.total)}`
-  return `${out}. The table view lists every value.`
+  const other = chart.series.find((s) => s.key === OTHER)
+  return summaryText({
+    title,
+    range: rangeOf(chart.labels),
+    total: `${formatUSD(total)} known in total`,
+    empty: !chart.labels.length || (!chart.series.length && !unknown),
+    largest: top && top.total > 0 ? `${top.label}, ${formatUSD(top.total)}` : undefined,
+    other: other && other.total > 0 ? formatUSD(other.total) : undefined,
+    unknown: callsNote(unknown, 'of unknown cost'),
+    tail: 'The table view lists every value.',
+  })
 }
 
 // ChartColors are the chart's colours, read from style.css's tokens at
@@ -431,6 +460,7 @@ export function cumulativeMonth(month: CostsMonthView, ym: string, locale?: stri
 // canvas's aria-label).
 export function monthSummary(chart: MonthChart): string {
   const [cur, prev] = chart.series
+  if (!cur && !prev) return 'No data for This month. The table view lists every day.'
   const value = (t: number | null | undefined) => (t === null || t === undefined ? 'no known cost' : `${formatUSD(t)} known`)
   const change = changeLabel(chart.compare.change)
   return (
@@ -491,12 +521,20 @@ export function breakdownRows(rows: SpendBreakdownView[], dimension: CostGroup, 
 // aria-label): the dimension, the known total and the largest row.
 export function breakdownSummary(dimension: string, rows: BreakdownRow[]): string {
   const total = rows.reduce((a, r) => a + r.value, 0)
-  const unknown = rows.reduce((a, r) => a + r.unknown, 0)
-  let out = `Known cost by ${dimension}: ${formatUSD(total)} in total`
-  if (unknown) out += `, ${unknown} ${unknown === 1 ? 'call' : 'calls'} of unknown cost`
   const top = rows.find((r) => r.key !== OTHER)
-  if (top && top.value > 0) out += `. Largest: ${top.label}, ${formatUSD(top.value)}`
-  return `${out}. The list below has every value.`
+  const other = rows.find((r) => r.key === OTHER)
+  return summaryText({
+    title: `Known cost by ${dimension}`,
+    total: `${formatUSD(total)} in total`,
+    empty: !rows.length,
+    largest: top && top.value > 0 ? `${top.label}, ${formatUSD(top.value)}` : undefined,
+    other: other && other.value > 0 ? formatUSD(other.value) : undefined,
+    unknown: callsNote(
+      rows.reduce((a, r) => a + r.unknown, 0),
+      'of unknown cost',
+    ),
+    tail: 'The table below has every value.',
+  })
 }
 
 // formatPercent is a share in percent: "42.5%".
@@ -603,10 +641,20 @@ export function tokensChart(buckets: string[], kind: BucketKind, points: CostPoi
 // aria-label).
 export function tokensSummary(chart: TokensChart): string {
   const total = chart.bars.series.reduce((a, s) => a + s.total, 0)
-  const unmetered = chart.bars.unknown.reduce((a, n) => a + n, 0)
-  const range = chart.bars.labels.length ? `, ${chart.bars.labels[0]} to ${chart.bars.labels[chart.bars.labels.length - 1]}` : ''
-  let out = `Metered tokens per bucket${range}: ${formatTokens(total)} in total`
-  out += chart.share === null ? ', no cache-read share' : `, cache-read share ${formatPercent(chart.share * 100)}`
-  if (unmetered) out += `, ${unmetered} ${unmetered === 1 ? 'call' : 'calls'} not metered`
-  return `${out}. The line is the cache-read share. The table view lists every value.`
+  const top = [...chart.bars.series].filter((s) => s.key !== OTHER).sort((a, b) => b.total - a.total)[0]
+  const other = chart.bars.series.find((s) => s.key === OTHER)
+  const share = chart.share === null ? 'no cache-read share' : `cache-read share ${formatPercent(chart.share * 100)}`
+  return summaryText({
+    title: 'Metered tokens per bucket',
+    range: rangeOf(chart.bars.labels),
+    total: `${formatTokens(total)} in total, ${share}`,
+    empty: !chart.bars.labels.length,
+    largest: top && top.total > 0 ? `${top.label}, ${formatTokens(top.total)}` : undefined,
+    other: other && other.total > 0 ? formatTokens(other.total) : undefined,
+    unknown: callsNote(
+      chart.bars.unknown.reduce((a, n) => a + n, 0),
+      'not metered',
+    ),
+    tail: 'The line is the cache-read share. The table view lists every value.',
+  })
 }
