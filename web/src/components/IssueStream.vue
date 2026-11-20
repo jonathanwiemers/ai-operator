@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, ref, watch } from 'vue'
 import { hasFeature } from '../api'
@@ -142,7 +143,7 @@ function showDay(i: number): string | null {
     <div v-if="!historyOn" class="banner info">History needs the research database.</div>
     <div v-if="error" class="banner danger">{{ error }}</div>
     <div v-if="loading && !events.length" class="empty">Loading…</div>
-    <div v-else-if="!events.length" class="empty">No events yet.</div>
+    <UEmpty v-else-if="!events.length" icon="i-lucide-history" title="No events yet." variant="naked" size="sm" />
 
     <template v-for="(item, i) in items" :key="item.kind === 'thread' ? item.key : streamEventKey(item.event)">
       <div v-if="showDay(i)" class="day">{{ showDay(i) }}</div>

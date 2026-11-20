@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, ref } from 'vue'
 import { useRoute } from 'vue-router'
@@ -71,7 +72,7 @@ const chip = { color: 'neutral', variant: 'outline', size: 'sm' } as const
         <span v-if="open.count">{{ open.count }}</span>
       </h3>
       <div class="grid gap-2.5">
-        <div v-if="!open.count" :class="quiet">Nothing needs you.</div>
+        <UEmpty v-if="!open.count" icon="i-lucide-inbox" title="Nothing needs you." variant="naked" size="sm" />
         <ProblemCard
           v-for="p in open.problems"
           :key="`${milestone.iid}/${p.iid}`"
@@ -104,7 +105,7 @@ const chip = { color: 'neutral', variant: 'outline', size: 'sm' } as const
     <section class="min-w-0" data-needs-handled>
       <h3 :class="sectionHead"><span>Handled</span></h3>
       <div class="grid gap-2.5">
-        <div v-if="!problems.length" :class="quiet">Nothing handled yet.</div>
+        <UEmpty v-if="!problems.length" icon="i-lucide-inbox" title="Nothing handled yet." variant="naked" size="sm" />
         <NeedsProblem
           v-for="p in problems"
           :key="p.iid"

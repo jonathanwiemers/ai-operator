@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { chatPostError } from '../api'
@@ -313,7 +314,7 @@ onUnmounted(() => {
           @click="loadOlder"
         />
       </div>
-      <div v-if="!chronological.length" class="empty">No messages yet.</div>
+      <UEmpty v-if="!chronological.length" icon="i-lucide-message-square" title="No messages yet." variant="naked" size="sm" />
       <ChatThread v-else :turns="turns" :replies="repliesByParent" />
 
       <div v-if="statusLine" class="status">

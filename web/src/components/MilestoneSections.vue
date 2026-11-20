@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, ref } from 'vue'
 import MilestoneList from './MilestoneList.vue'
@@ -42,7 +43,7 @@ const more = computed(() => !showAll.value && doneRows.value.length >= RECENT)
     <h2 class="text-[15px]">In progress</h2>
     <div v-if="open.error.value" class="banner danger">{{ open.error.value }}</div>
     <p v-if="open.loading.value && !open.data.value" class="muted">Loading…</p>
-    <p v-else-if="open.data.value && !inProgress.length" class="muted">No milestone is in work.</p>
+    <UEmpty v-else-if="open.data.value && !inProgress.length" icon="i-lucide-flag" title="No milestone is in work." size="sm" />
     <MilestoneList v-else-if="inProgress.length" :rows="inProgress" :show-project="!perProject" label="In progress" />
   </section>
   <section class="section">
@@ -50,7 +51,7 @@ const more = computed(() => !showAll.value && doneRows.value.length >= RECENT)
     <div v-if="done.error.value" class="banner danger">{{ done.error.value }}</div>
     <p v-if="done.loading.value && !done.data.value" class="muted">Loading…</p>
     <p v-else-if="done.data.value && !history" class="muted">Done milestones need the research database.</p>
-    <p v-else-if="done.data.value && !doneRows.length" class="muted">No milestone is done yet.</p>
+    <UEmpty v-else-if="done.data.value && !doneRows.length" icon="i-lucide-flag" title="No milestone is done yet." size="sm" />
     <template v-else-if="doneRows.length">
       <MilestoneList :rows="doneRows" :show-project="!perProject" label="Recently done" />
       <div v-if="more" class="mt-2.5 text-center">

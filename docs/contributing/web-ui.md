@@ -401,6 +401,25 @@ the files of the custom components that must render one.
 4. Add its file to the `skip` list of `raw-control` in
    `web/test/conventions.test.mjs` only if it must render a raw control.
 
+### Building blocks
+
+- **Stat tiles.** Key figures (the Overview strip, the Metrics tiles, the
+  Spend tab, the issue, task and research run figures, a research stats
+  block) are `components/StatTile.vue`, one `UCard` with a label, the value
+  and an optional delta (tone up, down or neutral), sub line or link (`to`,
+  the whole tile). A row of tiles is a `stat-tiles` grid (`style.css`):
+  columns of at least 9rem, so a row wraps to two tiles at 375 px.
+- **Progress.** `UProgress`, with an `aria-label` such as "3 of 5 merged"
+  (`getValueLabel`). `web/test/buildingBlocks.test.mjs` fails on a
+  `ProgressBar` in `web/src`.
+- **Empty states.** `UEmpty` with a Lucide icon, the text as its title and
+  an optional description. A page-level empty list uses the default outline
+  variant; inside a card, tab or thread it is `variant="naked"` with
+  `size="sm"` (`xs` in a context panel or a fold). Loading, waiting and
+  error notes are not empty states and keep their text.
+  `buildingBlocks.test.mjs` fails on a "No … yet" or "Nothing …" text in a
+  plain element.
+
 **Imports are explicit.** Auto-imports and component resolution are off
 (`autoImport: false`, `components: false`): `npm run build` runs `vue-tsc`
 before Vite, so the declaration files they generate would not exist yet.
@@ -614,7 +633,7 @@ re-measured by a `ResizeObserver`). Only text that is really clipped becomes
 Space toggles the clamp in place, with no overlay to dismiss. Text that fits
 stays plain. It sets no `title`: use `title` only for what is readable
 elsewhere. It sets no colour or weight, the parent's classes do; do not give
-it `.fact .value`, whose global rules keep `nowrap`. The task page's facts
+it a parent with `nowrap`. The task page's branch tile
 on its *Details* tab and the current step in its status line use it.
 
 ### Search palette
@@ -969,9 +988,10 @@ project change, not live, and shows *Drafting* (every phase but Created)
 and *Milestones created*, each last active first and hidden when empty; a
 404 shows an empty list (`AllPlans.vue` shows *Not found*). Each plan is
 a `PlanRow.vue` (project only across projects, title, phase, spend, last
-activity, and the milestone's `%N` with its state and `ProgressBar.vue`,
-or *Not planned* with the GitLab link). `ProgressBar.vue` is shared with
-`MilestoneRow.vue`. *Plan milestone* in `PlanList.vue` shows when
+activity, and the milestone's `%N` with its state and a `UProgress` of
+merged issues next to its "3/5", or *Not planned* with the GitLab link). The
+bar's value, max and accessible name come from `progressBar` in
+`milestoneRows.ts`, shared with `MilestoneRow.vue`. *Plan milestone* in `PlanList.vue` shows when
 `planStartProjects` (`planStart.ts`: the `steer` projects, sorted) is not
 empty, also on an empty list: one project starts an untitled plan
 (`createPlan`) and opens it, two or more open an inline picker of buttons

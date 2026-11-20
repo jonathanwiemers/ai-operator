@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import UEmpty from '@nuxt/ui/components/Empty.vue'
 import { computed } from 'vue'
 import EngineUsage from './EngineUsage.vue'
 import MilestoneSections from './MilestoneSections.vue'
+import StatTile from './StatTile.vue'
 import { clockTime, duration } from '../format'
 import { getOverview } from '../client'
 import { useNow, useResource } from '../live'
@@ -15,14 +17,12 @@ const now = useNow()
 const { data: overview, error, loading } = useResource(() => getOverview, ['project', 'task'])
 const strip = computed(() => (overview.value ? overviewStrip(overview.value) : []))
 
-// chip styles one chip of the summary strip. The Inbox and spend chips are
-// links: 44 px high on phones.
-function chip(c: StripChip): string[] {
-  return [
-    'inline-flex items-center gap-1 rounded-full border bg-(--surface) px-3 py-1.5 text-[13px] whitespace-nowrap tabular-nums',
-    c.warn ? 'border-(--tone-warning-fg) text-(--tone-warning-fg)' : 'border-(--border) text-(--text-2)',
-    c.inbox || c.costs ? 'min-h-11 hover:no-underline tablet:min-h-0' : '',
-  ]
+// chipLink is where a strip tile leads: the Inbox, or the Metrics page's
+// last 7 days for the spend tiles.
+function chipLink(c: StripChip) {
+  if (c.inbox) return '/inbox'
+  if (c.costs) return { path: '/metrics', query: { range: '7d' } }
+  return undefined
 }
 
 function project(w: WorkingNow) {
@@ -41,17 +41,9 @@ function runningFor(w: WorkingNow): string {
     <div v-if="error" class="banner danger">{{ error }}</div>
     <div v-if="loading && !overview" class="empty">Loading…</div>
     <template v-else-if="overview">
-      <ul class="m-0 flex list-none flex-wrap gap-2 p-0" aria-label="Summary">
-        <li v-for="c in strip" :key="c.id" class="flex">
-          <RouterLink v-if="c.inbox" to="/inbox" :class="chip(c)">
-            <b :class="{ 'text-(--text)': !c.warn }">{{ c.value }}</b> {{ c.label }}
-          </RouterLink>
-          <RouterLink v-else-if="c.costs" :to="{ path: '/metrics', query: { range: '7d' } }" :class="chip(c)" data-chip-costs>
-            <b :class="{ 'text-(--text)': !c.warn }">{{ c.value }}</b> {{ c.label }}
-          </RouterLink>
-          <span v-else :class="chip(c)">
-            <b :class="{ 'text-(--text)': !c.warn }">{{ c.value }}</b> {{ c.label }}
-          </span>
+      <ul class="stat-tiles" aria-label="Summary">
+        <li v-for="c in strip" :key="c.id" class="flex min-w-0 *:flex-1">
+          <StatTile :label="c.label" :value="c.value" :warn="c.warn" :to="chipLink(c)" :data-chip-costs="c.costs || undefined" />
         </li>
       </ul>
       <div v-if="!overview.history" class="banner info">
@@ -60,7 +52,7 @@ function runningFor(w: WorkingNow): string {
 
       <section class="section">
         <h2 class="text-[15px]">Working now</h2>
-        <p v-if="!overview.working.length" class="muted">Nothing runs right now.</p>
+        <UEmpty v-if="!overview.working.length" icon="i-lucide-circle-dot" title="Nothing runs right now." size="sm" />
         <!-- One column on phones, two on tablets, as many columns of at
              least 300 px as fit on desktop. -->
         <div

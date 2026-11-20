@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UEmpty from '@nuxt/ui/components/Empty.vue'
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import UButton from '@nuxt/ui/components/Button.vue'
@@ -107,7 +108,7 @@ async function start(p: PlanProject) {
     <div v-if="startError" class="banner danger" role="alert">{{ startError }}</div>
     <div v-if="error" class="banner danger">{{ error }}</div>
     <p v-else-if="!overview" class="muted">Loading…</p>
-    <p v-else-if="!overview.plans.length" class="muted">No plans yet.</p>
+    <UEmpty v-else-if="!overview.plans.length" icon="i-lucide-map" title="No plans yet." class="section" />
     <template v-else>
       <section v-if="sections.drafting.length" class="section">
         <h2 class="text-[15px]">Drafting</h2>

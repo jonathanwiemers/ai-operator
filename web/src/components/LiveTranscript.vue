@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { transcriptURL } from '../client'
@@ -121,7 +122,7 @@ const endText = computed(() => {
           </summary>
           <div class="children">
             <TranscriptLine v-for="(c, j) in r.children" :key="j" :e="c" />
-            <div v-if="!r.children.length" class="entry faint">No events yet.</div>
+            <UEmpty v-if="!r.children.length" icon="i-lucide-history" title="No events yet." variant="naked" size="xs" />
           </div>
         </details>
       </template>

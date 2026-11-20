@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UEmpty from '@nuxt/ui/components/Empty.vue'
 // Budgets (docs/contributing/web-ui.md, "Metrics page"): the budgets of milestones whose
 // autopilot is not done, the milestone's own and its issues', as used. Shown
 // only, never set or enforced. Live state, not bound to the range. The
@@ -36,7 +37,7 @@ const key = (b: BudgetRowView) => `${b.namespace}/${b.project}/${b.milestoneIID}
       <h2 id="costs-budgets">Budgets</h2>
       <span class="faint">Live state, not bound to the range; shown only, set on the milestone</span>
     </div>
-    <div v-if="!budgets.length" class="card empty" data-budgets-empty>No unfinished milestone has a budget.</div>
+    <UEmpty v-if="!budgets.length" icon="i-lucide-wallet" title="No unfinished milestone has a budget." size="sm" data-budgets-empty />
     <template v-else>
       <ul class="card m-0 flex list-none flex-col divide-y divide-(--border) p-0">
         <li v-for="b in rows" :key="key(b)" class="flex min-w-0 flex-col gap-1.5 px-3.5 py-3" :data-budget="key(b)" :data-warn="warn(b) || undefined">

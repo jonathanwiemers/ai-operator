@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
 import UTextarea from '@nuxt/ui/components/Textarea.vue'
@@ -261,7 +262,7 @@ const descriptionUI = { root: 'w-full', base: 'min-h-[220px] resize-y font-mono 
 
 <template>
   <section>
-    <div v-if="!r" class="empty">The retrospective is written when the autopilot is done.</div>
+    <UEmpty v-if="!r" icon="i-lucide-file-text" title="The retrospective is written when the autopilot is done." variant="naked" size="sm" />
     <template v-else>
       <div v-if="r.postedAt || r.noteURL" class="flex flex-wrap items-center gap-x-4 gap-y-1 text-[13px] text-(--text-2)" data-retro-facts>
         <span v-if="r.postedAt">Posted <RelTime :time="r.postedAt" /></span>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UEmpty from '@nuxt/ui/components/Empty.vue'
 import type { MilestoneView } from '../types'
 import TaskChat from './TaskChat.vue'
 
@@ -28,7 +29,7 @@ defineProps<{ namespace: string; name: string; milestone: MilestoneView; focus?:
     :focus="focus"
     :message-prefix="messagePrefix"
   />
-  <div v-else class="card empty">
-    No pilot for this milestone. Autopilot, or <code>/pilot coordinate</code> on an issue, starts one.
-  </div>
+  <UEmpty v-else icon="i-lucide-bot" title="No pilot for this milestone.">
+    <template #description>Autopilot, or <code>/pilot coordinate</code> on an issue, starts one.</template>
+  </UEmpty>
 </template>

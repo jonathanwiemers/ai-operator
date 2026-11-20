@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UEmpty from '@nuxt/ui/components/Empty.vue'
 // Pauses (docs/contributing/web-ui.md, "Metrics page"; decision 10 of the
 // milestone "Desk: one Metrics page"): the milestone pauses that started in the
 // range, per bucket by kind and in paused hours, the totals, who and how
@@ -25,6 +26,7 @@ import type { PauseResolverRow, PauseViaRow } from '../pauses'
 import ChartLegend from '../ui/charts/ChartLegend.vue'
 import ChartTable from '../ui/charts/ChartTable.vue'
 import StackedBars from '../ui/charts/StackedBars.vue'
+import StatTile from './StatTile.vue'
 import DataList, { type DataListColumn } from '../ui/DataList.vue'
 
 const props = defineProps<{ pauses: MetricsPausesView; filtered: boolean; project?: string }>()
@@ -71,9 +73,6 @@ const projectKey = (r: PauseProjectRow) => r.project
 const longKey = (r: LongPauseRow) => r.id
 
 const link = 'row-link underline-offset-2 hover:underline'
-const kpi = 'card flex min-w-0 flex-col gap-1 px-4 py-3'
-const kpiLabel = 'text-[11.5px] text-(--text-3)'
-const kpiValue = 'text-xl font-semibold tabular-nums'
 const tableCard = 'card min-w-0 overflow-hidden'
 const tableTitle = 'm-0 px-3.5 pt-3 pb-2 text-[13px] font-semibold'
 </script>
@@ -87,14 +86,11 @@ const tableTitle = 'm-0 px-3.5 pt-3 pb-2 text-[13px] font-semibold'
     <p v-if="filtered" class="faint mt-0 mb-2" data-metrics-filter-note>{{ metricsFilterNote }}</p>
     <p v-if="pauses.truncated" class="banner mt-0 mb-2" data-pauses-truncated>{{ pausesTruncatedNote }}</p>
 
-    <dl class="m-0 grid grid-cols-2 gap-3 tablet:grid-cols-4" data-pauses-tiles>
-      <div v-for="t in tiles" :key="t.id" :class="kpi" :data-tile="t.id">
-        <dt :class="kpiLabel">{{ t.label }}</dt>
-        <dd :class="kpiValue">{{ t.value }}</dd>
-      </div>
-    </dl>
+    <div class="stat-tiles" data-pauses-tiles>
+      <StatTile v-for="t in tiles" :key="t.id" :label="t.label" :value="t.value" :data-tile="t.id" />
+    </div>
 
-    <p v-if="!pauses.totals.count" class="card empty mt-3" data-pauses-empty>No milestone paused in this range.</p>
+    <UEmpty v-if="!pauses.totals.count" icon="i-lucide-flag" title="No milestone paused in this range." size="sm" class="mt-3" data-pauses-empty />
     <div v-else class="mt-3 grid min-w-0 gap-3">
       <div class="card flex min-w-0 flex-col gap-3 p-3 tablet:p-4" data-chart="pauses">
         <h3 class="m-0 text-[13px] font-semibold">{{ kindsTitle }}</h3>

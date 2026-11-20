@@ -8,6 +8,7 @@ import {
   leftoversLabel,
   milestoneRowKey,
   milestoneStatus,
+  progressBar,
   progressPct,
   rowCost,
   rowTokens,
@@ -101,4 +102,10 @@ test('milestoneStatus: the state, named for the autopilot while one drives it', 
   assert.deepEqual(milestoneStatus({ state: 'done', autopilot: { phase: 'Off' } }), { label: 'Done', tone: 'success' })
   assert.deepEqual(milestoneStatus({ state: 'planned' }), { label: 'Planned', tone: 'neutral' })
   assert.deepEqual(milestoneStatus({ state: 'waiting' }), { label: 'Waiting', tone: 'neutral' })
+})
+
+test('progressBar: merged of total, capped, an empty bar without issues, the name first', () => {
+  assert.deepEqual(progressBar({ merged: 3, total: 5 }, 'Desk'), { value: 3, max: 5, label: 'Desk: 3 of 5 merged' })
+  assert.deepEqual(progressBar({ merged: 0, total: 0 }), { value: 0, max: 1, label: '0 of 0 merged' })
+  assert.deepEqual(progressBar({ merged: 5, total: 4 }), { value: 4, max: 4, label: '5 of 4 merged' })
 })

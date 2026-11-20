@@ -177,7 +177,10 @@ const routes: Route[] = [
       features: [...features.features, { name: 'plans' }],
       ready: async (page) => {
         await expect(page.locator('main').getByText('Not planned')).toBeVisible()
-        await expect(page.locator('main').getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50')
+        const bar = page.locator('main').getByRole('progressbar')
+        await expect(bar).toHaveAttribute('aria-valuenow', '2')
+        await expect(bar).toHaveAttribute('aria-valuemax', '4')
+        await expect(bar).toHaveAttribute('aria-label', /: 2 of 4 merged$/)
         await expect(page.locator('main').getByRole('button', { name: 'Plan milestone' })).toBeVisible()
       },
     }),
@@ -1001,7 +1004,7 @@ test.describe('touch', () => {
     await route.ready(page)
 
     const branch = longBranch
-    const value = page.locator('main .fact').filter({ hasText: 'Branch' }).getByRole('button')
+    const value = page.locator('main [data-stat-tile]').filter({ hasText: 'Branch' }).getByRole('button')
     await expect(value).toHaveAttribute('aria-expanded', 'false')
     await expect(value).not.toHaveAttribute('title', /.+/)
     const before = (await value.boundingBox())!
@@ -2770,8 +2773,8 @@ test.describe('milestone rows', () => {
 
 // The overview's Working now cards (DashboardOverview.vue, R12): one column
 // on a phone, two on a tablet, and on desktop as many columns of at least
-// 300 px as fit, as before. The Inbox chip of the summary strip is a link of
-// at least 44 px on a phone and keeps its chip height above.
+// 300 px as fit, as before. The Inbox tile of the summary strip is a link of
+// at least 44 px at every width.
 test.describe('overview cards', () => {
   for (const size of widths) {
     test(`working now columns@${size.width}`, async ({ page, baseURL }, testInfo) => {
@@ -2819,8 +2822,7 @@ test.describe('overview cards', () => {
 
       const chip = page.locator('main ul[aria-label="Summary"] a[href="/inbox"]')
       const height = (await chip.boundingBox())!.height
-      if (size.width < 760) expect(height, 'Inbox chip on a phone').toBeGreaterThanOrEqual(44)
-      else expect(height, 'Inbox chip above').toBeLessThan(44)
+      expect(height, 'Inbox tile: a hit area of 44 px at every width').toBeGreaterThanOrEqual(44)
 
       const shot = join(testInfo.project.outputDir, '..', 'screenshots', `overview-cards@${size.width}.png`)
       await page.screenshot({ path: shot, fullPage: true })
@@ -3703,7 +3705,7 @@ test.describe('spend', () => {
       total: '$9.85',
       costs: ['$2.30', '$4.13', '$3.42'],
       // Partial: merged lines are a lower bound, the cost per 100 an upper one.
-      lines: { written: '+1240/−310', merged: '≥ +212/−38 · 2 of 3 measured', per100: '≤ $3.02' },
+      lines: { written: '+1240/−310', merged: '≥ +212/−38', measured: '2 of 3 measured', per100: '≤ $3.02' },
     },
   ]
 
@@ -3734,6 +3736,8 @@ test.describe('spend', () => {
         const lines = main.locator('[data-spend-lines]')
         await expect(lines.locator('[data-lines=written]')).toHaveText(p.lines.written)
         await expect(lines.locator('[data-lines=merged]')).toHaveText(p.lines.merged)
+        const measured = 'measured' in p.lines ? p.lines.measured : undefined
+        if (measured) await expect(lines.locator('[data-stat-tile]').filter({ has: page.locator('[data-lines=merged]') })).toContainText(measured)
         await expect(lines.locator('[data-lines=per100]')).toHaveText(p.lines.per100)
         const kinds = main.locator('[data-spend="kind"]')
         await expect(kinds.locator('thead')).toContainText('Lines')
@@ -3860,7 +3864,7 @@ test.describe('research pages', () => {
         await expect(main.getByRole('heading', { name: 'Findings' })).toBeVisible()
         await expect(main.getByRole('heading', { name: 'Shops in detail' })).toBeVisible()
         await expect(main.locator('.md strong').filter({ hasText: 'three steps' })).toBeVisible()
-        await expect(main.locator('[data-block=stats] .fact')).toHaveCount(3)
+        await expect(main.locator('[data-block=stats] [data-stat-tile]')).toHaveCount(3)
         await expect(main.locator('[data-block=table] tbody tr')).toHaveCount(3)
         await expect(main.locator('[data-block=items] > li')).toHaveCount(2)
         await expect(main.locator('[data-block=items] .md strong')).toHaveText('guest')
@@ -3869,7 +3873,7 @@ test.describe('research pages', () => {
 
         const layout = await main.evaluate((m) => {
           const table = m.querySelector('[data-block=table]')!
-          const tops = new Set([...m.querySelectorAll('[data-block=stats] .fact')].map((e) => Math.round(e.getBoundingClientRect().top)))
+          const tops = new Set([...m.querySelectorAll('[data-block=stats] [data-stat-tile]')].map((e) => Math.round(e.getBoundingClientRect().top)))
           const h = (e: Element) => e.getBoundingClientRect().height
           return {
             tableScroll: table.scrollWidth - table.clientWidth,
@@ -3895,7 +3899,7 @@ test.describe('research pages', () => {
           expect(layout.head).toHaveLength(3)
           await expect(main.getByRole('button', { name: 'Delete' })).toBeVisible()
         } else {
-          await expect(main.locator('[data-run-facts] .fact')).toHaveCount(5)
+          await expect(main.locator('[data-run-facts] [data-stat-tile]')).toHaveCount(5)
           await expect(main.locator('[data-run-facts]')).toContainText('claude/claude-opus-5-5 (high)')
         }
         const file = shot(testInfo.project.outputDir, name)

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import Markdown from '../components/Markdown.vue'
 import { computed, ref } from 'vue'
@@ -186,7 +187,7 @@ async function remove() {
       </div>
 
       <ResearchResult v-if="data.result" :research="r" :run="data.run" :result="data.result" run-link class="section" />
-      <div v-else-if="!pending" class="card empty section">No result yet.</div>
+      <UEmpty v-else-if="!pending" icon="i-lucide-file-text" title="No result yet." class="section" />
     </template>
   </div>
 </template>

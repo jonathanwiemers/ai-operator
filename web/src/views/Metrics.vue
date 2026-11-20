@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UFormField from '@nuxt/ui/components/FormField.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
@@ -37,6 +38,7 @@ import MetricsFlow from '../components/MetricsFlow.vue'
 import MetricsPauses from '../components/MetricsPauses.vue'
 import MostExpensive from '../components/MostExpensive.vue'
 import PlanUsage from '../components/PlanUsage.vue'
+import StatTile from '../components/StatTile.vue'
 import WhereItGoes from '../components/WhereItGoes.vue'
 import ChartLegend from '../ui/charts/ChartLegend.vue'
 import ChartTable from '../ui/charts/ChartTable.vue'
@@ -204,10 +206,6 @@ const selectProps = {
   class: 'min-h-11 w-full tablet:min-h-0 tablet:w-auto tablet:min-w-36',
   ui: { base: control, item: 'min-h-11 tablet:min-h-0' },
 } as const
-const kpi = 'card flex min-w-0 flex-col gap-1 px-4 py-3'
-const kpiLabel = 'text-[11.5px] text-(--text-3)'
-const kpiValue = 'text-xl font-semibold tabular-nums'
-const kpiSub = 'text-[13px] text-(--text-2) [overflow-wrap:anywhere]'
 </script>
 
 <template>
@@ -267,55 +265,53 @@ const kpiSub = 'text-[13px] text-(--text-2) [overflow-wrap:anywhere]'
 
     <div v-if="error" class="banner danger [overflow-wrap:anywhere]" data-costs-error>{{ error }}</div>
     <div v-else-if="!data || !totals" class="card empty">Loading…</div>
-    <div v-else-if="totals.calls === 0" class="card empty" data-costs-empty>
-      <h2>No calls</h2>
-      <p>No agent call of the projects you may see falls into this range and these filters.</p>
-    </div>
+    <UEmpty
+      v-else-if="totals.calls === 0"
+      icon="i-lucide-receipt"
+      title="No calls"
+      description="No agent call of the projects you may see falls into this range and these filters."
+      data-costs-empty
+    />
     <template v-else>
-      <!-- Two columns on phones, three on tablets, six on desktop. -->
-      <dl class="m-0 grid grid-cols-2 gap-3 tablet:grid-cols-3 desktop:grid-cols-6" data-costs-kpis>
-        <div :class="kpi" data-kpi="cost">
-          <dt :class="kpiLabel">Known cost</dt>
-          <dd :class="[kpiValue, { italic: !totals.costKnown }]">{{ spendUSD(totals) }}</dd>
-          <dd :class="kpiSub">
-            <template v-if="change">{{ change }} vs the period before</template>
-            <template v-else>no previous cost to compare</template>
-          </dd>
-        </div>
-        <div v-if="month" :class="kpi" data-kpi="month">
-          <dt :class="kpiLabel">Month to date</dt>
-          <dd :class="[kpiValue, { italic: !month.current.costKnown }]">
-            {{ month.current.costKnown ? cost(month.current.costUSD) : 'n/a' }}
-          </dd>
-          <dd :class="kpiSub">
-            {{ month.previous.costKnown ? cost(month.previous.costUSD) : 'n/a' }} the same days last month<template v-if="monthChange">
-              ({{ monthChange }})</template
-            >
-          </dd>
-        </div>
-        <div :class="kpi" data-kpi="calls">
-          <dt :class="kpiLabel">Calls</dt>
-          <dd :class="kpiValue">{{ totals.calls }}</dd>
-          <dd v-if="totals.subagentCalls" :class="kpiSub">{{ totals.subagentCalls }} subagent</dd>
-        </div>
-        <div :class="kpi" :title="tokenBreakdown(totals)" data-kpi="tokens">
-          <dt :class="kpiLabel">Metered tokens</dt>
-          <dd :class="kpiValue">{{ tokenCount(spendTokens(totals)) }}</dd>
-          <dd :class="kpiSub">{{ tokenCount(totals.inputTokens) }} in · {{ tokenCount(totals.outputTokens) }} out</dd>
-        </div>
-        <div :class="kpi" title="Cache reads of all input tokens (input, cache read and cache write)" data-kpi="cache">
-          <dt :class="kpiLabel">Cache-read share</dt>
-          <dd :class="kpiValue">{{ shareLabel(data.cacheReadShare) }}</dd>
-          <dd v-if="data.previous.calls" :class="kpiSub">{{ shareLabel(data.previousCacheReadShare) }} the period before</dd>
-        </div>
-        <div :class="kpi" title="Calls without a reported or estimated cost are not in the sum" data-kpi="unknown">
-          <dt :class="kpiLabel">Unknown cost</dt>
-          <dd :class="kpiValue">{{ totals.unknownCalls }} {{ totals.unknownCalls === 1 ? 'call' : 'calls' }}</dd>
-          <dd v-if="unmeteredNote(totals)" :class="kpiSub" title="Calls that report neither a cost nor tokens (cursor's model auto)">
-            {{ unmeteredNote(totals) }}
-          </dd>
-        </div>
-      </dl>
+      <!-- As many tiles as fit, six in one row on desktop. -->
+      <div class="stat-tiles desktop:grid-cols-6" data-costs-kpis>
+        <StatTile label="Known cost" :sub="change ? `${change} vs the period before` : 'no previous cost to compare'" data-kpi="cost">
+          <span :class="{ italic: !totals.costKnown }">{{ spendUSD(totals) }}</span>
+        </StatTile>
+        <StatTile
+          v-if="month"
+          label="Month to date"
+          :sub="`${month.previous.costKnown ? cost(month.previous.costUSD) : 'n/a'} the same days last month${monthChange ? ` (${monthChange})` : ''}`"
+          data-kpi="month"
+        >
+          <span :class="{ italic: !month.current.costKnown }">{{ month.current.costKnown ? cost(month.current.costUSD) : 'n/a' }}</span>
+        </StatTile>
+        <StatTile label="Calls" :value="totals.calls" :sub="totals.subagentCalls ? `${totals.subagentCalls} subagent` : undefined" data-kpi="calls" />
+        <StatTile
+          label="Metered tokens"
+          :value="tokenCount(spendTokens(totals))"
+          :sub="`${tokenCount(totals.inputTokens)} in · ${tokenCount(totals.outputTokens)} out`"
+          :title="tokenBreakdown(totals)"
+          data-kpi="tokens"
+        />
+        <StatTile
+          label="Cache-read share"
+          :value="shareLabel(data.cacheReadShare)"
+          :sub="data.previous.calls ? `${shareLabel(data.previousCacheReadShare)} the period before` : undefined"
+          title="Cache reads of all input tokens (input, cache read and cache write)"
+          data-kpi="cache"
+        />
+        <StatTile
+          label="Unknown cost"
+          :value="`${totals.unknownCalls} ${totals.unknownCalls === 1 ? 'call' : 'calls'}`"
+          title="Calls without a reported or estimated cost are not in the sum"
+          data-kpi="unknown"
+        >
+          <template v-if="unmeteredNote(totals)" #sub>
+            <span title="Calls that report neither a cost nor tokens (cursor's model auto)">{{ unmeteredNote(totals) }}</span>
+          </template>
+        </StatTile>
+      </div>
       <p v-if="data.researchSince" class="faint mt-2" data-costs-research>
         Research counted since {{ dateLabel(data.researchSince) }}
       </p>

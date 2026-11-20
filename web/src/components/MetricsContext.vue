@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UEmpty from '@nuxt/ui/components/Empty.vue'
 // Context (docs/contributing/web-ui.md, "Metrics page"): per project, how big
 // a fresh context is before the agent starts (the median first turn of the
 // calls that started their session, per role), and the five tools whose
@@ -32,7 +33,7 @@ const toolKey = (t: ToolUsage) => t.tool
       <h2 id="costs-context">Context</h2>
       <span class="faint">What a fresh session starts with, and the tools that fill it most</span>
     </div>
-    <p v-if="!hasContext(context)" class="card empty m-0" data-context-empty>No context recorded in this range.</p>
+    <UEmpty v-if="!hasContext(context)" icon="i-lucide-receipt" title="No context recorded in this range." size="sm" data-context-empty />
     <div v-else class="grid min-w-0 gap-3">
       <div v-for="p in context" :key="p.project" class="card min-w-0 overflow-hidden" :data-context-project="p.project">
         <h3 class="m-0 px-3.5 pt-3 text-[13px] font-semibold [overflow-wrap:anywhere]">{{ p.project }}</h3>

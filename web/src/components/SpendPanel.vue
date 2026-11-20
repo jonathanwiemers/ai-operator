@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UEmpty from '@nuxt/ui/components/Empty.vue'
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { getSpend, LoginRequiredError, NotFoundError } from '../client'
@@ -8,6 +9,7 @@ import { measuredLabel, totalsLabel, totalsTooltip, writtenLabel } from '../line
 import { per100Label } from '../metricsCode'
 import DataList, { type DataListColumn } from '../ui/DataList.vue'
 import ModelBar from './ModelBar.vue'
+import StatTile from './StatTile.vue'
 import {
   avgCost,
   kindLines,
@@ -297,80 +299,48 @@ const mark = 'ms-1.5 rounded-full px-1.5 text-[11px] font-semibold'
     <div v-if="error" class="banner danger">{{ error }}</div>
     <div v-else-if="!data || !totals" class="empty">Loading…</div>
     <template v-else>
-      <section class="card px-4.5 py-3.5" data-spend-totals>
-        <div class="flex flex-wrap items-baseline gap-x-2.5">
-          <strong class="text-2xl tabular-nums" :class="{ italic: !totals.costKnown }">{{ spendUSD(totals) }}</strong>
-          <span v-if="unknownNote(totals)" class="faint" title="Calls without a reported or estimated cost are not in the sum">
-            {{ unknownNote(totals) }}
-          </span>
-          <span v-if="unmeteredNote(totals)" class="faint" title="Calls that report neither a cost nor tokens (cursor's model auto)">
-            · {{ unmeteredNote(totals) }}
-          </span>
-          <span v-if="basisNote(totals)" class="faint" :title="basisTitle">· {{ basisNote(totals) }}</span>
+      <section data-spend-totals>
+        <!-- The cost first, then the tokens, calls and time, then the lines
+             next to the cost: written (all calls), merged and the cost per
+             100 merged production lines (project, milestone and issue scope;
+             task and run scopes have no merged lines). -->
+        <div class="stat-tiles">
+          <StatTile label="Spend">
+            <strong :class="{ italic: !totals.costKnown }">{{ spendUSD(totals) }}</strong>
+            <template v-if="unknownNote(totals) || unmeteredNote(totals) || basisNote(totals)" #sub>
+              <span v-if="unknownNote(totals)" title="Calls without a reported or estimated cost are not in the sum">{{ unknownNote(totals) }}</span>
+              <span v-if="unmeteredNote(totals)" title="Calls that report neither a cost nor tokens (cursor's model auto)">
+                · {{ unmeteredNote(totals) }}
+              </span>
+              <span v-if="basisNote(totals)" :title="basisTitle">· {{ basisNote(totals) }}</span>
+            </template>
+          </StatTile>
+          <StatTile label="Input" :value="tokenCount(totals.inputTokens)" />
+          <StatTile label="Output" :value="tokenCount(totals.outputTokens)" />
+          <StatTile label="Cache read" :value="tokenCount(totals.cacheReadTokens)" />
+          <StatTile label="Cache write" :value="tokenCount(totals.cacheWriteTokens)" />
+          <StatTile label="Calls" :value="totals.calls" :sub="totals.subagentCalls ? `${totals.subagentCalls} subagent` : undefined" />
+          <StatTile label="Checkpoints" :value="totals.checkpoints" :title="[checkpoints, checkpointsNote].filter(Boolean).join(' · ')" />
+          <StatTile label="Duration" :value="duration(totals.durationMS)" />
+          <StatTile
+            label="Cache-read share"
+            :value="shareLabel(data.cacheReadShare)"
+            title="Cache reads of all input tokens (input, cache read and cache write)"
+          />
         </div>
-        <!-- Key and value pairs: two columns on phones, one line from the tablet width. -->
-        <dl class="mt-2.5 grid grid-cols-2 gap-x-6 gap-y-2 tablet:flex tablet:flex-wrap">
-          <div>
-            <dt class="text-[11.5px] text-(--text-3)">Input</dt>
-            <dd class="tabular-nums">{{ tokenCount(totals.inputTokens) }}</dd>
-          </div>
-          <div>
-            <dt class="text-[11.5px] text-(--text-3)">Output</dt>
-            <dd class="tabular-nums">{{ tokenCount(totals.outputTokens) }}</dd>
-          </div>
-          <div>
-            <dt class="text-[11.5px] text-(--text-3)">Cache read</dt>
-            <dd class="tabular-nums">{{ tokenCount(totals.cacheReadTokens) }}</dd>
-          </div>
-          <div>
-            <dt class="text-[11.5px] text-(--text-3)">Cache write</dt>
-            <dd class="tabular-nums">{{ tokenCount(totals.cacheWriteTokens) }}</dd>
-          </div>
-          <div>
-            <dt class="text-[11.5px] text-(--text-3)">Calls</dt>
-            <dd class="tabular-nums">
-              {{ totals.calls }}
-              <span v-if="totals.subagentCalls" class="faint">· {{ totals.subagentCalls }} subagent</span>
-            </dd>
-          </div>
-          <div :title="[checkpoints, checkpointsNote].filter(Boolean).join(' · ')">
-            <dt class="text-[11.5px] text-(--text-3)">Checkpoints</dt>
-            <dd class="tabular-nums">{{ totals.checkpoints }}</dd>
-          </div>
-          <div>
-            <dt class="text-[11.5px] text-(--text-3)">Duration</dt>
-            <dd class="tabular-nums">{{ duration(totals.durationMS) }}</dd>
-          </div>
-          <div title="Cache reads of all input tokens (input, cache read and cache write)">
-            <dt class="text-[11.5px] text-(--text-3)">Cache-read share</dt>
-            <dd class="tabular-nums">{{ shareLabel(data.cacheReadShare) }}</dd>
-          </div>
-        </dl>
-        <!-- The lines next to the cost: written (all calls), merged and the
-             cost per 100 merged production lines (project, milestone and
-             issue scope; task and run scopes have no merged lines). -->
-        <dl class="mt-2.5 grid grid-cols-2 gap-x-6 gap-y-2 tablet:flex tablet:flex-wrap" data-spend-lines>
-          <div title="Written lines: the step commits of the implementer calls, rewrites and fix rounds included">
-            <dt class="text-[11.5px] text-(--text-3)">Written</dt>
-            <dd class="tabular-nums" data-lines="written">{{ writtenLabel(totals) }}</dd>
-          </div>
+        <div class="stat-tiles mt-3" data-spend-lines>
+          <StatTile label="Written" title="Written lines: the step commits of the implementer calls, rewrites and fix rounds included">
+            <span data-lines="written">{{ writtenLabel(totals) }}</span>
+          </StatTile>
           <template v-if="hasMerged">
-            <div :title="totalsTooltip(data.mergedLines)">
-              <dt class="text-[11.5px] text-(--text-3)">Merged production</dt>
-              <dd class="tabular-nums" data-lines="merged">
-                {{ totalsLabel(data.mergedLines) }}
-                <span v-if="measured" class="faint">· {{ measured }}</span>
-              </dd>
-            </div>
-            <div :title="per100Title">
-              <dt class="text-[11.5px] text-(--text-3)">Cost per 100 merged production lines</dt>
-              <dd class="tabular-nums" data-lines="per100">
-                {{ per100Label(data.mergedLines) }}
-                <span v-if="per100Note" class="faint">· {{ per100Note }}</span>
-              </dd>
-            </div>
+            <StatTile label="Merged production" :sub="measured || undefined" :title="totalsTooltip(data.mergedLines)">
+              <span data-lines="merged">{{ totalsLabel(data.mergedLines) }}</span>
+            </StatTile>
+            <StatTile label="Cost per 100 merged production lines" :sub="per100Note || undefined" :title="per100Title">
+              <span data-lines="per100">{{ per100Label(data.mergedLines) }}</span>
+            </StatTile>
           </template>
-        </dl>
+        </div>
         <p v-if="legacyNote(totals)" class="faint mt-2.5 text-[12.5px]">{{ legacyNote(totals) }}</p>
       </section>
 
@@ -401,7 +371,7 @@ const mark = 'ms-1.5 rounded-full px-1.5 text-[11px] font-semibold'
             </RouterLink>
           </nav>
         </div>
-        <div v-if="!children.length" class="card empty">No agent calls recorded here.</div>
+        <UEmpty v-if="!children.length" icon="i-lucide-receipt" title="No agent calls recorded here." size="sm" />
         <div v-else :class="tableCard">
           <DataList v-if="atCalls" :columns="callColumns" :rows="childRows" :row-key="childKey" scroll data-spend="children">
             <template #cell-at="{ row }"><span :title="fullTime(row.at)">{{ clockTime(row.at, now) }}</span></template>

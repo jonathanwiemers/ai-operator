@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UEmpty from '@nuxt/ui/components/Empty.vue'
 import Markdown from './Markdown.vue'
 import { computed } from 'vue'
 import { hasFeature } from '../api'
@@ -20,6 +21,7 @@ import CostChip from './CostChip.vue'
 import CompanionChip from './CompanionChip.vue'
 import ExtLink from './ExtLink.vue'
 import RelTime from './RelTime.vue'
+import StatTile from './StatTile.vue'
 import Truncated from '../ui/Truncated.vue'
 import LiveTranscript from './LiveTranscript.vue'
 import Conversation from './Conversation.vue'
@@ -267,7 +269,7 @@ const actions = computed(() => [
             </dd>
           </template>
         </dl>
-        <div v-else class="card empty">No pipeline followed yet.</div>
+        <UEmpty v-else icon="i-lucide-git-pull-request" title="No pipeline followed yet." size="sm" />
       </section>
     </div>
 
@@ -311,7 +313,7 @@ const actions = computed(() => [
       </div>
     </section>
 
-    <div v-if="overviewEmpty" class="card empty section">No run has left a summary yet.</div>
+    <UEmpty v-if="overviewEmpty" icon="i-lucide-file-text" title="No run has left a summary yet." size="sm" class="section" />
   </template>
 
   <template v-else-if="tab === 'chat'">
@@ -363,28 +365,17 @@ const actions = computed(() => [
   <template v-else>
     <!-- Phase, current step, last result and last activity are the
          header's status line; the other facts are here. -->
-    <div class="facts section">
-      <div class="fact">
-        <div class="label">Runs</div>
-        <Truncated class="font-[550]">
-          {{ run.runCount ?? 0 }}<span v-if="t.runPending" class="faint"> + 1 requested</span>
-        </Truncated>
-      </div>
-      <div class="fact">
-        <div class="label">Model spend</div>
-        <Truncated class="font-[550]" :text="cost(run.costUSD)" />
-      </div>
-      <div v-if="t.type === 'Implement'" class="fact">
-        <div class="label">Branch</div>
-        <Truncated class="mono font-[550]" :text="run.branch || '—'" />
-      </div>
-      <div v-if="t.type === 'Implement'" class="fact">
-        <div class="label">Last push</div>
-        <Truncated class="font-[550]">
-          <span class="mono">{{ shortSHA(run.pushedSHA) }}</span>
-          <span v-if="run.pushedAt" class="faint"> · <RelTime :time="run.pushedAt" /></span>
-        </Truncated>
-      </div>
+    <div class="stat-tiles section" data-task-figures>
+      <StatTile label="Runs" :value="run.runCount ?? 0" :sub="t.runPending ? '+ 1 requested' : undefined" />
+      <StatTile label="Model spend" :value="cost(run.costUSD)" />
+      <!-- A long branch is clamped to one line and opens on tap. -->
+      <StatTile v-if="t.type === 'Implement'" label="Branch">
+        <Truncated class="mono text-base" :text="run.branch || '—'" />
+      </StatTile>
+      <StatTile v-if="t.type === 'Implement'" label="Last push">
+        <span class="mono">{{ shortSHA(run.pushedSHA) }}</span>
+        <template v-if="run.pushedAt" #sub><RelTime :time="run.pushedAt" /></template>
+      </StatTile>
     </div>
 
     <div :class="['section', cols]">

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
 import { canStartResearch } from '../api'
@@ -45,10 +46,12 @@ function lastRunLine(r: ResearchSummary): string {
     <div v-if="error" class="banner danger [overflow-wrap:anywhere]">{{ error }}</div>
 
     <div v-if="loading && !researches" class="card empty">Loading…</div>
-    <div v-else-if="researches && researches.length === 0" class="card empty">
-      <h2>No researches</h2>
-      <p>There are no AgentResearches, or none your roles may read.</p>
-    </div>
+    <UEmpty
+      v-else-if="researches && researches.length === 0"
+      icon="i-lucide-flask-conical"
+      title="No researches"
+      description="There are no AgentResearches, or none your roles may read."
+    />
 
     <ul v-else class="m-0 flex list-none flex-col gap-3 p-0" data-researches>
       <li

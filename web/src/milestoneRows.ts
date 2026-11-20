@@ -11,6 +11,24 @@ export function progressPct(row: Pick<MilestoneRow, 'progress'>): number {
   return Math.min(100, Math.max(0, Math.round((merged / total) * 100)))
 }
 
+// progressBar holds what a milestone's UProgress gets: the value and max
+// (merged capped at total, a max of 1 without issues, so the bar is empty
+// rather than indeterminate) and its accessible name, "3 of 5 merged" after
+// the name of what progresses.
+export function progressBar(
+  progress: Pick<MilestoneProgress, 'merged' | 'total'>,
+  name?: string,
+): { value: number; max: number; label: string } {
+  const total = Math.max(0, progress.total || 0)
+  const value = Math.min(total, Math.max(0, progress.merged || 0))
+  const text = `${progress.merged} of ${progress.total} merged`
+  return { value, max: Math.max(1, total), label: name ? `${name}: ${text}` : text }
+}
+
+// progressUI is the look of a milestone's UProgress on the plan and
+// milestone rows: green, filling the room next to its "3/5".
+export const progressUI = { color: 'success', class: 'min-w-0 flex-1' } as const
+
 // rowCost is the row's cost: a dash when it is unknown (no calls recorded,
 // the oldest milestones), never $0.
 export function rowCost(row: Pick<MilestoneRow, 'costUSD' | 'costKnown'>): string {

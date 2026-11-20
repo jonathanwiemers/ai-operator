@@ -2,9 +2,9 @@
 import { computed } from 'vue'
 import Badge from './Badge.vue'
 import ExtLink from './ExtLink.vue'
-import ProgressBar from './ProgressBar.vue'
+import UProgress from '@nuxt/ui/components/Progress.vue'
 import RelTime from './RelTime.vue'
-import { stateTone } from '../milestoneRows'
+import { progressBar, progressUI, stateTone } from '../milestoneRows'
 import { planMilestoneLink, planPhaseTone, planSpendLabel, planTitle } from '../planRows'
 import type { PlanListItem } from '../generated/views'
 
@@ -20,6 +20,7 @@ const to = computed(() => ({
   name: 'plans' as const,
   params: { namespace: props.item.namespace, name: props.item.project, plan: props.item.name },
 }))
+const bar = computed(() => (props.item.milestone ? progressBar(props.item.milestone.progress, title.value) : null))
 const project = computed(() => ({
   name: 'stream-project' as const,
   params: { namespace: props.item.namespace, name: props.item.project },
@@ -49,7 +50,10 @@ const project = computed(() => ({
         </template>
         <template v-if="item.milestone">
           <Badge :tone="stateTone(item.milestone.state)">{{ item.milestone.state }}</Badge>
-          <ProgressBar :merged="item.milestone.progress.merged" :total="item.milestone.progress.total" :label="title" />
+          <span class="flex flex-[1_1_10rem] items-center gap-2">
+            <UProgress v-if="bar" v-bind="progressUI" :model-value="bar.value" :max="bar.max" :get-value-label="() => bar?.label" />
+            <span class="min-w-9 text-right whitespace-nowrap text-(--text-2) tabular-nums">{{ item.milestone.progress.merged }}/{{ item.milestone.progress.total }}</span>
+          </span>
         </template>
       </span>
     </span>

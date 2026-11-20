@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UEmpty from '@nuxt/ui/components/Empty.vue'
 import { computed, ref } from 'vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import Badge from './Badge.vue'
@@ -77,7 +78,7 @@ async function toggle() {
       <div v-if="loading" class="text-(--text-3)">Loading…</div>
       <div v-else-if="error" class="banner danger">{{ error }}</div>
       <div v-else-if="unavailable" class="text-(--text-3)">The history is not available.</div>
-      <div v-else-if="!versions?.length" class="text-(--text-3)">No history yet.</div>
+      <UEmpty v-else-if="!versions?.length" icon="i-lucide-history" title="No history yet." variant="naked" size="xs" />
       <ol v-else class="m-0 flex list-none flex-col gap-2 p-0">
         <li v-for="v in versions" :key="v.version" class="min-w-0" data-history-version>
           <div class="flex min-w-0 flex-wrap items-baseline gap-x-2">

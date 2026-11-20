@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
 import { computed, onMounted } from 'vue'
@@ -91,7 +92,7 @@ const reason = 'muted min-w-0 text-[13px] [&[role=button]]:relative [&[role=butt
     </div>
     <div v-if="error" class="banner danger">{{ error }}</div>
     <div v-if="loading && !data" class="card empty">Loading…</div>
-    <div v-else-if="data && view === 'open' && !data.items.length" class="card empty">Nothing waiting.</div>
+    <UEmpty v-else-if="data && view === 'open' && !data.items.length" icon="i-lucide-inbox" title="Nothing waiting." class="mt-[18px]" />
     <ul
       v-else-if="data && view === 'open'"
       class="m-0 mt-[18px] list-none divide-y divide-(--border) overflow-hidden rounded-(--radius) border border-(--border) bg-(--surface) p-0"
@@ -136,7 +137,7 @@ const reason = 'muted min-w-0 text-[13px] [&[role=button]]:relative [&[role=butt
       </li>
     </ul>
     <template v-else-if="data">
-      <div v-if="!handled.length" class="card empty">Nothing handled in the last 7 days.</div>
+      <UEmpty v-if="!handled.length" icon="i-lucide-inbox" title="Nothing handled in the last 7 days." class="mt-[18px]" />
       <ul
         v-else
         class="m-0 mt-[18px] list-none divide-y divide-(--border) overflow-hidden rounded-(--radius) border border-(--border) bg-(--surface) p-0"

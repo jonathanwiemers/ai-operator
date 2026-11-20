@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UEmpty from '@nuxt/ui/components/Empty.vue'
 import { reactive, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import type { NeedsEntry } from '../needsCases'
@@ -49,7 +50,7 @@ const chevron = 'inline-block text-(--text-3) transition-transform motion-reduce
 
 <template>
   <ul class="m-0 grid list-none gap-1.5 p-0">
-    <li v-if="!entries.length" :class="quiet">Nothing recorded yet.</li>
+    <UEmpty v-if="!entries.length" as="li" icon="i-lucide-history" title="Nothing recorded yet." variant="naked" size="xs" />
     <li
       v-for="(e, i) in entries"
       :key="e.kind === 'prompt' ? e.prompt.id : `${e.kind}-${i}`"

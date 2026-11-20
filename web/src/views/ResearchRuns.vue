@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
 import { pageHeaderUi } from '../pageHeader'
@@ -107,10 +108,12 @@ watch(
 
     <div v-if="error" class="banner danger">{{ error }}</div>
     <div v-if="loading && !runs.length" class="card empty">Loading…</div>
-    <div v-else-if="!loading && !runs.length && !error" class="card empty">
-      <h2>No runs yet</h2>
-      <p>This research has not stored a run.</p>
-    </div>
+    <UEmpty
+      v-else-if="!loading && !runs.length && !error"
+      icon="i-lucide-history"
+      title="No runs yet"
+      description="This research has not stored a run."
+    />
 
     <div v-else-if="runs.length" class="card">
       <DataList :columns="columns" :rows="runs" :row-key="(r) => r.id">

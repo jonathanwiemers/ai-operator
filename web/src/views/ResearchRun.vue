@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UEmpty from '@nuxt/ui/components/Empty.vue'
 import { computed, watchEffect } from 'vue'
 import { setCrumbNames } from '../crumbNames'
 import { getResearchRun } from '../client'
@@ -9,6 +10,7 @@ import RelTime from '../components/RelTime.vue'
 import { toneText } from '../badgeTone'
 import { pageHeaderUi } from '../pageHeader'
 import ResearchResult from '../components/ResearchResult.vue'
+import StatTile from '../components/StatTile.vue'
 import NotFound from './NotFound.vue'
 import type { ResearchRun } from '../types'
 
@@ -69,36 +71,24 @@ const duration = computed(() => {
         </ul>
       </div>
 
-      <div class="facts section" data-run-facts>
-        <div class="fact">
-          <div class="label">Agent</div>
-          <div class="mono font-[550] [overflow-wrap:anywhere]">
-            {{ run.engine ? `${run.engine}/${run.model}` : '—' }}<template v-if="run.effort"> ({{ run.effort }})</template>
-          </div>
-        </div>
-        <div class="fact">
-          <div class="label">Started</div>
-          <div class="font-[550] [overflow-wrap:anywhere]"><RelTime :time="run.startedAt" /></div>
-        </div>
-        <div class="fact">
-          <div class="label">Duration</div>
-          <div class="font-[550] [overflow-wrap:anywhere]">{{ duration }}</div>
-        </div>
-        <div class="fact">
-          <div class="label">Model spend</div>
-          <div class="font-[550] [overflow-wrap:anywhere]">{{ cost(run.costUSD) }}</div>
-        </div>
-        <div class="fact">
-          <div class="label">Kept until</div>
-          <div class="font-[550] [overflow-wrap:anywhere]"><RelTime :time="run.expiresAt" /></div>
-        </div>
+      <div class="stat-tiles section" data-run-facts>
+        <StatTile label="Agent">
+          <span class="mono text-base">{{ run.engine ? `${run.engine}/${run.model}` : '—' }}<template v-if="run.effort"> ({{ run.effort }})</template></span>
+        </StatTile>
+        <StatTile label="Started"><RelTime :time="run.startedAt" /></StatTile>
+        <StatTile label="Duration" :value="duration" />
+        <StatTile label="Model spend" :value="cost(run.costUSD)" />
+        <StatTile label="Kept until"><RelTime :time="run.expiresAt" /></StatTile>
       </div>
       <p v-if="run.choiceReason" class="mt-2.5 mb-0 text-[13px] text-(--text-2) [overflow-wrap:anywhere]">{{ run.choiceReason }}</p>
 
       <ResearchResult v-if="data.result" :research="data.research" :run="null" :result="data.result" class="section" />
-      <div v-else class="card empty section">
-        {{ run.status === 'running' ? 'The run is in progress.' : 'This run stored no result.' }}
-      </div>
+      <UEmpty
+        v-else
+        icon="i-lucide-file-text"
+        :title="run.status === 'running' ? 'The run is in progress.' : 'This run stored no result.'"
+        class="section"
+      />
     </template>
   </div>
 </template>

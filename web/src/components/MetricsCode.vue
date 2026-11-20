@@ -11,6 +11,7 @@ import { metricsFilterNote, pausesChartSummary } from '../metricsPauses'
 import ChartLegend from '../ui/charts/ChartLegend.vue'
 import ChartTable from '../ui/charts/ChartTable.vue'
 import StackedBars from '../ui/charts/StackedBars.vue'
+import StatTile from './StatTile.vue'
 import DataList, { type DataListColumn } from '../ui/DataList.vue'
 
 const props = defineProps<{ code: MetricsCodeView; filtered: boolean; project?: string }>()
@@ -36,13 +37,9 @@ const projectKey = (r: CodeProjectRow) => r.project
     </div>
     <p v-if="filtered" class="faint mt-0 mb-2" data-metrics-filter-note>{{ metricsFilterNote }}</p>
 
-    <dl class="m-0 grid grid-cols-2 gap-3 tablet:grid-cols-3" data-code-tiles>
-      <div v-for="t in tiles" :key="t.id" class="card flex min-w-0 flex-col gap-1 px-4 py-3" :data-tile="t.id">
-        <dt class="text-[11.5px] text-(--text-3)">{{ t.label }}</dt>
-        <dd class="text-xl font-semibold tabular-nums [overflow-wrap:anywhere]">{{ t.value }}</dd>
-        <dd v-if="t.note" class="faint text-xs">{{ t.note }}</dd>
-      </div>
-    </dl>
+    <div class="stat-tiles" data-code-tiles>
+      <StatTile v-for="t in tiles" :key="t.id" :label="t.label" :value="t.value" :sub="t.note || undefined" :data-tile="t.id" />
+    </div>
 
     <div class="mt-3 grid min-w-0 gap-3">
       <div class="card flex min-w-0 flex-col gap-3 p-3 tablet:p-4" data-chart="code">

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UEmpty from '@nuxt/ui/components/Empty.vue'
 import { autopilotWaitingFor, costChip, costTooltip } from '../format'
 import { queueDone, queueHeld } from '../milestoneQueue'
 import type { ProjectDetail } from '../types'
@@ -25,10 +26,16 @@ const section = 'mt-9 min-w-0 first:mt-0'
 </script>
 
 <template>
-  <div v-if="!project.milestones.length && !project.unplanned.length" class="card empty section">
-    No milestones or issues are handed to the agents yet. Add <code>/agent spec</code> to a milestone's
-    description, or move an issue to <code>agent::ready</code>.
-  </div>
+  <UEmpty
+    v-if="!project.milestones.length && !project.unplanned.length"
+    icon="i-lucide-flag"
+    title="No milestones or issues are handed to the agents yet."
+    class="section"
+  >
+    <template #description>
+      Add <code>/agent spec</code> to a milestone's description, or move an issue to <code>agent::ready</code>.
+    </template>
+  </UEmpty>
 
   <section v-for="m in project.milestones" :key="m.iid" :class="section" data-board-milestone>
     <div :class="head">

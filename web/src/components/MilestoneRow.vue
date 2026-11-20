@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import Badge from './Badge.vue'
-import ProgressBar from './ProgressBar.vue'
+import UProgress from '@nuxt/ui/components/Progress.vue'
 import { costTooltip } from '../format'
 import { measuredLabel, totalsLabel, totalsTooltip } from '../lines'
-import { leftoversLabel, rowCost, rowTokens, stateTone } from '../milestoneRows'
+import { leftoversLabel, progressBar, progressUI, rowCost, rowTokens, stateTone } from '../milestoneRows'
 import type { MilestoneRow } from '../types'
 
 // One milestone row (decision 5): project, title, state, progress, merged
@@ -24,6 +24,7 @@ const project = computed(() => ({
   name: 'stream-project' as const,
   params: { namespace: props.row.namespace, name: props.row.project },
 }))
+const bar = computed(() => progressBar(props.row.progress, String(props.row.title || props.row.iid)))
 const measured = computed(() => measuredLabel(props.row.mergedLines))
 const num = 'text-right whitespace-nowrap text-(--text-2) tabular-nums'
 </script>
@@ -49,7 +50,10 @@ const num = 'text-right whitespace-nowrap text-(--text-2) tabular-nums'
       <span v-if="row.needsYou" class="text-xs whitespace-nowrap text-(--tone-warning-fg)">needs you</span>
     </span>
     <span class="flex basis-full flex-wrap items-center gap-x-3 gap-y-1.5 desktop:contents">
-      <ProgressBar :merged="row.progress.merged" :total="row.progress.total" :label="String(row.title || row.iid)" />
+      <span class="flex flex-[1_1_10rem] items-center gap-2">
+        <UProgress v-bind="progressUI" :model-value="bar.value" :max="bar.max" :get-value-label="() => bar.label" />
+        <span class="min-w-9 text-right whitespace-nowrap text-(--text-2) tabular-nums">{{ row.progress.merged }}/{{ row.progress.total }}</span>
+      </span>
       <span :class="num" :title="`${row.progress.open} open issues`">
         <span class="text-(--text-3) desktop:hidden">open </span>{{ row.progress.open }}
       </span>

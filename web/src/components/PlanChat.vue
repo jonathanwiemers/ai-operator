@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UEmpty from '@nuxt/ui/components/Empty.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { chatPostError } from '../api'
 import { getPlanChat, LoginRequiredError, postPlanChat } from '../client'
@@ -97,7 +98,7 @@ onUnmounted(() => window.clearInterval(timer))
 <template>
   <div class="card overflow-clip">
     <div v-if="error" class="banner danger">{{ error }}</div>
-    <div v-if="!grouped.turns.length" class="empty">No messages yet.</div>
+    <UEmpty v-if="!grouped.turns.length" icon="i-lucide-message-square" title="No messages yet." variant="naked" size="sm" />
     <ChatThread v-else :turns="grouped.turns" :replies="grouped.repliesByParent" :decisions="decisions" />
     <div v-if="waiting" class="flex items-center border-t border-(--border) bg-(--surface-2) px-4 py-2.5">
       <Badge tone="progress" dot pulse>{{ waiting.label }}</Badge>

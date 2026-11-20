@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UEmpty from '@nuxt/ui/components/Empty.vue'
 import { watch } from 'vue'
 import { getPlanDecisionHistory } from '../client'
 import PlanDecisionCard from './PlanDecisionCard.vue'
@@ -31,7 +32,7 @@ watch(() => props.decisions.map(cardKey).join(' '), () => (history = null))
       <span v-if="pending" class="text-(--text-2)" data-decisions-pending>{{ pending }} open or not signed off</span>
       <div class="ml-auto flex items-center gap-1.5"><slot name="actions" /></div>
     </header>
-    <div v-if="!decisions.length" class="empty" data-decisions-empty>No decisions yet.</div>
+    <UEmpty v-if="!decisions.length" icon="i-lucide-scale" title="No decisions yet." variant="naked" size="sm" data-decisions-empty />
     <PlanDecisionCard v-for="d in decisions" :key="cardKey(d)" :decision="d" :load-history="loadHistory" />
   </section>
 </template>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ApiError, disconnectGitLab, getGitLabStatus, getMilestoneThread, getTaskThread, LoginRequiredError, postMilestoneNote, postTaskNote } from '../client'
@@ -180,7 +181,7 @@ watch(() => props.stamp, loadThread)
       </div>
       <div class="max-h-[520px] overflow-y-auto">
         <div v-if="current && current.notes === null" class="empty">These comments could not be read with your account.</div>
-        <div v-else-if="!notes.length" class="empty">No comments yet.</div>
+        <UEmpty v-else-if="!notes.length" icon="i-lucide-message-square" title="No comments yet." variant="naked" size="sm" />
         <NoteThread v-else :notes="threadNotes" />
       </div>
       <form

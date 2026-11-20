@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UEmpty from '@nuxt/ui/components/Empty.vue'
 import Markdown from './Markdown.vue'
 import { computed } from 'vue'
 import { cost } from '../format'
@@ -86,7 +87,7 @@ function inboxTo(item: InboxItem) {
         <span>Needs you</span>
         <span>{{ inbox.length }}</span>
       </h3>
-      <div v-if="!inbox.length" class="empty-sm">Nothing waiting.</div>
+      <UEmpty v-if="!inbox.length" icon="i-lucide-inbox" title="Nothing waiting." variant="naked" size="xs" />
       <div v-else class="need">
         <RouterLink v-for="(item, i) in inbox" :key="i" class="n-item min-w-0 [overflow-wrap:anywhere]" :to="inboxTo(item)">
           <b>{{ item.kind === 'proposal' && item.proposalID != null ? `P${item.proposalID}` : item.issueIID ? `#${item.issueIID}` : item.project }}</b>
@@ -284,9 +285,5 @@ function inboxTo(item: InboxItem) {
 }
 .legend i.spend {
   background: var(--accent-2);
-}
-.empty-sm {
-  font-size: 13px;
-  color: var(--text-3);
 }
 </style>

@@ -8,6 +8,7 @@ import { issueStateTone, issueTime, rowCost, rowTokens } from '../milestoneRows'
 import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
 import HeaderActions from '../components/HeaderActions.vue'
 import IssueStream from '../components/IssueStream.vue'
+import StatTile from '../components/StatTile.vue'
 import { toneText } from '../badgeTone'
 import { pageHeaderUi } from '../pageHeader'
 import TaskBody from '../components/TaskBody.vue'
@@ -87,29 +88,14 @@ const actions = computed(() => {
         <template #links><HeaderActions :actions="actions" /></template>
       </UPageHeader>
 
-      <div class="facts section">
-        <div class="fact">
-          <div class="label">Wall time</div>
-          <div class="value">{{ issueTime(v, 'wallSec') }}</div>
-        </div>
-        <div class="fact">
-          <div class="label">Agent time</div>
-          <div class="value">{{ issueTime(v, 'agentSec') }}</div>
-        </div>
-        <div class="fact">
-          <div class="label">Paused</div>
-          <div class="value">{{ issueTime(v, 'pausedSec') }}</div>
-        </div>
-        <div class="fact">
-          <div class="label">Cost</div>
-          <div class="value" :title="v.figures ? costTooltip(v.figures) : undefined">
-            {{ v.figures ? rowCost(v.figures) : '—' }}
-          </div>
-        </div>
-        <div class="fact">
-          <div class="label">Tokens</div>
-          <div class="value">{{ v.figures ? rowTokens(v.figures) : '—' }}</div>
-        </div>
+      <div class="stat-tiles section" data-issue-figures>
+        <StatTile label="Wall time" :value="issueTime(v, 'wallSec')" />
+        <StatTile label="Agent time" :value="issueTime(v, 'agentSec')" />
+        <StatTile label="Paused" :value="issueTime(v, 'pausedSec')" />
+        <StatTile label="Cost">
+          <span :title="v.figures ? costTooltip(v.figures) : undefined">{{ v.figures ? rowCost(v.figures) : '—' }}</span>
+        </StatTile>
+        <StatTile label="Tokens" :value="v.figures ? rowTokens(v.figures) : '—'" />
       </div>
 
       <p v-if="gone" class="note">{{ gone }}</p>

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UEmpty from '@nuxt/ui/components/Empty.vue'
 import { computed } from 'vue'
 import Badge from './Badge.vue'
 import CompanionsList from './CompanionsList.vue'
@@ -86,7 +87,7 @@ const sectionHead =
       From history: the tasks of this milestone are gone.
     </p>
 
-    <div v-if="!milestone.issues?.length" class="empty">No issues planned yet.</div>
+    <UEmpty v-if="!milestone.issues?.length" icon="i-lucide-list" title="No issues planned yet." variant="naked" size="sm" />
     <div
       v-else
       class="mt-3.5 overflow-hidden rounded-(--radius-sm) border border-(--border) bg-(--surface) text-[13px] desktop:grid desktop:gap-x-3"

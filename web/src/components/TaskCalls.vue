@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UEmpty from '@nuxt/ui/components/Empty.vue'
 import { computed, ref, toRaw, watch } from 'vue'
 import { getSpend, LoginRequiredError } from '../client'
 import { clockTime, duration, fullTime, shortSHA, tokenCount } from '../format'
@@ -117,7 +118,7 @@ async function toggle(r: SpendChild) {
         <span v-if="legacyNote(data.totals)" class="faint">{{ legacyNote(data.totals) }}</span>
         <span v-if="checkpoints" :title="checkpointsNote">💾 {{ checkpoints }}</span>
       </div>
-      <div v-if="!runs.length" class="card empty">No agent calls recorded for this task.</div>
+      <UEmpty v-if="!runs.length" icon="i-lucide-receipt" title="No agent calls recorded for this task." size="sm" />
       <div v-else class="card">
         <DataList :columns="runColumns" :rows="runs" :row-key="(r) => r.key" :expanded="(r) => !!open[r.key]">
           <template #cell-run="{ row: r }">

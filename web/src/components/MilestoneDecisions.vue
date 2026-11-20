@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UEmpty from '@nuxt/ui/components/Empty.vue'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import UInput from '@nuxt/ui/components/Input.vue'
@@ -151,7 +152,7 @@ const sectionHead = 'm-0 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 t
       </div>
 
       <div v-if="loading && !data" class="empty">Loading…</div>
-      <div v-else-if="!groups.length" class="empty">{{ emptyText }}</div>
+      <UEmpty v-else-if="!groups.length" icon="i-lucide-scale" :title="emptyText" variant="naked" size="sm" />
       <template v-else>
         <div v-for="g in groups" :key="g.key" class="mt-[18px] flex min-w-0 flex-col gap-2.5" data-decision-group>
           <h3 :class="sectionHead">

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UEmpty from '@nuxt/ui/components/Empty.vue'
 import { computed, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import UButton from '@nuxt/ui/components/Button.vue'
@@ -590,7 +591,7 @@ function showDay(i: number): string | null {
         <div v-if="!historyOn" class="banner info">History needs the research database.</div>
         <div v-if="error" class="banner danger">{{ error }}</div>
         <div v-if="loading && !events.length" class="empty">Loading…</div>
-        <div v-else-if="!events.length" class="empty">No events yet.</div>
+        <UEmpty v-else-if="!events.length" icon="i-lucide-history" title="No events yet." variant="naked" size="sm" />
 
         <template
           v-for="(item, i) in items"
