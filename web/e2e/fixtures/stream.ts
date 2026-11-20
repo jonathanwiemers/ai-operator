@@ -628,7 +628,17 @@ export const checkoutMilestone: MilestoneView = {
   title: checkout.title,
   webURL: milestoneURL(checkout.iid),
   state: 'running',
-  spec: specTask(checkout, 'Running'),
+  // The decisions recorded per issue: the context panel sums them into one
+  // line per kind (Revisit · 1, Open · 2, Superseded · 1).
+  spec: (() => {
+    const t = specTask(checkout, 'Running')
+    t.status!.autopilot!.items = [
+      { iid: 275, state: 'Merged', decisions: [{ id: 'D275-P1', title: 'Session in a signed cookie' }] },
+      { iid: 276, state: 'Merged', decisions: [{ id: 'D276-P1', title: 'Free-text address', superseded: true }] },
+      { iid: 277, state: 'Active', decisions: [{ id: 'D277-P1', title: 'Address form with postcode lookup' }], revisitOf: 'D276-P1' },
+    ]
+    return t
+  })(),
   issues: [
     { iid: 275, title: 'Guest checkout: session without account', state: 'merged', mergeRequestIID: 296, mergeRequestURL: mrURL(296) },
     { iid: 276, title: 'Guest checkout: address form', state: 'merged', mergeRequestIID: 298, mergeRequestURL: mrURL(298) },

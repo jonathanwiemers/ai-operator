@@ -70,6 +70,16 @@ export const milestoneTabs: Tab<MilestoneTab>[] = [
 // Board needs them. Decisions stays, it reads the history database.
 export const storedMilestoneTabs: Tab<MilestoneTab>[] = milestoneTabs.filter((t) => t.id !== 'board')
 
+// milestoneTabsFor are the tabs a milestone shows (Decision 12 of "Desk:
+// one look on every page"): no Board once its tasks are gone, and no
+// Retrospective until one exists. Until the milestone has loaded (null)
+// the Retrospective stays hidden too, so it does not show and vanish. The
+// other tabs stay: their content arrives while the milestone runs (D632-P3).
+export function milestoneTabsFor(m: { stored?: boolean; retrospective?: unknown } | null): Tab<MilestoneTab>[] {
+  const list = m?.stored ? storedMilestoneTabs : milestoneTabs
+  return m?.retrospective ? list : list.filter((t) => t.id !== 'retrospective')
+}
+
 export const dashboardTabs: Tab<DashboardTab>[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'stream', label: 'Stream' },

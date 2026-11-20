@@ -288,6 +288,17 @@ export function childLabel(
   return milestones.find((m) => String(m.iid) === c.key)?.title || c.label
 }
 
+// childRef is a child's secondary label: %n next to a milestone shown by
+// its title, '' otherwise (no title known, or not a milestone row).
+export function childRef(
+  c: Pick<SpendChild, 'level' | 'key' | 'label'>,
+  scope: SpendScope,
+  milestones: { iid: number; title: string }[],
+): string {
+  if (c.level !== 'milestone' || !c.key || scope.milestone) return ''
+  return milestones.some((m) => String(m.iid) === c.key && m.title.trim()) ? `%${c.key}` : ''
+}
+
 // tokenBreakdown is the tooltip of a token count: all four token types.
 export function tokenBreakdown(t: SpendTotals): string {
   const n = (v: number) => v.toLocaleString('en-US')

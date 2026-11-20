@@ -1,5 +1,6 @@
 import type { NavigationMenuItem } from '@nuxt/ui'
 import type { ProjectSetSummary, ProjectSummary, ResearchSummary } from './generated/views'
+import { cronRaw, cronText } from './cron.ts'
 import { groupProjects, setCountsLine, setProblem } from './projectSets.ts'
 import { milestoneCounts, projectDot, projectNeedsYou, projectStateLine } from './stream.ts'
 
@@ -118,10 +119,13 @@ function projects(input: RailInput): RailItem[] {
   return items
 }
 
-function researchSub(r: ResearchSummary): string {
-  if (r.phase === 'Running') return 'running'
-  if (r.schedule) return r.schedule
-  return r.oneOff ? 'one-off' : ''
+// researchSub is a research's sub-line: running, its schedule in words
+// with the raw cron as hint (the raw cron alone for a form cronText does
+// not read), or one-off.
+function researchSub(r: ResearchSummary): { description: string; hint?: string } {
+  if (r.phase === 'Running') return { description: 'running' }
+  if (r.schedule) return { description: cronText(r.schedule, r.timeZone) ?? r.schedule, hint: cronRaw(r.schedule, r.timeZone) }
+  return { description: r.oneOff ? 'one-off' : '' }
 }
 
 function research(input: RailInput): RailItem[] {
@@ -133,8 +137,7 @@ function research(input: RailInput): RailItem[] {
         icon: 'i-lucide-flask-conical',
         to: `/research/${seg(r.namespace)}/${seg(r.name)}`,
         chip: r.phase === 'Running' ? { color: 'info' } : r.phase === 'Succeeded' ? { color: 'success' } : undefined,
-        // The schedule stays raw cron here; R10 turns it into words.
-        description: researchSub(r),
+        ...researchSub(r),
       }),
     )
   }

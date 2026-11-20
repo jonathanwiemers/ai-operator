@@ -131,7 +131,7 @@ test('railItems: research items with their sub-line, then All research', () => {
     input({
       path: '/research/agents/news/runs/7',
       researches: [
-        { namespace: 'agents', name: 'news', schedule: '15 7 * * *', phase: 'Succeeded', oneOff: false },
+        { namespace: 'agents', name: 'news', schedule: '15 7 * * *', timeZone: 'Europe/Berlin', phase: 'Succeeded', oneOff: false },
         { namespace: 'agents', name: 'scan', phase: 'Running', schedule: '0 * * * *', oneOff: false },
         { namespace: 'agents', name: 'once', oneOff: true },
       ],
@@ -144,8 +144,11 @@ test('railItems: research items with their sub-line, then All research', () => {
   assert.equal(r[1].active, true, 'lit on its runs')
   assert.deepEqual(
     r.slice(1, 4).map((i) => i.description),
-    ['15 7 * * *', 'running', 'one-off'],
+    ['daily at 07:15 Europe/Berlin', 'running', 'one-off'],
   )
+  assert.equal(r[1].hint, '15 7 * * * Europe/Berlin', 'the raw cron in the tooltip')
+  const raw = railItems(input({ researches: [{ namespace: 'a', name: 'r', schedule: '0 0 1 * *', oneOff: false }] }))[2][1]
+  assert.equal(raw.description, '0 0 1 * *', 'a form without words shows raw')
   assert.deepEqual(
     r.slice(1, 4).map((i) => i.chip),
     [{ color: 'success' }, { color: 'info' }, undefined],

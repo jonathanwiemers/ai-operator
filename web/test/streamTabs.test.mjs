@@ -5,6 +5,7 @@ import {
   dashboardTabs,
   milestoneTabFromRoute,
   milestoneTabs,
+  milestoneTabsFor,
   planPaneTab,
   planPaneTabs,
   planTabs,
@@ -220,4 +221,20 @@ test('Metrics tab: the Spend tab renamed, ?tab=spend still opens it', () => {
   assert.equal(taskTabFromRoute('spend', ''), 'overview')
   // New links use the new id.
   assert.deepEqual(tabQuery({ tab: 'spend', q: 'x' }, 'metrics', milestoneTabs), { q: 'x', tab: 'metrics' })
+})
+
+test('milestoneTabsFor: Retrospective only once one exists, no Board once stored', () => {
+  const ids = (m) => milestoneTabsFor(m).map((t) => t.id)
+  assert.deepEqual(ids({ retrospective: { text: 'done' } }), ['issues', 'needs', 'decisions', 'pilot', 'retrospective', 'stream', 'board', 'metrics'])
+  assert.deepEqual(ids({}), ['issues', 'needs', 'decisions', 'pilot', 'stream', 'board', 'metrics'])
+  assert.deepEqual(ids({ stored: true, retrospective: { text: 'done' } }), ['issues', 'needs', 'decisions', 'pilot', 'retrospective', 'stream', 'metrics'])
+  assert.deepEqual(ids({ stored: true }), ['issues', 'needs', 'decisions', 'pilot', 'stream', 'metrics'])
+  assert.deepEqual(ids(null), ['issues', 'needs', 'decisions', 'pilot', 'stream', 'board', 'metrics'], 'hidden while the milestone loads')
+})
+
+test('milestoneTabsFor: ?tab=retrospective without one opens the default tab', () => {
+  assert.equal(milestoneTabFromRoute('retrospective', '', milestoneTabsFor({})), 'issues')
+  assert.equal(milestoneTabFromRoute('retrospective', '', milestoneTabsFor({ retrospective: {} })), 'retrospective')
+  // Other tabs still open from a link.
+  assert.equal(milestoneTabFromRoute('pilot', '', milestoneTabsFor({})), 'pilot')
 })

@@ -155,6 +155,8 @@ export function longPauseRows(v: MetricsPausesView): LongPauseRow[] {
   return (v.longest ?? []).map((p: LongPauseView, i) => ({
     id: `${i}:${p.namespace}/${p.project}/${p.milestoneIID}/${p.since}`,
     project: `${p.namespace}/${p.project}`,
+    // %n alone: LongPauseView carries no milestone title, and the Metrics
+    // page loads none (steering log of "Desk: one look on every page", R10).
     milestone: `%${p.milestoneIID}`,
     kind: pauseKindLabel(p.kind),
     reason: (p.reason ?? '').replace(/\s+/g, ' ').trim(),

@@ -3,6 +3,7 @@
 import type { AgentPlanPhase } from './generated/api'
 import type { PlanListItem } from './generated/views'
 import { cost, type Tone } from './format.ts'
+import { milestoneName } from './milestoneName.ts'
 
 // planTitle is the plan's title, or "Untitled plan · <date>" when empty
 // (D448-P1).
@@ -54,23 +55,25 @@ export function planMilestoneTitle(title: string, draft: string): string {
   return [...t].slice(0, 255).join('')
 }
 
-// PlanMilestoneLink is where a plan row's %N goes: the Desk milestone page
-// while the Desk has a row for it, else the milestone on GitLab, "Not
-// planned" (decision 7).
+// PlanMilestoneLink is where a plan row's milestone goes: the Desk milestone
+// page while the Desk has a row for it, else the milestone on GitLab, "Not
+// planned" (decision 7). label is the milestone's title where the page knows
+// it, with ref (%N) as its secondary label; %N alone (ref '') without.
 export type PlanMilestoneLink =
-  | { label: string; to: { name: 'stream-milestone'; params: { namespace: string; name: string; iid: string } } }
-  | { label: string; href: string; note: string }
+  | { label: string; ref: string; to: { name: 'stream-milestone'; params: { namespace: string; name: string; iid: string } } }
+  | { label: string; ref: string; href: string; note: string }
 
 export function planMilestoneLink(
   item: Pick<PlanListItem, 'namespace' | 'project' | 'createdMilestoneIID' | 'createdMilestoneURL' | 'milestone'>,
+  title?: string,
 ): PlanMilestoneLink | null {
   const iid = item.createdMilestoneIID
   if (!iid) return null
-  const label = `%${iid}`
+  const { title: label, ref } = milestoneName(iid, title)
   if (item.milestone) {
-    return { label, to: { name: 'stream-milestone', params: { namespace: item.namespace, name: item.project, iid: String(iid) } } }
+    return { label, ref, to: { name: 'stream-milestone', params: { namespace: item.namespace, name: item.project, iid: String(iid) } } }
   }
-  return { label, href: item.createdMilestoneURL ?? '', note: 'Not planned' }
+  return { label, ref, href: item.createdMilestoneURL ?? '', note: 'Not planned' }
 }
 
 // planSections splits a plan list (decision 9): created holds phase Created,

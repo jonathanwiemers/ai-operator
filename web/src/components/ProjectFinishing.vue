@@ -43,8 +43,7 @@ async function close(m: number, i: number) {
         </RouterLink>
         <div v-for="(h, i) in holdLines(e, gitlab)" :key="i" class="flex flex-wrap items-baseline gap-x-2 gap-y-1 ps-4 text-xs text-(--text-3) [overflow-wrap:anywhere]">
           <span>
-            <RouterLink v-if="h.retro" :to="{ name: 'stream-milestone', params: { namespace, name, iid: String(e.iid) }, query: { tab: 'retrospective' } }">{{ h.text }}</RouterLink>
-            <ExtLink v-else-if="h.href" :href="h.href">{{ h.text }}</ExtLink>
+            <ExtLink v-if="h.href" :href="h.href">{{ h.text }}</ExtLink>
             <template v-else>{{ h.text }}</template>
             <template v-for="l in h.links" :key="l.text">{{ ' ' }}<ExtLink :href="l.href">{{ l.text }}</ExtLink></template>
           </span>

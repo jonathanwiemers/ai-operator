@@ -21,7 +21,7 @@ test('holdLines: one line per hold, in order', () => {
   assert.deepEqual(holdLines(e, gl), [
     { text: 'Re-planning' },
     { text: 'Retrospective being written' },
-    { text: 'Follow-ups to settle', retro: true },
+    { text: 'Follow-ups to settle' },
     { text: 'Open: #42 Fix it', href: 'https://gitlab.com/g/p/-/issues/42', issue: 42 },
     { text: 'Open: #43', href: 'https://gitlab.com/g/p/-/issues/43', issue: 43 },
     { text: 'Companions not landed:', links: [{ text: 'group/lib!7', href: 'https://gitlab.com/group/lib/-/merge_requests/7' }] },

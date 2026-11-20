@@ -1035,8 +1035,11 @@ project change, not live, and shows *Drafting* (every phase but Created)
 and *Milestones created*, each last active first and hidden when empty; a
 404 shows an empty list (`AllPlans.vue` shows *Not found*). Each plan is
 a `PlanRow.vue` (project only across projects, title, phase, spend, last
-activity, and the milestone's `%N` with its state and a `UProgress` of
-merged issues next to its "3/5", or *Not planned* with the GitLab link). The
+activity, and the milestone with its state and a `UProgress` of merged
+issues next to its "3/5", or *Not planned* with the GitLab link). On the
+project page the milestone shows by title with its `%N` muted beside it
+(`milestoneName.ts`, from the project's milestones); `/plans` has no
+titles and shows `%N`. The
 bar's value, max and accessible name come from `progressBar` in
 `milestoneRows.ts`, shared with `MilestoneRow.vue`. *Plan milestone* in `PlanList.vue` shows when
 `planStartProjects` (`planStart.ts`: the `steer` projects, sorted) is not
@@ -1119,10 +1122,14 @@ reads `GET …/decisions` from the history database only, never GitLab.
   `searchFromQuery`, `milestoneFromQuery`, `decisionsQuery`), the API
   query (`decisionsSearch`), the grouping, the card's options and the chain.
 
-The queue's decision IDs (`QueueList.vue`, on the Issues tab and in the
-context panel) link through `decisionHref` (`milestoneQueue.ts`): with the
-`history` feature to the milestone page's `?tab=decisions#<id>` as a
-RouterLink, else to the GitLab comment. The Revisit button stays.
+The queue's decision IDs (`QueueList.vue` on the Issues tab) link through
+`decisionHref` (`milestoneQueue.ts`): with the `history` feature to the
+milestone page's `?tab=decisions#<id>` as a RouterLink, else to the GitLab
+comment. The Revisit button stays. In the context panel (`compact`) the
+rows carry no IDs or Revisit chips: `decisionGroups` sums them into one
+line per kind, *Revisit · n* (decisions an issue revisits), *Open · n* and
+*Superseded · n*, each linking to the milestone's Decisions tab with the
+`history` feature (`decisionsTabHref`), plain text without.
 
 The e2e cases `milestone decisions › …` (fixture
 `e2e/fixtures/decisions.ts`) cover the cards, search and chips, the
@@ -1291,7 +1298,9 @@ heights on a phone and the sideways scroll (`board-project@<width>.png`,
 ### Milestone Retrospective
 
 The milestone's Retrospective tab (`web/src/components/MilestoneRetro.vue`)
-is Tailwind utilities and Nuxt UI tokens, without scoped CSS.
+is Tailwind utilities and Nuxt UI tokens, without scoped CSS. The tab
+shows only once the milestone has a retrospective (`milestoneTabsFor` in
+`streamTabs.ts`); a `?tab=retrospective` link without one opens Issues.
 
 - When it was posted and the link to its comment wrap as one line of
   facts; the link is 44 px high on phones. The text, and each leftover's
@@ -1834,8 +1843,8 @@ threads, so a prompt shows once.
 
 The context panel (from 1180 px, project pages only) shows the project's
 needs-you items, the active milestone's queue (a milestone waiting for its
-turn says *⏳ Waiting for its turn: %7, %9 go first*, from
-`autopilot.queuedBehind`; it is running, not paused, so it has no pause card
+turn says *⏳ Waiting for its turn: Guest checkout (%7), %9 go first*,
+from `autopilot.queuedBehind` with the titles of the project's milestones; it is running, not paused, so it has no pause card
 and no Inbox item) and the last 30 days against the 30 before. Below
 1180 px the header's *Context* button opens it as a [sheet](#sheets); its
 count is the panel's own, so neither loads anything more.
@@ -1898,9 +1907,10 @@ the danger tone, none at 0; Overview; Metrics; Plans), *Projects* and
 *Research*. Every link's active state comes from the route's path: a
 project or research stays lit on the pages below it. A project shows its
 state as a chip on its icon, its needs-you count as a badge and its state
-line under the name; a research shows its schedule (raw cron), *running*
-or *one-off*. Selecting a link emits `navigate`, which closes the
-[sheet](#sheets). Below the menu, the footer holds the theme switch, the
+line under the name; a research shows its schedule in words (`cronText`
+in `cron.ts`, "daily at 07:15 Europe/Berlin", the raw cron as tooltip;
+raw for forms it does not read), *running* or *one-off*. Selecting a
+link emits `navigate`, which closes the [sheet](#sheets). Below the menu, the footer holds the theme switch, the
 engine meters (`UProgress`), the live indicator, the user and the about
 line.
 
@@ -1959,7 +1969,8 @@ the milestone's Spec task: *Run next* `{"cmd":"start"}`, *Clear mark*
 
 Finishing lists done autopilot milestones whose Spec task still exists,
 oldest first, with what holds the close (`closeMilestone`): *Re-planning*,
-*Retrospective being written*, *Follow-ups to settle*, each open issue of
+*Retrospective being written*, *Follow-ups to settle* (plain text; the
+milestone's Retrospective tab lists them), each open issue of
 `CloseWaitsFor` and *Companions not landed*. *Close issue* (`steer` grant,
 an owner subject, GitLab connected) posts `POST
 …/milestones/{iid}/issues/{issue}/close` with the user's token: a note

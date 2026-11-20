@@ -1,7 +1,8 @@
 // Tests of src/format.ts: npm test (node --test, no extra dependencies).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { costChip, costTooltip, deferringEngine, deskTitle, durationShort, fullTime, loginLasts, tokenCount } from '../src/format.ts'
+import { cost, costChip, costTooltip, deferringEngine, deskTitle, durationShort, fullTime, loginLasts, tokenCount } from '../src/format.ts'
+import { cronText } from '../src/cron.ts'
 
 test('fullTime shows the date, time and time zone', () => {
   const s = fullTime('2026-11-02T13:59:00Z')
@@ -52,6 +53,63 @@ test('costChip shows USD and tokens, n/a when the cost is unknown, never $0', ()
   // Summed over tasks, or legacy runs only: no tokens to show.
   assert.equal(costChip({ costUSD: '1.75', costKnown: true, tokens: 0 }), '$1.75')
   assert.equal(costChip(undefined), '')
+})
+
+test('cost groups thousands in the browser locale, keeps <$0.01 and $0', () => {
+  const usd = (v) => new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v)
+  assert.equal(cost('2614.69'), usd(2614.69))
+  // Under en-US (node's locale without LANG, as in CI) that is $2,614.69.
+  if (new Intl.NumberFormat().resolvedOptions().locale === 'en-US') assert.equal(cost('2614.69'), '$2,614.69')
+  assert.equal(cost('12.3'), usd(12.3))
+  assert.equal(cost('0.004'), '<$0.01')
+  assert.equal(cost('0'), '$0')
+  assert.equal(cost(''), '$0')
+  assert.equal(cost(undefined), '$0')
+})
+
+test('cronText: a fixed time daily, on weekdays, weekends or listed days, with the zone', () => {
+  assert.equal(cronText('15 7 * * *', 'Europe/Berlin'), 'daily at 07:15 Europe/Berlin')
+  assert.equal(cronText('15 7 * * *'), 'daily at 07:15 UTC')
+  assert.equal(cronText('0 9 * * 1-5', ''), 'weekdays at 09:00 UTC')
+  assert.equal(cronText('0 9 * * MON-FRI'), 'weekdays at 09:00 UTC')
+  assert.equal(cronText('30 18 * * 0,6'), 'weekends at 18:30 UTC')
+  assert.equal(cronText('30 18 * * 6,7'), 'weekends at 18:30 UTC', '7 is Sunday')
+  assert.equal(cronText('0 9 * * 1,3'), 'Mon, Wed at 09:00 UTC')
+  assert.equal(cronText('0 9 * * 1-4'), 'Mon–Thu at 09:00 UTC')
+  assert.equal(cronText('0 9 * * 1-3,5'), 'Mon–Wed, Fri at 09:00 UTC')
+  assert.equal(cronText('0 9 * * 0-6'), 'daily at 09:00 UTC')
+  assert.equal(cronText('  5  23 * * 2 '), 'Tue at 23:05 UTC')
+})
+
+test('cronText: intervals of minutes and hours, without a zone', () => {
+  assert.equal(cronText('*/15 * * * *', 'Europe/Berlin'), 'every 15 minutes')
+  assert.equal(cronText('*/1 * * * *'), 'every minute')
+  assert.equal(cronText('* * * * *'), 'every minute')
+  assert.equal(cronText('0 */2 * * *'), 'every 2 hours')
+  assert.equal(cronText('0 * * * *'), 'every hour')
+})
+
+test('cronText: other forms are null, so the caller shows the raw cron', () => {
+  for (const expr of [
+    '0 0 1 * *',
+    '0 9 * 1 *',
+    '0 9,17 * * *',
+    '0 9-17 * * *',
+    '*/15 9 * * *',
+    '15 */2 * * *',
+    '0 9 * * */2',
+    '0 9 * * 5-1',
+    '0 9 * * 8',
+    '60 9 * * *',
+    '0 24 * * *',
+    '*/0 * * * *',
+    '@daily',
+    '0 9 * *',
+    '',
+    undefined,
+  ]) {
+    assert.equal(cronText(expr), null, String(expr))
+  }
 })
 
 test('costTooltip breaks down what is known', () => {

@@ -18,12 +18,25 @@ test('planMilestoneLink: the Desk page with a row, GitLab with Not planned, else
   const milestone = { state: 'running', progress: { merged: 2, total: 4, open: 2 }, stored: false }
   assert.deepEqual(planMilestoneLink({ ...base, milestone }), {
     label: '%7',
+    ref: '',
     to: { name: 'stream-milestone', params: { namespace: 'team', name: 'shop', iid: '7' } },
   })
-  assert.deepEqual(planMilestoneLink(base), { label: '%7', href: 'https://gitlab.example/m/7', note: 'Not planned' })
-  assert.deepEqual(planMilestoneLink({ ...base, createdMilestoneURL: undefined }), { label: '%7', href: '', note: 'Not planned' })
+  assert.deepEqual(planMilestoneLink(base), { label: '%7', ref: '', href: 'https://gitlab.example/m/7', note: 'Not planned' })
+  assert.deepEqual(planMilestoneLink({ ...base, createdMilestoneURL: undefined }), { label: '%7', ref: '', href: '', note: 'Not planned' })
   assert.equal(planMilestoneLink({ namespace: 'team', project: 'shop' }), null)
   assert.equal(planMilestoneLink({ namespace: 'team', project: 'shop', createdMilestoneIID: 0, milestone }), null)
+})
+
+test('planMilestoneLink: the title where the page knows it, %N as secondary label', () => {
+  const base = { namespace: 'team', project: 'shop', createdMilestoneIID: 7, createdMilestoneURL: 'https://gitlab.example/m/7' }
+  const milestone = { state: 'running', progress: { merged: 2, total: 4, open: 2 }, stored: false }
+  assert.deepEqual(planMilestoneLink({ ...base, milestone }, 'Guest checkout'), {
+    label: 'Guest checkout',
+    ref: '%7',
+    to: { name: 'stream-milestone', params: { namespace: 'team', name: 'shop', iid: '7' } },
+  })
+  assert.deepEqual(planMilestoneLink(base, 'Guest checkout'), { label: 'Guest checkout', ref: '%7', href: 'https://gitlab.example/m/7', note: 'Not planned' })
+  assert.equal(planMilestoneLink({ ...base, milestone }, '').label, '%7', 'a blank title is unknown')
 })
 
 test('planSections: Created apart, every other phase drafting, newest first', () => {

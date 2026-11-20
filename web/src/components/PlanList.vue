@@ -22,7 +22,10 @@ import type { PlanOverview, PlanProject } from '../generated/views'
 // pick from an inline list with more. A 403 hides it until the next load.
 // actionsTo: a selector in the host's page header; the button moves there
 // (Teleport), the picker stays above the list.
-const props = defineProps<{ project?: { namespace: string; name: string }; actionsTo?: string }>()
+// milestones: the project's milestones where the page has them (the project
+// page), so a created milestone shows by title.
+const props = defineProps<{ project?: { namespace: string; name: string }; actionsTo?: string; milestones?: { iid: number; title: string }[] }>()
+const milestoneTitle = (iid?: number) => (iid ? props.milestones?.find((m) => m.iid === iid)?.title : undefined)
 const emit = defineEmits<{ notFound: [] }>()
 
 const overview = ref<PlanOverview | null>(null)
@@ -115,13 +118,13 @@ async function start(p: PlanProject) {
       <section v-if="sections.drafting.length" class="section">
         <h2 class="text-[15px]">Drafting</h2>
         <ul class="card m-0 list-none overflow-hidden p-0" aria-label="Drafting">
-          <PlanRow v-for="p in sections.drafting" :key="`${p.namespace}/${p.name}`" :item="p" :show-project="!project" />
+          <PlanRow v-for="p in sections.drafting" :key="`${p.namespace}/${p.name}`" :item="p" :show-project="!project" :milestone-title="milestoneTitle(p.createdMilestoneIID)" />
         </ul>
       </section>
       <section v-if="sections.created.length" class="section">
         <h2 class="text-[15px]">Milestones created</h2>
         <ul class="card m-0 list-none overflow-hidden p-0" aria-label="Milestones created">
-          <PlanRow v-for="p in sections.created" :key="`${p.namespace}/${p.name}`" :item="p" :show-project="!project" />
+          <PlanRow v-for="p in sections.created" :key="`${p.namespace}/${p.name}`" :item="p" :show-project="!project" :milestone-title="milestoneTitle(p.createdMilestoneIID)" />
         </ul>
       </section>
     </template>

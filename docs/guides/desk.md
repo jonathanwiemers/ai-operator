@@ -213,8 +213,8 @@ tablet the *Context* button opens it.
 ## A milestone
 
 A milestone page has the tabs *Issues*, *Needs you*, *Decisions*, *Pilot*,
-*Retrospective*, *Stream*, *Board* and *Metrics*. The tab is part of the address, so you can
-send a link to it.
+*Retrospective* (once written), *Stream*, *Board* and *Metrics*. The tab
+is part of the address, so you can send a link to it.
 
 ### Issues
 

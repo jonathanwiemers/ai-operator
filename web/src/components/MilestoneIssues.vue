@@ -40,12 +40,13 @@ import type { MilestoneIssueRow, MilestoneView } from '../types'
 // a tablet) the heads are hidden; an issue row shows its number
 // and title on the first line, then its state, merge request and labelled
 // figures as a wrapping line. Links in rows are 44 px high on phones.
-const props = defineProps<{ milestone: MilestoneView; namespace: string; name: string }>()
+// milestones: the project's, so the milestones it waits for show by title.
+const props = defineProps<{ milestone: MilestoneView; namespace: string; name: string; milestones?: { iid: number; title: string }[] }>()
 
 const rows = computed(() => interleaveReleases(props.milestone.issues ?? [], props.milestone.releases))
 const progress = computed(() => issueProgress(props.milestone.issues ?? []))
 const pct = computed(() => progressPct({ progress: progress.value }))
-const waiting = computed(() => waitingForTurn(props.milestone.autopilot?.queuedBehind))
+const waiting = computed(() => waitingForTurn(props.milestone.autopilot?.queuedBehind, props.milestones))
 
 // Every issue links to its issue page, also once its task is gone.
 function issueTo(i: MilestoneIssueRow) {

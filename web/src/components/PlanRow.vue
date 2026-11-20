@@ -11,11 +11,13 @@ import type { PlanListItem } from '../generated/views'
 // One plan row (decision 10): project (only when the list spans projects),
 // title linking to the plan, phase, spend of budget, last activity, and for
 // a created milestone its %N link with state and progress, or "Not planned"
-// while the Desk does not track it. Flex rows that wrap on phones.
-const props = defineProps<{ item: PlanListItem; showProject?: boolean }>()
+// while the Desk does not track it. The milestone shows by title, %N as its
+// secondary label, where the page knows the title (milestoneTitle: the
+// project page's milestones). Flex rows that wrap on phones.
+const props = defineProps<{ item: PlanListItem; showProject?: boolean; milestoneTitle?: string }>()
 
 const title = computed(() => planTitle(props.item.title, props.item.createdAt))
-const link = computed(() => planMilestoneLink(props.item))
+const link = computed(() => planMilestoneLink(props.item, props.milestoneTitle))
 const to = computed(() => ({
   name: 'plans' as const,
   params: { namespace: props.item.namespace, name: props.item.project, plan: props.item.name },
@@ -42,11 +44,12 @@ const project = computed(() => ({
       <span class="whitespace-nowrap tabular-nums" title="Spend of budget">{{ planSpendLabel(item.spendUSD, item.budgetUSD) }}</span>
       <span class="whitespace-nowrap text-(--text-3)">active <RelTime :time="item.lastActivityAt" /></span>
       <span v-if="link" class="flex min-w-0 flex-[1_1_14rem] flex-wrap items-center gap-x-2 gap-y-1" data-plan-milestone>
-        <RouterLink v-if="'to' in link" class="font-semibold" :to="link.to">{{ link.label }}</RouterLink>
+        <RouterLink v-if="'to' in link" class="font-semibold [overflow-wrap:anywhere]" :to="link.to">{{ link.label }}</RouterLink>
         <template v-else>
-          <ExtLink :href="link.href">{{ link.label }}</ExtLink>
+          <ExtLink :href="link.href" class="[overflow-wrap:anywhere]">{{ link.label }}</ExtLink>
           <span class="text-xs text-(--text-3)">{{ link.note }}</span>
         </template>
+        <span v-if="link.ref" class="text-xs text-(--text-3) tabular-nums" data-milestone-ref>{{ link.ref }}</span>
         <template v-if="item.milestone">
           <Badge :tone="stateTone(item.milestone.state)">{{ item.milestone.state }}</Badge>
           <span class="flex flex-[1_1_10rem] items-center gap-2">

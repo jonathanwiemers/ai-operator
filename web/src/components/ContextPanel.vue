@@ -21,13 +21,15 @@ const props = defineProps<{
   inbox: InboxItem[]
   milestone?: MilestoneView | null
   history?: HistoryResponse | null
+  // The project's milestones, so the milestones it waits for show by title.
+  milestones?: { iid: number; title: string }[]
 }>()
 
 const queue = computed((): QueueItem[] => props.milestone?.autopilot?.items ?? [])
 const done = computed(() => queueDone(queue.value))
 const total = computed(() => queue.value.length)
 // Waiting for its turn to be planned: running, so no Inbox item and no pause card.
-const waiting = computed(() => waitingForTurn(props.milestone?.autopilot?.queuedBehind))
+const waiting = computed(() => waitingForTurn(props.milestone?.autopilot?.queuedBehind, props.milestones))
 
 const chart = computed(() => {
   const days = props.history?.days ?? []
@@ -106,7 +108,7 @@ function inboxTo(item: InboxItem) {
         ⏳ {{ waiting }}.
         <small>Comment <code>/agent start</code> on the tracking issue to plan it now (owners).</small>
       </p>
-      <QueueList :namespace="namespace" :name="name" :milestone="milestone" />
+      <QueueList :namespace="namespace" :name="name" :milestone="milestone" compact />
     </div>
 
     <div v-if="milestone && milestone.companions?.length" class="panel">

@@ -61,7 +61,7 @@ import { alertColor, toneText } from '../badgeTone'
 import { pageHeaderUi } from '../pageHeader'
 import { useStreamNote } from '../streamNote'
 import { decisionsQuery, milestoneFromQuery } from '../decisions'
-import { milestoneTabFromRoute, milestoneTabs, projectTabsFor, storedMilestoneTabs, tabFromQuery, tabQuery } from '../streamTabs'
+import { milestoneTabFromRoute, milestoneTabs, milestoneTabsFor, projectTabsFor, tabFromQuery, tabQuery } from '../streamTabs'
 import NotFound from './NotFound.vue'
 
 const props = defineProps<{
@@ -76,20 +76,27 @@ const milestoneIID = computed(() => (props.iid ? Number(props.iid) : undefined))
 // tab: Stream, Decisions, Board, Spend or Plans (feature plans) on project streams, Issues (the default),
 // Needs you, Decisions, Pilot, Retrospective, Stream, Board or Spend on milestones, kept in ?tab= so it can be
 // linked to (a #prompt-Q<n> link without it opens Needs you); Everything has no
-// tabs. A stored milestone has no tasks, so no Board. The Needs you tab's
+// tabs. A stored milestone has no tasks, so no Board, and a milestone shows
+// Retrospective only once it has one (milestoneTabsFor). The Needs you tab's
 // label carries the count of its Open items ("Needs you · n", D530-P1).
 const route = useRoute()
 const tabs = computed(() => {
   if (everything.value) return []
   if (!milestoneIID.value) return projectTabsFor(hasFeature('plans'))
   const m = milestone.value?.iid === milestoneIID.value ? milestone.value : null
-  const list = m?.stored ? storedMilestoneTabs : milestoneTabs
+  const list = milestoneTabsFor(m)
   const n = m ? needsOpen(m).count : 0
   return n ? list.map((t) => (t.id === 'needs' ? { ...t, label: needsLabel(n) } : t)) : list
 })
+// A milestone's tab is read against all its tabs while it loads, so a
+// ?tab=retrospective link waits for it; once loaded, a hidden tab falls
+// back to the first one (Decision 12).
 const tab = computed((): string => {
   if (everything.value) return 'stream'
-  if (milestoneIID.value) return milestoneTabFromRoute(route.query.tab, route.hash, tabs.value)
+  if (milestoneIID.value) {
+    const loaded = milestone.value?.iid === milestoneIID.value || milestoneFailed.value
+    return milestoneTabFromRoute(route.query.tab, route.hash, loaded ? tabs.value : milestoneTabs)
+  }
   return tabFromQuery(route.query.tab, tabs.value)
 })
 const filter = ref<StreamFilter>('all')
@@ -651,6 +658,7 @@ function showDay(i: number): string | null {
           :milestone="milestone"
           :namespace="namespace"
           :name="name"
+          :milestones="project?.milestones"
         />
         <UAlert v-else-if="milestoneFailed" :color="alertColor('danger')" variant="subtle" class="mt-3" description="The milestone could not be loaded." />
         <div v-else class="empty">Loading…</div>
@@ -713,7 +721,7 @@ function showDay(i: number): string | null {
       </div>
       <div v-else-if="tab === 'plans'" class="scroll board">
         <!-- The project's plans (R13); a 404 (no chat) shows an empty list. -->
-        <PlanList v-if="namespace && name" :project="{ namespace, name }" />
+        <PlanList v-if="namespace && name" :project="{ namespace, name }" :milestones="project?.milestones" />
       </div>
       <div v-else-if="tab === 'metrics'" class="scroll board">
         <SpendPanel
@@ -744,6 +752,7 @@ function showDay(i: number): string | null {
         :name="name!"
         :inbox="projectInbox"
         :milestone="milestone"
+        :milestones="project?.milestones"
         :history="history"
       />
     </template>

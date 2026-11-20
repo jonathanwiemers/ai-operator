@@ -12,6 +12,7 @@ import { useNow, useResource } from '../live'
 import { clockTime, duration, safeURL } from '../format'
 import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
 import Badge from '../components/Badge.vue'
+import CronSchedule from '../components/CronSchedule.vue'
 import RelTime from '../components/RelTime.vue'
 import { pageHeaderUi } from '../pageHeader'
 import ResearchResult from '../components/ResearchResult.vue'
@@ -101,7 +102,7 @@ async function remove() {
           <template #description>
             <span class="flex flex-col gap-1.5 tablet:flex-row tablet:flex-wrap tablet:gap-x-[18px]" data-research-facts>
               <span class="[overflow-wrap:anywhere]">{{ r.namespace }}</span>
-              <span v-if="r.schedule" class="[overflow-wrap:anywhere]"><code>{{ r.schedule }}</code> {{ r.timeZone || 'UTC' }}</span>
+              <CronSchedule v-if="r.schedule" :schedule="r.schedule" :time-zone="r.timeZone" />
               <span v-else>one-off<template v-if="r.createdBy"> by {{ r.createdBy }}</template></span>
               <span class="[overflow-wrap:anywhere]">agent <code>{{ agent }}</code></span>
               <span>last run <RelTime :time="r.lastRun" /></span>

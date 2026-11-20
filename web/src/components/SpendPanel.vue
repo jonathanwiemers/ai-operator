@@ -21,6 +21,7 @@ import {
   barColors,
   callCost,
   childLabel,
+  childRef,
   companionNote,
   childScope,
   checkpointsLine,
@@ -409,6 +410,9 @@ const mark = 'ms-1.5 rounded-full px-1.5 text-[11px] font-semibold'
                   {{ childLabel(row, scope, milestones) }}
                 </RouterLink>
                 <span v-else>{{ childLabel(row, scope, milestones) }}</span>
+                <span v-if="childRef(row, scope, milestones)" class="ms-1.5 text-xs text-(--text-3) tabular-nums" data-milestone-ref>{{
+                  childRef(row, scope, milestones)
+                }}</span>
                 <span
                   v-if="companionNote(row)"
                   :class="mark"

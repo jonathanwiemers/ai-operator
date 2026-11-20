@@ -94,10 +94,16 @@ export function loginLasts(me: Pick<Me, 'renewing' | 'idleUntil'>, now: number):
   return `Signed in until ${t.toDateString() === new Date(now).toDateString() ? hm : `${day}, ${hm}`}`
 }
 
+// usdFormat formats dollars in the browser's locale with two decimals
+// ("$2,614.69" in en-US). Made on first use and kept: building a
+// NumberFormat is slow. The Metrics CSV keeps its own machine format.
+let usdFormat: Intl.NumberFormat | undefined
 export function cost(usd: string | undefined | null): string {
   const v = Number.parseFloat(usd ?? '')
   if (!Number.isFinite(v) || v === 0) return '$0'
-  return v < 0.01 ? '<$0.01' : `$${v.toFixed(2)}`
+  if (v < 0.01) return '<$0.01'
+  usdFormat ??= new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return usdFormat.format(v)
 }
 
 // tokenCount abbreviates a token count: 950, 1.2k, 12k, 1.2M.

@@ -10,6 +10,7 @@ import { useNow, useResource } from '../live'
 import { pageHeaderUi } from '../pageHeader'
 import { clockTime, runLine, type Tone } from '../format'
 import Badge from '../components/Badge.vue'
+import CronSchedule from '../components/CronSchedule.vue'
 import RelTime from '../components/RelTime.vue'
 import type { ResearchPhase, ResearchSummary } from '../types'
 
@@ -81,9 +82,7 @@ function lastRunLine(r: ResearchSummary): string {
           </div>
         </div>
         <div class="flex flex-wrap gap-x-[18px] gap-y-1.5 text-[13px] text-(--text-2)">
-          <span v-if="r.schedule" class="[overflow-wrap:anywhere]">
-            <code>{{ r.schedule }}</code> {{ r.timeZone || 'UTC' }}
-          </span>
+          <CronSchedule v-if="r.schedule" :schedule="r.schedule" :time-zone="r.timeZone" />
           <span v-else>one-off<template v-if="r.createdBy"> by {{ r.createdBy }}</template></span>
           <span>last run <RelTime :time="r.lastRun" /></span>
           <span v-if="r.nextRun">next run <RelTime :time="r.nextRun" /></span>

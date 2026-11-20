@@ -1,6 +1,7 @@
 import type { ChatCommand } from './chatState'
 import type { MilestonePermissions } from './generated/views'
 import type { AutopilotItem, DecisionRef, QueueItem } from './types'
+import { milestoneName } from './milestoneName.ts'
 
 // QueueRow is one issue of a milestone's autopilot queue: the view's item
 // plus the decisions and revisit the spec task's status keeps for it.
@@ -56,6 +57,43 @@ export function decisionHref(d: Pick<DecisionRef, 'id' | 'url'>, milestonePath: 
   return d.url ?? ''
 }
 
+// DecisionGroup is one line of the context panel's decisions (R10): a kind
+// and how many of the queue's decisions are of it.
+export interface DecisionGroup {
+  kind: 'revisit' | 'open' | 'superseded'
+  label: string
+  count: number
+}
+
+// decisionGroups sums a queue's decisions per kind, instead of a row of
+// IDs and Revisit chips per issue: Revisit counts the decisions an issue
+// revisits, Open the standing ones, Superseded those a revisit replaced.
+// An ID counts once per kind; kinds without one are left out.
+export function decisionGroups(rows: readonly Pick<QueueRow, 'decisions' | 'revisitOf'>[]): DecisionGroup[] {
+  const ids = { revisit: new Set<string>(), open: new Set<string>(), superseded: new Set<string>() }
+  for (const r of rows) {
+    const revisit = r.revisitOf?.trim().toUpperCase()
+    if (revisit) ids.revisit.add(revisit)
+    for (const d of r.decisions) {
+      const id = d.id.trim().toUpperCase()
+      if (id) ids[d.superseded ? 'superseded' : 'open'].add(id)
+    }
+  }
+  const labels: [DecisionGroup['kind'], string][] = [
+    ['revisit', 'Revisit'],
+    ['open', 'Open'],
+    ['superseded', 'Superseded'],
+  ]
+  return labels.filter(([k]) => ids[k].size).map(([kind, label]) => ({ kind, label, count: ids[kind].size }))
+}
+
+// decisionsTabHref is where the context panel's decision lines link: the
+// milestone's Decisions tab with the history feature, which it reads; ''
+// without (the lines are text).
+export function decisionsTabHref(milestonePath: string, history: boolean): string {
+  return history && milestonePath ? `${milestonePath}?tab=decisions` : ''
+}
+
 // revisitPromptID finds the prompt id ("Q7") the operator's answer to a
 // revisit names, or '' when it names none.
 export function revisitPromptID(answer: string): string {
@@ -64,10 +102,15 @@ export function revisitPromptID(answer: string): string {
 
 // waitingForTurn is the Desk's line for a milestone that waits for its turn
 // to be planned (queuedBehind: the older milestones, ascending), or '' when
-// it does not wait.
-export function waitingForTurn(queuedBehind?: number[] | null): string {
+// it does not wait. A milestone shows by title with its %n where milestones
+// (the project's) has it, else as %n.
+export function waitingForTurn(queuedBehind?: number[] | null, milestones: readonly { iid: number; title: string }[] = []): string {
   if (!queuedBehind?.length) return ''
-  return `Waiting for its turn: ${queuedBehind.map((iid) => `%${iid}`).join(', ')} go first`
+  const name = (iid: number) => {
+    const n = milestoneName(iid, milestones.find((m) => m.iid === iid)?.title)
+    return n.ref ? `${n.title} (${n.ref})` : n.title
+  }
+  return `Waiting for its turn: ${queuedBehind.map(name).join(', ')} go first`
 }
 
 // Lane is where an autopilot item is (decision 8 of the parallel milestone).

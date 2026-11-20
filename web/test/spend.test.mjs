@@ -14,6 +14,7 @@ import {
   callNudges,
   checkpointsLine,
   childLabel,
+  childRef,
   companionNote,
   childScope,
   costSourceLabel,
@@ -267,6 +268,16 @@ test('childLabel: milestone titles, and a milestone’s own calls', () => {
     'Milestone (spec, pilot, retro)',
   )
   assert.equal(childLabel({ level: 'issue', key: '12', label: '#12' }, { milestone: 3 }, ms), '#12')
+})
+
+test('childRef: %n next to a milestone shown by title, else none', () => {
+  const ms = [{ iid: 3, title: 'Spend you can see' }, { iid: 5, title: ' ' }]
+  assert.equal(childRef({ level: 'milestone', key: '3', label: '%3' }, {}, ms), '%3')
+  assert.equal(childRef({ level: 'milestone', key: '4', label: '%4' }, {}, ms), '', 'no title: the label is %4 already')
+  assert.equal(childRef({ level: 'milestone', key: '5', label: '%5' }, {}, ms), '', 'a blank title is unknown')
+  assert.equal(childRef({ level: 'milestone', key: '', label: 'No milestone' }, {}, ms), '')
+  assert.equal(childRef({ level: 'milestone', key: '3', label: 'Milestone %3' }, { milestone: 3 }, ms), '')
+  assert.equal(childRef({ level: 'issue', key: '12', label: '#12' }, {}, ms), '')
 })
 
 test('runNumber and runsNewestFirst order runs by number, not text', () => {

@@ -839,7 +839,7 @@ for (const { width, height, phone } of [
 
 // The project page's Finishing section (ProjectFinishing.vue, R7): a done
 // milestone with what holds it, the open issue linking to GitLab and the
-// follow-ups to the Retrospective tab, below Queue and inside the pane.
+// follow-ups as plain text, below Queue and inside the pane.
 test('stream-project finishing holds@375', async ({ page, baseURL }, testInfo) => {
   const route = routes.find((r) => r.name === 'stream-project-dark')!
   const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
@@ -853,7 +853,9 @@ test('stream-project finishing holds@375', async ({ page, baseURL }, testInfo) =
   const section = page.locator('section[aria-labelledby="project-finishing"]')
   await expect(section.getByRole('heading', { name: 'Finishing' })).toBeVisible()
   await expect(section.getByRole('link', { name: /Open: #42 Search results flicker/ })).toHaveAttribute('href', 'https://gitlab.example.com/team-a/shop/-/issues/42')
-  await expect(section.getByRole('link', { name: 'Follow-ups to settle' })).toHaveAttribute('href', '/projects/team-a/shop/milestones/9?tab=retrospective')
+  // Follow-ups are a hold, not a link (R10): the Retrospective tab lists them.
+  await expect(section.getByText('Follow-ups to settle')).toBeVisible()
+  await expect(section.getByRole('link', { name: 'Follow-ups to settle' })).toHaveCount(0)
   await expect(section.getByRole('link', { name: 'team-a/payments-sdk!44' })).toHaveAttribute('href', 'https://gitlab.example.com/team-a/payments-sdk/-/merge_requests/44')
   const queue = (await page.getByRole('heading', { name: 'Queue' }).boundingBox())!
   expect((await section.boundingBox())!.y, 'Finishing sits below Queue').toBeGreaterThan(queue.y)
@@ -1983,6 +1985,14 @@ test.describe('context sheet', () => {
 
         for (const heading of sections(milestone)) {
           await expect(sheet.getByRole('heading', { name: heading })).toBeVisible()
+        }
+        if (name === 'project') {
+          // The decisions as one line per kind, no IDs or Revisit chips (R10).
+          const groups = sheet.locator('[data-decision-groups] li')
+          await expect(groups).toHaveText(['Revisit · 1', 'Open · 2', 'Superseded · 1'])
+          await expect(groups.first().getByRole('link')).toHaveAttribute('href', '/projects/team-a/shop/milestones/12?tab=decisions')
+          await expect(sheet.getByText('D275-P1')).toHaveCount(0)
+          await expect(sheet.getByRole('button', { name: 'Revisit' })).toHaveCount(0)
         }
         const shot = join(testInfo.project.outputDir, '..', 'screenshots', `context-sheet-${name}@${size.width}.png`)
         await page.screenshot({ path: shot })
@@ -3645,6 +3655,30 @@ test.describe('milestone retrospective', () => {
     const phone = size.width < 760
     const shot = (outputDir: string, name: string) => join(outputDir, '..', 'screenshots', `${name}@${size.width}.png`)
 
+    // Decision 12: a milestone without a retrospective has no Retrospective
+    // tab, and a ?tab=retrospective link opens the default tab, Issues.
+    test(`no retrospective: no tab, the link opens Issues@${size.width}`, async ({ page, baseURL }) => {
+      const route = routes.find((r) => r.name === 'stream-milestone-retrospective')!
+      const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+      await page.setViewportSize(size)
+      await page.clock.setFixedTime(now)
+      await watch(page, new URL(baseURL ?? '').origin, problems)
+      await mockAPI(page, route, problems)
+      const { retrospective: _, ...withoutRetro } = paymentsMilestone
+      await page.route(
+        (url) => url.pathname === base,
+        (r) => r.fulfill({ status: 200, json: withoutRetro }),
+      )
+      await page.goto(route.path)
+      const main = page.locator('main')
+      await expect(main.getByText(milestoneReady.issues).first()).toBeVisible()
+      const tabs = main.getByRole('navigation', { name: 'View' })
+      await expect(tabs.getByRole('link', { name: 'Issues' })).toHaveAttribute('aria-current', 'page')
+      await expect(tabs.getByRole('link', { name: 'Retrospective' })).toHaveCount(0)
+      await expect(tabs.getByRole('link', { name: 'Pilot' })).toHaveCount(1)
+      expect(problems.pageErrors).toEqual([])
+    })
+
     test(`follow-ups: create and dismiss@${size.width}`, async ({ page, baseURL }, testInfo) => {
       const route = routes.find((r) => r.name === 'stream-milestone-retrospective')!
       const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
@@ -4005,7 +4039,8 @@ test.describe('research pages', () => {
       // Grouped by topic; the prompt is block markdown.
       await expect(main.locator('[data-block=items]')).toHaveCount(3)
       await expect(main.locator('[data-research-head] .md li')).toHaveCount(3)
-      await expect(main.locator('[data-research-facts] code').first()).toHaveText('0 7 * * *')
+      // The schedule in words; the raw cron is its tooltip.
+      await expect(main.locator('[data-research-facts] [data-schedule]')).toHaveText('daily at 07:00 Europe/Berlin')
       expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
       if (phone) {
         const heights = await main.evaluate((m) =>
