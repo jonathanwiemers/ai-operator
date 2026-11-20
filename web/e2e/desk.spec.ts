@@ -1260,7 +1260,7 @@ for (const { width, height } of [widths[0]!, widths[2]!]) {
     await chart.getByRole('button', { name: 'Table' }).click()
     await expect(table).toBeVisible()
     const first = table.getByRole('row').nth(1)
-    for (const text of ['$1.50', '$0.80', '$0.00', '$2.30', '+ 1 unknown call']) await expect(first).toContainText(text)
+    for (const text of ['$1.50', '$0.80', '$0', '$2.30', '+ 1 unknown call']) await expect(first).toContainText(text)
 
     // The opaque colours drawn on the canvas.
     const drawn = () =>

@@ -192,12 +192,13 @@ test('colorSlots: more than six keys share slots, no key is left out', () => {
   assert.equal(new Set([...slots.values()]).size, 6)
 })
 
-test('formatUSD: two decimals, grouped', () => {
-  assert.equal(formatUSD(0), '$0.00')
-  assert.equal(formatUSD(0.004), '$0.00')
+test('formatUSD: the Desk money format, two decimals, grouped', () => {
+  assert.equal(formatUSD(0), '$0')
+  assert.equal(formatUSD(0.004), '<$0.01')
+  assert.equal(formatUSD(2614.69), '$2,614.69')
   assert.equal(formatUSD(12.345), '$12.35')
   assert.equal(formatUSD(1234.5), '$1,234.50')
-  assert.equal(formatUSD(Number.NaN), '$0.00')
+  assert.equal(formatUSD(Number.NaN), '$0')
 })
 
 test('formatTokens: k and M', () => {
@@ -255,7 +256,7 @@ test('chartSummary: range, known total, unknown calls and the largest series', (
   )
   assert.equal(
     chartSummary('Known cost', { labels: [], series: [], unknown: [] }),
-    'Known cost: $0.00 known in total. The table view lists every value.',
+    'Known cost: $0 known in total. The table view lists every value.',
   )
 })
 
@@ -269,6 +270,7 @@ test('readChartColors: every series token and the text and grid tokens, trimmed'
   assert.equal(c.series['--chart-other'], 'v--chart-other')
   assert.deepEqual([c.text, c.muted, c.grid, c.surface], ['v--text', 'v--text-2', 'v--border', 'v--surface'])
   assert.ok(chartTokens.every((t) => asked.includes(t)))
+  assert.deepEqual([c.tooltipBg, c.tooltipBorder, c.tooltipText], ['v--ui-bg', 'v--ui-border', 'v--ui-text-highlighted'])
 })
 
 test('cumulativeMonth: a 31-day month against February, by day of month', () => {

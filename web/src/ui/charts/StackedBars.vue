@@ -90,11 +90,13 @@ const options = computed<ChartOptions<'bar' | 'line'>>(() => {
     interaction: { mode: 'index', intersect: false },
     plugins: {
       tooltip: {
-        backgroundColor: c.surface,
-        borderColor: c.grid,
+        backgroundColor: c.tooltipBg,
+        borderColor: c.tooltipBorder,
         borderWidth: 1,
-        titleColor: c.text,
-        bodyColor: c.text,
+        titleColor: c.tooltipText,
+        bodyColor: c.tooltipText,
+        cornerRadius: 6,
+        padding: { x: 10, y: 6 },
         footerColor: c.muted,
         titleFont: { family: font },
         bodyFont: { family: font },

@@ -1,6 +1,6 @@
 import type { CostPointView, CostsMonthView, SpendBreakdownView } from './generated/views.ts'
 import { breakdownLink, changeLabel, costKeyLabel, monthToDate, type CostFilters, type CostGroup, type MonthSum, type MonthToDate } from './costs.ts'
-import { tokenCount } from './format.ts'
+import { cost, tokenCount } from './format.ts'
 
 // The Costs page's chart data (docs/contributing/web-ui.md, "Metrics page"; decisions 7 and 8 of
 // docs/specs/costs-page.spec.md): buckets and points of GET /api/v1/costs
@@ -151,10 +151,10 @@ export function colorSlots(keys: string[]): Map<string, ChartToken> {
   return out
 }
 
-// formatUSD is a chart's cost: two decimals, thousands grouped ("$1,234.50").
+// formatUSD is a chart's cost in the Desk's money format (format.ts's cost):
+// "$2,614.69", "<$0.01", "$0".
 export function formatUSD(usd: number): string {
-  const v = Number.isFinite(usd) ? usd : 0
-  return v.toLocaleString('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  return cost(String(Number.isFinite(usd) ? usd : 0))
 }
 
 // formatTokens is a chart's token count in k/M (format.ts's tokenCount).
@@ -286,6 +286,10 @@ export interface ChartColors {
   muted: string
   grid: string
   surface: string
+  // What UTooltip uses (Nuxt UI: bg-default, ring-default, text-highlighted).
+  tooltipBg: string
+  tooltipBorder: string
+  tooltipText: string
 }
 
 export const chartTokens: ChartToken[] = ['--chart-1', '--chart-2', '--chart-3', '--chart-4', '--chart-5', '--chart-6', '--chart-other']
@@ -300,6 +304,9 @@ export function readChartColors(get: (name: string) => string): ChartColors {
     muted: v('--text-2'),
     grid: v('--border'),
     surface: v('--surface'),
+    tooltipBg: v('--ui-bg'),
+    tooltipBorder: v('--ui-border'),
+    tooltipText: v('--ui-text-highlighted'),
   }
 }
 
