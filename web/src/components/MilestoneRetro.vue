@@ -3,6 +3,7 @@ import UAlert from '@nuxt/ui/components/Alert.vue'
 import { alertColor } from '../badgeTone'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
+import UCheckbox from '@nuxt/ui/components/Checkbox.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
 import UTextarea from '@nuxt/ui/components/Textarea.vue'
 import { computed, defineAsyncComponent, ref, watch } from 'vue'
@@ -76,6 +77,9 @@ const created = ref<FollowUpMilestoneView | null>(null)
 const sent = ref<{ id: number; task: string; before?: string } | null>(null)
 
 const tickable = (n: number) => owner.value && step.value === 'pick' && openNumbers.value.includes(n)
+function tick(n: number, on: boolean) {
+  ticked.value = on ? [...ticked.value.filter((x) => x !== n), n] : ticked.value.filter((x) => x !== n)
+}
 // Ticked numbers that are no longer open drop out on the live reload.
 watch(openNumbers, (open) => (ticked.value = ticked.value.filter((n) => open.includes(n))))
 
@@ -298,18 +302,14 @@ const descriptionUI = { root: 'w-full', base: 'min-h-[220px] resize-y font-mono 
             data-followup
           >
             <div class="flex flex-wrap items-center gap-x-2 gap-y-1 tablet:flex-nowrap tablet:items-baseline">
-              <label
+              <UCheckbox
                 v-if="tickable(f.number)"
+                as="label"
                 class="-ms-2.5 flex min-h-11 min-w-11 shrink-0 cursor-pointer items-center justify-center tablet:m-0 tablet:min-h-0 tablet:min-w-0 tablet:self-center"
-              >
-                <input
-                  v-model="ticked"
-                  type="checkbox"
-                  class="m-0 size-4"
-                  :value="f.number"
-                  :aria-label="`Take leftover ${f.number} into a follow-up milestone`"
-                />
-              </label>
+                :model-value="ticked.includes(f.number)"
+                :aria-label="`Take leftover ${f.number} into a follow-up milestone`"
+                @update:model-value="(on: boolean | 'indeterminate') => tick(f.number, on === true)"
+              />
               <span class="whitespace-nowrap tabular-nums text-(--text-3)">{{ f.number }}.</span>
               <span class="min-w-[min(100%,10rem)] flex-1 font-semibold [overflow-wrap:anywhere]">{{ f.title }}</span>
               <ExtLink v-if="f.targetURL" :href="f.targetURL" class="shrink-0" :class="tap">

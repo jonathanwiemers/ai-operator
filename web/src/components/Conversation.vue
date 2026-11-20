@@ -3,6 +3,7 @@ import UAlert from '@nuxt/ui/components/Alert.vue'
 import { alertColor } from '../badgeTone'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
+import UTextarea from '@nuxt/ui/components/Textarea.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { ApiError, disconnectGitLab, getGitLabStatus, getMilestoneThread, getTaskThread, LoginRequiredError, postMilestoneNote, postTaskNote } from '../client'
 import { keepThroughSignIn } from '../signInDraft'
@@ -156,32 +157,21 @@ watch(() => props.stamp, loadThread)
     <div v-else-if="status && !status.connected" class="empty">GitLab is not set up for your user here.</div>
     <template v-else-if="status?.connected">
       <div class="flex flex-wrap items-center gap-2 border-b border-(--border) px-3 py-2 text-[13px]">
-        <button
+        <UButton
           v-for="p in parts"
           :key="p.target"
-          type="button"
-          class="cursor-pointer rounded-(--radius-sm) border px-2.5 py-1 font-[inherit]"
-          :class="
-            p.target === active
-              ? 'border-(--border-strong) bg-(--surface-2) text-(--text)'
-              : 'border-transparent bg-transparent text-(--text-2)'
-          "
+          color="neutral"
+          :variant="p.target === active ? 'outline' : 'ghost'"
+          size="sm"
+          :class="p.target === active ? 'bg-(--surface-2) text-(--text)' : 'text-(--text-2)'"
+          :label="label(p)"
           :aria-pressed="p.target === active"
           @click="active = p.target"
-        >
-          {{ label(p) }}
-        </button>
+        />
         <span class="flex-1" />
         <ExtLink v-if="current" :href="current.webURL">Open in GitLab</ExtLink>
         <span class="faint">@{{ status.username }}</span>
-        <button
-          v-if="!status.fixed"
-          type="button"
-          class="cursor-pointer border-0 bg-transparent p-0 font-[inherit] text-(--link)"
-          @click="disconnect"
-        >
-          Disconnect
-        </button>
+        <UButton v-if="!status.fixed" color="neutral" variant="link" size="sm" label="Disconnect" @click="disconnect" />
       </div>
       <div class="max-h-[520px] overflow-y-auto">
         <div v-if="current && current.notes === null" class="empty">These comments could not be read with your account.</div>
@@ -194,24 +184,27 @@ watch(() => props.stamp, loadThread)
         @submit.prevent="send"
       >
         <div class="flex flex-wrap gap-1.5">
-          <button
+          <UButton
             v-for="c in commands"
             :key="c"
-            type="button"
-            class="mono cursor-pointer rounded-full border border-(--border-strong) bg-(--surface) px-2 py-0.5 text-xs text-(--text-2)"
+            color="neutral"
+            variant="outline"
+            size="xs"
+            class="mono rounded-full text-(--text-2)"
+            :label="c.trim()"
             @click="insert(c)"
-          >
-            {{ c.trim() }}
-          </button>
+          />
         </div>
         <p v-if="chat" class="faint m-0 text-[13px]">
           Messages go to the pilot on {{ label(current) }} as <code>/pilot …</code>, in your name. Only the milestone
           owners' instructions count; post <code>/agent</code> commands in GitLab.
         </p>
-        <textarea
+        <UTextarea
           v-model="body"
-          rows="3"
-          class="box-border w-full resize-y rounded-(--radius-sm) border border-(--border-strong) px-2.5 py-2 font-[inherit]"
+          :rows="3"
+          autoresize
+          :maxrows="12"
+          class="w-full"
           :placeholder="
             chat
               ? `Message the pilot as @${status.username}, e.g. why are we paused?`

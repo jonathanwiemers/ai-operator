@@ -376,7 +376,7 @@ express.
 if the look is a small compromise. Write a custom component only when
 nothing in Nuxt UI fits, and list it below with the reason. `web/src/ui/`
 holds what Nuxt UI lacks. The `raw-control` rule of the
-[conventions check](#conventions-check) (`npm test`) reports a raw
+[conventions check](#conventions-check) (`npm test`) fails on a raw
 `<button>`, `<select>`, `<textarea>`, `<progress>` and
 `<input type="checkbox|radio|range">` in a `.vue` file; its `skip` list is
 the files of the custom components that must render one.
@@ -1746,7 +1746,7 @@ The research list and the one-off form (`web/src/views/Researches.vue`,
   the card; its lines wrap on phones (the badges go below the name). The
   last run's reason, a hover title before, is a line of its own.
 - The form's fields are `UFormField` with `UTextarea`, `UInput` and
-  `USelect`; *Depth* stays two native radios whose labels are 44 px high on
+  `USelect`; *Depth* is a `URadioGroup` whose items are 44 px high on
   phones. Inputs are 16 px and controls 44 px high on phones, 14 px from a
   tablet on; the selects are as wide as the form on phones. The question's
   counter sits beside its label. *Effort* (Claude models only) is a field
@@ -1764,7 +1764,7 @@ view, topics, agent and effort) and opens the new research, and that a 400
 *New research* and the form's controls are 44 px high and its inputs 16 px
 (`research-list@<width>.png`, `research-new@<width>.png`,
 `research-new-error@<width>.png`). Both pages are also among the hit-area
-routes (the Depth radios are allowlisted: their labels are the hit area),
+routes (the Depth radios are allowlisted: their items are the hit area),
 and the form's known overflow at 375 px is gone.
 
 ## Desk behaviour in detail
@@ -2245,11 +2245,11 @@ table at its top; the matchers are in `web/test/conventions.mjs`:
   `max-width` 759.98 or 1179.98 px, nothing else in px. **Enforced.**
 - `raw-control`: a raw `<button>`, `<select>`, `<textarea>`, `<progress>` or
   `<input type="checkbox|radio|range">` in a `.vue` file (strings in
-  `<script>` and comments are ignored). **Report-only** until the raw controls
-  are gone: it prints each hit as a warning and passes. See the
-  [UI kit](#ui-kit).
+  `<script>` and comments are ignored). **Enforced.** Its `skip` list holds
+  only files of the custom components in the [UI kit](#ui-kit) table, and a
+  test checks that each entry exists; today it is empty.
 
-The other four rules are enforced: any hit fails `npm test`. A rule with
+All five rules are enforced: any hit fails `npm test`. A rule with
 `enforce: false` in its `RULES` entry prints each hit as `file:line rule` (a
 test diagnostic and a `console.warn`) with a count, and passes. Comments are
 ignored.

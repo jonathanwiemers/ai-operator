@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import UAlert from '@nuxt/ui/components/Alert.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
+import USelect from '@nuxt/ui/components/Select.vue'
 import { computed, ref, watch } from 'vue'
 import { chatPostError } from '../api'
 import { alertColor } from '../badgeTone'
@@ -107,10 +108,11 @@ const override = computed(() => {
 })
 
 // Skip without a paused issue (cycle, stuck) names one from the queue.
-const skipIssue = ref<number | ''>('')
+const skipIssue = ref<number | undefined>()
 const skipOptions = computed(() =>
   (ap.value?.items ?? []).filter((i) => i.state === 'Pending' || i.state === 'Active'),
 )
+const skipItems = computed(() => skipOptions.value.map((it) => ({ label: `#${it.iid} ${it.title}`, value: it.iid })))
 
 type Shown =
   | { action: PauseAction; type: 'task'; task: string }
@@ -253,9 +255,15 @@ watch(
 
 // act: an action button, 44 px high on phones.
 const act = { color: 'neutral', variant: 'outline', size: 'sm', class: 'min-h-11 justify-center tablet:min-h-0' } as const
-// select: the skip select, 16 px and 44 px high on phones.
-const select =
-  'min-h-11 max-w-full min-w-0 rounded-(--radius-sm) border border-(--border-strong) bg-(--surface) px-2 font-[inherit] text-base text-(--text) tablet:h-[34px] tablet:min-h-0 tablet:max-w-[28ch] tablet:text-[13px]'
+// skipSelect: the skip select, 16 px and 44 px high on phones.
+const skipSelect = {
+  placeholder: 'issue…',
+  'aria-label': 'Issue to skip',
+  trailingIcon: 'i-lucide-chevron-down',
+  selectedIcon: 'i-lucide-check',
+  class: 'min-h-11 max-w-full min-w-0 tablet:min-h-0 tablet:max-w-[28ch]',
+  ui: { base: 'text-base tablet:text-[13px]', item: 'min-h-11 tablet:min-h-0' },
+} as const
 // stack: a row of controls, a column on phones.
 const stack = 'flex min-w-0 flex-col items-stretch gap-1.5 tablet:flex-row tablet:flex-wrap tablet:items-center tablet:gap-2'
 const wrap = '[overflow-wrap:anywhere]'
@@ -326,10 +334,7 @@ const wrap = '[overflow-wrap:anywhere]'
         <li v-for="r in remedies" :key="r.id" class="flex min-w-0 flex-col gap-0.5">
           <span :class="stack">
             <span v-if="r.shown?.type === 'skipSelect'" :class="stack">
-              <select v-model="skipIssue" :class="select" aria-label="Issue to skip" :disabled="!!sending">
-                <option value="">issue…</option>
-                <option v-for="it in skipOptions" :key="it.iid" :value="it.iid">#{{ it.iid }} {{ it.title }}</option>
-              </select>
+              <USelect v-model="skipIssue" :items="skipItems" v-bind="skipSelect" :disabled="!!sending" />
               <UButton
                 v-bind="act"
                 :disabled="!!sending || !skipIssue"
@@ -372,10 +377,7 @@ const wrap = '[overflow-wrap:anywhere]'
           :label="s.action.label"
         />
         <span v-else-if="s.type === 'skipSelect'" :class="stack">
-          <select v-model="skipIssue" :class="select" aria-label="Issue to skip" :disabled="!!sending">
-            <option value="">issue…</option>
-            <option v-for="it in skipOptions" :key="it.iid" :value="it.iid">#{{ it.iid }} {{ it.title }}</option>
-          </select>
+          <USelect v-model="skipIssue" :items="skipItems" v-bind="skipSelect" :disabled="!!sending" />
           <UButton
             v-bind="act"
             :disabled="!!sending || !skipIssue"

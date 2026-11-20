@@ -11,6 +11,7 @@ import { DecisionsChanged, getPlan, postPlanChat } from '../client'
 import * as w from '../planWizard'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UTextarea from '@nuxt/ui/components/Textarea.vue'
+import URadioGroup from '@nuxt/ui/components/RadioGroup.vue'
 import Badge from './Badge.vue'
 import Markdown from './Markdown.vue'
 import type { PlanDecision } from '../generated/api'
@@ -30,6 +31,19 @@ const pre = computed(() => (d.value ? w.preselect(d.value) : null))
 const sum = computed(() => w.summary(decisions.value, picks.value))
 const blocked = computed(() => w.wizardBlocked(props.view.phase))
 const setPick = (p: w.WizardPick) => d.value && (picks.value = { ...picks.value, [d.value.id]: { version: d.value.version, pick: p } })
+// The radio group's values: an option's index, or "other" for a written answer.
+const pickItems = computed(() => [
+  ...(d.value?.options ?? []).map((o, i) => ({ value: String(i), label: o })),
+  { value: 'other', label: 'Other' },
+])
+const pickValue = computed(() => (typeof pick.value === 'string' ? 'other' : String(pick.value)))
+const pickUi = {
+  legend: 'sr-only',
+  fieldset: 'flex min-w-0 flex-col gap-1',
+  item: 'flex min-h-11 min-w-0 items-center gap-2 rounded-(--radius-sm) bg-(--surface-2) px-2.5',
+  wrapper: 'flex min-w-0 flex-1 self-stretch',
+  label: 'flex min-w-0 flex-1 cursor-pointer items-center gap-2 font-normal text-(--text)',
+}
 
 // Full screen on phones (the search palette's rule).
 const phone = window.matchMedia('(max-width: 759.98px)')
@@ -104,21 +118,27 @@ async function reload() {
           <h3 class="m-0 text-base [overflow-wrap:anywhere]"><Markdown :text="d.title" mode="inline" /> <span class="text-(--text-3)">{{ d.id }}</span></h3>
           <Markdown :text="d.question" />
           <div v-if="d.why" class="text-(--text-2)"><strong>Why</strong> <Markdown :text="d.why" /></div>
-          <fieldset class="m-0 flex min-w-0 flex-col gap-1 border-0 p-0">
-            <legend class="sr-only">Your answer</legend>
-            <label v-for="(o, i) in d.options" :key="i" class="flex min-h-11 min-w-0 cursor-pointer items-center gap-2 rounded-(--radius-sm) bg-(--surface-2) px-2.5"
-              data-wizard-option>
-              <input type="radio" :name="`pick-${d.id}`" class="m-0 size-4 flex-none" :checked="pick === i" @change="setPick(i)" />
-              <Markdown class="min-w-0 flex-1 [overflow-wrap:anywhere]" :text="o" mode="inline" />
-              <Badge v-if="pre?.index === i" class="flex-none" :tone="pre.mark === 'Signed off' ? 'success' : 'info'" data-wizard-mark>{{ pre.mark }}</Badge>
-            </label>
-            <label class="flex min-h-11 cursor-pointer items-center gap-2 rounded-(--radius-sm) bg-(--surface-2) px-2.5">
-              <input type="radio" :name="`pick-${d.id}`" class="m-0 size-4 flex-none" :checked="typeof pick === 'string'" @change="setPick('')" />
-              Other
-            </label>
+          <div class="flex min-w-0 flex-col gap-1">
+            <URadioGroup
+              :key="d.id"
+              legend="Your answer"
+              :name="`pick-${d.id}`"
+              :items="pickItems"
+              :model-value="pickValue"
+              :ui="pickUi"
+              @update:model-value="(v: string) => setPick(v === 'other' ? '' : Number(v))"
+            >
+              <template #label="{ item }">
+                <template v-if="item.value === 'other'">Other</template>
+                <template v-else>
+                  <Markdown class="min-w-0 flex-1 [overflow-wrap:anywhere]" :text="item.label" mode="inline" data-wizard-option />
+                  <Badge v-if="pre?.index === Number(item.value)" class="flex-none" :tone="pre.mark === 'Signed off' ? 'success' : 'info'" data-wizard-mark>{{ pre.mark }}</Badge>
+                </template>
+              </template>
+            </URadioGroup>
             <UTextarea v-if="typeof pick === 'string'" :model-value="pick" :maxlength="w.maxOther" :rows="3" autoresize
               aria-label="Your answer" :ui="{ root: 'w-full', base: 'text-base tablet:text-sm' }" @update:model-value="(t: string) => setPick(t)" />
-          </fieldset>
+          </div>
         </section>
         <section v-else class="flex min-w-0 flex-col gap-2" data-wizard-summary>
           <strong>{{ sum.kept.length }} kept, {{ sum.changed.length }} changed</strong>

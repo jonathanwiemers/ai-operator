@@ -1,7 +1,7 @@
 // Conventions check over web/src: npm test. Report-only rules print their
 // hits and pass; set `enforce: true` to make a rule fail the test.
 import assert from 'node:assert/strict'
-import { readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { join, relative, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { test } from 'node:test'
@@ -22,8 +22,9 @@ const RULES = [
   { name: 'raw-colour', enforce: true, find: rawColours, skip: ['style.css'] },
   { name: 'api-call-outside-client', enforce: true, find: apiCalls, skip: ['client.ts'] },
   { name: 'breakpoint', enforce: true, find: strayBreakpoints, skip: [] },
-  // Report-only until the raw controls are gone (milestone "Desk: one look", R9).
-  { name: 'raw-control', enforce: false, find: rawControls, skip: [] },
+  // Nuxt UI first (docs/contributing/web-ui.md, "UI kit"): skip only the
+  // files of documented custom components that need a raw control.
+  { name: 'raw-control', enforce: true, find: rawControls, skip: [] },
 ]
 
 function files(dir) {
@@ -64,6 +65,22 @@ for (const rule of RULES) {
     if (rule.enforce) assert.deepEqual(hits, [])
   })
 }
+
+// A skip entry names a file that exists: a renamed or deleted component
+// does not leave a stale exception behind.
+test('conventions: skip entries exist', () => {
+  for (const rule of RULES) {
+    for (const rel of rule.skip) assert.ok(existsSync(join(SRC, ...rel.split('/'))), `${rule.name} skips a missing file: ${rel}`)
+  }
+})
+
+// A raw <button> in a view fails npm test.
+test('conventions: raw-control is enforced on views', () => {
+  const rule = RULES.find((r) => r.name === 'raw-control')
+  assert.equal(rule.enforce, true)
+  assert.ok(!rule.skip.some((f) => f.startsWith('views/')), 'no view is skipped')
+  assert.deepEqual(rule.find('<template>\n  <button type="button" @click="go">Go</button>\n</template>'), [2])
+})
 
 test('matchers: colours', () => {
   assert.deepEqual(rawColours('a { color: #fff; }\nb { c: #a1b2c3d4 }\nd { e: rgba(0,0,0,.5) }'), [1, 2, 3])

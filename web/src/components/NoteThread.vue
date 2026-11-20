@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, ref } from 'vue'
 import { clockTime, fullTime } from '../format'
 import { useNow } from '../live'
@@ -43,14 +44,15 @@ const tone = (n: ThreadNote) =>
         <span v-if="newest.ctx" class="text-(--text-2)">{{ newest.ctx }}</span>
         <time :datetime="newest.at" :title="fullTime(newest.at)">{{ clockTime(newest.at, now) }}</time>
       </div>
-      <button
+      <UButton
         v-if="fold.hidden > 0"
-        type="button"
-        class="cursor-pointer justify-self-start border-0 bg-transparent p-0 text-left font-[inherit] text-[12.5px] text-(--link)"
+        color="neutral"
+        variant="link"
+        size="xs"
+        class="justify-self-start p-0 text-[12.5px] text-(--link)"
+        :label="`${fold.hidden} earlier`"
         @click="expanded = true"
-      >
-        {{ fold.hidden }} earlier
-      </button>
+      />
       <div
         v-for="n in fold.visible"
         :key="n.id"

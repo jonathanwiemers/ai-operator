@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { problemAnchor, type Problem } from '../needsCases'
@@ -69,9 +70,12 @@ const chevron = 'inline-block text-(--text-3) transition-transform motion-reduce
     :data-open="unfolded ? '' : undefined"
   >
     <div class="flex flex-wrap items-center gap-x-2 gap-y-1" data-problem-head>
-      <button
-        type="button"
-        class="-ms-1.5 inline-flex size-11 cursor-pointer items-center justify-center rounded-(--radius-sm) tablet:size-6"
+      <UButton
+        color="neutral"
+        variant="ghost"
+        size="xs"
+        square
+        class="-ms-1.5 size-11 justify-center tablet:size-6"
         :aria-expanded="unfolded"
         :aria-controls="`${anchor}-entries`"
         :aria-label="`Entries of ${what}`"
@@ -79,7 +83,7 @@ const chevron = 'inline-block text-(--text-3) transition-transform motion-reduce
         @click="unfolded = !unfolded"
       >
         <span aria-hidden="true" :class="[chevron, unfolded && 'rotate-90']">▸</span>
-      </button>
+      </UButton>
       <RouterLink v-if="problem.iid" :to="issueTo" class="min-w-0 font-semibold wrap-anywhere">
         {{ heading }}
       </RouterLink>

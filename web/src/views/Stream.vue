@@ -7,6 +7,7 @@ import UButton from '@nuxt/ui/components/Button.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
 import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
 import USelect from '@nuxt/ui/components/Select.vue'
+import UTabs from '@nuxt/ui/components/Tabs.vue'
 import UTooltip from '@nuxt/ui/components/Tooltip.vue'
 import Badge from '../components/Badge.vue'
 import { hasFeature } from '../api'
@@ -534,10 +535,12 @@ function showDay(i: number): string | null {
         <div v-if="tab === 'stream' && heatDays.length" class="heat" title="Activity per day; click to jump">
           <span>{{ heatRange.start }}</span>
           <div class="cells" @pointerover="showHeatHint" @focusin="showHeatHint" @pointerleave="heatHint = null" @focusout="heatHint = null">
-            <button
+            <!-- A cell's look is the heatmap's (.cells button below), not a button's. -->
+            <UButton
               v-for="d in heatDays"
               :key="d.day"
-              type="button"
+              color="neutral"
+              variant="ghost"
               :data-l="d.level"
               :data-heat-day="d.day"
               :aria-label="heatText(d)"
@@ -546,7 +549,7 @@ function showDay(i: number): string | null {
             />
           </div>
           <UTooltip :open="!!heatHint" :reference="heatHint?.el" :text="heatHint?.text" />
-          <button v-if="beforeJump" type="button" class="clear" @click="clearJump">clear</button>
+          <UButton v-if="beforeJump" color="neutral" variant="link" size="xs" class="p-0 text-[11.5px] text-(--link)" label="clear" @click="clearJump" />
           <span v-else>{{ heatRange.end }}</span>
         </div>
       </div>
@@ -588,18 +591,19 @@ function showDay(i: number): string | null {
         </div>
         <p v-else class="pick muted">Pick a project in the rail to message a pilot or issue.</p>
 
-        <div class="filters">
-          <button
-            v-for="f in filters"
-            :key="f.id"
-            type="button"
-            class="chip"
-            :class="{ on: filter === f.id }"
-            @click="setFilter(f.id)"
-          >
-            {{ f.label }}
-          </button>
-        </div>
+        <!-- The event kind is a local switch (decision 8): UTabs pills. -->
+        <UTabs
+          :model-value="filter"
+          :items="filters.map((f) => ({ label: f.label, value: f.id }))"
+          variant="pill"
+          size="sm"
+          :content="false"
+          class="filters items-start"
+          :ui="{ list: 'w-auto max-w-full overflow-x-auto' }"
+          aria-label="Show events"
+          data-stream-filter
+          @update:model-value="setFilter($event as StreamFilter)"
+        />
 
         <UAlert v-if="!historyOn" :color="alertColor('info')" variant="subtle" class="mt-3" description="History needs the research database." />
         <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
@@ -769,6 +773,7 @@ function showDay(i: number): string | null {
 }
 .cells button {
   flex: 1;
+  min-width: 0;
   height: 16px;
   border-radius: 3px;
   background: var(--surface-3);
@@ -788,14 +793,6 @@ function showDay(i: number): string | null {
 .cells button.sel {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
-}
-.clear {
-  border: 0;
-  background: none;
-  color: var(--link);
-  font: inherit;
-  font-size: 11.5px;
-  cursor: pointer;
 }
 .scroll {
   overflow-y: auto;
@@ -819,26 +816,8 @@ function showDay(i: number): string | null {
   margin-top: 14px;
 }
 .filters {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
   margin-top: 10px;
   margin-bottom: 4px;
-}
-.chip {
-  border: 1px solid var(--border);
-  background: var(--surface);
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 12.5px;
-  color: var(--text-2);
-  cursor: pointer;
-  font: inherit;
-}
-.chip.on {
-  background: var(--text);
-  color: var(--bg);
-  border-color: var(--text);
 }
 .day {
   display: flex;

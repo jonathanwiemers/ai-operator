@@ -1033,10 +1033,13 @@ const hitRoutes = ['overview', 'overview-dark', 'inbox', 'metrics', 'metrics-fil
 // "<route> <element as reported>" → why it may stay under 44 px.
 const hitAllowlist: Record<string, string> = {
   // The reported label is cut at 40 characters.
-  'stream-milestone-retrospective input[checkbox].m-0.size-4 "Take leftover 1 into a follow-up milesto"':
+  // UCheckbox and URadioGroup render buttons with a role, reported by it.
+  'stream-milestone-retrospective checkbox "Take leftover 1 into a follow-up milesto"':
     'a checkbox keeps its size; the label around it is the 44 px hit area (milestone retrospective e2e)',
-  'research-new input[radio].m-0.size-4 ""':
-    'a radio keeps its size; the label around it is the 44 px hit area (research list and form e2e)',
+  'research-new radio "quick (up to 20 min)"':
+    'a radio keeps its size; its item is the 44 px hit area (research list and form e2e)',
+  'research-new radio "deep (up to 2 h)"':
+    'a radio keeps its size; its item is the 44 px hit area (research list and form e2e)',
 }
 
 for (const name of hitRoutes) {
@@ -1065,9 +1068,13 @@ for (const name of hitRoutes) {
         if (r.width === 0 || r.height === 0 || style.visibility === 'hidden' || style.opacity === '0') continue
         counted++
         if (r.height >= 44) continue
-        const label = (e.getAttribute('aria-label') ?? e.getAttribute('placeholder') ?? e.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 40)
         const classes = [...e.classList].map((c) => '.' + c).join('')
-        small.push(`${e.tagName.toLowerCase()}${input ? `[${input.type}]` : ''}${classes} "${label}" ${Math.round(r.height)}px`)
+        const role = e.getAttribute('role')
+        const boxed = role === 'checkbox' || role === 'radio'
+        // A role checkbox or radio is named by its aria-label only, as its label sits beside it.
+        const label = (boxed ? (e.getAttribute('aria-label') ?? '') : (e.getAttribute('aria-label') ?? e.getAttribute('placeholder') ?? e.textContent ?? '')).trim().replace(/\s+/g, ' ').slice(0, 40)
+        const what = boxed ? role : `${e.tagName.toLowerCase()}${input ? `[${input.type}]` : ''}${classes}`
+        small.push(`${what} "${label}" ${Math.round(r.height)}px`)
       }
       return { small, counted }
     })
@@ -4189,7 +4196,7 @@ test.describe('research list and form', () => {
       await expect.poll(() => form.evaluate((f) => !!f.closest('[aria-hidden="true"]'))).toBe(false)
       expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
       const sizes = await form.evaluate((f) =>
-        [...f.querySelectorAll<HTMLElement>('textarea, input:not([type=radio]), button, label:has(input[type=radio])')]
+        [...f.querySelectorAll<HTMLElement>('textarea, input:not([type=radio]), button:not([role=radio]), [data-field=depth] [data-slot=item]')]
           .filter((e) => !e.closest('[aria-hidden="true"]') && e.getBoundingClientRect().width > 0)
           .map((e) => ({
             tag: e.tagName.toLowerCase(),

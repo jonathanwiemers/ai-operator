@@ -4127,6 +4127,9 @@ it there, with `--keyboard-inset`, see [web-ui.md](web-ui.md#composer)).
   phone. The same base-layer rule gives `button`,
   `[role=button]`, `select` and every `input` but checkboxes and radios
   `min-height: 44px !important`, and buttons `min-width: 44px !important`.
+  Checkboxes and radios keep their size, the native ones and the buttons
+  `UCheckbox` and `URadioGroup` render (`role=checkbox|radio`); their
+  label or item is the hit area.
   `min-height` wins over a smaller `height` whatever the cascade, so the
   scoped 26 to 34 px heights (the rail's *Sign out*,
   the stream search, the composers' buttons, the pause card's select) need

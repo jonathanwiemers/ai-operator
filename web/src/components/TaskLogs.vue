@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import UButton from '@nuxt/ui/components/Button.vue'
+import UTabs from '@nuxt/ui/components/Tabs.vue'
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { ApiError, followTaskLogs, getTaskLogs, LoginRequiredError } from '../client'
 import { appendLog } from '../logTail'
@@ -107,17 +108,16 @@ function download() {
 <template>
   <section class="section">
     <div class="mb-2.5 flex flex-wrap items-center gap-2 text-[13px]">
-      <button
-        v-for="c in containers"
-        :key="c"
-        type="button"
-        class="cursor-pointer rounded-(--radius-sm) border px-2.5 py-1 font-[inherit]"
-        :class="c === container ? 'border-(--border-strong) bg-(--surface-2) text-(--text)' : 'border-transparent bg-transparent text-(--text-2)'"
-        :aria-pressed="c === container"
-        @click="container = c"
-      >
-        {{ c }}
-      </button>
+      <!-- The container is a local switch (decision 8): UTabs pills. -->
+      <UTabs
+        v-model="container"
+        :items="containers.map((c) => ({ label: c, value: c }))"
+        variant="pill"
+        size="sm"
+        :content="false"
+        :ui="{ list: 'w-auto max-w-full overflow-x-auto' }"
+        aria-label="Container"
+      />
       <span class="flex-1" />
       <UButton color="neutral" variant="outline" label="Reload" :disabled="follow" @click="load" />
       <UButton color="neutral" :variant="follow ? 'solid' : 'outline'" label="Follow" :aria-pressed="follow" @click="follow = !follow" />

@@ -5,6 +5,7 @@ import UButton from '@nuxt/ui/components/Button.vue'
 import UFormField from '@nuxt/ui/components/FormField.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
 import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
+import URadioGroup from '@nuxt/ui/components/RadioGroup.vue'
 import USelect from '@nuxt/ui/components/Select.vue'
 import UTextarea from '@nuxt/ui/components/Textarea.vue'
 import { computed, reactive, ref, watch } from 'vue'
@@ -159,17 +160,26 @@ const selectProps = {
         </template>
       </UFormField>
 
-      <fieldset class="m-0 flex min-w-0 flex-col gap-1.5 border-0 p-0" data-field="depth">
-        <legend class="mb-1.5 p-0 text-[13px] font-semibold">Depth</legend>
-        <div class="flex flex-col tablet:flex-row tablet:flex-wrap tablet:gap-x-3.5">
-          <!-- The label is the 44 px hit area on phones; the radio keeps its size. -->
-          <label v-for="d in form.depths" :key="d" class="inline-flex min-h-11 cursor-pointer items-center gap-1.5 tablet:min-h-0">
-            <input v-model="depth" type="radio" name="depth" :value="d" class="m-0 size-4" />
-            {{ d }} <span class="text-(--text-3)">(up to {{ timeouts[d] ?? '?' }})</span>
-          </label>
-        </div>
+      <div class="flex min-w-0 flex-col gap-1.5" data-field="depth">
+        <!-- The item is the 44 px hit area on phones; the radio keeps its size. -->
+        <URadioGroup
+          v-model="depth"
+          legend="Depth"
+          name="depth"
+          :items="form.depths.map((d) => ({ label: d, value: d }))"
+          :ui="{
+            legend: 'mb-1.5 p-0 text-[13px] font-semibold text-(--text)',
+            fieldset: 'flex flex-col tablet:flex-row tablet:flex-wrap tablet:gap-x-3.5',
+            item: 'min-h-11 items-center tablet:min-h-0',
+            label: 'cursor-pointer font-normal text-(--text)',
+          }"
+        >
+          <template #label="{ item }">
+            {{ item.label }} <span class="text-(--text-3)">(up to {{ timeouts[String(item.value)] ?? '?' }})</span>
+          </template>
+        </URadioGroup>
         <p v-if="errors.depth" class="m-0 text-[13px] text-(--tone-danger-fg) [overflow-wrap:anywhere]" role="alert">{{ errors.depth }}</p>
-      </fieldset>
+      </div>
 
       <UFormField label="View" name="view" :error="errors.view" :ui="fieldUI">
         <USelect v-model="view" :items="viewItems" v-bind="selectProps" />

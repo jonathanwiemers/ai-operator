@@ -2,6 +2,7 @@
 import UAlert from '@nuxt/ui/components/Alert.vue'
 import { alertColor } from '../badgeTone'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
+import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, ref, toRaw, watch } from 'vue'
 import { getSpend, LoginRequiredError } from '../client'
 import { clockTime, duration, fullTime, shortSHA, tokenCount } from '../format'
@@ -125,14 +126,15 @@ async function toggle(r: SpendChild) {
         <DataList :columns="runColumns" :rows="runs" :row-key="(r) => r.key" :expanded="(r) => !!open[r.key]">
           <template #cell-run="{ row: r }">
             <!-- The button covers its row, so the row toggles; the hints sit above it (z-1). 44 px high on a phone. -->
-            <button
-              type="button"
-              class="min-h-11 cursor-pointer text-left font-semibold text-(--link) after:absolute after:inset-0 tablet:min-h-0"
+            <UButton
+              color="neutral"
+              variant="link"
+              class="min-h-11 p-0 text-left font-semibold text-(--link) after:absolute after:inset-0 tablet:min-h-0"
               :aria-expanded="!!open[r.key]"
               @click="toggle(r)"
             >
               {{ open[r.key] ? '▾' : '▸' }} Run {{ runNumber(r) || r.label }}
-            </button>
+            </UButton>
           </template>
           <template #cell-at="{ row: r }"><span class="relative z-1" :title="fullTime(r.at)">{{ clockTime(r.at, now) }}</span></template>
           <template #cell-calls="{ row: r }">{{ r.totals.calls }}</template>

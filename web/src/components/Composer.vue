@@ -81,8 +81,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 
 const menu =
   'absolute top-[calc(100%+6px)] left-2.5 z-20 w-[min(340px,calc(100%-20px))] rounded-[10px] border border-(--border-strong) bg-(--surface) p-1.5 shadow-lg'
-const option =
-  'flex w-full cursor-pointer items-baseline gap-2.5 rounded-[7px] border-0 bg-transparent px-2 py-1.5 text-left font-[inherit] text-inherit hover:bg-(--surface-2)'
+const option = 'flex w-full items-baseline gap-2.5 rounded-[7px] px-2 py-1.5 text-left font-normal text-(--text)'
 </script>
 
 <template>
@@ -111,17 +110,19 @@ const option =
         @keydown.ctrl.enter="send()"
       />
       <div class="flex items-center gap-2 pt-1.5 pr-2 pb-2" :class="mode === 'note' ? 'pl-2.5' : 'pl-3.5'">
-        <button
+        <UButton
           v-if="targets"
-          type="button"
-          class="inline-flex max-w-[46%] cursor-pointer items-center gap-1.5 rounded-full border border-(--pilot-border) bg-(--pilot-bg) px-2.5 py-1 font-[inherit] text-[12.5px] font-semibold text-(--text)"
+          color="neutral"
+          variant="outline"
+          size="sm"
+          trailing-icon="i-lucide-chevron-down"
+          class="max-w-[46%] rounded-full bg-(--pilot-bg) text-[12.5px] font-semibold text-(--text) ring-(--pilot-border)"
           :disabled="disabled"
           :aria-expanded="targetOpen"
           @click.stop="targetOpen = !targetOpen"
         >
           <span class="truncate">{{ noteTargetLabel(target) }}</span>
-          <span class="opacity-60">▾</span>
-        </button>
+        </UButton>
         <span class="min-w-0 flex-1 truncate text-xs text-(--text-3)">{{ hint }}</span>
         <UButton
           v-if="canInterrupt"
@@ -143,19 +144,33 @@ const option =
       </div>
       <div v-if="targetOpen" :class="menu" @click.stop>
         <div class="px-2 pt-1.5 pb-0.5 text-[11px] tracking-[0.05em] text-(--text-3) uppercase">Send to</div>
-        <button v-for="(t, i) in targets" :key="i" type="button" :class="option" @click="pickTarget(t)">
+        <UButton
+          v-for="(t, i) in targets"
+          :key="i"
+          color="neutral"
+          variant="ghost"
+          :class="option"
+          @click="pickTarget(t)"
+        >
           <b class="font-mono text-[12.5px] font-semibold whitespace-nowrap">
             {{ t.type === 'pilot' ? `Pilot · %${t.milestoneIID}` : `#${t.issueIID}` }}
           </b>
           <span class="truncate text-xs text-(--text-3)">{{ t.title }}</span>
-        </button>
+        </UButton>
       </div>
       <div v-if="slashOpen" :class="menu" @click.stop>
         <div class="px-2 pt-1.5 pb-0.5 text-[11px] tracking-[0.05em] text-(--text-3) uppercase">Commands</div>
-        <button v-for="s in suggestions" :key="s.cmd" type="button" :class="option" @click="pickSlash(s.cmd)">
+        <UButton
+          v-for="s in suggestions"
+          :key="s.cmd"
+          color="neutral"
+          variant="ghost"
+          :class="option"
+          @click="pickSlash(s.cmd)"
+        >
           <b class="font-mono text-[12.5px] font-semibold whitespace-nowrap">{{ s.cmd }}</b>
           <span class="truncate text-xs text-(--text-3)">{{ s.hint }}</span>
-        </button>
+        </UButton>
       </div>
     </div>
     <p v-if="error" class="mt-1.5 mb-0 text-[13px] text-(--tone-danger-fg)">{{ error }}</p>

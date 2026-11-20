@@ -130,15 +130,16 @@ async function remove() {
           </template>
         </UPageHeader>
         <Markdown class="mt-1 max-w-[920px] text-(--text-2)" :class="{ 'line-clamp-3': !showPrompt }" :text="r.prompt" />
-        <button
+        <UButton
           v-if="r.prompt.length > 240"
-          type="button"
-          class="min-h-11 cursor-pointer self-start border-0 bg-transparent p-0 text-[13px] text-(--link) tablet:min-h-0"
+          color="neutral"
+          variant="link"
+          size="sm"
+          class="min-h-11 self-start p-0 text-[13px] text-(--link) tablet:min-h-0"
           :aria-expanded="showPrompt"
+          :label="showPrompt ? 'Show less' : 'Show the whole prompt'"
           @click="showPrompt = !showPrompt"
-        >
-          {{ showPrompt ? 'Show less' : 'Show the whole prompt' }}
-        </button>
+        />
         <div v-if="r.sources?.length" class="flex flex-wrap items-center gap-x-2 text-[13px] text-(--text-2)" data-research-feeds>
           <span>Feeds:</span>
           <template v-for="(s, i) in r.sources" :key="s.url">

@@ -4,6 +4,8 @@ import UTooltip from '@nuxt/ui/components/Tooltip.vue'
 import { alertColor } from '../badgeTone'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
+import UInput from '@nuxt/ui/components/Input.vue'
+import USelect from '@nuxt/ui/components/Select.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { chatPostError } from '../api'
 import { getTaskChat, LoginRequiredError, NotFoundError, postTaskChat } from '../client'
@@ -208,13 +210,20 @@ keepThroughSignIn(() => `chat:${props.namespace}/${props.name}/${props.task}${pr
 const modelOpen = ref(false)
 const useEngine = ref<'claude' | 'cursor'>('claude')
 const useModel = ref('')
-const useEffort = ref('')
-const skipIssue = ref<number | ''>('')
+const useEffort = ref<string>()
+const skipIssue = ref<number>()
 const skippable = computed(() => skipOptions(props.autopilotItems))
 // The command row's classes and its buttons' look.
 const cmds = 'mb-2 flex flex-wrap items-center gap-1.5'
 const chip = { color: 'neutral', variant: 'outline', size: 'sm' } as const
-const field = 'rounded-[7px] border border-(--border-strong) bg-(--surface) px-2 py-1 font-[inherit] text-[13px] text-(--text)'
+const field = {
+  size: 'sm',
+  trailingIcon: 'i-lucide-chevron-down',
+  selectedIcon: 'i-lucide-check',
+  ui: { item: 'min-h-11 tablet:min-h-0' },
+} as const
+const engineItems = ['claude', 'cursor']
+const effortItems = ['default', ...chatEfforts]
 
 const draftKey = () => chatDraftKey(props.namespace, props.name, props.task, props.messagePrefix)
 
@@ -236,7 +245,7 @@ watch(
     pendingKind.value = null
     sendError.value = ''
     modelOpen.value = false
-    skipIssue.value = ''
+    skipIssue.value = undefined
     restoreDraft()
   },
 )
@@ -343,29 +352,30 @@ onUnmounted(() => {
             <UButton v-bind="chip" label="Review again" :disabled="sending" @click="postCommand({ cmd: 'review' })" />
             <UButton v-bind="chip" label="Model…" :disabled="sending" :aria-expanded="modelOpen" @click="modelOpen = !modelOpen" />
             <div v-if="modelOpen" :class="[cmds, 'w-full pt-1.5 pb-0.5']">
-              <select v-model="useEngine" :class="field" aria-label="Engine" :disabled="sending">
-                <option value="claude">claude</option>
-                <option value="cursor">cursor</option>
-              </select>
-              <input
+              <USelect v-model="useEngine" :items="engineItems" v-bind="field" aria-label="Engine" :disabled="sending" />
+              <UInput
                 v-model="useModel"
-                :class="[field, 'max-w-[22ch] min-w-[10ch] flex-1']"
+                size="sm"
+                class="max-w-[22ch] min-w-[10ch] flex-1"
                 type="text"
                 placeholder="model"
                 aria-label="Model"
                 :disabled="sending"
-                @keydown.enter.prevent="postCommand(modelCommand(useEngine, useModel, useEffort))"
+                @keydown.enter.prevent="postCommand(modelCommand(useEngine, useModel, useEffort ?? ''))"
               />
-              <select v-model="useEffort" :class="field" aria-label="Effort" :disabled="sending">
-                <option value="">effort…</option>
-                <option value="default">default</option>
-                <option v-for="e in chatEfforts" :key="e" :value="e">{{ e }}</option>
-              </select>
+              <USelect
+                v-model="useEffort"
+                :items="effortItems"
+                v-bind="field"
+                placeholder="effort…"
+                aria-label="Effort"
+                :disabled="sending"
+              />
               <UButton
                 v-bind="chip"
                 label="Use"
                 :disabled="sending || !useModel.trim()"
-                @click="postCommand(modelCommand(useEngine, useModel, useEffort))"
+                @click="postCommand(modelCommand(useEngine, useModel, useEffort ?? ''))"
               />
               <UButton v-bind="chip" label="Default" :disabled="sending" @click="postCommand({ cmd: 'use', default: true })" />
               <UButton
@@ -393,11 +403,15 @@ onUnmounted(() => {
             />
             <template v-if="skippable.length">
               <span class="text-[13px] font-semibold text-(--text-3)">Skip…</span>
-              <select v-model="skipIssue" :class="field" aria-label="Issue to skip" :disabled="sending">
-                <option value="">issue…</option>
-                <option v-for="it in skippable" :key="it.iid" :value="it.iid">#{{ it.iid }}</option>
-              </select>
-              <UButton v-bind="chip" label="Skip" :disabled="sending || !skipIssue" @click="postCommand(skipCommand(skipIssue))" />
+              <USelect
+                v-model="skipIssue"
+                :items="skippable.map((it) => ({ label: `#${it.iid}`, value: it.iid }))"
+                v-bind="field"
+                placeholder="issue…"
+                aria-label="Issue to skip"
+                :disabled="sending"
+              />
+              <UButton v-bind="chip" label="Skip" :disabled="sending || !skipIssue" @click="postCommand(skipCommand(skipIssue ?? 0))" />
             </template>
           </div>
           <div v-else-if="taskType === 'Coordinate' && proposals?.length" :class="cmds">
