@@ -66,9 +66,8 @@ Answering a milestone's prompts and the owner-only buttons (such as
 *Run next*, *Merge anyway*, *Revisit* and *Restart run*) also need your Desk user name on the milestone's
 `/agent owner-subjects` line (see [Owners and pings](owners-and-pings.md)).
 
-A user whose roles match no rule sees *No projects* in the rail. Hover over
-your user name at the bottom of the rail to see the roles the Desk got;
-that helps when you fix the role mapping.
+A user whose roles match no rule sees *No projects* in the rail. The roles
+under your user name help you fix the role mapping.
 
 ### Map your provider's claims
 
@@ -125,14 +124,21 @@ write rule must match names there (for example `agents/*`). A user may start
   (running, needs you, idle), a count of what needs you, the counts of active and
   [settling](../concepts/glossary.md#settling) milestones, the researches, and how much
   of each [engine's](../concepts/glossary.md#engine) usage window is used. Its footer has
-  the theme, *Light*, *Dark* or *Auto* (follows your system; this browser remembers
-  it), and the operator's version, with a note when an update is rolling out or out.
+  the [theme switch](#light-dark-or-auto) and the operator's version, with a note when an update is rolling out or out.
 - **Breadcrumbs** lead back up from pages below the top level: *Overview* ›
   project › milestone › issue, or *Overview* › project › *Plans* › plan.
 - **Search**: ⌘K (macOS) or Ctrl+K opens the search from anywhere. It finds
   projects, milestones, issues and merge requests, and pages such as the
   Inbox, *Plans* or *Plan milestone*, which opens the project's *Plans* tab.
 - **Live**: every page updates by itself.
+
+### Light, dark or auto
+
+The switch in the rail's footer picks the Desk's colours: *Light*, *Dark*
+or *Auto*. On a phone, tap *Projects* in the bottom bar to open the rail;
+the switch is at its bottom. *Auto* follows your system and changes with
+it. *Light* and *Dark* stay as you set them. This browser remembers your
+choice; another browser or device starts on *Auto*.
 
 ## Inbox
 
@@ -150,21 +156,20 @@ count also shows in the browser tab's title, as `(3) Desk`:
 
 A row opens where you act: a milestone's *Needs you* tab, or the task page.
 
-The *Open | Handled* switch on top changes the list. *Open* is the list
-above. *Handled* shows what closed in the last 7 days, newest first, at most
-50 rows: the prompts that closed, with who closed them and why, and the
-actions the pilot ran on its own or after an owner accepted them. A row
-opens the issue's problem on the milestone's *Needs you* tab. A link to
-`/inbox?view=handled` opens *Handled* directly.
+The *Open | Handled* switch on top changes the list. *Handled* shows up to
+50 rows that closed in the last 7 days, newest first: the prompts, with who
+closed them and why, and the actions the pilot ran on its own or after an
+owner accepted them. A row opens the issue's problem on the milestone's
+*Needs you* tab; `/inbox?view=handled` opens *Handled* directly.
 
 ### Browser notifications
 
 Click *Notify me* in the Inbox header and allow notifications in your
 browser. While they are on, each new pause, prompt, pilot proposal,
-question from an agent, ready companion and budget warning raises one notification; failed and
-blocked tasks only count in the Inbox. A click opens the same place as the
-Inbox row. Notifications only come while a Desk tab is open: there is no
-e-mail or push. Click *Notifications on* to turn them off.
+question from an agent, ready companion and budget warning raises one
+notification; failed and blocked tasks only count in the Inbox. A click
+opens the Inbox row's place. They only come while a Desk tab is open (no
+e-mail or push). Click *Notifications on* to turn them off.
 
 ## Overview
 
@@ -179,9 +184,8 @@ e-mail or push. Click *Notifications on* to turn them off.
 - **Recently done**: the newest done milestones, *Show all* for more.
 
 A milestone row shows its progress (merged of all issues), open issues, cost
-and tokens, and the retrospective's open leftovers. A cost the Desk does not
-know shows a dash, never $0. The *Stream* tab next to *Overview* is every
-event of all your projects.
+and tokens, and the retrospective's open leftovers; an unknown cost is a
+dash, never $0. The *Stream* tab shows every event of all your projects.
 
 ## A project
 
@@ -201,7 +205,7 @@ with Desk chat:
 - **Plans**: the project's [plans](write-a-milestone.md#draft-it-in-the-desk)
   and, for an owner, *Plan milestone*; a [plan's decisions](write-a-milestone.md#answer-the-agents-decisions) have a wizard.
 
-Filter chips narrow the stream: *All*, *Chat*, *Needs you*, *Runs*, *CI &
+A switch narrows the stream: *All*, *Chat*, *Needs you*, *Runs*, *CI &
 review* and *Merged*. Comments on the same issue or merge request are one
 card. A strip shows the last 30 days; click a day to jump there. *Load
 older* goes further back.
@@ -271,8 +275,8 @@ See [Read and revisit decisions](decisions.md).
 ### Pilot
 
 The pilot's autonomy and cost, *Message the pilot*, and the pilot's events
-(questions as one line each, answers, pauses, releases, comments and chat).
-See [Steer from the Desk](steer-from-the-desk.md#ask-the-pilot).
+(questions as one line each, answers, pauses, releases, comments and chat):
+[Steer from the Desk](steer-from-the-desk.md#ask-the-pilot).
 
 ### Retrospective
 
@@ -286,17 +290,16 @@ with their state. Owners turn leftovers into a follow-up milestone here, see
 ### Stream, Board and Metrics
 
 *Stream* is the runtime: runs, pushes, CI, reviews and merges, with the
-chips *All*, *Runs*, *CI & review* and *Merged*. The pilot's events are on
+switch *All*, *Runs*, *CI & review* and *Merged*. The pilot's events are on
 *Pilot*, so the two tabs share nothing. *Board* is the milestone's board,
 *Metrics* its cost and [lines](budgets-and-spend.md#lines-of-code); `?tab=spend` still opens it.
 
 ### Done milestones
 
 With the research database, a done milestone stays on the Desk after its
-tasks are deleted: its issues, figures, retrospective and streams, read
-from history. The *Issues* tab then says *From history*. It has no board
-and no message box. Without the database the Desk shows only milestones
-with live tasks, and no spend or per-issue figures.
+tasks are deleted, read from history: the *Issues* tab says *From history*,
+and there is no board and no message box. Without the database the Desk
+shows only milestones with live tasks, and no spend or per-issue figures.
 
 ## A task
 
@@ -355,10 +358,9 @@ merge request. A project in a namespace the chart does not list in
 
 With the research database and a research rule, the rail lists the
 researches under *Research*, and on a phone the bottom bar has
-*Research*. The research list has one card per research: its view
-(news flash or report), schedule or *one-off*, the last and next run, and the agent.
-A research's page shows its prompt, feeds and
-the latest result: a news flash groups items by topic, important and new
+*Research*. The research list has one card per research: its view (news
+flash or report), schedule or *one-off*, the last and next run, and the
+agent. A research's page shows its prompt, feeds and the latest result: a news flash groups items by topic, important and new
 ones first; a report shows its blocks in order. *Run history* lists the
 stored runs with their cost. With `research: write`, *New research* starts a
 one-off research. More in [Research](research.md).
@@ -372,8 +374,8 @@ the agent's merge requests carry the issue's milestone.
 
 ## Run without login
 
-On a test cluster you can run the Desk without login, see
-[Without login](../getting-started/turn-on-the-desk.md#without-login).
+On a test cluster you can run the Desk
+[without login](../getting-started/turn-on-the-desk.md#without-login).
 Everyone who can port-forward to it then sees every project.
 
 ## What the login protects
@@ -383,12 +385,10 @@ Everyone who can port-forward to it then sees every project.
   operator's GitLab token, the agent credentials or any Secret.
 - It changes no task itself: it steers by comments and chat messages the
   operator reads and checks.
-- It writes to GitLab only in your name, with your own token, and only with
-  the `steer` grant.
+- It writes to GitLab only in your name, with your token and the `steer` grant.
 - Agent text (summaries, comments, research results) is shown as text with
   a safe subset of markdown: no HTML, no images, links only to `http(s)`.
-- The Desk only runs over https, and your session lives in encrypted
-  cookies.
+- The Desk only runs over https; your session lives in encrypted cookies.
 
 More in [Security](../concepts/security.md#what-the-desk-login-protects).
 

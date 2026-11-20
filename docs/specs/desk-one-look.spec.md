@@ -1,9 +1,13 @@
 # Desk: one look on every page, built from Nuxt UI, with readable text and a light/dark/auto switch
 
-Status: the milestone's spec, run by autopilot. It was created by the first
-merge request (R1, issue #621) so later merge requests have a steering log to
-write to; the docs issue (R11) completes it. Where this spec and the docs
-disagree, the docs win.
+Status: archived. The milestone's spec, run by autopilot. It was created by
+the first merge request (R1, issue #621) so later merge requests have a
+steering log to write to; the docs issue (R11, #634) completed it. Where this
+spec and the docs disagree, the docs win: the UI kit, page skeleton,
+building blocks, filters and theme are in
+[web-ui.md](../contributing/web-ui.md#ui-kit), the colour tokens and
+contrast targets in [design.md](../contributing/design.md#desk-styles), and
+the theme switch for users in [The Desk](../guides/desk.md#light-dark-or-auto).
 
 ## Goal
 
@@ -99,6 +103,27 @@ disagree, the docs win.
 - The sidebar shows "daily at 07:15 Europe/Berlin" for a research scheduled `15 7 * * *`, and Metrics shows `$2,614.69`. A milestone without a retrospective has no Retrospective tab.
 - On Metrics, in both themes, no chart series has the button colour, chart tooltips look like the Desk's other tooltips, and axis amounts show `$2,614.69`.
 
+## Issues per requirement
+
+Each R landed in these issues' merge requests, or has a steering log line
+below.
+
+| R | Issues | Note |
+|---|--------|------|
+| R1 | #621 | |
+| R2 | #622 | with R7 in the same merge request |
+| R3 | #623 | with R4 and R12's chart tokens |
+| R4 | #623 | |
+| R5 | #624 (shell), #625 (rail) | |
+| R6 | #626 (top-level pages), #627 (nested pages) | |
+| R7 | #622 | `ContextLayout.vue` |
+| R8 | #628 (tiles, progress, empty states), #629 (banners, tooltips) | |
+| R9 | #630 (filters), #631 (raw controls, `raw-control` enforced) | |
+| R10 | #632 | |
+| R11 | #634 | these docs |
+| R12 | #623 (tokens), #633 (tooltips, money format) | |
+| R13 | #564 | not merged when R11 was written, see the steering log |
+
 ## Steering log
 
 One line per narrowed requirement: `- YYYY-MM-DD, Rn: what was narrowed and why; follow-up #n`.
@@ -118,3 +143,6 @@ One line per narrowed requirement: `- YYYY-MM-DD, Rn: what was narrowed and why;
 - 2026-11-20, R10 (#632): `cronText` lives in `web/src/cron.ts`, not `format.ts`: `format.ts` is in the initial bundle, which measured 138.5 kB against its 137.9 kB cap with the parser in it. In its own module only the lazy rail and research chunks load it, and no cap rises. No follow-up.
 - 2026-11-20, R10 (#632): milestone titles replace a bare `%n` where the page has them loaded: the project page's plan rows, its Metrics tab's milestone rows (title, `%n` muted beside it) and the "Waiting for its turn" line (the project's milestones). Without a title in the loaded views, these keep `%n`, as the API and the Go views do not change in this milestone: the Metrics page's *Longest pauses* (`LongPauseView`), the plan rows on `/plans` and the plan page's milestone link (`PlanListItem`, `PlanView`), the Inbox's *Handled* list (`HandledItem`), a retrospective's follow-up taken by another milestone (`FollowUpView`) and the "Created the milestone %n" confirmations (`FollowUpMilestoneView`). The project queue's *Holding for %n* badge stays short; its rows name the milestone. Follow-up: add the milestone title to these views.
 - 2026-11-20, R10 (#632): of the milestone, plan and task tabs only Retrospective is hidden while empty (`milestoneTabsFor`). Board on a stored milestone was hidden already, and the task tabs already show only those with content. Issues, Needs you, Decisions, Pilot, Stream, Metrics, Plans and the plan's Chat, Decisions and Draft stay: their content arrives while the milestone or plan runs, or comes from the history database, not from the page's data (D632-P3). No follow-up.
+- 2026-11-20, R6/R9 (#626, #630, #631): the Metrics page's *Download CSV* stays a `<details>` menu in the header's links, not a `UDropdownMenu` (decision 4): the menu would add 16 kB to the Metrics route, which was already at its raised cap after the filters. `<details>` is not a raw control in the `raw-control` sense, so the rule's `skip` list stays empty. Found while writing R11 (#634); no follow-up.
+- 2026-11-20, R11 (#634): the docs screenshots are not refreshed in this merge request. `docs.shots.ts` gains two phone shots (`theme-switch`, the rail sheet with the switch; `metrics-filters`, the Filters sheet), but the agent's container has no Chromium system libraries or `cwebp`, so `make docs-screenshots` could not run; the pages do not link the new images yet. Follow-up: run `make docs-screenshots`, commit the WebP files and link the two new shots from web-ui.md "Theme" and "Filters".
+- 2026-11-20, R13: R13 is issue #564 (untitled plans show their draft's heading), planned before this milestone and kept as that issue. It had not merged when R11 was written (`internal/ui/plans.go` still titles a plan `cmp.Or(Status.Title, Spec.Title)`), so these docs do not describe it; #564 documents its own change.

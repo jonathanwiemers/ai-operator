@@ -402,6 +402,60 @@ the files of the custom components that must render one.
 4. Add its file to the `skip` list of `raw-control` in
    `web/test/conventions.test.mjs` only if it must render a raw control.
 
+The `skip` list is empty today: every component above renders Nuxt UI
+controls or none. `conventions: skip entries exist` fails on an entry whose
+file is gone, and `raw-control is enforced on views` on a skipped view.
+
+### Page skeleton
+
+Every page has the same frame, from the outside in (decisions 3 to 6 of
+[the one-look spec](../specs/desk-one-look.spec.md)):
+
+1. **Shell** (`App.vue`). `UDashboardGroup` holds the `UDashboardSidebar`
+   with the rail (`components/RailNav.vue`, a vertical `UNavigationMenu`)
+   and the `UDashboardPanel` with the routed view. From 760 px the sidebar
+   is a collapsible column; below, it is the rail [sheet](#sheets), the
+   page has the mobile bar on top and the custom
+   [bottom bar](#navigation) at the bottom. Details in
+   [Navigation](#navigation).
+2. **Breadcrumb.** `UBreadcrumb`, at the top of the panel, only below the
+   top level (`topLevelRoutes` in `src/crumbs.ts`): project, milestone,
+   issue, task, plan, research run. Overview, Inbox, Metrics, Plans and
+   Research show none.
+3. **Page header.** The view's own `UPageHeader` with the shared `:ui`
+   (`pageHeaderUi` in `src/pageHeader.ts`), never a wrapper component:
+
+   ```vue
+   <UPageHeader :ui="pageHeaderUi" :headline="status" :title="title">
+     <template #description><CostChip :cost="cost" /> · started 3 days ago</template>
+     <template #links><HeaderActions :actions="actions" /></template>
+   </UPageHeader>
+   ```
+
+   - `headline`, the eyebrow: the page's status, once, coloured by its
+     tone (`toneText` of `src/badgeTone.ts`). No badge row or second
+     "Running" line repeats it.
+   - `title`; then one meta line as `description` (cost chip, dates,
+     step).
+   - `links`: at most one primary and one secondary action;
+     `components/HeaderActions.vue` shows the first `shown` (2) of its
+     `actions` as buttons and puts the rest in a ⋯ `UDropdownMenu`.
+     A top-level page with only its own controls (Metrics' range, Inbox's
+     *Notify me*) puts them there directly. Metrics' *Download CSV* stays a
+     `<details>` menu there: `UDropdownMenu` would add 16 kB to its route
+     (steering log of the spec).
+4. **Tabs.** [RouteTabs](#routetabs) directly under the header, also
+   Overview's *Overview | Stream*. A tab whose content is empty by
+   definition is hidden (the milestone's *Retrospective* until one exists),
+   and its `?tab=` falls back to the default.
+5. **Content**, and on a page with a context panel the shared
+   `components/ContextLayout.vue` around it (see
+   [Context panel](#context-panel-and-pause-history)).
+
+`test/pageHeader.test.mjs` fails when a routed view has an `<h1>` or no
+`<UPageHeader`; the e2e checks that top-level routes have no breadcrumb and
+nested ones do.
+
 ### Building blocks
 
 - **Stat tiles.** Key figures (the Overview strip, the Metrics tiles, the
@@ -535,6 +589,38 @@ There are two filter kinds (decision 8 of
 
 `USelectMenu` brings Reka UI's combobox and virtualizer: about 28 kB gzipped
 on the Metrics route (see [Bundle budget](#bundle-budget)).
+
+### Theme
+
+*Light*, *Dark* or *Auto* (decision 10 of
+[the one-look spec](../specs/desk-one-look.spec.md)):
+
+- **Switch.** `components/ThemeSwitch.vue`, a `UTabs` pill switch with
+  sun, moon and monitor icons (`data-theme-switch`), in the rail's footer;
+  on phones it comes with the rail into the [sheet](#sheets).
+- **State.** `themeController` in `src/colorScheme.ts`, created in
+  `main.ts` before the app mounts and provided as `themeInjectionKey`. It
+  keeps the choice in `localStorage` under `desk.theme` (`light`, `dark`,
+  `auto`; missing, unknown or unreadable is `auto`; every read and write in
+  try/catch, a failing write keeps the choice for this page), and sets only
+  the `dark` class on `<html>`. In *Auto* one `prefers-color-scheme`
+  listener follows the system live; *Light* and *Dark* ignore it.
+- **Why not Nuxt UI's `colorMode`.** The CSP (`script-src 'self'`,
+  `style-src 'self'`) allows no inline script or `<style>`. A colour mode
+  that sets the class before the first paint needs an inline script in the
+  page head, and Nuxt UI's colour handling writes its variables through
+  `useHead` (see [CSP](#ui-kit) above). So `colorMode: false` stays in
+  `vite.config.ts`, the class is set from the app's own module before
+  mount, and the tokens on `:root` and `.dark` in `style.css` do the work
+  ([design.md](design.md#desk-styles)). Charts follow through
+  `useChartColors.ts`, which watches the class.
+
+Tests: `test/colorScheme.test.mjs` (light, dark, auto, storage that
+throws, system changes ignored when fixed, with fakes), and the e2e
+`theme switch: auto follows the system, a choice holds over a reload@1280`
+and `theme switch in the rail sheet@375` (it fits the sheet, its tabs are
+44 px high, a choice there holds over a reload;
+`theme-switch-sheet@375.png`).
 
 ### Charts
 
@@ -694,7 +780,7 @@ Groups, built by `src/searchItems.ts`:
   keystroke and only from 2 characters; older answers are dropped, an error
   leaves the group empty. `#12` finds issue 12, `!34` merge request 34. A hit
   opens the task page.
-* **Pages**: Inbox, Overview, Costs (feature `history`), Research (feature
+* **Pages**: Inbox, Overview, Metrics (feature `history`), Research (feature
   `research`), *Plans* (feature `plans`) to `/plans`, and *Plan milestone*
   (feature `plans`, when a project is open) to that project's Plans tab
   (`?tab=plans`); both reuse the flag icon for the bundle budget. See
@@ -716,7 +802,7 @@ renders on tablet and desktop). It is the `UDashboardSidebar`'s own slideover
 `milestoneCounts` (`N active · M settling`, zero parts left out). Below 1180 px the stream header's
 *Context* button opens the context panel (`components/ContextPanel.vue`)
 from the right, the side it has on desktop; widening the window to 1180 px
-closes the sheet. Dialogs close the same ways; the first is the
+closes the sheet. Dialogs (`UModal`) close the same ways, for example the
 Retrospective tab's dismiss confirmation.
 
 `web/src/ui/useBackClose.ts` gives a sheet the back button:
@@ -954,12 +1040,12 @@ milestone lists on the overview (*In progress*, *Recently done*, with a
 <MilestoneList :rows="inProgress" :show-project="!perProject" label="In progress" />
 ```
 
-- From tablet width (760 px) the list is a grid with the column template.
+- From desktop width (1180 px) the list is a grid with the column template.
   The column heads and every `MilestoneRow.vue` are
   `grid-template-columns: subgrid` of it, so the columns are defined once.
   The edge tracks are 14 px wider than their content, because a subgrid's
   padding comes out of its edge tracks.
-- On phones the heads are hidden and a row stacks: the project on top, title
+- Below 1180 px the heads are hidden and a row stacks: the project on top, title
   and state on one line, the figures (progress, open, cost, tokens, merged
   lines) as a wrapping line below, *open*, *tok* and *merged* labelled.
   Nothing scrolls sideways.
@@ -976,7 +1062,7 @@ do, and that on a phone a row stacks inside its width
 ### Stream header
 
 The header of the project and milestone pages (`web/src/views/Stream.vue`)
-is Tailwind utilities and Nuxt UI, without scoped CSS.
+is Tailwind utilities and Nuxt UI; only the activity heatmap strip keeps scoped CSS (`.heat`, `.cells`).
 
 - The `UPageHeader` comes first: the milestone's status as eyebrow
   (`milestoneStatus` of `src/milestoneRows.ts`: *Autopilot paused*, or the
@@ -1091,7 +1177,7 @@ empty, also on an empty list: one project starts an untitled plan
 (`createPlan`) and opens it, two or more open an inline picker of buttons
 that wraps on phones. It reads *…* while busy, shows errors in a banner,
 and a 403 hides it until the list reloads. Entry points: *Plans* in
-`RailNav.vue` (below *Costs*), the project's Plans tab, and *Plans* /
+`RailNav.vue` (below *Metrics*), the project's Plans tab, and *Plans* /
 *Plan milestone* in the ⌘K Pages group (`searchItems.ts`). *Delete* on
 the plan page returns to the project's Plans tab. Chat is `PlanChat.vue` (Desk chat parts);
 the draft is `PlanDraft.vue` with Edit / Preview, Save, the newer-draft
@@ -1132,7 +1218,7 @@ the link heights on a phone (`milestone-issues@<width>.png`); the route checks c
 
 The Decisions tab of a milestone (`?tab=decisions` on `stream-milestone`,
 also on stored milestones) and of a project (on `stream-project`, right
-after *Stream*) is Tailwind utilities and Nuxt UI, without scoped CSS. It
+after *Stream*) is Tailwind utilities and Nuxt UI (a card keeps a little scoped CSS, `DecisionCard.vue`). It
 reads `GET …/decisions` from the history database only, never GitLab.
 
 - `MilestoneDecisions.vue` is the tab: `milestone` is the IID, 0 for the
@@ -1349,7 +1435,7 @@ shows only once the milestone has a retrospective (`milestoneTabsFor` in
   a press, as the composer's *Send* does: the bottom bar, hidden while a
   field has the focus, would otherwise come back and move them between
   press and release.
-- *Dismiss remaining* asks in a `UModal`, the Desk's first dialog: it closes
+- *Dismiss remaining* asks in a `UModal`, like the Desk's other dialogs: it closes
   by its scrim, its button, Escape and the browser's back button
   (`useBackClose`, as the sheets), except while the reply is being sent.
   *Dismiss them* posts as before.
@@ -1369,8 +1455,8 @@ The tab is also among the hit-area routes, and the route checks cover
 The project's and the milestone's Metrics tab, once named Spend (`web/src/components/SpendPanel.vue`,
 with `ModelBar.vue`) is Tailwind utilities and tokens, without scoped CSS.
 
-- The totals are key and value pairs: two columns on phones, one wrapping
-  line from the tablet width.
+- The totals are [stat tiles](#building-blocks) (`StatTile` in a
+  `stat-tiles` grid), the lines a second grid below them.
 - Every table is a comparison (the drill-down's milestones, issues, runs or
   calls, by kind, role and model, by kind and model, conflict calls, and
   the tuning tables) and a `DataList` with `scroll`: it keeps its columns
@@ -1443,7 +1529,7 @@ the database).
   share bar per row: a project's milestones, a milestone's issues (and
   its own spec, pilot and retro calls), an issue's runs, a run's calls.
   Clicking a row goes one level down; a project's milestone opens the
-  milestone stream's Spend tab. The position is kept in the query
+  milestone stream's Metrics tab. The position is kept in the query
   (`?tab=metrics&spendIssue=77&spendTask=…&spendRun=2`), so it can be
   linked to and back goes up again; breadcrumbs lead back to the project.
   Calls of no milestone and a milestone's own calls are not split further.
@@ -1519,7 +1605,7 @@ the database).
 
 Shares are of the rows' known cost; a row without a known cost shows
 *n/a* there. When no row has a known cost they are shares of the tokens.
-The Spend tab loads when it opens or the drill-down moves; it does not
+The Metrics tab loads when it opens or the drill-down moves; it does not
 follow live changes. *Metrics across projects* above its drill-down opens
 the [Metrics page](#metrics-page) filtered to the project.
 ### Metrics page
@@ -1610,7 +1696,7 @@ calls" row: they are not links.
 *Tokens*: metered tokens per bucket stacked by type (input, output, cache
 read, cache write) in k/M, with the cache-read share as a line on a second
 axis (0 to 100 %, right; the tooltip shows it as a percentage). The share is
-cache read of input, cache read and cache write, the Spend tab's formula, and
+cache read of input, cache read and cache write, the Metrics tab's formula, and
 has no point for a bucket without tokens; with one bucket it equals the KPI's
 share. The legend has the range's totals and the share, the table view a row
 per bucket with the calls not metered. Calls that report neither cost nor
@@ -1622,7 +1708,7 @@ ranked by known cost in the range with the page's filters (`getCostsTop`,
 fetched in parallel with `getCosts`; if it fails the page stays). A row shows
 its label, project, the kind for runs, and the known cost with *+N calls
 without cost* when some calls are unknown. A row with only unknown calls shows
-*n/a* or *not metered*, never $0.00. The label links into the Spend drill-down
+*n/a* or *not metered*, never $0.00. The label links into the Metrics drill-down
 (`topRowLocation` in `costs.ts`, through `spendLocation`): a milestone row to
 the milestone tab, an issue row to its issue, a run row to its task and run;
 a run without a milestone (research `research/<name>`, chat) opens the project
@@ -1821,10 +1907,10 @@ describe in plain words. The endpoints are in [design.md](design.md#desk-api).
 - **Project** (`/projects/<namespace>/<name>`) and **milestone**
   (`…/milestones/<iid>`): the view tab is kept in `?tab=`; the default
   (*Stream* on a project, *Issues* on a milestone) is left out. A project
-  has *Stream | Decisions | Board | Spend*, plus *Plans* with the feature `plans`
+  has *Stream | Decisions | Board | Metrics*, plus *Plans* with the feature `plans`
   (`?tab=plans` without it opens *Stream*); a milestone has no *Plans*. Old
   `…/milestones/3?tab=stream` links still open the stream; a milestone link
-  with a `#prompt-Q<n>` hash and no `?tab=` opens *Pilot*. The view tabs are
+  with a `#prompt-Q<n>` or `#problem-<iid>` hash and no `?tab=` opens *Needs you*. The view tabs are
   a [RouteTabs](#routetabs) strip. Scope tabs keep a chosen view tab where
   the target has it and open its default otherwise.
 - **Issue page** (`…/milestones/<iid>/issues/<issue>`): the *Task* section
@@ -1878,6 +1964,19 @@ and no Inbox item) and the last 30 days against the 30 before. Below
 1180 px the header's *Context* button opens it as a [sheet](#sheets); its
 count is the panel's own, so neither loads anything more.
 
+Every page with a panel uses one layout, `components/ContextLayout.vue`
+(decision 6 of [the one-look spec](../specs/desk-one-look.spec.md)): from
+1180 px its `panel` slot is a 320 px column beside the content; below, the
+content has the full width and the panel is a `USlideover` from the right,
+closed by default and loaded only there. The page binds `v-model:open` to
+its *Context* button and shows the button only while the default slot's
+`sheet` is true; Back closes the sheet (`useBackClose`), and widening past
+1180 px closes it. `column: false` (the milestone page, whose tabs take the
+full width) keeps the panel a sheet below 1180 px and shows none from
+1180 px. The e2e `context sheet …` cases check the closed sheet below
+1180 px (each way to close it, the long branch and URL fitting), the column
+at 1180 px and that the board beside it does not scroll sideways.
+
 The milestone API carries the **pause history** (`pauses`, from the
 `autopilot.paused`/`autopilot.resumed` events within the history
 retention): the newest 20 pauses with kind, reason, start, end, who resolved
@@ -1908,7 +2007,7 @@ last links to that level's default tab, but a plan's *Plans*, which opens
 the project's Plans tab; the last is the current page. Crumbs show
 `%<iid>`, `#<iid>` or the task's name until the view has loaded titles;
 they cost no extra request. The trail stays on one line: below 760 px only the first and the last
-crumb show, and each label is cut at 28 characters. The Spend tab keeps its own drill-down
+crumb show, and each label is cut at 28 characters. The Metrics tab keeps its own drill-down
 crumbs.
 
 Every routed view opens with `UPageHeader`, with the shared `:ui` of

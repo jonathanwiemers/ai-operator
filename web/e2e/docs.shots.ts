@@ -13,6 +13,19 @@ interface Shot {
   // ready waits until the page shows its data.
   ready: (page: Page) => Promise<void>
   colorScheme?: 'light' | 'dark'
+  // phone renders the shot at 375×812 instead of the config's desktop size.
+  phone?: boolean
+  // open runs after ready, e.g. to open a sheet; the shot waits for the
+  // sheet's animation to end.
+  open?: (page: Page) => Promise<void>
+}
+
+// openSheet taps the control and waits until the dialog has slid in.
+const openSheet = (control: (page: Page) => ReturnType<Page['locator']>, name?: string) => async (page: Page) => {
+  await control(page).click()
+  const sheet = name ? page.getByRole('dialog', { name }) : page.getByRole('dialog')
+  await expect(sheet).toBeVisible()
+  await sheet.evaluate((e) => Promise.all(e.getAnimations().map((a) => a.finished)))
 }
 
 const shop = '/projects/team-a/shop'
@@ -37,6 +50,25 @@ const shots: Shot[] = [
       await text('Research counted since')(page)
       await expect(page.locator('[data-chart=spend] canvas[role=img]')).toBeVisible()
     },
+  },
+  // The phone's rail sheet, with the Light/Dark/Auto switch at its bottom.
+  {
+    name: 'theme-switch',
+    path: '/',
+    phone: true,
+    ready: text('Checkout without account'),
+    open: async (page) => {
+      await openSheet((p) => p.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Projects' }))(page)
+      await page.getByRole('dialog').locator('[data-theme-switch]').scrollIntoViewIfNeeded()
+    },
+  },
+  // The Metrics page's value filters in the phone's Filters sheet.
+  {
+    name: 'metrics-filters',
+    path: '/metrics?range=30d',
+    phone: true,
+    ready: text('Research counted since'),
+    open: openSheet((p) => p.locator('[data-filters-open]'), 'Filters'),
   },
 ]
 
@@ -69,6 +101,7 @@ async function mockAPI(page: Page): Promise<void> {
 for (const shot of shots) {
   test(shot.name, async ({ page }, testInfo) => {
     if (shot.colorScheme) await page.emulateMedia({ colorScheme: shot.colorScheme })
+    if (shot.phone) await page.setViewportSize({ width: 375, height: 812 })
     await page.clock.setFixedTime(now)
     await mockAPI(page)
     await page.goto(shot.path)
@@ -76,6 +109,7 @@ for (const shot of shots) {
     await page.waitForLoadState('networkidle')
     // Charts animate in; give them a moment after the data is drawn.
     await page.waitForTimeout(600)
+    if (shot.open) await shot.open(page)
     await page.screenshot({ path: join(testInfo.project.outputDir, `${shot.name}.png`) })
   })
 }

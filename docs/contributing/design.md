@@ -4020,17 +4020,49 @@ the same names; a token missing from `.dark` is the same in both schemes.
 Colours outside `style.css` are flagged by the conventions check
 ([web-ui.md](web-ui.md#conventions-check)).
 
-**Colour tokens.** `--text`, `--text-2` and `--text-3` reach 4.5:1 (WCAG
-AA) on `--bg`, `--surface` and `--surface-2`, light and dark. `--primary`
-(`#c4361f`, both modes) is the colour of the main buttons, with white text
-at 5.39:1; `--accent` stays the logo's and the brand's. Errors and counts
-(the rail's and the phone tabs' counts, `Badge` with `danger`) take the
-danger tone, never `--primary`. A row's name in a table or list carries
-`.row-link`: the text colour, the link colour only on hover or keyboard
-focus. `web/test/contrast.test.mjs` measures all of this from `style.css`.
+**Colour tokens.** What each colour is for (decision 9 of the
+[one-look spec](../specs/desk-one-look.spec.md)):
+
+- **Text.** `--text` for body and titles, `--text-2` for meta lines and
+  descriptions, `--text-3` (light `#67627f`, dark `#958fac`) for the
+  quietest text: eyebrows, table heads, the rail's sub lines. Nuxt UI's
+  `text-dimmed`, `text-muted` and `text-highlighted` name these three (see
+  the table below).
+- **Primary.** `--primary` (`#c4361f`, both modes, `--ui-primary`) is the
+  colour of the main buttons (*Plan milestone*, *Send*, *New research*).
+- **Accent.** `--accent` (`#e24329`) stays the logo's and the brand's, never
+  a button's: white on it is only 4.14:1.
+- **Danger.** Errors and counts (the rail's and the phone tabs' counts,
+  `Badge` with `danger`, `UAlert` with `error`) take the danger tone,
+  `--tone-danger-fg` / `--ui-error`, never `--primary`, so a count does not
+  read as a button.
+- **Row names.** A row's name in a table or list carries `.row-link`: the
+  text colour, the link colour (`--link`) only on hover or keyboard focus,
+  so a list of links does not read as a page of blue.
+- **Charts.** `--chart-1` … `--chart-6` for series, `--chart-other` (a grey
+  of its own, not `--text-3`) for *Other*; chart tooltips take the
+  surface, border and text tokens that `UTooltip` uses (`readChartColors`
+  in `web/src/chartData.ts`, see [web-ui.md](web-ui.md#charts)).
+
+**Contrast targets.** `web/test/contrast.test.mjs` reads both blocks of
+`style.css`, resolves `var()` chains and fails when a target is missed,
+light and dark:
+
+| What | Target | Test |
+|------|--------|------|
+| `--text`, `--text-2`, `--text-3` on `--bg`, `--surface`, `--surface-2` | 4.5:1 (WCAG AA) | `text reaches 4.5:1 on every surface` |
+| white on `--primary`, and `--ui-primary` is `--primary` | 4.5:1 (5.39:1) | `white reaches 4.5:1 on --primary` |
+| each of `--chart-1` … `--chart-6` and `--chart-other` on `--surface` | 3:1 (WCAG non-text) | `each chart series reaches 3:1 on --surface` |
+| each chart series to `--primary` and to the danger tone | OKLab distance ≥ 0.1 | `no chart series sits near --primary or the danger tone` |
+| `--chart-other` against `--text-3` | a different colour | `Other is a grey of its own` |
+
+A new colour token that text sits on, or a new chart token, joins the
+test's lists. Colours outside `style.css` are flagged by the `raw-colour`
+rule of the conventions check.
 
 **Light and dark.** The owner picks Light, Dark or Auto in the rail's footer
-(`components/ThemeSwitch.vue`, `UTabs`; on phones in the rail sheet). The
+(`components/ThemeSwitch.vue`, `UTabs`; on phones in the rail sheet; the
+component side is in [web-ui.md](web-ui.md#theme)). The
 choice is kept per browser in `localStorage` under `desk.theme` (`light`,
 `dark`, `auto`); missing, unknown or unreadable is Auto, and every read and
 write is in try/catch. `themeController` in `web/src/colorScheme.ts`, created
@@ -4055,14 +4087,16 @@ today would win. New element rules go into `@layer base`, never unlayered.
 **Kit classes.** Scoped CSS does not redefine a kit or global class
 (`.btn`, `.empty`, `.card`, `.muted`, …) or give a component its own
 `.head`, `.title`, `.err`, `.reason` or `.hint`: a button is `UButton`, an
-empty state the global `.empty`, an error or reason line utilities
+empty state `UEmpty`, a banner `UAlert`, an error or reason line utilities
 (`text-[13px] text-(--tone-danger-fg)`), and a scoped rule only adds what the
 global class lacks (`EventCard`'s `.card` padding). There is no global
-`.btn` any more. The shell (`App.vue`, `RailNav.vue`, `SignIn.vue`) is in the
-initial bundle, so its controls are plain elements with utilities: a Nuxt UI
-component there costs the bundle budget ([web-ui.md](web-ui.md#bundle-budget)).
-Text cut to fit is `Truncated` (opens on tap); a `title` only repeats what
-can also be read elsewhere, since touch cannot show it.
+`.btn` any more. The shell (`App.vue`) and `SignIn.vue` are in the initial
+bundle: their Nuxt UI parts beyond `UDashboardGroup` load lazily
+(`defineAsyncComponent`), since each one there costs the bundle budget
+([web-ui.md](web-ui.md#bundle-budget)). Text cut to fit is `Truncated`
+(opens on tap); a hint on a control is a `UTooltip`, and a `title` on other
+elements only repeats what can also be read elsewhere, since touch cannot
+show it.
 
 Tailwind's preflight (its element reset) is not imported: it would restyle
 the lists, paragraphs, headings and buttons of every view not yet on the
@@ -4087,8 +4121,9 @@ below a `min-width` breakpoint, so at exactly 760 or 1180 px a scoped rule and
 a `tablet:` or `desktop:` utility never both apply. The conventions check
 ([web-ui.md](web-ui.md#conventions-check)) fails on any other `@media` width. What
 each component does at a width is its own choice: the board shows four
-columns on a desktop, two below it and one on a phone; the stream's context
-panel is hidden below desktop.
+columns on a desktop, two below it and one on a phone; the project's context
+panel is a column on a desktop and a sheet below it
+([web-ui.md](web-ui.md#context-panel-and-pause-history)).
 
 **Phones.** A phone is under 760 px (`@media (max-width: 759.98px)`). The
 viewport meta of `web/index.html` is `width=device-width, initial-scale=1,
@@ -4112,11 +4147,11 @@ it there, with `--keyboard-inset`, see [web-ui.md](web-ui.md#composer)).
   its border; 0 while a text field has the focus and the bar is hidden).
   Views add none. On screens without insets `env()` is 0, so desktop is
   unchanged.
-- *Shell rows.* On a phone `.app` is one column with rows `auto 1fr`: the
-  mobile bar keeps its natural height and the pane takes the rest. With
-  two `auto` rows and `min-height: 100dvh`, a short page (Not found, an
-  empty list) would stretch the bar. The bottom bar is `position: fixed`,
-  outside the rows.
+- *Shell column.* On a phone the `UDashboardGroup` is a flex column of at
+  least `100dvh`: the mobile bar keeps its natural height and the panel
+  (`flex-1`) takes the rest, so a short page (Not found, an empty list)
+  does not stretch the bar. The bottom bar is `position: fixed`, outside
+  the column.
 - *Inputs at 16 px.* iOS zooms into a control under 16 px when it gets the
   focus. The base layer sets `input`, `select` and `textarea` to
   `font-size: 16px !important` on phones. An `!important` in a layer beats
