@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import UAlert from '@nuxt/ui/components/Alert.vue'
+import { alertColor } from '../badgeTone'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
@@ -43,7 +45,7 @@ function lastRunLine(r: ResearchSummary): string {
       </template>
     </UPageHeader>
 
-    <div v-if="error" class="banner danger [overflow-wrap:anywhere]">{{ error }}</div>
+    <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3 [overflow-wrap:anywhere]" :description="error" />
 
     <div v-if="loading && !researches" class="card empty">Loading…</div>
     <UEmpty

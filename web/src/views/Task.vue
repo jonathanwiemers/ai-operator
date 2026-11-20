@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import UAlert from '@nuxt/ui/components/Alert.vue'
+import { alertColor } from '../badgeTone'
 import { computed, watchEffect } from 'vue'
 import { setCrumbNames } from '../crumbNames'
 import { getTask } from '../client'
@@ -33,7 +35,7 @@ watchEffect(() => {
 <template>
   <NotFound v-if="notFound" />
   <div v-else class="page">
-    <div v-if="error" class="banner danger">{{ error }}</div>
+    <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
     <div v-if="loading && !t" class="card empty">Loading…</div>
 
     <TaskBody v-if="data && t" page :namespace="namespace" :name="name" :task="task" :data="data" />

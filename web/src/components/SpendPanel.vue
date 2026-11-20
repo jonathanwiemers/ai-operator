@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import UAlert from '@nuxt/ui/components/Alert.vue'
+import { alertColor } from '../badgeTone'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import { computed, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
@@ -296,7 +298,7 @@ const mark = 'ms-1.5 rounded-full px-1.5 text-[11px] font-semibold'
       </RouterLink>
     </nav>
 
-    <div v-if="error" class="banner danger">{{ error }}</div>
+    <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
     <div v-else-if="!data || !totals" class="empty">Loading…</div>
     <template v-else>
       <section data-spend-totals>

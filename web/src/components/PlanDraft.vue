@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import UAlert from '@nuxt/ui/components/Alert.vue'
+import { alertColor } from '../badgeTone'
 // Plan draft pane (R11, Decision 5): Edit / Preview, explicit Save, and the
 // agent's newer draft offered as a diff while the owner has unsaved edits.
 import { ref, watch } from 'vue'
@@ -50,13 +52,18 @@ async function save(): Promise<boolean> {
       <UButton size="sm" label="Create milestone" :disabled="!editor.text.trim()" @click="create" />
       <slot name="actions" /><!-- the decision wizard's button (R7) -->
     </div>
-    <div v-if="error" class="banner danger">{{ error }}</div>
-    <div v-if="canEdit && conflict" class="banner" data-newer-draft>
-      <strong>The agent has a newer draft</strong> (+ the agent's lines, − yours)
-      <pre class="my-2 max-h-80 overflow-auto text-xs"><div v-for="(l, i) in conflict" :key="i" :class="{ 'bg-(--tone-success-bg)': l.kind === 'add', 'bg-(--tone-danger-bg)': l.kind === 'del' }">{{ { add: '+', del: '−', same: ' ' }[l.kind] }} {{ l.text }}</div></pre>
-      <UButton size="sm" label="Use agent's draft" @click="resolve(true)" />
-      <UButton class="ml-1.5" size="sm" color="neutral" variant="outline" label="Keep mine" @click="resolve(false)" />
-    </div>
+    <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
+    <UAlert v-if="canEdit && conflict" data-newer-draft :color="alertColor('neutral')" variant="subtle" class="mt-3"
+      title="The agent has a newer draft">
+      <template #description>
+        (+ the agent's lines, − yours)
+        <pre class="my-2 max-h-80 overflow-auto text-xs"><div v-for="(l, i) in conflict" :key="i" :class="{ 'bg-(--tone-success-bg)': l.kind === 'add', 'bg-(--tone-danger-bg)': l.kind === 'del' }">{{ { add: '+', del: '−', same: ' ' }[l.kind] }} {{ l.text }}</div></pre>
+      </template>
+      <template #actions>
+        <UButton size="sm" label="Use agent's draft" @click="resolve(true)" />
+        <UButton size="sm" color="neutral" variant="outline" label="Keep mine" @click="resolve(false)" />
+      </template>
+    </UAlert>
     <UTextarea v-if="canEdit && mode === 'edit'" :model-value="editor.text" :rows="20" autoresize spellcheck="true"
       :ui="{ root: 'w-full', base: 'font-mono text-base/5 tablet:text-[13px]/5' }" aria-label="Draft"
       @update:model-value="(t: string) => (editor = { ...editor, text: t, dirty: true })" />

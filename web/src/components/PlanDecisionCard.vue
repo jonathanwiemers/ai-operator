@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import UAlert from '@nuxt/ui/components/Alert.vue'
+import { alertColor } from '../badgeTone'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import { computed, ref } from 'vue'
 import UButton from '@nuxt/ui/components/Button.vue'
@@ -76,7 +78,7 @@ async function toggle() {
     </footer>
     <section v-if="open" class="mt-2 border-t border-(--border) pt-2 text-[12.5px]" aria-label="History" data-history>
       <div v-if="loading" class="text-(--text-3)">Loading…</div>
-      <div v-else-if="error" class="banner danger">{{ error }}</div>
+      <UAlert v-else-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
       <div v-else-if="unavailable" class="text-(--text-3)">The history is not available.</div>
       <UEmpty v-else-if="!versions?.length" icon="i-lucide-history" title="No history yet." variant="naked" size="xs" />
       <ol v-else class="m-0 flex list-none flex-col gap-2 p-0">

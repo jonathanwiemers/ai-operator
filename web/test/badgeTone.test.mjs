@@ -1,7 +1,7 @@
 // Tests of src/badgeTone.ts: npm test.
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { badgeLook } from '../src/badgeTone.ts'
+import { alertColor, badgeLook } from '../src/badgeTone.ts'
 
 test('every tone has a look using its own tone tokens', () => {
   for (const tone of ['neutral', 'info', 'progress', 'success', 'warning', 'danger', 'muted']) {
@@ -14,4 +14,13 @@ test('every tone has a look using its own tone tokens', () => {
 
 test('danger is the kit\'s error colour', () => {
   assert.equal(badgeLook.danger.color, 'error')
+})
+
+test('alertColor: one kit colour per tone, the one its badge has', () => {
+  assert.equal(alertColor('warning'), 'warning')
+  assert.equal(alertColor('danger'), 'error')
+  assert.equal(alertColor('info'), 'info')
+  assert.equal(alertColor('success'), 'success')
+  assert.equal(alertColor('neutral'), 'neutral')
+  for (const tone of Object.keys(badgeLook)) assert.equal(alertColor(tone), badgeLook[tone].color, tone)
 })

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import UAlert from '@nuxt/ui/components/Alert.vue'
+import { alertColor } from '../badgeTone'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
@@ -74,11 +76,13 @@ const reason = 'muted min-w-0 text-[13px] [&[role=button]]:relative [&[role=butt
       </template>
     </UPageHeader>
     <RouteTabs class="w-fit" :tabs="views" :active="view" :to="viewTo" label="Inbox view" />
-    <div v-if="strip.count" class="banner warning">
-      <span
-        ><b>{{ strip.count }} {{ strip.count === 1 ? 'autopilot' : 'autopilots' }} paused</b
-        ><template v-if="strip.longestMs">, longest {{ duration(strip.longestMs) }}</template></span
-      >
+    <UAlert v-if="strip.count" :color="alertColor('warning')" variant="subtle" class="mt-3">
+      <template #title>
+        {{ strip.count }} {{ strip.count === 1 ? 'autopilot' : 'autopilots' }} paused<template v-if="strip.longestMs"
+          >, longest {{ duration(strip.longestMs) }}</template
+        >
+      </template>
+      <template #description>
       <div class="flex flex-wrap gap-x-3.5">
         <RouterLink
           v-for="m in strip.milestones"
@@ -89,8 +93,9 @@ const reason = 'muted min-w-0 text-[13px] [&[role=button]]:relative [&[role=butt
           {{ m.project }} · {{ m.title || `%${m.milestoneIID}` }}<template v-if="m.sinceMs != null"> ({{ duration(m.sinceMs) }})</template>
         </RouterLink>
       </div>
-    </div>
-    <div v-if="error" class="banner danger">{{ error }}</div>
+      </template>
+    </UAlert>
+    <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
     <div v-if="loading && !data" class="card empty">Loading…</div>
     <UEmpty v-else-if="data && view === 'open' && !data.items.length" icon="i-lucide-inbox" title="Nothing waiting." class="mt-[18px]" />
     <ul

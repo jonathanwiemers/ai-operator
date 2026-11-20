@@ -33,7 +33,6 @@ const project = computed(() => ({
       v-if="showProject"
       class="basis-full truncate text-xs font-semibold text-(--text-3)"
       :to="project"
-      :title="`${item.namespace}/${item.project}`"
     >
       {{ item.project }}
     </RouterLink>

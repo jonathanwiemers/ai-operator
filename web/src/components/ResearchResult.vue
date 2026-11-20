@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import UAlert from '@nuxt/ui/components/Alert.vue'
+import UTooltip from '@nuxt/ui/components/Tooltip.vue'
+import { alertColor } from '../badgeTone'
 import Markdown from './Markdown.vue'
 import { computed } from 'vue'
 import { runLine } from '../format'
@@ -31,20 +34,22 @@ const flash = computed(() =>
 
 <template>
   <article class="flex max-w-[920px] min-w-0 flex-col gap-[18px]">
-    <div v-if="result.warnings?.length" class="banner warning [overflow-wrap:anywhere]">
-      <span v-for="(w, i) in result.warnings" :key="i">{{ w }}</span>
-    </div>
+    <UAlert v-if="result.warnings?.length" :color="alertColor('warning')" variant="subtle" class="mt-3 [overflow-wrap:anywhere]">
+      <template #description>
+        <span v-for="(w, i) in result.warnings" :key="i" class="block">{{ w }}</span>
+      </template>
+    </UAlert>
     <header class="flex flex-col gap-1">
       <h2 class="text-xl [overflow-wrap:anywhere]">{{ result.title }}</h2>
       <div v-if="line" class="text-[13px] text-(--text-3)" data-run-line>
-        <RouterLink
-          v-if="runLink && run"
-          :to="`/research/${encodeURIComponent(research.namespace)}/${encodeURIComponent(research.name)}/runs/${encodeURIComponent(run.id)}`"
-          class="inline-flex min-h-11 items-center text-inherit tablet:min-h-0"
-          :title="run.choiceReason"
-        >
-          {{ line }}
-        </RouterLink>
+        <UTooltip v-if="runLink && run" :text="run.choiceReason" :disabled="!run.choiceReason">
+          <RouterLink
+            :to="`/research/${encodeURIComponent(research.namespace)}/${encodeURIComponent(research.name)}/runs/${encodeURIComponent(run.id)}`"
+            class="inline-flex min-h-11 items-center text-inherit tablet:min-h-0"
+          >
+            {{ line }}
+          </RouterLink>
+        </UTooltip>
         <span v-else>{{ line }}</span>
         <span v-if="run && run.status !== 'succeeded'"> · {{ run.status }}</span>
       </div>

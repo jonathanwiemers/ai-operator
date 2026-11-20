@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import UAlert from '@nuxt/ui/components/Alert.vue'
+import { alertColor } from '../badgeTone'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import Markdown from './Markdown.vue'
 import { computed } from 'vue'
@@ -190,27 +192,26 @@ const actions = computed(() => [
     </template>
   </UPageHeader>
 
-  <div v-if="t.runPending && run.deferredUntil" class="banner warning">
-    <strong>Waiting for a usage limit</strong>
-    <span>
+  <UAlert v-if="t.runPending && run.deferredUntil" :color="alertColor('warning')" variant="subtle" class="mt-3" title="Waiting for a usage limit">
+    <template #description>
       {{ deferringEngine(run) ?? 'The engine' }} hit its limit; the run starts again
       <RelTime :time="run.deferredUntil" /> (deferred {{ run.deferrals ?? 1 }}×).
-    </span>
-  </div>
-  <div v-if="t.status.phase === 'Blocked'" class="banner danger">
-    <strong>Blocked</strong>
-    <span><Markdown mode="inline" :text="t.status.message || 'The task hit a safety limit and needs a human.'" /></span>
-  </div>
-  <div v-else-if="t.status.message" class="banner info"><Markdown mode="inline" :text="t.status.message" /></div>
-  <div v-if="t.status.agentTermination?.reason === 'OOMKilled'" class="banner warning">
-    <strong>Out of memory</strong>
-    <span>
+    </template>
+  </UAlert>
+  <UAlert v-if="t.status.phase === 'Blocked'" :color="alertColor('danger')" variant="subtle" class="mt-3" title="Blocked">
+    <template #description><Markdown mode="inline" :text="t.status.message || 'The task hit a safety limit and needs a human.'" /></template>
+  </UAlert>
+  <UAlert v-else-if="t.status.message" :color="alertColor('info')" variant="subtle" class="mt-3">
+    <template #description><Markdown mode="inline" :text="t.status.message" /></template>
+  </UAlert>
+  <UAlert v-if="t.status.agentTermination?.reason === 'OOMKilled'" :color="alertColor('warning')" variant="subtle" class="mt-3" title="Out of memory">
+    <template #description>
       The agent container was killed <RelTime :time="t.status.agentTermination.finishedAt" /> at a memory limit of
       {{ t.status.agentTermination.memoryLimit || 'unknown' }}<template v-if="t.status.agentMemoryLimit">;
         it now runs with {{ t.status.agentMemoryLimit }}</template
       >.
-    </span>
-  </div>
+    </template>
+  </UAlert>
 
   <RouteTabs class="mt-2 w-fit" :tabs="tabs" :active="tab" :to="tabTo" :badges="badges" label="Task" />
 
@@ -302,15 +303,15 @@ const actions = computed(() => [
           Tracking issue #{{ t.status.autopilot.trackingIssueIID }}
         </ExtLink>
       </div>
-      <div v-if="t.status.autopilot.pausedReason" class="banner warning">
-        <span>
+      <UAlert v-if="t.status.autopilot.pausedReason" :color="alertColor('warning')" variant="subtle" class="mt-3">
+        <template #description>
           <Markdown mode="inline" :text="t.status.autopilot.pausedReason" />
           <template v-if="t.status.autopilot.pausedFor">(issue #{{ t.status.autopilot.pausedFor }})</template>
           <template v-if="t.status.autopilot.resumeWhenReady">
             It continues by itself once a later run of #{{ t.status.autopilot.pausedFor }} is reviewed and green.
           </template>
-        </span>
-      </div>
+        </template>
+      </UAlert>
     </section>
 
     <UEmpty v-if="overviewEmpty" icon="i-lucide-file-text" title="No run has left a summary yet." size="sm" class="section" />

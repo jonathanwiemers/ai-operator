@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import UAlert from '@nuxt/ui/components/Alert.vue'
+import { alertColor } from '../badgeTone'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -116,8 +118,8 @@ const sectionHead = 'm-0 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 t
 
 <template>
   <section data-decisions>
-    <div v-if="error" class="banner danger">{{ error }}</div>
-    <div v-else-if="data && !data.available" class="banner info">Decisions need the history database.</div>
+    <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
+    <UAlert v-else-if="data && !data.available" :color="alertColor('info')" variant="subtle" class="mt-3" description="Decisions need the history database." />
     <template v-else>
       <div class="flex flex-wrap items-center gap-2">
         <form role="search" class="basis-full tablet:basis-auto" @submit.prevent>

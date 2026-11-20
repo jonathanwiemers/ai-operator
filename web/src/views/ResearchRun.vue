@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import UAlert from '@nuxt/ui/components/Alert.vue'
+import { alertColor } from '../badgeTone'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import { computed, watchEffect } from 'vue'
 import { setCrumbNames } from '../crumbNames'
@@ -50,7 +52,7 @@ const duration = computed(() => {
   <NotFound v-if="notFound" />
   <div v-else class="page">
 
-    <div v-if="error" class="banner danger [overflow-wrap:anywhere]">{{ error }}</div>
+    <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3 [overflow-wrap:anywhere]" :description="error" />
     <div v-if="loading && !run" class="card empty">Loading…</div>
 
     <template v-if="run && data">
@@ -59,17 +61,15 @@ const duration = computed(() => {
           <span class="capitalize" :class="toneText[statusTone[run.status] ?? 'muted']" data-run-status>{{ run.status }}</span>
         </template>
       </UPageHeader>
-      <div v-if="run.status === 'degraded'" class="banner warning">
-        <strong>Degraded</strong>
-        <span>The agent's answer failed validation; it is shown as plain text.</span>
-      </div>
-      <div v-if="run.error" class="banner danger [overflow-wrap:anywhere]">{{ run.error }}</div>
-      <div v-if="run.warnings?.length" class="banner warning">
-        <strong>Warnings</strong>
-        <ul class="m-0 basis-full ps-[18px] [overflow-wrap:anywhere]">
-          <li v-for="(w, i) in run.warnings" :key="i">{{ w }}</li>
-        </ul>
-      </div>
+      <UAlert v-if="run.status === 'degraded'" :color="alertColor('warning')" variant="subtle" class="mt-3" title="Degraded" description="The agent's answer failed validation; it is shown as plain text." />
+      <UAlert v-if="run.error" :color="alertColor('danger')" variant="subtle" class="mt-3 [overflow-wrap:anywhere]" :description="run.error" />
+      <UAlert v-if="run.warnings?.length" :color="alertColor('warning')" variant="subtle" class="mt-3" title="Warnings">
+        <template #description>
+          <ul class="m-0 ps-[18px] [overflow-wrap:anywhere]">
+            <li v-for="(w, i) in run.warnings" :key="i">{{ w }}</li>
+          </ul>
+        </template>
+      </UAlert>
 
       <div class="stat-tiles section" data-run-facts>
         <StatTile label="Agent">

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import UAlert from '@nuxt/ui/components/Alert.vue'
+import { alertColor } from '../badgeTone'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UFormField from '@nuxt/ui/components/FormField.vue'
@@ -263,7 +265,7 @@ const selectProps = {
       </UFormField>
     </form>
 
-    <div v-if="error" class="banner danger [overflow-wrap:anywhere]" data-costs-error>{{ error }}</div>
+    <UAlert v-if="error" data-costs-error :color="alertColor('danger')" variant="subtle" class="mt-3 [overflow-wrap:anywhere]" :description="error" />
     <div v-else-if="!data || !totals" class="card empty">Loading…</div>
     <UEmpty
       v-else-if="totals.calls === 0"

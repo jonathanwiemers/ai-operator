@@ -443,31 +443,6 @@
   flex: 1;
 }
 
-.banner {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 10px;
-  align-items: flex-start;
-  padding: 10px 14px;
-  border-radius: var(--radius-sm);
-  margin-top: 12px;
-}
-
-.banner.warning {
-  background: var(--tone-warning-bg);
-  color: var(--tone-warning-fg);
-}
-
-.banner.danger {
-  background: var(--tone-danger-bg);
-  color: var(--tone-danger-fg);
-}
-
-.banner.info {
-  background: var(--tone-info-bg);
-  color: var(--tone-info-fg);
-}
-
 /* A row of StatTiles (components/StatTile.vue): as many columns of at
    least 9rem as fit, so a row wraps to two tiles at 375 px. In the
    components layer, so a utility (desktop:grid-cols-6) can override it. */

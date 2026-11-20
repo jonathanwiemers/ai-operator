@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import UAlert from '@nuxt/ui/components/Alert.vue'
+import { alertColor } from '../badgeTone'
 // The decision review wizard (R7): one step per decision with the
 // preselected option, Other, a step list, and a last step with the summary,
 // more text and Send. It works on the decisions it opened on, so a poll does
@@ -96,7 +98,7 @@ async function reload() {
           <UButton class="min-h-11" size="sm" color="neutral" :variant="d ? 'outline' : 'solid'" label="Summary"
             :aria-current="d ? undefined : 'step'" @click="step = decisions.length" />
         </nav>
-        <div v-if="error" class="banner warning [overflow-wrap:anywhere]" role="alert" data-wizard-error>{{ error }}</div>
+        <UAlert v-if="error" role="alert" data-wizard-error :color="alertColor('warning')" variant="subtle" class="mt-3 [overflow-wrap:anywhere]" :description="error" />
         <section v-if="d" :key="d.id" class="flex min-w-0 flex-col gap-2" data-wizard-decision>
           <span class="text-(--text-3)" data-wizard-position>{{ step + 1 }} of {{ decisions.length }}</span>
           <h3 class="m-0 text-base [overflow-wrap:anywhere]"><Markdown :text="d.title" mode="inline" /> <span class="text-(--text-3)">{{ d.id }}</span></h3>
@@ -126,9 +128,7 @@ async function reload() {
             </li>
             <li v-for="r in sum.kept" :key="r.id" class="text-(--text-2) [overflow-wrap:anywhere]" data-wizard-kept>{{ r.id }} {{ r.title }}: kept</li>
           </ul>
-          <div v-if="view.draftBy === 'owner'" class="banner warning" data-wizard-owner-edit>
-            You edited the draft since the agent's last turn; the agent gets your edit.
-          </div>
+          <UAlert v-if="view.draftBy === 'owner'" data-wizard-owner-edit :color="alertColor('warning')" variant="subtle" class="mt-3" description="You edited the draft since the agent's last turn; the agent gets your edit." />
           <UTextarea v-model="text" :rows="3" autoresize placeholder="More for the agent (optional)" aria-label="More for the agent"
             :ui="{ root: 'w-full', base: 'text-base tablet:text-sm' }" />
           <span v-if="blocked" class="text-(--text-2)">{{ blocked }}</span>

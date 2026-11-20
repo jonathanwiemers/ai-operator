@@ -4048,7 +4048,7 @@ flash light. `.dark` sets `color-scheme: dark` for form controls.
 specificity. The bare element rules (`*`, `html`, `body`, `a`, `:focus-visible`,
 `h1`–`h3`, `code`) are therefore in `@layer base`, so component classes and
 utilities (Nuxt UI, Tailwind's `components` and `utilities` layers) win over
-them. Global classes (`.card`, `.row`, `.banner`, `.empty`, `.md …`)
+them. Global classes (`.card`, `.row`, `.empty`, `.md …`)
 stay unlayered until they are removed: in a layer, scoped rules they beat
 today would win. New element rules go into `@layer base`, never unlayered.
 

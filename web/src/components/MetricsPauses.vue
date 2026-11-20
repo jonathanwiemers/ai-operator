@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import UAlert from '@nuxt/ui/components/Alert.vue'
+import { alertColor } from '../badgeTone'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 // Pauses (docs/contributing/web-ui.md, "Metrics page"; decision 10 of the
 // milestone "Desk: one Metrics page"): the milestone pauses that started in the
@@ -84,7 +86,7 @@ const tableTitle = 'm-0 px-3.5 pt-3 pb-2 text-[13px] font-semibold'
       <span class="faint">Milestone pauses that started in the range, open ones up to now</span>
     </div>
     <p v-if="filtered" class="faint mt-0 mb-2" data-metrics-filter-note>{{ metricsFilterNote }}</p>
-    <p v-if="pauses.truncated" class="banner mt-0 mb-2" data-pauses-truncated>{{ pausesTruncatedNote }}</p>
+    <UAlert v-if="pauses.truncated" data-pauses-truncated :color="alertColor('neutral')" variant="subtle" class="mb-2" :description="pausesTruncatedNote" />
 
     <div class="stat-tiles" data-pauses-tiles>
       <StatTile v-for="t in tiles" :key="t.id" :label="t.label" :value="t.value" :data-tile="t.id" />

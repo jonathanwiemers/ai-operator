@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UAlert from '@nuxt/ui/components/Alert.vue'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import { computed, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -6,6 +7,7 @@ import UButton from '@nuxt/ui/components/Button.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
 import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
 import USelect from '@nuxt/ui/components/Select.vue'
+import UTooltip from '@nuxt/ui/components/Tooltip.vue'
 import Badge from '../components/Badge.vue'
 import { hasFeature } from '../api'
 import { getInbox, getMilestone, getProject, getProjectHistory, getStream, LoginRequiredError, NotFoundError } from '../client'
@@ -54,7 +56,7 @@ import type {
   StreamEvent,
 } from '../types'
 import { milestoneStatus } from '../milestoneRows'
-import { toneText } from '../badgeTone'
+import { alertColor, toneText } from '../badgeTone'
 import { pageHeaderUi } from '../pageHeader'
 import { useStreamNote } from '../streamNote'
 import { decisionsQuery, milestoneFromQuery } from '../decisions'
@@ -224,6 +226,15 @@ const heatDays = computed(() => {
   const max = Math.max(1, ...days.map((d) => d.events))
   return days.map((d) => ({ ...d, level: heatLevel(d.events, max) }))
 })
+
+// One tooltip for the whole heatmap (decision 7: no tooltip per cell),
+// anchored to the cell under the pointer or with focus.
+const heatHint = ref<{ el: HTMLElement; text: string } | null>(null)
+const heatText = (d: { day: string; events: number }) => `${d.day} · ${d.events} events`
+function showHeatHint(e: Event) {
+  const el = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-heat-day]')
+  heatHint.value = el ? { el, text: el.getAttribute('aria-label') ?? '' } : null
+}
 
 const heatRange = computed(() => {
   const days = heatDays.value
@@ -522,17 +533,19 @@ function showDay(i: number): string | null {
         </div>
         <div v-if="tab === 'stream' && heatDays.length" class="heat" title="Activity per day; click to jump">
           <span>{{ heatRange.start }}</span>
-          <div class="cells">
+          <div class="cells" @pointerover="showHeatHint" @focusin="showHeatHint" @pointerleave="heatHint = null" @focusout="heatHint = null">
             <button
               v-for="d in heatDays"
               :key="d.day"
               type="button"
               :data-l="d.level"
-              :title="`${d.day} · ${d.events} events`"
+              :data-heat-day="d.day"
+              :aria-label="heatText(d)"
               :class="{ sel: beforeJump === dayEndCursor(d.day) }"
               @click="jumpDay(d.day)"
             />
           </div>
+          <UTooltip :open="!!heatHint" :reference="heatHint?.el" :text="heatHint?.text" />
           <button v-if="beforeJump" type="button" class="clear" @click="clearJump">clear</button>
           <span v-else>{{ heatRange.end }}</span>
         </div>
@@ -588,8 +601,8 @@ function showDay(i: number): string | null {
           </button>
         </div>
 
-        <div v-if="!historyOn" class="banner info">History needs the research database.</div>
-        <div v-if="error" class="banner danger">{{ error }}</div>
+        <UAlert v-if="!historyOn" :color="alertColor('info')" variant="subtle" class="mt-3" description="History needs the research database." />
+        <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
         <div v-if="loading && !events.length" class="empty">Loading…</div>
         <UEmpty v-else-if="!events.length" icon="i-lucide-history" title="No events yet." variant="naked" size="sm" />
 
@@ -635,7 +648,7 @@ function showDay(i: number): string | null {
           :namespace="namespace"
           :name="name"
         />
-        <div v-else-if="milestoneFailed" class="banner danger">The milestone could not be loaded.</div>
+        <UAlert v-else-if="milestoneFailed" :color="alertColor('danger')" variant="subtle" class="mt-3" description="The milestone could not be loaded." />
         <div v-else class="empty">Loading…</div>
       </div>
       <div v-else-if="tab === 'needs'" class="scroll board">
@@ -645,7 +658,7 @@ function showDay(i: number): string | null {
           :name="name"
           :milestone="milestone"
         />
-        <div v-else-if="milestoneFailed" class="banner danger">The milestone could not be loaded.</div>
+        <UAlert v-else-if="milestoneFailed" :color="alertColor('danger')" variant="subtle" class="mt-3" description="The milestone could not be loaded." />
         <div v-else class="empty">Loading…</div>
       </div>
       <div v-else-if="tab === 'decisions'" class="scroll board">
@@ -681,7 +694,7 @@ function showDay(i: number): string | null {
           :milestone="milestone"
           :project="project"
         />
-        <div v-else-if="milestoneFailed" class="banner danger">The milestone could not be loaded.</div>
+        <UAlert v-else-if="milestoneFailed" :color="alertColor('danger')" variant="subtle" class="mt-3" description="The milestone could not be loaded." />
         <div v-else class="empty">Loading…</div>
       </div>
       <div v-else-if="tab === 'retrospective'" class="scroll board">
@@ -691,7 +704,7 @@ function showDay(i: number): string | null {
           :name="name"
           :milestone="milestone"
         />
-        <div v-else-if="milestoneFailed" class="banner danger">The milestone could not be loaded.</div>
+        <UAlert v-else-if="milestoneFailed" :color="alertColor('danger')" variant="subtle" class="mt-3" description="The milestone could not be loaded." />
         <div v-else class="empty">Loading…</div>
       </div>
       <div v-else-if="tab === 'plans'" class="scroll board">
@@ -712,7 +725,7 @@ function showDay(i: number): string | null {
           <Board v-if="milestoneIID" :tasks="milestoneTasks" />
           <ProjectBoards v-else-if="project" :namespace="namespace" :name="name" :project="project" />
         </template>
-        <div v-if="error" class="banner danger">{{ error }}</div>
+        <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
         <div v-if="!project && !error" class="empty">Loading…</div>
       </div>
     </div>

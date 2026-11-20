@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import UAlert from '@nuxt/ui/components/Alert.vue'
+import UTooltip from '@nuxt/ui/components/Tooltip.vue'
+import { alertColor } from '../badgeTone'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import Markdown from '../components/Markdown.vue'
@@ -86,7 +89,7 @@ async function remove() {
   <NotFound v-if="notFound" />
   <div v-else class="page">
 
-    <div v-if="error" class="banner danger [overflow-wrap:anywhere]">{{ error }}</div>
+    <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3 [overflow-wrap:anywhere]" :description="error" />
     <div v-if="loading && !r" class="card empty">Loading…</div>
 
     <template v-if="r && data">
@@ -140,28 +143,25 @@ async function remove() {
           <span>Feeds:</span>
           <template v-for="(s, i) in r.sources" :key="s.url">
             <span v-if="i" aria-hidden="true">·</span>
-            <a
-              v-if="safeURL(s.url)"
-              :href="safeURL(s.url)"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="inline-flex min-h-11 items-center [overflow-wrap:anywhere] tablet:min-h-0"
-              :title="s.topic || undefined"
-            >{{ feedLabel(s) }}</a>
+            <UTooltip v-if="safeURL(s.url)" :text="s.topic" :disabled="!s.topic">
+              <a
+                :href="safeURL(s.url)"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="inline-flex min-h-11 items-center [overflow-wrap:anywhere] tablet:min-h-0"
+              >{{ feedLabel(s) }}</a>
+            </UTooltip>
             <span v-else class="[overflow-wrap:anywhere]" :title="s.topic || undefined">{{ feedLabel(s) }}</span>
           </template>
         </div>
-        <div v-if="deleteError" class="banner danger [overflow-wrap:anywhere]" role="alert">{{ deleteError }}</div>
+        <UAlert v-if="deleteError" role="alert" :color="alertColor('danger')" variant="subtle" class="mt-3 [overflow-wrap:anywhere]" :description="deleteError" />
         <div v-if="!pending && (r.waiting || r.skippedReason)" class="flex flex-wrap items-center gap-2 text-[13px]">
           <Badge v-if="r.waiting" tone="warning">
             waiting for <code>{{ r.waiting.engine }}</code> until {{ clockTime(r.waiting.until, now) }}
           </Badge>
           <span v-if="r.skippedReason" class="text-(--text-2) [overflow-wrap:anywhere]">{{ r.skippedReason }}</span>
         </div>
-        <div v-if="r.run?.outcome === 'failed' && r.run.message" class="banner danger [overflow-wrap:anywhere]">
-          <strong>The last run failed</strong>
-          <span>{{ r.run.message }}</span>
-        </div>
+        <UAlert v-if="r.run?.outcome === 'failed' && r.run.message" :color="alertColor('danger')" variant="subtle" class="mt-3 [overflow-wrap:anywhere]" title="The last run failed" :description="r.run.message" />
       </header>
 
       <div v-if="pending" class="card section flex flex-wrap items-center gap-x-3 gap-y-1.5 px-[18px] py-4" aria-live="polite">

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import UAlert from '@nuxt/ui/components/Alert.vue'
+import { alertColor } from '../badgeTone'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
@@ -268,7 +270,9 @@ const descriptionUI = { root: 'w-full', base: 'min-h-[220px] resize-y font-mono 
         <span v-if="r.postedAt">Posted <RelTime :time="r.postedAt" /></span>
         <ExtLink v-if="r.noteURL" :href="r.noteURL" :class="tap">Comment on GitLab</ExtLink>
       </div>
-      <div v-if="r.failed" class="banner warning [overflow-wrap:anywhere]">No retrospective: {{ r.failed }}</div>
+      <UAlert v-if="r.failed" :color="alertColor('warning')" variant="subtle" class="mt-3 [overflow-wrap:anywhere]">
+        <template #description>No retrospective: {{ r.failed }}</template>
+      </UAlert>
 
       <div v-if="r.text" class="mt-4 px-4 py-3.5 text-sm" :class="box"><Markdown variant="doc" :text="r.text" /></div>
       <p v-else-if="!r.failed" class="mt-3 mb-0 text-[13px] text-(--text-3)">The text of this retrospective is not stored.</p>
@@ -324,7 +328,8 @@ const descriptionUI = { root: 'w-full', base: 'min-h-[220px] resize-y font-mono 
           </li>
         </ul>
 
-        <div v-if="created" class="banner info" role="status">
+        <UAlert v-if="created" role="status" :color="alertColor('info')" variant="subtle" class="mt-3">
+          <template #description>
           <span class="min-w-0 [overflow-wrap:anywhere]">
             Created the milestone %{{ created.iid }}:
             <RouterLink :to="{ name: 'stream-milestone', params: { namespace, name, iid: String(created.iid) } }">
@@ -334,7 +339,8 @@ const descriptionUI = { root: 'w-full', base: 'min-h-[220px] resize-y font-mono 
             <ExtLink :href="created.webURL">on GitLab</ExtLink>. Its autopilot has started; the leftovers show as taken
             after the operator's next poll.
           </span>
-        </div>
+          </template>
+        </UAlert>
 
         <div v-if="owner && step === 'pick' && openNumbers.length" :class="stack" data-draft>
           <UButton v-bind="act" :disabled="!ticked.length || busy" label="Draft follow-up milestone" @click="askDraft" />
@@ -362,7 +368,7 @@ const descriptionUI = { root: 'w-full', base: 'min-h-[220px] resize-y font-mono 
             <span :class="hint">Lets the milestone close without waiting for them.</span>
           </template>
         </div>
-        <div v-if="error" class="banner danger [overflow-wrap:anywhere]" role="alert">{{ error }}</div>
+        <UAlert v-if="error" role="alert" :color="alertColor('danger')" variant="subtle" class="mt-3 [overflow-wrap:anywhere]" :description="error" />
 
         <div v-if="step === 'editing'" class="mt-4" data-editor>
           <h3>Follow-up milestone <span class="font-normal">from leftovers {{ edited.join(', ') }}</span></h3>

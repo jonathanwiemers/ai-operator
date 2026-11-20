@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import UAlert from '@nuxt/ui/components/Alert.vue'
+import { alertColor } from '../badgeTone'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, ref, watch } from 'vue'
@@ -140,8 +142,8 @@ function showDay(i: number): string | null {
 
 <template>
   <div class="istream">
-    <div v-if="!historyOn" class="banner info">History needs the research database.</div>
-    <div v-if="error" class="banner danger">{{ error }}</div>
+    <UAlert v-if="!historyOn" :color="alertColor('info')" variant="subtle" class="mt-3" description="History needs the research database." />
+    <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
     <div v-if="loading && !events.length" class="empty">Loading…</div>
     <UEmpty v-else-if="!events.length" icon="i-lucide-history" title="No events yet." variant="naked" size="sm" />
 

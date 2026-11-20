@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import UAlert from '@nuxt/ui/components/Alert.vue'
+import { alertColor } from '../badgeTone'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { chatPostError } from '../api'
@@ -97,7 +99,7 @@ onUnmounted(() => window.clearInterval(timer))
 
 <template>
   <div class="card overflow-clip">
-    <div v-if="error" class="banner danger">{{ error }}</div>
+    <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
     <UEmpty v-if="!grouped.turns.length" icon="i-lucide-message-square" title="No messages yet." variant="naked" size="sm" />
     <ChatThread v-else :turns="grouped.turns" :replies="grouped.repliesByParent" :decisions="decisions" />
     <div v-if="waiting" class="flex items-center border-t border-(--border) bg-(--surface-2) px-4 py-2.5">

@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import UAlert from '@nuxt/ui/components/Alert.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, ref, watch } from 'vue'
 import { chatPostError } from '../api'
+import { alertColor } from '../badgeTone'
 import { getTaskChat, postTaskChat } from '../client'
 import type { ChatCommand } from '../chatState'
 import { companionOf } from '../companion'
@@ -297,9 +299,13 @@ const wrap = '[overflow-wrap:anywhere]'
       <li v-for="l in limitLines" :key="l">{{ l }}</li>
     </ul>
     <p v-if="endsBy && !exits.length" class="faint">{{ endsBy }}</p>
-    <div v-if="ap.waitingFor && !hold" class="rounded-(--radius-sm) bg-(--tone-info-bg) px-3 py-2 text-(--tone-info-fg)">
-      A run is working on #{{ ap.waitingFor }} now.
-    </div>
+    <UAlert
+      v-if="ap.waitingFor && !hold"
+      :color="alertColor('info')"
+      variant="subtle"
+      class="px-3 py-2"
+      :description="`A run is working on #${ap.waitingFor} now.`"
+    />
     <p v-if="override" class="muted">
       Merge anyway was given by {{ override.by }} <RelTime :time="override.at" />.
     </p>
@@ -387,26 +393,26 @@ const wrap = '[overflow-wrap:anywhere]'
       </template>
     </div>
 
-    <div
-      v-if="mergeAction && confirmHead"
-      class="flex flex-col gap-2 rounded-(--radius-sm) bg-(--tone-warning-bg) px-3 py-2 text-(--tone-warning-fg) tablet:flex-row tablet:flex-wrap tablet:items-center"
-      data-confirm
-    >
-      <span :class="wrap">
-        Merge <code>{{ confirmHead.slice(0, 7) }}</code> without a full review? CI, MR state and approvals still apply.
-      </span>
-      <span :class="stack">
-        <UButton
-          v-bind="act"
-          color="primary"
-          variant="solid"
-          :disabled="!!sending"
-          :label="sending === mergeAction.id ? '…' : 'Confirm'"
-          @click="confirmMerge(mergeAction)"
-        />
-        <UButton v-bind="act" :disabled="!!sending" label="Cancel" @click="confirmHead = ''" />
-      </span>
-    </div>
+    <UAlert v-if="mergeAction && confirmHead" :color="alertColor('warning')" variant="subtle" class="px-3 py-2" data-confirm>
+      <template #description>
+        <span :class="wrap">
+          Merge <code>{{ confirmHead.slice(0, 7) }}</code> without a full review? CI, MR state and approvals still apply.
+        </span>
+      </template>
+      <template #actions>
+        <span :class="stack">
+          <UButton
+            v-bind="act"
+            color="primary"
+            variant="solid"
+            :disabled="!!sending"
+            :label="sending === mergeAction.id ? '…' : 'Confirm'"
+            @click="confirmMerge(mergeAction)"
+          />
+          <UButton v-bind="act" :disabled="!!sending" label="Cancel" @click="confirmHead = ''" />
+          </span>
+      </template>
+    </UAlert>
 
     <p v-if="sent" :class="wrap" role="status">
       <strong>{{ sent.label }}:</strong>

@@ -419,6 +419,26 @@ the files of the custom components that must render one.
   error notes are not empty states and keep their text.
   `buildingBlocks.test.mjs` fails on a "No … yet" or "Nothing …" text in a
   plain element.
+- **Banners.** Paused, problem, error and info notes are `UAlert` with
+  `variant="subtle"` and `:color="alertColor(tone)"` (`badgeTone.ts`), so a
+  banner and a badge of the same tone agree: `warning` for paused,
+  `danger` (the kit's `error`) for a problem or failure, `info`, `success`.
+  A bold lead line is the `title`; links, lists and code go in the
+  `#description` slot, buttons in `#actions`. Pause and problem *cards*
+  with options or a chat stay cards; only their strips (a run working
+  now, the merge confirmation, the compact pause card) are alerts.
+  `buildingBlocks.test.mjs` fails on the old `.banner` class and on a
+  `UAlert` without both props. The sign-in page writes `color="error"`
+  and loads `UAlert` lazily: it is in the initial bundle.
+- **Hints.** A hint on a button or link is a `UTooltip :text` around it,
+  never `title`, so it shows on focus as well as on hover. A control
+  without visible text keeps its `aria-label`. Lists do not get one
+  tooltip per row name; a dense control such as the stream's activity
+  heatmap has one shared tooltip anchored to the cell under the pointer or
+  focus (`reference`). `title` on non-interactive elements (`Truncated`,
+  `<time>`, `<abbr>`) stays. `buildingBlocks.test.mjs` fails on `title=`
+  or `:title=` in the opening tag of `UButton`, `button`, `a`,
+  `RouterLink`, `ULink` or `ExtLink`.
 
 **Imports are explicit.** Auto-imports and component resolution are off
 (`autoImport: false`, `components: false`): `npm run build` runs `vue-tsc`

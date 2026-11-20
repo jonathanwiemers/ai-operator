@@ -1,5 +1,10 @@
 <script setup lang="ts">
+import { defineAsyncComponent } from 'vue'
 import { loginURL } from '../api'
+
+// UAlert loads only with an error, and its colour is the literal of
+// alertColor('danger'): SignIn is in the initial bundle (bundle budget).
+const UAlert = defineAsyncComponent(() => import('@nuxt/ui/components/Alert.vue'))
 
 // The server sends error codes, not text, so a link cannot put words on
 // this page. Show the error once, and do not come back to it after the login.
@@ -29,7 +34,7 @@ const href = loginURL()
       <img src="/logo.svg" alt="" width="56" height="56" />
       <h1>ai-operator</h1>
       <p class="muted">Coding agents that work through your GitLab board. Sign in to follow their work.</p>
-      <div v-if="error" class="banner danger" role="alert">{{ error }}</div>
+      <UAlert v-if="error" role="alert" color="error" variant="subtle" class="w-full text-left" :description="error" />
       <!-- Utilities, not UButton: SignIn is in the initial bundle (main.ts, bundle budget).
            A link, so the phone rule for buttons misses it: min-h-11 makes it 44 px high. -->
       <a
@@ -71,10 +76,5 @@ const href = loginURL()
 
 .box p {
   margin: 0;
-}
-
-.banner {
-  text-align: left;
-  width: 100%;
 }
 </style>

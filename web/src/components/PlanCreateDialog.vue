@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import UAlert from '@nuxt/ui/components/Alert.vue'
+import { alertColor } from '../badgeTone'
 // Create milestone from a plan (R12, Decisions 8, 10): title, final draft, Spec / Autopilot, the appended lines and the estimate.
 import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { createPlanMilestone, getEstimate } from '../client'
@@ -46,20 +48,24 @@ async function create() {
 <template>
   <UModal v-model:open="open" title="Create milestone" :dismissible="!busy" :ui="{ overlay: 'z-40', content: 'z-40 tablet:max-w-3xl' }">
     <template #body>
-      <div v-if="created" class="banner info" role="status" data-plan-created>
+      <UAlert v-if="created" role="status" data-plan-created :color="alertColor('info')" variant="subtle" class="mt-3">
+        <template #description>
         Created the milestone %{{ created.iid }}: <ExtLink :href="created.webURL">on GitLab</ExtLink>.
-      </div>
+        </template>
+      </UAlert>
       <div v-else class="flex flex-col gap-2 text-sm" data-plan-create>
-        <div v-if="warning" class="banner warning" role="status" data-create-warning>
+        <UAlert v-if="warning" role="status" data-create-warning :color="alertColor('warning')" variant="subtle" class="mt-3">
+          <template #description>
           {{ warning }}.
           <RouterLink :to="{ query: tabQuery(route.query, 'decisions', planTabs) }" @click="open = false">Review them</RouterLink>
-        </div>
+          </template>
+        </UAlert>
         <UInput v-model="title" :maxlength="255" aria-label="Title" placeholder="Title" />
         <UTextarea v-model="text" :rows="14" spellcheck="true" aria-label="Description" :ui="{ base: 'font-mono text-base/5 tablet:text-[13px]/5' }" />
         <div class="flex gap-4"><USwitch v-model="spec" label="Spec" /><USwitch v-model="autopilot" label="Autopilot" /></div>
         <pre class="m-0 text-xs text-(--text-2)" aria-label="Lines the operator appends">{{ planHeaderLines(spec, autopilot).join('\n') }}</pre>
         <span data-estimate>Estimate: {{ estimate }}</span>
-        <div v-if="error" class="banner danger [overflow-wrap:anywhere]" role="alert">{{ error }}</div>
+        <UAlert v-if="error" role="alert" :color="alertColor('danger')" variant="subtle" class="mt-3 [overflow-wrap:anywhere]" :description="error" />
       </div>
     </template>
     <template #footer>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import UAlert from '@nuxt/ui/components/Alert.vue'
+import { alertColor } from '../badgeTone'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -105,8 +107,8 @@ async function start(p: PlanProject) {
         />
       </div>
     </div>
-    <div v-if="startError" class="banner danger" role="alert">{{ startError }}</div>
-    <div v-if="error" class="banner danger">{{ error }}</div>
+    <UAlert v-if="startError" role="alert" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="startError" />
+    <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
     <p v-else-if="!overview" class="muted">Loading…</p>
     <UEmpty v-else-if="!overview.plans.length" icon="i-lucide-map" title="No plans yet." class="section" />
     <template v-else>

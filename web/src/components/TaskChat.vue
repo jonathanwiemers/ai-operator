@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import UAlert from '@nuxt/ui/components/Alert.vue'
+import UTooltip from '@nuxt/ui/components/Tooltip.vue'
+import { alertColor } from '../badgeTone'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
@@ -301,7 +304,7 @@ onUnmounted(() => {
 
 <template>
   <div class="card chat">
-    <div v-if="error" class="banner danger">{{ error }}</div>
+    <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
     <div v-if="loading && !messages.length" class="empty">Loading…</div>
     <template v-else>
       <div v-if="hasOlder" class="older">
@@ -399,20 +402,22 @@ onUnmounted(() => {
           </div>
           <div v-else-if="taskType === 'Coordinate' && proposals?.length" :class="cmds">
             <template v-for="p in proposals" :key="p.id">
-              <UButton
-                v-bind="chip"
-                :label="`Accept P${p.id}`"
-                :disabled="sending"
-                :title="p.summary"
-                @click="postCommand({ cmd: 'accept', proposal: p.id })"
-              />
-              <UButton
-                v-bind="chip"
-                :label="`Reject P${p.id}`"
-                :disabled="sending"
-                :title="p.summary"
-                @click="postCommand({ cmd: 'reject', proposal: p.id })"
-              />
+              <UTooltip :text="p.summary" :disabled="!p.summary">
+                <UButton
+                  v-bind="chip"
+                  :label="`Accept P${p.id}`"
+                  :disabled="sending"
+                  @click="postCommand({ cmd: 'accept', proposal: p.id })"
+                />
+              </UTooltip>
+              <UTooltip :text="p.summary" :disabled="!p.summary">
+                <UButton
+                  v-bind="chip"
+                  :label="`Reject P${p.id}`"
+                  :disabled="sending"
+                  @click="postCommand({ cmd: 'reject', proposal: p.id })"
+                />
+              </UTooltip>
             </template>
           </div>
         </template>

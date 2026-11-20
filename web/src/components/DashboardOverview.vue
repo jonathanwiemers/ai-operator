@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import UAlert from '@nuxt/ui/components/Alert.vue'
+import { alertColor } from '../badgeTone'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import { computed } from 'vue'
 import EngineUsage from './EngineUsage.vue'
@@ -38,7 +40,7 @@ function runningFor(w: WorkingNow): string {
 
 <template>
   <div class="overflow-y-auto px-4 pt-4 pb-10 tablet:px-7">
-    <div v-if="error" class="banner danger">{{ error }}</div>
+    <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
     <div v-if="loading && !overview" class="empty">Loading…</div>
     <template v-else-if="overview">
       <ul class="stat-tiles" aria-label="Summary">
@@ -46,9 +48,7 @@ function runningFor(w: WorkingNow): string {
           <StatTile :label="c.label" :value="c.value" :warn="c.warn" :to="chipLink(c)" :data-chip-costs="c.costs || undefined" />
         </li>
       </ul>
-      <div v-if="!overview.history" class="banner info">
-        Done milestones and spend need the research database.
-      </div>
+      <UAlert v-if="!overview.history" :color="alertColor('info')" variant="subtle" class="mt-3" description="Done milestones and spend need the research database." />
 
       <section class="section">
         <h2 class="text-[15px]">Working now</h2>

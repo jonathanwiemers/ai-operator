@@ -4296,6 +4296,19 @@ test.describe('search palette', () => {
     })
   }
 
+  // Hints are UTooltip, not title (decision 7): they show on focus too.
+  test('the search button shows its hint on focus@1280', async ({ page, baseURL }) => {
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await page.setViewportSize({ width: 1280, height: 800 })
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, start, problems)
+    await page.goto(start.path)
+    await start.ready(page)
+    await page.getByRole('button', { name: /^Search \(/ }).focus()
+    await expect(page.getByRole('tooltip')).toHaveText(/^Search \(/)
+    await noProblems(page, problems)
+  })
+
   const picks = [
     { what: 'a milestone', type: 'captures', option: /^%14 Payment providers/, url: /\/projects\/team-a\/shop\/milestones\/14$/ },
     { what: 'a merge request', type: '!298', option: /^#281 Support refunds/, url: /\/projects\/team-a\/shop\/tasks\/shop-281-implement$/ },

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import UAlert from '@nuxt/ui/components/Alert.vue'
+import { alertColor } from '../badgeTone'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import { computed, ref, toRaw, watch } from 'vue'
 import { getSpend, LoginRequiredError } from '../client'
@@ -107,7 +109,7 @@ async function toggle(r: SpendChild) {
 <template>
   <section v-if="!hidden && (data || error)" class="section">
     <h3>Agent calls</h3>
-    <div v-if="error" class="banner danger">{{ error }}</div>
+    <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
     <template v-if="data">
       <div v-if="data.totals.calls || data.totals.checkpoints" class="card mb-2.5 flex flex-wrap gap-x-4.5 gap-y-1.5 px-4 py-2.5">
         <span><strong>{{ spendUSD(data.totals) }}</strong></span>
@@ -149,7 +151,7 @@ async function toggle(r: SpendChild) {
           </template>
           <template #detail="{ row: r }">
             <div v-if="st(r.key).loading" class="faint">Loading…</div>
-            <div v-else-if="st(r.key).error" class="banner danger">{{ st(r.key).error }}</div>
+            <UAlert v-else-if="st(r.key).error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="st(r.key).error" />
             <div v-else-if="!st(r.key).calls.length" class="faint">
               No calls recorded for this run (cost only, from before token tracking).
             </div>

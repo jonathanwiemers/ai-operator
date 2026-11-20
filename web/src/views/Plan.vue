@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import UAlert from '@nuxt/ui/components/Alert.vue'
+import { alertColor } from '../badgeTone'
 // One plan (R11): header with phase, spend / cap, budget raise and (in ⋯) delete;
 // chat left, the right pane with the tabs Draft / Decisions, on phones the
 // tabs Chat / Decisions / Draft (R6). One ?tab= serves both layouts.
@@ -105,8 +107,8 @@ onUnmounted(() => window.clearInterval(timer))
         </HeaderActions>
       </template>
     </UPageHeader>
-    <div v-if="raiseError" class="banner danger">{{ raiseError }}</div>
-    <div v-if="error" class="banner danger">{{ error }}</div>
+    <UAlert v-if="raiseError" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="raiseError" />
+    <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
     <div v-if="!view" class="empty">Loading…</div>
     <template v-else>
       <RouteTabs class="mb-3 w-fit tablet:hidden" :tabs="planTabs" :active="tab" :to="tabTo" label="Plan"

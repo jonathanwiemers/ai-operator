@@ -31,3 +31,11 @@ export const toneText: Record<Tone, string> = {
   danger: 'text-(--tone-danger-fg)',
   muted: 'text-(--text-3)',
 }
+
+// alertColor is the colour of a UAlert banner of a tone (decision 7: one
+// colour per tone): the colour a Badge of that tone has, so a paused banner
+// and a paused badge agree. Banners are variant="subtle" everywhere.
+export type AlertColor = BadgeLook['color']
+export function alertColor(tone: Tone): AlertColor {
+  return badgeLook[tone].color
+}

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import UAlert from '@nuxt/ui/components/Alert.vue'
+import { alertColor } from '../badgeTone'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, ref } from 'vue'
@@ -98,7 +100,7 @@ const chip = { color: 'neutral', variant: 'outline', size: 'sm' } as const
             <UButton v-bind="chip" label="Reject" :disabled="sending != null" @click="decide('reject', p.id)" />
           </div>
         </div>
-        <div v-if="sendError" class="banner danger">{{ sendError }}</div>
+        <UAlert v-if="sendError" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="sendError" />
       </div>
     </section>
 

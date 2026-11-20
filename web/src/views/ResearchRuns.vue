@@ -1,11 +1,13 @@
 <script setup lang="ts">
+import UAlert from '@nuxt/ui/components/Alert.vue'
+import { alertColor } from '../badgeTone'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
 import { pageHeaderUi } from '../pageHeader'
 import { computed, onMounted, ref, watch } from 'vue'
 import { getResearchRuns, LoginRequiredError, NotFoundError } from '../client'
-import { absTime, cost, runLine, type Tone } from '../format'
+import { cost, runLine, type Tone } from '../format'
 import { live } from '../live'
 import Badge from '../components/Badge.vue'
 import DataList, { type DataListColumn } from '../ui/DataList.vue'
@@ -106,7 +108,7 @@ watch(
 
     <UPageHeader title="Run history" :description="name" :ui="pageHeaderUi" />
 
-    <div v-if="error" class="banner danger">{{ error }}</div>
+    <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
     <div v-if="loading && !runs.length" class="card empty">Loading…</div>
     <UEmpty
       v-else-if="!loading && !runs.length && !error"
@@ -121,7 +123,6 @@ watch(
           <RouterLink
             :to="`${base}/runs/${encodeURIComponent(r.id)}`"
             class="font-semibold text-(--text) after:absolute after:inset-0 hover:text-(--link) hover:no-underline"
-            :title="absTime(r.startedAt)"
           >
             <RelTime :time="r.startedAt" />
           </RouterLink>

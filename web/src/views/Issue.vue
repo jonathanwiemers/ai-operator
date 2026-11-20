@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import UAlert from '@nuxt/ui/components/Alert.vue'
+import { alertColor } from '../badgeTone'
 import { computed, watchEffect } from 'vue'
 import { setCrumbNames } from '../crumbNames'
 import { costTooltip } from '../format'
@@ -73,7 +75,7 @@ const actions = computed(() => {
 <template>
   <NotFound v-if="notFound" />
   <div v-else class="page">
-    <div v-if="error" class="banner danger">{{ error }}</div>
+    <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
     <div v-if="loading && !v" class="card empty">Loading…</div>
 
     <template v-if="v">

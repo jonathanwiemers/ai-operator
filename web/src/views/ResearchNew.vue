@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import UAlert from '@nuxt/ui/components/Alert.vue'
+import { alertColor } from '../badgeTone'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UFormField from '@nuxt/ui/components/FormField.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
@@ -130,7 +132,7 @@ const selectProps = {
   <div class="page">
     <UPageHeader title="New research" :ui="pageHeaderUi" />
 
-    <div v-if="loadError" class="banner danger [overflow-wrap:anywhere]">{{ loadError }}</div>
+    <UAlert v-if="loadError" :color="alertColor('danger')" variant="subtle" class="mt-3 [overflow-wrap:anywhere]" :description="loadError" />
     <div v-if="!form && !loadError" class="card empty">Loading…</div>
 
     <form
@@ -189,12 +191,16 @@ const selectProps = {
           Projects without a writer login (<code>spec.research.writerSecret</code>) cannot store results.
         </template>
       </UFormField>
-      <div v-else-if="form.projects.length === 0" class="banner warning [overflow-wrap:anywhere]">
+      <UAlert v-else-if="form.projects.length === 0" :color="alertColor('warning')" variant="subtle" class="mt-3 [overflow-wrap:anywhere]">
+        <template #description>
         There is no AgentProject in <code>{{ form.namespace }}</code> to run researches with.
-      </div>
-      <div v-else-if="selected && !selected.available" class="banner warning [overflow-wrap:anywhere]">
+        </template>
+      </UAlert>
+      <UAlert v-else-if="selected && !selected.available" :color="alertColor('warning')" variant="subtle" class="mt-3 [overflow-wrap:anywhere]">
+        <template #description>
         The project {{ selected.name }} cannot run researches: {{ selected.reason }}.
-      </div>
+        </template>
+      </UAlert>
       <p v-else-if="errors.project" class="m-0 text-[13px] text-(--tone-danger-fg) [overflow-wrap:anywhere]" role="alert">
         {{ errors.project }}
       </p>

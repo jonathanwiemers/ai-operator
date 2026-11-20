@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import UTooltip from '@nuxt/ui/components/Tooltip.vue'
 import { computed } from 'vue'
 import { companionLabel, companionTitle, companionTone } from '../companion'
 import type { CompanionView } from '../types'
@@ -16,8 +17,10 @@ const title = computed(() => companionTitle(props.companion))
 </script>
 
 <template>
-  <ExtLink v-if="!plain && companion.mrURL" :href="companion.mrURL" class="hover:no-underline" :title="title">
-    <Badge :tone="tone" :title="title">companion: {{ label }}</Badge>
-  </ExtLink>
+  <UTooltip v-if="!plain && companion.mrURL" :text="title">
+    <ExtLink :href="companion.mrURL" class="hover:no-underline">
+      <Badge :tone="tone">companion: {{ label }}</Badge>
+    </ExtLink>
+  </UTooltip>
   <Badge v-else :tone="tone" :title="title">companion: {{ label }}</Badge>
 </template>

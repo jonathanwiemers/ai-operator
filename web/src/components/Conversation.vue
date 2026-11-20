@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import UAlert from '@nuxt/ui/components/Alert.vue'
+import { alertColor } from '../badgeTone'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
@@ -143,8 +145,10 @@ watch(() => props.stamp, loadThread)
 
 <template>
   <div class="card overflow-hidden">
-    <div v-if="gitlabError" class="banner warning">Connecting GitLab did not work: {{ gitlabError }}. Try again.</div>
-    <div v-if="error" class="banner danger">{{ error }}</div>
+    <UAlert v-if="gitlabError" :color="alertColor('warning')" variant="subtle" class="mt-3">
+      <template #description>Connecting GitLab did not work: {{ gitlabError }}. Try again.</template>
+    </UAlert>
+    <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
     <div v-if="status && !status.connected && status.login" class="px-4 py-3.5">
       <p class="mt-0 mb-2.5">Connect your GitLab account to see the comments here and write comments, in your own name.</p>
       <UButton :href="connectURL" color="primary" label="Connect GitLab" />
