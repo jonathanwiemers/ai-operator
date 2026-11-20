@@ -5,6 +5,7 @@
 // that filters the whole page (costs.ts's breakdownLink); a click on its bar
 // does the same. Model rows and Other are not links.
 import UButton from '@nuxt/ui/components/Button.vue'
+import UTabs from '@nuxt/ui/components/Tabs.vue'
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { breakdownRows, breakdownSummary, formatUSD, unknownNote, type BreakdownRow, type ChartToken } from '../chartData'
@@ -17,6 +18,12 @@ const props = defineProps<{ data: CostsView; filters: CostFilters }>()
 const router = useRouter()
 
 const dimension = ref<CostGroup>('project')
+// The dimension is a local switch (decision 8): UTabs pills.
+const dimensionItems = costGroups.map((g) => ({ value: g, label: g }))
+function setDimension(v: string | number) {
+  const g = costGroups.find((x) => x === v)
+  if (g) dimension.value = g
+}
 const tableOpen = ref(false)
 
 const source = computed(() => {
@@ -64,20 +71,17 @@ const keyOf = (r: BreakdownRow) => (r.key === '\u0000other' ? 'other' : r.key)
       <span class="faint">Known cost by {{ dimension }}; a row filters the page</span>
     </div>
     <div class="card flex min-w-0 flex-col gap-3 p-3 tablet:p-4">
-      <div class="flex flex-wrap gap-2" role="group" aria-label="Break down by">
-        <UButton
-          v-for="g in costGroups"
-          :key="g"
-          :label="g"
-          color="neutral"
-          size="sm"
-          class="min-h-11 tablet:min-h-0"
-          :variant="dimension === g ? 'soft' : 'outline'"
-          :aria-pressed="dimension === g"
-          :data-where-dimension="g"
-          @click="dimension = g"
-        />
-      </div>
+      <UTabs
+        :model-value="dimension"
+        :items="dimensionItems"
+        variant="pill"
+        size="sm"
+        :content="false"
+        class="self-start"
+        aria-label="Break down by"
+        data-where-dimension
+        @update:model-value="setDimension"
+      />
       <HorizontalBars :rows="rows" :summary="summary" @select="open" />
       <ul class="m-0 flex list-none flex-col gap-1 p-0 text-[13px]" aria-label="Legend" data-chart-legend>
         <li v-for="r in rows" :key="r.key" class="flex min-w-0 items-baseline gap-1.5" :data-legend-key="keyOf(r)">

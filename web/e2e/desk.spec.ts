@@ -1112,6 +1112,80 @@ test('costs filters live in the URL, no reload@1280', async ({ page, baseURL }) 
   expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
 })
 
+// The Metrics filters (decision 8, #630): below 760 px the grouping and the
+// value filters sit in a sheet from the bottom behind "Filters (n)"; a pick
+// replaces the query, and Back closes the sheet. From 760 px they are inline.
+test('metrics filters in a sheet on a phone@375', async ({ page, baseURL }, testInfo) => {
+  const route = routes.find((r) => r.name === 'metrics')!
+  const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+  const requests: URLSearchParams[] = []
+  page.on('request', (req) => {
+    const u = new URL(req.url())
+    if (u.pathname === '/api/v1/costs') requests.push(u.searchParams)
+  })
+  await page.setViewportSize({ width: 375, height: 812 })
+  await page.clock.setFixedTime(now)
+  await watch(page, new URL(baseURL ?? '').origin, problems)
+  await mockAPI(page, route, problems)
+  await page.goto('/metrics?range=30d')
+  await route.ready(page)
+
+  // The range stays beside the header actions; the value filters are hidden.
+  await expect(page.locator('[data-filter=range]')).toBeVisible()
+  for (const f of ['group', 'project', 'kind', 'engine']) await expect(page.locator(`[data-filter=${f}]`)).toHaveCount(0)
+  const open = page.locator('[data-filters-open]')
+  await expect(open).toHaveText('Filters')
+
+  await open.click()
+  const sheet = page.getByRole('dialog', { name: 'Filters' })
+  await expect(sheet).toBeVisible()
+  await sheet.evaluate((e) => Promise.all(e.getAnimations().map((a) => a.finished)))
+  await sheet.locator('[data-filter=project]').click()
+  await page.getByRole('option', { name: 'team-a/shop', exact: true }).click()
+  await expect(page).toHaveURL(/\/metrics\?project=team-a(%2F|\/)shop$/)
+  await expect.poll(() => requests.at(-1)?.get('project')).toBe('team-a/shop')
+  await expect(sheet.locator('[data-filter=project]')).toContainText('team-a/shop')
+  const shot = join(testInfo.project.outputDir, '..', 'screenshots', 'metrics-filters-sheet@375.png')
+  await page.screenshot({ path: shot })
+  await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
+
+  // Back closes the sheet and keeps the filter.
+  await page.goBack()
+  await expect(sheet).toBeHidden()
+  await expect(page).toHaveURL(/\/metrics\?project=team-a(%2F|\/)shop$/)
+  await expect(open).toHaveText('Filters (1)')
+  problems.csp.push(...(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)))
+  expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+})
+
+test('metrics filters inline from 760 px@1180', async ({ page, baseURL }) => {
+  const route = routes.find((r) => r.name === 'metrics-filtered')!
+  const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+  await page.setViewportSize({ width: 1180, height: 800 })
+  await page.clock.setFixedTime(now)
+  await watch(page, new URL(baseURL ?? '').origin, problems)
+  await mockAPI(page, route, problems)
+  await page.goto(route.path)
+  await route.ready(page)
+
+  await expect(page.locator('[data-filters-open]')).toHaveCount(0)
+  const tops = new Set<number>()
+  for (const f of ['group', 'project', 'kind', 'engine']) {
+    const box = (await page.locator(`[data-filter=${f}]`).boundingBox())!
+    tops.add(Math.round(box.y))
+  }
+  expect(tops.size, 'the filters sit in one row').toBe(1)
+  await expect(page.locator('[data-filter=kind]')).toContainText('implement')
+  // The menus search: typing narrows the engines.
+  await page.locator('[data-filter=engine]').click()
+  await page.getByPlaceholder('Search…').fill('curs')
+  await expect(page.getByRole('option')).toHaveText(['cursor'])
+  await page.getByRole('option', { name: 'cursor' }).click()
+  await expect(page).toHaveURL(/engine=cursor/)
+  problems.csp.push(...(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)))
+  expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+})
+
 // The old /costs URL redirects to /metrics with the same filters, and a project
 // stream links to its per-project view.
 test('costs redirects to metrics with the same filters@1280', async ({ page, baseURL }) => {
@@ -1284,14 +1358,16 @@ for (const { width, height } of [widths[0]!, widths[2]!]) {
     await expect(legend).toHaveCount(2)
     await expect(legend.first().getByRole('link')).toHaveAttribute('href', /^\/metrics\?project=team-a(%2F|\/)shop$/)
 
-    await chart.locator('[data-where-dimension=model]').click()
+    await chart.locator('[data-where-dimension]').getByRole('tab', { name: 'model', exact: true }).click()
     await expect(chart.locator('[data-chart-legend] li')).toHaveCount(2)
     await expect(chart.locator('[data-chart-legend] a')).toHaveCount(0)
 
-    await chart.locator('[data-where-dimension=engine]').click()
+    await chart.locator('[data-where-dimension]').getByRole('tab', { name: 'engine', exact: true }).click()
     await chart.locator('[data-chart-legend] a', { hasText: 'cursor' }).click()
     await expect(page).toHaveURL(/\/metrics\?.*engine=cursor$/)
-    await expect(page.locator('[data-filter=engine]')).toContainText('cursor')
+    // On a phone the filters sit behind Filters (n): project and engine.
+    if (width < 760) await expect(page.locator('[data-filters-open]')).toHaveText('Filters (2)')
+    else await expect(page.locator('[data-filter=engine]')).toContainText('cursor')
 
     problems.csp.push(...(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)))
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
@@ -3000,23 +3076,23 @@ test.describe('milestone decisions', () => {
       await search.fill('settlement')
       await expect(page).toHaveURL(/[?&]q=settlement(&|$)/)
       await expect(cards).toHaveCount(2)
-      // A chip into ?state=.
-      const superseded = main.getByRole('button', { name: 'Superseded', exact: true })
+      // A pill into ?state=.
+      const superseded = main.locator('[data-decision-state]').getByRole('tab', { name: 'Superseded', exact: true })
       await superseded.click()
       await expect(page).toHaveURL(/[?&]state=superseded(&|$)/)
-      await expect(superseded).toHaveAttribute('aria-pressed', 'true')
+      await expect(superseded).toHaveAttribute('aria-selected', 'true')
       await expect(cards).toHaveCount(1)
       // Both survive a reload.
       await page.reload()
       await expect(search).toHaveValue('settlement')
-      await expect(superseded).toHaveAttribute('aria-pressed', 'true')
+      await expect(superseded).toHaveAttribute('aria-selected', 'true')
       await expect(cards).toHaveCount(1)
       await expect(cards.first()).toHaveAttribute('id', 'D280-1')
       // A filter that excludes everything does not say nothing is recorded.
       await search.fill('no such decision')
       await expect(main.getByText('No decisions match.')).toBeVisible()
       // All drops the parameter.
-      await main.getByRole('button', { name: 'All', exact: true }).click()
+      await main.locator('[data-decision-state]').getByRole('tab', { name: 'All', exact: true }).click()
       await expect(page).not.toHaveURL(/state=/)
       await search.fill('')
       await expect(page).not.toHaveURL(/[?&]q=/)
@@ -3752,7 +3828,7 @@ test.describe('spend', () => {
           expect(scrolls.children, 'the children table scrolls in its container').toBeGreaterThan(0)
           expect(scrolls['kind-model'], 'the kind and model table scrolls in its container').toBeGreaterThan(0)
           const heights = await main.evaluate((m) =>
-            [...m.querySelectorAll('[data-spend-crumbs] a, [data-spend-unit] a, [data-spend="children"] tbody a')].map((a) => ({
+            [...m.querySelectorAll('[data-spend-crumbs] a, [data-spend-unit] [role=tab], [data-spend="children"] tbody a')].map((a) => ({
               text: a.textContent!.trim().slice(0, 30),
               height: Math.round(a.getBoundingClientRect().height),
             })),

@@ -45,17 +45,17 @@ async function open(page: Page, baseURL: string | undefined, path: string, size:
   return problems
 }
 
-const switcher = (page: Page) => page.getByRole('navigation', { name: 'Inbox view' })
+const switcher = (page: Page) => page.locator('[data-inbox-view]')
 const handledRows = (page: Page) => page.locator('main [data-handled] > li')
 
 for (const size of widths) {
   test(`the switch changes ?view=@${size.width}`, async ({ page, baseURL }) => {
     const problems = await open(page, baseURL, '/inbox', size)
-    await expect(switcher(page).getByRole('link', { name: 'Open' })).toHaveAttribute('aria-current', 'page')
-    await switcher(page).getByRole('link', { name: 'Handled' }).click()
+    await expect(switcher(page).getByRole('tab', { name: 'Open' })).toHaveAttribute('aria-selected', 'true')
+    await switcher(page).getByRole('tab', { name: 'Handled' }).click()
     await expect(page).toHaveURL(/\/inbox\?view=handled$/)
-    await expect(switcher(page).getByRole('link', { name: 'Handled' })).toHaveAttribute('aria-current', 'page')
-    await switcher(page).getByRole('link', { name: 'Open' }).click()
+    await expect(switcher(page).getByRole('tab', { name: 'Handled' })).toHaveAttribute('aria-selected', 'true')
+    await switcher(page).getByRole('tab', { name: 'Open' }).click()
     await expect(page).toHaveURL(/\/inbox$/)
     expect(problems).toEqual([])
   })

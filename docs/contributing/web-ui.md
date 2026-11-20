@@ -513,6 +513,28 @@ bucket is a local date already) and `formatUSD`/`formatTokens`, and for the
 wrappers `stackedChart` (labels, series with token and range total, unknown
 calls per bucket), `chartSummary` (the canvas's text) and `readChartColors`.
 
+### Filters
+
+There are two filter kinds (decision 8 of
+[the one-look spec](../specs/desk-one-look.spec.md)):
+
+- **Switches** between a few views of one list or chart are `UTabs` with
+  `variant="pill"`, `size="sm"` and `:content="false"`, bound to the
+  same state as before: the Inbox's *Open | Handled* (`?view=`), the
+  decisions' *All / Active / Superseded* (`?state=`), the Spend tab's
+  *tokens | USD* (`?spendUnit=`) and *Where it goes*'s dimension (local).
+  Page sections stay [RouteTabs](#routetabs). Chips and `UButtonGroup`
+  toggles are not used.
+- **Value filters** (project, kind, engine) are `USelectMenu`, single-select
+  with an *All* item and a search field. On the Metrics page they sit in one
+  wrapping row from 760 px; below, a *Filters (n)* button opens them in a
+  `USlideover` from the bottom, `n` counting the filters not set to *All*
+  (`activeFilters` in `metrics.ts`, plain *Filters* at 0). The range stays a
+  `USelect` beside the header actions.
+
+`USelectMenu` brings Reka UI's combobox and virtualizer: about 28 kB gzipped
+on the Metrics route (see [Bundle budget](#bundle-budget)).
+
 ### Charts
 
 The Metrics page draws its charts with [Chart.js](https://www.chartjs.org) 4
@@ -712,6 +734,11 @@ useBackClose(open) // <USlideover v-model:open="open">
   held until the entry is popped, then goes on: back from the new page
   returns to the page the sheet was opened on. Forward to the popped entry
   opens the sheet again.
+- `useBackClose(open, { keepOnQuery: true })` (the Metrics filter sheet)
+  lets a `router.replace` that changes only the query through while the
+  sheet is open. The entry gets the new address and is marked again; back
+  carries the address down to the entry below and closes the sheet, so the
+  filters stay.
 - vue-router never sees the entry. The pops within the page are stopped
   before vue-router's `popstate` listener, which is why `main.ts` calls
   `listenForSheets()` before `createWebHistory()`: listeners on `window`
@@ -1063,7 +1090,7 @@ reads `GET …/decisions` from the history database only, never GitLab.
 
 - `MilestoneDecisions.vue` is the tab: `milestone` is the IID, 0 for the
   whole project. The search (`?q=`, written 300 ms after the last key) and
-  the *All / Active / Superseded* chips (`?state=`) live in the URL; the
+  the *All / Active / Superseded* pills (`?state=`) live in the URL; the
   server filters. It groups the cards by issue in the server's order
   (`groupByIssue`); with milestone 0 each group header names its milestone
   (`milestoneLabel` over the `milestones` prop) and links to its tab. The
@@ -1401,8 +1428,8 @@ the database).
   (named in the legend above the table, a model keeps its color in every
   row). Hovering a segment shows the model, its tokens and its cost. The
   bars of a table share one scale, the largest row full width, so rows can
-  be compared (e.g. rising step costs). *tokens | USD* above the table
-  switches the unit, kept in the query (`?spendUnit=usd`, tokens by
+  be compared (e.g. rising step costs). The *tokens | USD* pills above the
+  table switch the unit, kept in the query (`?spendUnit=usd`, tokens by
   default) while drilling down. In USD, a row without a known cost draws
   a faint token bar labelled *n/a* (never a $0 bar, on the scale of the
   other token bars), a model without a known cost is left out of the bar
@@ -1482,7 +1509,9 @@ The filters live in the URL, so a shared link shows the same page:
 the default, `kind`, `model`, `engine`), `?project=<namespace>/<name>`,
 `?kind=` and `?engine=`. An unknown value counts as its default or no
 filter (`web/src/costs.ts`). Changing a filter replaces the query and
-reloads the figures, not the page. Days are the browser's time zone, which
+reloads the figures, not the page. The range is a select beside *Download
+CSV*; the grouping and the value filters are a row from 760 px and a sheet
+behind *Filters (n)* below (see [Filters](#filters)). Days are the browser's time zone, which
 is not in the URL: a shared link shows the same range in your own days.
 
 The KPI row (two columns on phones, three on tablets, six on desktop):
@@ -1530,7 +1559,7 @@ unknown cost in either month. Calls of unknown cost are not in the lines;
 the legend counts them per month, up to today and over the same days.
 
 *Where it goes*: horizontal bars of the known cost by project, kind, model
-or engine, chosen with a segmented switch (it starts on project and is not
+or engine, chosen with `UTabs` pills (it starts on project and is not
 the `group` filter). The top six rows by known cost, then *Other*, which sums
 the rest, so the bars equal the breakdown's totals. A row whose calls all
 have an unknown cost shows *n/a*, never $0, and every row names its calls of
@@ -1663,7 +1692,10 @@ The e2e route cases `costs`, `costs-dark` and `costs-filtered` (`?range=90d&grou
 (`costs@<width>.png`, `costs-dark@<width>.png`) wait for both charts'
 canvases and check overflow and the CSP, `costs` is among the hit-area routes,
 `costs filters live in the URL, no reload@1280` checks that a filter change
-updates the URL and refetches without a reload, and `costs Spend over time
+updates the URL and refetches without a reload, `metrics filters in a sheet
+on a phone@375` opens the sheet, picks a project and closes the sheet with
+back (`metrics-filters-sheet@375.png`), `metrics filters inline from 760
+px@1180` checks the one row and the menus' search, and `costs Spend over time
 legend, table and colours@375` and `@1280` check the canvas's summary, the
 legend's totals, the table view's figures and that the bars are drawn in the
 token colours of light and then dark. `costs This month legend and

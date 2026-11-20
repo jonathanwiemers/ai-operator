@@ -7,7 +7,8 @@ import UFormField from '@nuxt/ui/components/FormField.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
 import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
 import USelect from '@nuxt/ui/components/Select.vue'
-import { computed, ref, watch } from 'vue'
+import USelectMenu from '@nuxt/ui/components/SelectMenu.vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError, getCosts, getCostsMetrics, getCostsTop, getMetricsCode, getMetricsFlow, getMetricsPauses, getProjects, LoginRequiredError, NotFoundError } from '../client'
 import {
@@ -29,6 +30,7 @@ import {
 } from '../costs'
 import { chartSummary, cumulativeMonth, monthSummary, stackedChart, thisMonth, tokensChart, tokensSummary } from '../chartData'
 import { cost, tokenCount } from '../format'
+import { activeFilters, filtersLabel } from '../metrics'
 import { pageHeaderUi } from '../pageHeader'
 import { basisNote, basisTitle, shareLabel, spendTokens, spendUSD, tokenBreakdown, unmeteredNote } from '../spend'
 import type { CostsTopView, CostsView, MetricsCodeView, MetricsFlowView, MetricsPausesView, MetricsView } from '../generated/views'
@@ -46,6 +48,7 @@ import ChartLegend from '../ui/charts/ChartLegend.vue'
 import ChartTable from '../ui/charts/ChartTable.vue'
 import LineCompare from '../ui/charts/LineCompare.vue'
 import StackedBars from '../ui/charts/StackedBars.vue'
+import { useBackClose } from '../ui/useBackClose'
 
 // The Costs page (docs/contributing/web-ui.md, "Metrics page"): what the projects the viewer
 // may see, and research, cost over a range. The filters live in the URL
@@ -154,9 +157,35 @@ function onDate(which: 'from' | 'to', v: string | number) {
   if (next.from && next.to && next.from <= next.to) setFilters({ range: 'custom', from: next.from, to: next.to })
 }
 
-function onFilter(key: 'project' | 'kind' | 'engine', v: string) {
+type ValueKey = 'project' | 'kind' | 'engine'
+function onFilter(key: ValueKey, v: string) {
   setFilters({ [key]: v === all ? undefined : v })
 }
+
+// The value filters (decision 8): searchable single-select menus with an
+// All item (D630-P1), in one wrapping row from 760 px and in a sheet from
+// the bottom behind "Filters (n)" below. The range stays a select beside
+// the header actions (D630-P2); the grouping goes with the value filters.
+const valueFilters = computed(() => [
+  { key: 'project' as ValueKey, label: 'Project', items: projectItems.value },
+  { key: 'kind' as ValueKey, label: 'Kind', items: kindItems },
+  { key: 'engine' as ValueKey, label: 'Engine', items: engineItems },
+])
+const filterCount = computed(() => activeFilters(filters.value))
+
+// The sheet is loaded on phones only, where the Filters button is. Back
+// closes it (useBackClose); it goes when the window widens.
+const USlideover = defineAsyncComponent(() => import('@nuxt/ui/components/Slideover.vue'))
+const phoneQuery = window.matchMedia('(max-width: 759.98px)')
+const phone = ref(phoneQuery.matches)
+const sheetOpen = ref(false)
+useBackClose(sheetOpen, { keepOnQuery: true })
+function onWidth() {
+  phone.value = phoneQuery.matches
+  if (!phoneQuery.matches) sheetOpen.value = false
+}
+onMounted(() => phoneQuery.addEventListener('change', onWidth))
+onBeforeUnmount(() => phoneQuery.removeEventListener('change', onWidth))
 
 const totals = computed(() => data.value?.totals)
 const change = computed(() => (data.value ? changeLabel(costChange(data.value.totals, data.value.previous)) : ''))
@@ -208,15 +237,29 @@ const selectProps = {
   class: 'min-h-11 w-full tablet:min-h-0 tablet:w-auto tablet:min-w-36',
   ui: { base: control, item: 'min-h-11 tablet:min-h-0' },
 } as const
+const menuProps = {
+  ...selectProps,
+  valueKey: 'value',
+  searchInput: { placeholder: 'Search…', ui: { base: control } },
+} as const
 </script>
 
 <template>
   <div class="page">
     <UPageHeader title="Metrics" :description="rangeLine" :ui="pageHeaderUi">
-      <template v-if="data && data.totals.calls > 0" #links>
+      <template #links>
+        <USelect
+          :model-value="filters.range"
+          :items="rangeItems"
+          v-bind="selectProps"
+          class="min-h-11 min-w-36 tablet:min-h-0"
+          aria-label="Range"
+          data-filter="range"
+          @update:model-value="onRange"
+        />
         <!-- A <details> menu, not UDropdownMenu: that adds 16 kB gzipped to
              this route, past its bundle budget. -->
-        <details ref="csvMenu" class="relative" data-costs-csv>
+        <details v-if="data && data.totals.calls > 0" ref="csvMenu" class="relative" data-costs-csv>
           <summary class="card flex min-h-11 cursor-pointer list-none items-center px-3 text-sm font-semibold tablet:min-h-0 tablet:py-1.5">Download CSV</summary>
           <div class="card absolute end-0 z-10 mt-1 flex w-52 flex-col gap-1 p-2">
             <UButton color="neutral" variant="ghost" label="Series" data-csv="series" @click="download('series')" />
@@ -227,9 +270,6 @@ const selectProps = {
     </UPageHeader>
 
     <form class="mb-4 flex flex-col gap-3 tablet:flex-row tablet:flex-wrap tablet:items-end" aria-label="Filters" data-costs-filters @submit.prevent>
-      <UFormField label="Range" name="range" :ui="fieldUI">
-        <USelect :model-value="filters.range" :items="rangeItems" v-bind="selectProps" data-filter="range" @update:model-value="onRange" />
-      </UFormField>
       <template v-if="filters.range === 'custom'">
         <UFormField label="From" name="from" :ui="fieldUI">
           <UInput
@@ -245,25 +285,79 @@ const selectProps = {
           <UInput type="date" :model-value="filters.to" class="w-full tablet:w-auto" :ui="{ base: control }" @update:model-value="onDate('to', $event)" />
         </UFormField>
       </template>
-      <UFormField label="Group by" name="group" :ui="fieldUI">
-        <USelect
-          :model-value="filters.group"
-          :items="groupItems"
-          data-filter="group"
-          v-bind="selectProps"
-          @update:model-value="setFilters({ group: $event as CostFilters['group'] })"
-        />
-      </UFormField>
-      <UFormField label="Project" name="project" :ui="fieldUI">
-        <USelect :model-value="filters.project ?? all" :items="projectItems" v-bind="selectProps" data-filter="project" @update:model-value="onFilter('project', $event)" />
-      </UFormField>
-      <UFormField label="Kind" name="kind" :ui="fieldUI">
-        <USelect :model-value="filters.kind ?? all" :items="kindItems" v-bind="selectProps" data-filter="kind" @update:model-value="onFilter('kind', $event)" />
-      </UFormField>
-      <UFormField label="Engine" name="engine" :ui="fieldUI">
-        <USelect :model-value="filters.engine ?? all" :items="engineItems" v-bind="selectProps" data-filter="engine" @update:model-value="onFilter('engine', $event)" />
-      </UFormField>
+      <UButton
+        v-if="phone"
+        :label="filtersLabel(filterCount)"
+        color="neutral"
+        variant="outline"
+        class="min-h-11 self-start"
+        aria-haspopup="dialog"
+        data-filters-open
+        @click="sheetOpen = true"
+      />
+      <template v-else>
+        <UFormField label="Group by" name="group" :ui="fieldUI">
+          <USelect
+            :model-value="filters.group"
+            :items="groupItems"
+            data-filter="group"
+            v-bind="selectProps"
+            @update:model-value="setFilters({ group: $event as CostFilters['group'] })"
+          />
+        </UFormField>
+        <UFormField v-for="f in valueFilters" :key="f.key" :label="f.label" :name="f.key" :ui="fieldUI">
+          <USelectMenu
+            :model-value="filters[f.key] ?? all"
+            :items="f.items"
+            v-bind="menuProps"
+            :data-filter="f.key"
+            @update:model-value="onFilter(f.key, $event)"
+          />
+        </UFormField>
+      </template>
     </form>
+
+    <!-- Below 760 px: the grouping and the value filters in a sheet from the
+         bottom (docs/contributing/web-ui.md, "Sheets"). -->
+    <USlideover
+      v-if="phone"
+      v-model:open="sheetOpen"
+      side="bottom"
+      title="Filters"
+      description="Group and filter the metrics"
+      close-icon="i-lucide-x"
+      :ui="{
+        content: 'pb-[env(safe-area-inset-bottom)]',
+        header: 'min-h-0 gap-2 py-1 ps-4 pe-1 sm:ps-4 sm:pe-1',
+        title: 'text-[15px] font-bold',
+        description: 'sr-only',
+        close: 'static ms-auto',
+        body: 'flex flex-col gap-3',
+      }"
+    >
+      <template #body>
+        <div class="flex flex-col gap-3" data-filters-sheet>
+          <UFormField label="Group by" name="group" :ui="fieldUI">
+            <USelect
+              :model-value="filters.group"
+              :items="groupItems"
+              data-filter="group"
+              v-bind="selectProps"
+              @update:model-value="setFilters({ group: $event as CostFilters['group'] })"
+            />
+          </UFormField>
+          <UFormField v-for="f in valueFilters" :key="f.key" :label="f.label" :name="f.key" :ui="fieldUI">
+            <USelectMenu
+              :model-value="filters[f.key] ?? all"
+              :items="f.items"
+              v-bind="menuProps"
+              :data-filter="f.key"
+              @update:model-value="onFilter(f.key, $event)"
+            />
+          </UFormField>
+        </div>
+      </template>
+    </USlideover>
 
     <UAlert v-if="error" data-costs-error :color="alertColor('danger')" variant="subtle" class="mt-3 [overflow-wrap:anywhere]" :description="error" />
     <div v-else-if="!data || !totals" class="card empty">Loading…</div>

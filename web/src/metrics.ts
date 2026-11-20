@@ -70,3 +70,21 @@ export function byteLabel(n: number): string {
   const v = n / div
   return `${v < 100 ? v.toFixed(1).replace(/\.0$/, '') : Math.round(v)} ${unit}`
 }
+
+// The value filters of the Metrics page (project, kind, engine; there is no
+// model filter) that sit behind the phone's Filters button.
+export interface ValueFilters {
+  project?: string
+  kind?: string
+  engine?: string
+}
+
+// activeFilters counts the value filters not set to All (absent or empty).
+export function activeFilters(f: ValueFilters): number {
+  return [f.project, f.kind, f.engine].filter((v) => !!v).length
+}
+
+// filtersLabel is the phone's Filters button: "Filters" at 0, "Filters (n)".
+export function filtersLabel(n: number): string {
+  return n > 0 ? `Filters (${n})` : 'Filters'
+}

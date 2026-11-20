@@ -11,6 +11,12 @@
 // view does not reload its data. Listeners on window run in the order they
 // were added, the capture flag does not change that in Chromium: so
 // listenForSheets must run before createWebHistory adds vue-router's.
+//
+// keepOnQuery (a sheet of filters, Metrics): a router.replace that changes
+// only the query, while the sheet is open, goes through and keeps the sheet
+// open. vue-router replaces the sheet's entry; the entry is marked again,
+// and back carries the new address down to the entry below, so closing the
+// sheet keeps the filters.
 import { onBeforeUnmount, watch, type Ref } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -35,7 +41,7 @@ export function listenForSheets(): void {
   })
 }
 
-export function useBackClose(open: Ref<boolean>): void {
+export function useBackClose(open: Ref<boolean>, opts: { keepOnQuery?: boolean } = {}): void {
   if (!listening) throw new Error('useBackClose: listenForSheets() must run before createWebHistory()')
   const router = useRouter()
   const id = ++lastID
@@ -46,12 +52,17 @@ export function useBackClose(open: Ref<boolean>): void {
   // url: the address of the entry, to tell a pop within the page apart from
   // one to another page (a jump of several entries).
   let url = ''
+  // opened: the address when the sheet opened, which the entry below keeps;
+  // state: vue-router's state of the entry after a query change.
+  let opened = ''
+  let state: object | null = null
   // pending: where to go once the entry is gone.
   let pending: string | null = null
 
   function enter(): void {
     if (onEntry || leaving) return
     url = location.href
+    opened = url
     history.pushState({ ...(history.state as object | null), [key]: id }, '', url)
     onEntry = true
   }
@@ -65,9 +76,15 @@ export function useBackClose(open: Ref<boolean>): void {
   // onPop returns true when the pop stays within the page, so vue-router
   // must not see it.
   function onPop(e: PopStateEvent): boolean {
-    const same = location.href === url
-    const mine = same && (e.state as Record<string, unknown> | null)?.[key] === id
+    // below: the entry under the sheet's, whose query is the old one.
+    const below = opened !== url && location.href === opened
+    const same = location.href === url || below
+    const mine = location.href === url && (e.state as Record<string, unknown> | null)?.[key] === id
     if (!onEntry && !leaving && !mine) return false
+    if (below) {
+      history.replaceState(state, '', url)
+      opened = url
+    }
     // The sheet was opened again before the pop of its closing came.
     const reopen = leaving && open.value && pending === null
     leaving = false
@@ -92,17 +109,28 @@ export function useBackClose(open: Ref<boolean>): void {
 
   // A navigation while the entry is on top waits for the entry to go: it
   // is cancelled here and started again once the popstate came.
-  const stopGuard = router.beforeEach((to) => {
+  const stopGuard = router.beforeEach((to, from) => {
     if (!onEntry && !leaving) return true
+    if (opts.keepOnQuery && onEntry && !leaving && to.path === from.path) return true
     pending = to.fullPath
     open.value = false
     leave()
     return false
   })
 
+  // After a query change on the entry, vue-router's state replaced the
+  // marker: mark the entry again.
+  const stopAfter = router.afterEach((to, from, failure) => {
+    if (!opts.keepOnQuery || !onEntry || leaving || failure || to.path !== from.path) return
+    state = { ...(history.state as object | null) }
+    history.replaceState({ ...state, [key]: id }, '', location.href)
+    url = location.href
+  })
+
   handlers.add(onPop)
   onBeforeUnmount(() => {
     stopGuard()
+    stopAfter()
     handlers.delete(onPop)
   })
 }

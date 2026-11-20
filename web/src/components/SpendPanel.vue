@@ -2,8 +2,9 @@
 import UAlert from '@nuxt/ui/components/Alert.vue'
 import { alertColor } from '../badgeTone'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
+import UTabs from '@nuxt/ui/components/Tabs.vue'
 import { computed, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { getSpend, LoginRequiredError, NotFoundError } from '../client'
 import { clockTime, duration, fullTime, tokenCount } from '../format'
 import { useNow } from '../live'
@@ -140,10 +141,16 @@ const childShares = computed(() => shares(children.value.map((c) => c.totals)))
 const unit = computed(() => unitFromQuery(route.query))
 const bars = computed(() => modelBars(children.value, unit.value))
 const subagents = computed(() => [...modelSlots(children.value)])
-const units: { unit: SpendUnit; label: string }[] = [
-  { unit: 'tokens', label: 'tokens' },
-  { unit: 'usd', label: 'USD' },
+const units: { value: SpendUnit; label: string }[] = [
+  { value: 'tokens', label: 'tokens' },
+  { value: 'usd', label: 'USD' },
 ]
+// The unit is a local switch (decision 8), kept in the query.
+const router = useRouter()
+function setUnit(v: string | number) {
+  const u = units.find((x) => x.value === v)?.value
+  if (u) void router.replace({ query: unitQuery(route.query, u) })
+}
 
 // childRows: the children with their position, for the bars and shares.
 type ChildRow = SpendChild & { i: number }
@@ -355,23 +362,17 @@ const mark = 'ms-1.5 rounded-full px-1.5 text-[11px] font-semibold'
               <i class="me-1 inline-block size-2 rounded-xs align-[-1px]" :style="{ background: barColors[slot] }" />{{ m }} (subagent)
             </span>
           </div>
-          <nav
-            class="ms-auto flex overflow-hidden rounded-(--radius-sm) border border-(--border) text-xs"
+          <UTabs
+            :model-value="unit"
+            :items="units"
+            variant="pill"
+            size="sm"
+            :content="false"
+            class="ms-auto"
             aria-label="Bar unit"
             data-spend-unit
-          >
-            <RouterLink
-              v-for="u in units"
-              :key="u.unit"
-              :to="{ query: unitQuery(route.query, u.unit) }"
-              class="px-2.5 py-0.5 no-underline not-first:border-s not-first:border-(--border)"
-              :class="[tap, unit === u.unit ? 'bg-(--surface-3) font-semibold text-(--text)' : 'text-(--text-2)']"
-              :aria-current="unit === u.unit ? 'true' : undefined"
-              replace
-            >
-              {{ u.label }}
-            </RouterLink>
-          </nav>
+            @update:model-value="setUnit"
+          />
         </div>
         <UEmpty v-if="!children.length" icon="i-lucide-receipt" title="No agent calls recorded here." size="sm" />
         <div v-else :class="tableCard">

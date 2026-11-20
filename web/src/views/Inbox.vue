@@ -4,8 +4,9 @@ import { alertColor } from '../badgeTone'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
+import UTabs from '@nuxt/ui/components/Tabs.vue'
 import { computed, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import Badge from '../components/Badge.vue'
 import ExtLink from '../components/ExtLink.vue'
 import Markdown from '../components/Markdown.vue'
@@ -19,20 +20,23 @@ import { getInbox } from '../client'
 import { useResource } from '../live'
 import { pageHeaderUi } from '../pageHeader'
 import { disableNotify, enableNotify, notify, notifyActive, refreshPermission } from '../notify'
-import RouteTabs from '../ui/RouteTabs.vue'
 import Truncated from '../ui/Truncated.vue'
-import type { Tab } from '../streamTabs'
 
 const { data, error, loading } = useResource(() => getInbox, ['project', 'task'])
 
 // The Open | Handled switch lives in ?view=handled; no parameter is Open.
+// A local switch (decision 8): UTabs pills; a pick is a new history
+// entry, as the links were.
 const route = useRoute()
+const router = useRouter()
 const view = computed(() => handledView(route.query.view))
-const views: Tab<HandledView>[] = [
-  { id: 'open', label: 'Open' },
-  { id: 'handled', label: 'Handled' },
+const views: { value: HandledView; label: string }[] = [
+  { value: 'open', label: 'Open' },
+  { value: 'handled', label: 'Handled' },
 ]
-const viewTo = (id: HandledView) => ({ query: id === 'handled' ? { view: 'handled' } : {} })
+function setView(v: string | number) {
+  void router.push({ query: handledView(v) === 'handled' ? { view: 'handled' } : {} })
+}
 const handled = computed(() => data.value?.handled ?? [])
 
 const strip = computed(() => pausedStrip(data.value?.items ?? [], Date.now()))
@@ -75,7 +79,17 @@ const reason = 'muted min-w-0 text-[13px] [&[role=button]]:relative [&[role=butt
         />
       </template>
     </UPageHeader>
-    <RouteTabs class="w-fit" :tabs="views" :active="view" :to="viewTo" label="Inbox view" />
+    <UTabs
+      :model-value="view"
+      :items="views"
+      variant="pill"
+      size="sm"
+      :content="false"
+      class="w-fit"
+      aria-label="Inbox view"
+      data-inbox-view
+      @update:model-value="setView"
+    />
     <UAlert v-if="strip.count" :color="alertColor('warning')" variant="subtle" class="mt-3">
       <template #title>
         {{ strip.count }} {{ strip.count === 1 ? 'autopilot' : 'autopilots' }} paused<template v-if="strip.longestMs"

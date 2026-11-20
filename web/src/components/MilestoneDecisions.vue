@@ -5,6 +5,7 @@ import UEmpty from '@nuxt/ui/components/Empty.vue'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import UInput from '@nuxt/ui/components/Input.vue'
+import UTabs from '@nuxt/ui/components/Tabs.vue'
 import Badge from './Badge.vue'
 import DecisionCard from './DecisionCard.vue'
 import { getDecisions } from '../client'
@@ -19,14 +20,13 @@ import {
   searchFromQuery,
   stateFromQuery,
   type DecisionGroup,
-  type DecisionState,
 } from '../decisions'
 import { useResource } from '../live'
 
 // The Decisions tab (R11): the stored decisions of a milestone (milestone 0:
 // the whole project, for the project tab) grouped by issue in the server's
 // order, one DecisionCard each. The search (?q=, debounced) and the
-// All / Active / Superseded chips (?state=) live in the URL, so they survive
+// All / Active / Superseded pills (?state=) live in the URL, so they survive
 // a reload; the server filters. The controls slot takes more filters (the
 // project tab's milestone select). A #<id> link scrolls to its card once
 // the data is there and highlights it briefly; so does a later hash change.
@@ -69,7 +69,10 @@ watch(draft, (v) => {
     if (v.trim() !== q.value) void router.replace({ query: decisionsQuery(route.query, { q: v }) })
   }, 300)
 })
-function setState(s: DecisionState) {
+const stateItems = decisionStates.map((s) => ({ value: s.id, label: s.label }))
+function setState(v: string | number) {
+  const s = decisionStates.find((d) => d.id === v)?.id
+  if (!s) return
   void router.replace({ query: decisionsQuery(route.query, { state: s }) })
 }
 
@@ -133,23 +136,17 @@ const sectionHead = 'm-0 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 t
             :ui="{ base: 'tablet:text-sm/5' }"
           />
         </form>
-        <div class="flex flex-wrap gap-1.5" role="group" aria-label="State">
-          <button
-            v-for="s in decisionStates"
-            :key="s.id"
-            type="button"
-            class="min-h-11 cursor-pointer rounded-full border px-2.5 text-[12.5px] font-[inherit] tablet:min-h-0 tablet:py-[3px]"
-            :class="
-              state === s.id
-                ? 'border-(--text) bg-(--text) text-(--bg)'
-                : 'border-(--border) bg-(--surface) text-(--text-2)'
-            "
-            :aria-pressed="state === s.id"
-            @click="setState(s.id)"
-          >
-            {{ s.label }}
-          </button>
-        </div>
+        <!-- A local switch (decision 8): UTabs pills, the state in ?state=. -->
+        <UTabs
+          :model-value="state"
+          :items="stateItems"
+          variant="pill"
+          size="sm"
+          :content="false"
+          aria-label="State"
+          data-decision-state
+          @update:model-value="setState"
+        />
         <slot name="controls" />
       </div>
 

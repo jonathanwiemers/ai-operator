@@ -1,7 +1,7 @@
 // Tests of src/metrics.ts: npm test (node --test, no extra dependencies).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { byteLabel, hasContext, issuesLabel, keyLabel, metricsTables, per100Label } from '../src/metrics.ts'
+import { activeFilters, byteLabel, filtersLabel, hasContext, issuesLabel, keyLabel, metricsTables, per100Label } from '../src/metrics.ts'
 
 const group = (key, extra = {}) => ({ key, issues: 5, mergedLines: 500, costUSD: 11, tokens: 600, costPer100Lines: 2.2, low: false, ...extra })
 
@@ -59,4 +59,19 @@ test('hasContext: any base context or tool', () => {
   assert.equal(hasContext([]), false)
   assert.equal(hasContext([{ project: 'a/b', baseContext: [], topTools: [] }]), false)
   assert.equal(hasContext([{ project: 'a/b', baseContext: [], topTools: [{ tool: 'Read', calls: 1, bytes: 4, tokens: 1 }] }]), true)
+})
+
+test('activeFilters counts the value filters not set to All', () => {
+  assert.equal(activeFilters({}), 0)
+  assert.equal(activeFilters({ project: '', kind: undefined }), 0)
+  assert.equal(activeFilters({ project: 'team-a/shop' }), 1)
+  assert.equal(activeFilters({ project: 'team-a/shop', kind: 'implement', engine: 'claude' }), 3)
+  // The range and the grouping are no value filters.
+  assert.equal(activeFilters({ range: '7d', group: 'kind', engine: 'cursor' }), 1)
+})
+
+test('filtersLabel: plain at 0, the count otherwise', () => {
+  assert.equal(filtersLabel(0), 'Filters')
+  assert.equal(filtersLabel(1), 'Filters (1)')
+  assert.equal(filtersLabel(3), 'Filters (3)')
 })
