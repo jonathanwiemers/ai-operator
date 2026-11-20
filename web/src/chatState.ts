@@ -265,15 +265,6 @@ export function chatWithPrefix(body: string, prefix?: string): string {
   return prefix ? `${prefix}\n\n${body}` : body
 }
 
-// focusTurns lists the turns whose user message starts with focus (the
-// whole prefix: "problem: #55" is not "problem: #558") first, then the
-// rest, each in its order (D586-P2).
-export function focusTurns(turns: ChatMessage[], focus?: string): ChatMessage[] {
-  if (!focus) return turns
-  const about = (m: ChatMessage) => m.role === 'user' && !!m.body?.startsWith(focus) && !/^\S/.test(m.body.slice(focus.length))
-  return [...turns.filter(about), ...turns.filter((m) => !about(m))]
-}
-
 export function planChatDraftKey(namespace: string, name: string, plan: string): string {
   return `desk-plan-chat:${namespace}/${name}/${plan}`
 }

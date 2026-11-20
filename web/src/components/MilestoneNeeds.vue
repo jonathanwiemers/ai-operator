@@ -1,37 +1,76 @@
 <script setup lang="ts">
 import UAlert from '@nuxt/ui/components/Alert.vue'
-import { alertColor } from '../badgeTone'
-import UEmpty from '@nuxt/ui/components/Empty.vue'
+import UBadge from '@nuxt/ui/components/Badge.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
-import { computed, ref } from 'vue'
-import { useRoute } from 'vue-router'
+import UEmpty from '@nuxt/ui/components/Empty.vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { chatPostError } from '../api'
-import { postTaskChat } from '../client'
-import { useNow } from '../live'
-import { linkedProblem, needsCases } from '../needsCases'
+import { alertColor } from '../badgeTone'
+import { getProblems, postTaskChat } from '../client'
+import { live, useNow } from '../live'
 import { needsOpen } from '../needsOpen'
 import { pausesLine, pausesSummary } from '../pauses'
-import type { MilestoneView } from '../types'
+import { problemFromHash, problemParam, problemSubject, sameProblem, statusLine } from '../problemThread'
+import type { MilestoneView, ProblemView } from '../types'
 import Markdown from './Markdown.vue'
-import NeedsProblem from './NeedsProblem.vue'
-import ProblemCard from './ProblemCard.vue'
+import ProblemThread from './ProblemThread.vue'
 import RelTime from './RelTime.vue'
 
-// MilestoneNeeds is a milestone's Needs you tab (R12). Open (live
-// milestones only): one ProblemCard per open problem (its pause, hold and
-// prompts), and the pilot's open older proposals (P-n) with Accept and
-// Reject. Handled (R14): one
-// block per problem from needsCases (open ones first), then the pause
-// totals on one line. A stored milestone shows only Handled.
-const props = defineProps<{ namespace: string; name: string; milestone: MilestoneView }>()
+// MilestoneNeeds is a milestone's Needs you tab (spec desk-problem-thread,
+// Decision 11): the problems on the left, open first, and the chosen one's
+// thread beside them from 1024 px (stacked below on smaller screens). The
+// pilot's open proposals (P-n) with Accept and Reject and the pause totals
+// stay under the list. Old #problem-N and #prompt-Qn links land on their
+// problem's thread.
+const props = defineProps<{ namespace: string; name: string; milestone: MilestoneView; problem?: string }>()
 
-const open = computed(() => needsOpen(props.milestone))
-const active = computed(() => !props.milestone.stored)
-const problems = computed(() => needsCases(props.milestone))
-const inOpen = computed(() => new Set(open.value.problems.map((p) => p.iid)))
-// A Desk link to a problem, or to a prompt of one, unfolds that problem.
 const route = useRoute()
-const linked = computed(() => linkedProblem(problems.value, route.hash))
+const router = useRouter()
+
+const listed = ref<ProblemView[]>([])
+const failed = ref('')
+async function load() {
+  try {
+    listed.value = (await getProblems(props.namespace, props.name, props.milestone.iid)).problems
+    failed.value = ''
+  } catch (e) {
+    failed.value = e instanceof Error ? e.message : String(e)
+  }
+}
+onMounted(load)
+watch(
+  () => live.version,
+  () => void load(),
+)
+
+// problems: open ones first (the server's order within each).
+const problems = computed(() => [...listed.value.filter((p) => p.state === 'open'), ...listed.value.filter((p) => p.state !== 'open')])
+const open = computed(() => needsOpen(props.milestone))
+
+const to = (p: ProblemView | string) => ({
+  name: 'problem' as const,
+  params: {
+    namespace: props.namespace,
+    name: props.name,
+    iid: String(props.milestone.iid),
+    problem: typeof p === 'string' ? p : problemParam(p),
+  },
+})
+
+// selected: the route's problem, else the first open one.
+const selected = computed(() => props.problem ?? (problems.value[0]?.state === 'open' ? problemParam(problems.value[0]) : undefined))
+
+// An old anchor names a problem: open its thread instead.
+watch(
+  () => route.hash,
+  (hash) => {
+    const p = hash ? problemFromHash(hash, props.milestone.prompts) : undefined
+    if (p) void router.replace(to(p))
+  },
+  { immediate: true },
+)
+
 const now = useNow()
 const pauses = computed(() => pausesSummary(props.milestone.pauses, now.value))
 
@@ -58,8 +97,7 @@ async function decide(cmd: 'accept' | 'reject', proposal: number) {
   }
 }
 
-// Utilities only (docs/contributing/web-ui.md, "Needs you tab"); the cards
-// and problems bring their own touch sizes.
+const tones = { warning: 'warning', progress: 'info', success: 'success', neutral: 'neutral' } as const
 const sectionHead =
   'm-0 mb-2 flex justify-between gap-2 text-[11.5px] font-semibold tracking-[0.06em] text-(--text-3) uppercase'
 const quiet = 'text-[13px] text-(--text-3)'
@@ -67,59 +105,68 @@ const chip = { color: 'neutral', variant: 'outline', size: 'sm' } as const
 </script>
 
 <template>
-  <div class="grid max-w-[860px] min-w-0 gap-[18px]">
-    <section v-if="active" class="min-w-0" data-needs-open>
-      <h3 :class="sectionHead">
-        <span>Open</span>
-        <span v-if="open.count">{{ open.count }}</span>
-      </h3>
-      <div class="grid gap-2.5">
-        <UEmpty v-if="!open.count" icon="i-lucide-inbox" title="Nothing needs you." variant="naked" size="sm" />
-        <ProblemCard
-          v-for="p in open.problems"
-          :key="`${milestone.iid}/${p.iid}`"
-          :namespace="namespace"
-          :name="name"
-          :milestone="milestone"
-          :problem="p"
-        />
-        <div
-          v-for="p in open.proposals"
-          :key="`P${p.id}`"
-          class="card grid gap-2 px-3.5 py-3 text-[13.5px]"
-          :data-proposal="p.id"
-        >
-          <div class="flex flex-wrap items-baseline gap-x-2">
-            <b>🧭 P{{ p.id }}</b>
-            <RelTime v-if="p.postedAt" class="faint ml-auto text-[12px]" :time="p.postedAt" />
-          </div>
-          <!-- The summary is the pilot's untrusted text: markdown without HTML. -->
-          <Markdown class="min-w-0 wrap-anywhere" :text="p.summary" />
-          <div v-if="canAnswer" class="flex flex-wrap gap-1.5">
-            <UButton v-bind="chip" label="Accept" :disabled="sending != null" @click="decide('accept', p.id)" />
-            <UButton v-bind="chip" label="Reject" :disabled="sending != null" @click="decide('reject', p.id)" />
-          </div>
-        </div>
-        <UAlert v-if="sendError" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="sendError" />
-      </div>
-    </section>
+  <div class="grid min-w-0 gap-[18px] min-[1024px]:grid-cols-[minmax(240px,300px)_minmax(0,1fr)]">
+    <div class="grid min-w-0 content-start gap-[18px]">
+      <section class="min-w-0" data-needs-problems>
+        <h3 :class="sectionHead">
+          <span>Problems</span>
+          <span v-if="open.count">{{ open.count }}</span>
+        </h3>
+        <UAlert v-if="failed" :color="alertColor('danger')" variant="subtle" description="The problems could not be loaded." />
+        <UEmpty v-else-if="!problems.length" icon="i-lucide-inbox" title="Nothing needs you." variant="naked" size="sm" />
+        <nav v-else class="grid gap-1" aria-label="Problems">
+          <RouterLink
+            v-for="p in problems"
+            :key="problemParam(p)"
+            :to="to(p)"
+            class="card grid min-w-0 gap-1 px-3 py-2 text-[13.5px]"
+            :class="{ 'ring-2 ring-(--accent)': selected && sameProblem(selected, p), 'opacity-75': p.state !== 'open' }"
+            :aria-current="selected && sameProblem(selected, p) ? 'page' : undefined"
+            :data-problem="problemParam(p)"
+          >
+            <span class="flex min-w-0 items-baseline gap-2">
+              <b class="shrink-0">{{ problemSubject(p) }}</b>
+              <span class="min-w-0 truncate">{{ p.title }}</span>
+            </span>
+            <span class="flex min-w-0 flex-wrap items-center gap-2">
+              <UBadge size="sm" variant="subtle" :color="tones[statusLine(p.status).tone]" :label="statusLine(p.status).text" />
+              <RelTime class="faint text-[12px]" :time="p.resolvedAt ?? p.reopenedAt ?? p.openedAt" />
+            </span>
+            <span v-if="p.cause" class="min-w-0 truncate text-[12.5px] text-(--text-3)">{{ p.cause }}</span>
+          </RouterLink>
+        </nav>
+      </section>
 
-    <section class="min-w-0" data-needs-handled>
-      <h3 :class="sectionHead"><span>Handled</span></h3>
-      <div class="grid gap-2.5">
-        <UEmpty v-if="!problems.length" icon="i-lucide-inbox" title="Nothing handled yet." variant="naked" size="sm" />
-        <NeedsProblem
-          v-for="p in problems"
-          :key="p.iid"
-          :namespace="namespace"
-          :name="name"
-          :milestone="milestone.iid"
-          :problem="p"
-          :linked="linked === p.iid"
-          :in-open="inOpen.has(p.iid)"
-        />
-        <div v-if="pauses" :class="quiet" data-pauses>Pauses: {{ pausesLine(pauses) }}</div>
-      </div>
-    </section>
+      <section v-if="open.proposals.length" class="min-w-0" data-needs-proposals>
+        <h3 :class="sectionHead"><span>Proposals</span></h3>
+        <div class="grid gap-2.5">
+          <div v-for="p in open.proposals" :key="`P${p.id}`" class="card grid gap-2 px-3.5 py-3 text-[13.5px]" :data-proposal="p.id">
+            <div class="flex flex-wrap items-baseline gap-x-2">
+              <b>🧭 P{{ p.id }}</b>
+              <RelTime v-if="p.postedAt" class="faint ml-auto text-[12px]" :time="p.postedAt" />
+            </div>
+            <!-- The summary is the pilot's untrusted text: markdown without HTML. -->
+            <Markdown class="min-w-0 wrap-anywhere" :text="p.summary" />
+            <div v-if="canAnswer" class="flex flex-wrap gap-1.5">
+              <UButton v-bind="chip" label="Accept" :disabled="sending != null" @click="decide('accept', p.id)" />
+              <UButton v-bind="chip" label="Reject" :disabled="sending != null" @click="decide('reject', p.id)" />
+            </div>
+          </div>
+          <UAlert v-if="sendError" :color="alertColor('danger')" variant="subtle" :description="sendError" />
+        </div>
+      </section>
+
+      <div v-if="pauses" :class="quiet" data-pauses>Pauses: {{ pausesLine(pauses) }}</div>
+    </div>
+
+    <ProblemThread
+      v-if="selected"
+      class="min-[1024px]:sticky min-[1024px]:top-2 min-[1024px]:h-[calc(100dvh-160px)]"
+      :namespace="namespace"
+      :name="name"
+      :milestone="milestone"
+      :problem="selected"
+    />
+    <UEmpty v-else class="self-start" icon="i-lucide-message-square" title="Choose a problem to see its thread." variant="naked" size="sm" />
   </div>
 </template>

@@ -256,6 +256,9 @@ func (d *Differ) Update(old, cur *aiv1.AgentTask, now time.Time) []store.Event {
 	out = append(out, writeFailures(cur, prev.WriteFailures, ns.WriteFailures, now)...)
 	out = append(out, d.prompts(cur, prev.Prompts, ns.Prompts, now)...)
 	out = append(out, retrospective(cur, prev.Pilot, ns.Pilot, now)...)
+	out = append(out, holds(cur, prev.Autopilot, ns.Autopilot, now)...)
+	out = append(out, acted(cur, prev.Pilot, ns.Pilot, now)...)
+	out = append(out, problems(cur, old, cur, now)...)
 	out = append(out, Checkpoints(old, cur, now)...)
 	return out
 }

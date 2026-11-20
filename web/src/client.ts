@@ -26,6 +26,8 @@ import type {
   MetricsView,
   MilestoneList,
   MilestoneView,
+  ProblemList,
+  ProblemThread,
   NoteView,
   OverviewView,
   PlanOverview,
@@ -290,6 +292,24 @@ export function getSearch(q: string): Promise<SearchResponse> {
 // getMilestone: GET /projects/{namespace}/{name}/milestones/{iid}.
 export function getMilestone(namespace: string, name: string, iid: number | string): Promise<MilestoneView> {
   return get<MilestoneView>(milestonePath(namespace, name, iid))
+}
+
+// getProblems: GET .../milestones/{iid}/problems, open first.
+export function getProblems(namespace: string, name: string, iid: number | string): Promise<ProblemList> {
+  return get<ProblemList>(`${milestonePath(namespace, name, iid)}/problems`)
+}
+
+// getProblem: GET .../milestones/{iid}/problems/{id} (row id or
+// issue-<iid>), a page of its thread; before pages back.
+export function getProblem(
+  namespace: string,
+  name: string,
+  iid: number | string,
+  id: string,
+  before?: string,
+): Promise<ProblemThread> {
+  const q = before ? `?${new URLSearchParams({ before })}` : ''
+  return get<ProblemThread>(`${milestonePath(namespace, name, iid)}/problems/${encodeURIComponent(id)}${q}`)
 }
 
 // getMilestoneIssue: GET .../milestones/{iid}/issues/{issue}, the issue's

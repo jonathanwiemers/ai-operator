@@ -1681,13 +1681,13 @@ test.describe('inbox rows', () => {
       const prompt = list.locator('li', { hasText: 'Support refunds' })
       const box = (await prompt.boundingBox())!
       await page.mouse.click(box.x + box.width - 8, box.y + box.height - 8)
-      await expect(page).toHaveURL(/\/projects\/team-a\/shop\/milestones\/14\?tab=needs#prompt-p-281-1$/)
+      await expect(page).toHaveURL(/\/projects\/team-a\/shop\/milestones\/14\/problems\/issue-281$/)
 
       // The pause row's Open leads to the milestone's Needs you tab.
       await page.goBack()
       await route.ready(page)
       await list.locator('li', { hasText: 'Payment providers' }).getByRole('link', { name: 'Open' }).click()
-      await expect(page).toHaveURL(/\/projects\/team-a\/shop\/milestones\/14\?tab=needs$/)
+      await expect(page).toHaveURL(/\/projects\/team-a\/shop\/milestones\/14\/problems\/issue-0$/)
     })
   }
 })
@@ -2571,7 +2571,7 @@ test.describe('composer', () => {
     await composer.locator('textarea').focus()
     await page.evaluate(() => document.documentElement.style.setProperty('--keyboard-inset', '300px'))
     // The chat card from 100 px down: the composer floats within it.
-    await page.locator('.card.chat').evaluate((e) => window.scrollBy(0, e.getBoundingClientRect().top - 100))
+    await page.locator('[data-task-chat]').evaluate((e) => window.scrollBy(0, e.getBoundingClientRect().top - 100))
     await expect.poll(bottom).toBeLessThanOrEqual(812 - 300 + 0.5)
     expect(await bottom()).toBeGreaterThan(812 - 300 - 2)
     const shot = join(testInfo.project.outputDir, '..', 'screenshots', 'composer-keyboard@375.png')
@@ -2668,7 +2668,7 @@ test.describe('prompt card', () => {
       await shoot(page, testInfo, `prompt-card-pilot@${size.width}`)
       await send.click()
 
-      await expect(card.getByText('✓ your answer · sending…')).toBeVisible()
+      await expect(card.getByText(/✓ .+ · (sending…|sent)/)).toBeVisible()
       await expect(text).toHaveCount(0)
       expect(posts).toEqual([command({ cmd: 'answer', prompt: refundsPrompt.id, text: 'Split, but never more than three captures.' })])
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
@@ -3455,17 +3455,16 @@ test.describe('milestone pilot', () => {
       // Needs you: its link opens that tab, unfolds the problem and the row,
       // and scrolls to the card.
       await page.goto('/projects/team-a/shop/milestones/14#prompt-Q3')
-      const card = page.locator('#prompt-Q3')
-      await expect(card).toBeVisible()
-      await expect(page.locator('main #problem-0')).toHaveAttribute('data-open', '')
-      await expect(card).toBeInViewport()
+      await expect(page).toHaveURL(/\/milestones\/14\/problems\/issue-0$/)
+      await expect(page.locator('main [data-problem-thread]')).toBeVisible()
+      await expect(page.locator('main [data-needs-problems] [data-problem="issue-0"], main [data-needs-problems] [data-problem="2000"]')).toHaveAttribute('aria-current', 'page')
       expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
       if (phone) {
-        const folds = await page.locator('main [data-needs-handled] :is(summary, [data-problem-toggle])').evaluateAll((ss) =>
-          ss.filter((s) => s.getClientRects().length).map((s) => s.getBoundingClientRect().height),
+        const rows = await page.locator('main [data-needs-problems] a[data-problem]').evaluateAll((as) =>
+          as.filter((a) => a.getClientRects().length).map((a) => a.getBoundingClientRect().height),
         )
-        expect(folds.length, 'Handled folds').toBeGreaterThan(0)
-        for (const h of folds) expect(h, 'Handled fold height').toBeGreaterThanOrEqual(44)
+        expect(rows.length, 'problem rows').toBeGreaterThan(0)
+        for (const h of rows) expect(h, 'problem row height').toBeGreaterThanOrEqual(44)
       }
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })
@@ -3581,54 +3580,30 @@ test.describe('milestone pilot', () => {
       )
       await page.goto(route.path)
       await route.ready(page)
-      const card = page.locator('main [data-pause-card]:not([data-hold])')
-      // The pause totals end Handled; the ciRed pause is a row of #280's
-      // problem, which a click unfolds.
+      // Default open problem is #281 with its prompt in the bar; #284 is the hold.
+      await expect(page.locator('main [data-prompt="p-281-1"]')).toBeVisible()
       const totals = page.locator('main [data-pauses]')
-      const history = page.locator('main #problem-280 [data-entry="pause"]')
-      await expect(card).toBeVisible()
       await expect(totals).toBeVisible()
-      await page.getByRole('button', { name: 'Entries of #280' }).click()
-      await expect(history).toBeVisible()
-      await expect(card.locator('.md strong')).toHaveText('partial refunds')
-      // RelTime keeps its absolute time; the companion chip (CompanionChip,
-      // shared with the companions list) is not part of these cards.
+      await page.locator('main [data-needs-problems] [data-problem="1284"]').click()
+      const held = page.locator('main [data-pause-card][data-hold="284"]')
+      await expect(held).toBeVisible()
+      expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
       const titles = await page.locator('main').evaluate((main) =>
-        [...main.querySelectorAll('[data-pause-card] [title], [data-needs-handled] [title]')]
+        [...main.querySelectorAll('[data-pause-card] [title]')]
           .filter((e) => e.tagName !== 'TIME' && !e.textContent!.includes('companion:'))
           .map((e) => e.outerHTML.slice(0, 80)),
       )
       expect(titles, 'title attributes').toEqual([])
-      expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
-
-      const skip = card.locator('[data-way-out]').getByRole('button', { name: 'Skip', exact: true })
-      if (phone) {
-        expect((await skip.boundingBox())!.height, 'Skip height').toBeGreaterThanOrEqual(44)
-        // The ciRed pause's reason is clipped at one line: a tap opens it.
-        const reason = history.locator('[role=button][aria-expanded]', { hasText: 'test:integration-payments' })
-        await expect(reason).toHaveAttribute('aria-expanded', 'false')
-        await reason.click()
-        await expect(reason).toHaveAttribute('aria-expanded', 'true')
-        expect(await reason.evaluate((e) => e.scrollWidth <= e.clientWidth && e.scrollHeight <= e.clientHeight), 'reason shown in full').toBe(true)
-        await expect(reason.locator('code')).toHaveText('test:integration-payments')
-        await expect(page).toHaveURL(/\/milestones\/14(\?tab=needs)?$/)
-      }
       await shoot(page, testInfo, `pause-cards@${size.width}`)
 
-      await skip.click()
-      await expect(card.getByRole('status')).toContainText('Skip #281: sent…')
-      expect(posts).toEqual([{ body: JSON.stringify({ cmd: 'skip', issue: 281 }), clientKey: expect.any(String), kind: 'command' }])
-
-      // #284's hold has a card of its own while the milestone pause shows:
-      // its title, its reason, and a Resume that lifts only that hold.
-      const held = page.locator('main [data-pause-card][data-hold="284"]')
+      // #284's hold: its title, its reason, and a Resume that lifts only that hold.
       await expect(held.locator('h2')).toHaveText('#284 is held — CI is red')
       await expect(held).toContainText('CI failed on !306 (job docs-lint).')
       const resume = held.getByRole('button', { name: 'Resume', exact: true })
       if (phone) expect((await resume.boundingBox())!.height, 'Resume height').toBeGreaterThanOrEqual(44)
       await resume.click()
       await expect(held.getByRole('status')).toContainText('Resume #284: sent…')
-      expect(posts[1]).toEqual({ body: JSON.stringify({ cmd: 'resume', issue: 284 }), clientKey: expect.any(String), kind: 'command' })
+      expect(posts[0]).toEqual({ body: JSON.stringify({ cmd: 'resume', issue: 284 }), clientKey: expect.any(String), kind: 'command' })
       expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })

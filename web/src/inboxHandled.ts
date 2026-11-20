@@ -1,5 +1,4 @@
 import type { HandledItem } from './generated/views'
-import { problemAnchor } from './needsCases.ts'
 import { promptStatus, type PromptStatus } from './promptCard.ts'
 import type { PromptView } from './types'
 
@@ -53,19 +52,18 @@ export function handledSubject(item: HandledItem): string {
 }
 
 export type HandledRoute =
-  | { name: 'stream-milestone'; params: { namespace: string; name: string; iid: string }; query: { tab: 'needs' }; hash: string }
+  | { name: 'problem'; params: { namespace: string; name: string; iid: string; problem: string } }
   | { name: 'stream-project'; params: { namespace: string; name: string }; hash?: string }
 
-// handledRoute opens the row's problem on the milestone's Needs you tab; a
+// handledRoute opens the row's problem thread on the milestone's Needs you
+// tab; a
 // row without a milestone opens the project page at the prompt.
 export function handledRoute(item: HandledItem): HandledRoute {
   const base = { namespace: item.namespace, name: item.project }
   if (item.milestoneIID) {
     return {
-      name: 'stream-milestone',
-      params: { ...base, iid: String(item.milestoneIID) },
-      query: { tab: 'needs' },
-      hash: `#${problemAnchor(item.issueIID ?? 0)}`,
+      name: 'problem',
+      params: { ...base, iid: String(item.milestoneIID), problem: `issue-${item.issueIID ?? 0}` },
     }
   }
   return { name: 'stream-project', params: base, hash: item.promptID ? `#prompt-${item.promptID}` : undefined }

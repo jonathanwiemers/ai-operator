@@ -4,9 +4,9 @@ import type { MilestoneView } from '../types'
 import TaskChat from './TaskChat.vue'
 
 // AskPilot is the Desk chat with a milestone's pilot. Its open proposals,
-// with Accept and Reject, are on the Needs you tab (D530-P2). A problem card
-// opens it at its problem (focus, messagePrefix: TaskChat).
-defineProps<{ namespace: string; name: string; milestone: MilestoneView; focus?: string; messagePrefix?: string }>()
+// with Accept and Reject, are on the Needs you tab (D530-P2); a problem's
+// own talk with the pilot is in its thread there.
+defineProps<{ namespace: string; name: string; milestone: MilestoneView }>()
 </script>
 
 <template>
@@ -26,8 +26,6 @@ defineProps<{ namespace: string; name: string; milestone: MilestoneView; focus?:
     :message="milestone.pilot.message"
     :pod-name="milestone.pilot.podName"
     task-type="Coordinate"
-    :focus="focus"
-    :message-prefix="messagePrefix"
   />
   <UEmpty v-else icon="i-lucide-bot" title="No pilot for this milestone.">
     <template #description>Autopilot, or <code>/pilot coordinate</code> on an issue, starts one.</template>

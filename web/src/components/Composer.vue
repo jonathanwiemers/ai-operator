@@ -195,16 +195,9 @@ const option = 'flex w-full items-baseline gap-2.5 rounded-[7px] px-2 py-1.5 tex
   margin-top: 10px;
   padding: 0 14px 14px;
 }
-/* On a phone the chat composer stays at the bottom of the screen: above the
-   bottom bar, or, while typing, above the keyboard (--keyboard-inset,
-   useKeyboardInset.ts, for iOS; Chrome resizes the page instead). */
+/* On a phone DeskChat keeps its bottom (and this composer) on screen. */
 @media (max-width: 759.98px) {
   .composer.chat {
-    position: sticky;
-    bottom: max(var(--keyboard-inset, 0px), calc(var(--bottombar, 0px) + env(safe-area-inset-bottom)));
-    z-index: 4;
-    background: var(--surface);
-    padding-top: 10px;
     margin-top: 0;
   }
 }

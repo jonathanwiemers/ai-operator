@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import UAlert from '@nuxt/ui/components/Alert.vue'
-import UEmpty from '@nuxt/ui/components/Empty.vue'
 import { computed, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import UButton from '@nuxt/ui/components/Button.vue'
@@ -31,19 +30,19 @@ import MilestoneSections from '../components/MilestoneSections.vue'
 import PlanList from '../components/PlanList.vue'
 import ProjectFinishing from '../components/ProjectFinishing.vue'
 import ProjectQueue from '../components/ProjectQueue.vue'
+import DeskChat from '../ui/DeskChat.vue'
 import RouteTabs from '../ui/RouteTabs.vue'
+import { streamMessages } from '../chatView'
 import { live, useResource } from '../live'
 import { needsLabel, needsOpen } from '../needsOpen'
 import { pausePrompt } from '../pauseCard'
 import {
   dayEndCursor,
-  dayLabel,
   groupThreads,
   heatLevel,
   kindsForFilter,
   runtimeKindsForFilter,
   runtimeStreamFilters,
-  sameLocalDay,
   slashSuggestions,
   streamEventKey,
   streamFilters,
@@ -68,6 +67,8 @@ const props = defineProps<{
   namespace?: string
   name?: string
   iid?: string
+  // problem: the problem route (Needs you tab with one thread open).
+  problem?: string
 }>()
 
 const everything = computed(() => !props.namespace || !props.name)
@@ -93,12 +94,20 @@ const tabs = computed(() => {
 // back to the first one (Decision 12).
 const tab = computed((): string => {
   if (everything.value) return 'stream'
+  if (props.problem) return 'needs'
   if (milestoneIID.value) {
     const loaded = milestone.value?.iid === milestoneIID.value || milestoneFailed.value
     return milestoneTabFromRoute(route.query.tab, route.hash, loaded ? tabs.value : milestoneTabs)
   }
   return tabFromQuery(route.query.tab, tabs.value)
 })
+// tabTo: a tab's link; from a problem's thread it leads back to the
+// milestone's route.
+function tabTo(id: string) {
+  const query = tabQuery(route.query, id, tabs.value)
+  if (!props.problem) return { query }
+  return { name: 'stream-milestone' as const, params: { namespace: props.namespace, name: props.name, iid: props.iid }, query }
+}
 const filter = ref<StreamFilter>('all')
 
 // The project's Decisions tab (R14): all milestones, or the one ?milestone=
@@ -226,7 +235,8 @@ const milestoneTasks = computed(() => {
   return project.value?.milestones.find((x) => x.iid === milestoneIID.value)?.tasks ?? []
 })
 
-const items = computed(() => groupThreads(events.value))
+// The stream as a chat (DeskChat): oldest first, new events at the bottom.
+const streamChat = computed(() => streamMessages(groupThreads(events.value)))
 
 const heatDays = computed(() => {
   const days = history.value?.days ?? []
@@ -451,16 +461,6 @@ watch(
   },
 )
 
-function showDay(i: number): string | null {
-  const list = items.value
-  const cur = list[i]!
-  const at = cur.kind === 'thread' ? cur.at : cur.event.at
-  if (i === 0) return dayLabel(at)
-  const prev = list[i - 1]!
-  const prevAt = prev.kind === 'thread' ? prev.at : prev.event.at
-  return sameLocalDay(at, prevAt) ? null : dayLabel(at)
-}
-
 </script>
 
 <template>
@@ -519,7 +519,7 @@ function showDay(i: number): string | null {
             class="basis-full tablet:basis-auto"
             :tabs="tabs"
             :active="tab"
-            :to="(id) => ({ query: tabQuery(route.query, id, tabs) })"
+            :to="tabTo"
           />
           <span class="hidden flex-1 tablet:block" />
           <form
@@ -561,7 +561,7 @@ function showDay(i: number): string | null {
         </div>
       </div>
 
-      <div v-if="tab === 'stream'" class="scroll">
+      <div v-if="tab === 'stream'" class="scroll stream">
         <!-- A project's milestones (R9), in the dashboard's lists. -->
         <div v-if="!everything && !milestoneIID && namespace && name" class="milestones">
           <ProjectQueue
@@ -575,28 +575,6 @@ function showDay(i: number): string | null {
           <ProjectFinishing v-if="project" class="mb-3" :namespace="namespace" :name="name" :finishing="project.finishing ?? []" :gitlab="project.gitlab.url" />
           <MilestoneSections :namespace="namespace" :name="name" />
         </div>
-        <div v-if="!everything && namespace && name" class="pinned">
-          <PauseCardCompact v-if="pauseProps" class="pause" v-bind="pauseProps" />
-          <PauseCardCompact v-for="h in holdProps" :key="h.issue" class="pause" v-bind="h" />
-          <!-- A milestone's composer is on its Pilot tab. -->
-          <Composer
-            v-if="!milestoneIID"
-            v-model="note.body"
-            v-model:target="note.target"
-            mode="note"
-            :placeholder="note.placeholder"
-            :hint="note.hint"
-            :busy="note.sending"
-            :disabled="!!note.disabledReason"
-            :error="note.error"
-            :targets="note.targets"
-            :suggestions="slashSuggestions"
-            :blocked="note.blocked"
-            :connect-url="note.connectUrl"
-            @send="note.send"
-          />
-        </div>
-        <p v-else class="pick muted">Pick a project in the rail to message a pilot or issue.</p>
 
         <!-- The event kind is a local switch (decision 8): UTabs pills. -->
         <UTabs
@@ -615,40 +593,61 @@ function showDay(i: number): string | null {
         <UAlert v-if="!historyOn" :color="alertColor('info')" variant="subtle" class="mt-3" description="History needs the research database." />
         <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
         <div v-if="loading && !events.length" class="empty">Loading…</div>
-        <UEmpty v-else-if="!events.length" icon="i-lucide-history" title="No events yet." variant="naked" size="sm" />
-
-        <template
-          v-for="(item, i) in items"
-          :key="item.kind === 'thread' ? item.key : streamEventKey(item.event)"
+        <DeskChat
+          v-else
+          class="min-h-[60dvh]"
+          label="Stream"
+          :messages="streamChat"
+          :older="!!older"
+          :loading-older="loadingOlder"
+          empty="No events yet."
+          @older="loadOlder"
         >
-          <div v-if="showDay(i)" class="day">{{ showDay(i) }}</div>
-          <EventCard
-            v-if="item.kind === 'thread'"
-            :notes="item.notes"
-            :project="project"
-            :can-steer="canSteer"
-            @posted="loadInitial"
-          />
-          <EventCard
-            v-else
-            :event="item.event"
-            :project="project"
-            :prompts="milestone?.prompts"
-            :can-steer="canSteer"
-            @posted="loadInitial"
-          />
-        </template>
-
-        <div v-if="older" class="mt-[18px] flex justify-center">
-          <UButton
-            color="neutral"
-            variant="outline"
-            size="sm"
-            :disabled="loadingOlder"
-            :label="loadingOlder ? 'Loading…' : 'Load older'"
-            @click="loadOlder"
-          />
-        </div>
+          <template #content="{ message }">
+            <div v-if="message.metadata.day" class="day">{{ message.metadata.day }}</div>
+            <EventCard
+              v-if="message.metadata.notes"
+              :notes="message.metadata.notes"
+              :project="project"
+              :can-steer="canSteer"
+              @posted="loadInitial"
+            />
+            <EventCard
+              v-else-if="message.metadata.event"
+              :event="message.metadata.event"
+              :project="project"
+              :prompts="milestone?.prompts"
+              :can-steer="canSteer"
+              @posted="loadInitial"
+            />
+          </template>
+          <template #bar>
+            <template v-if="!everything && namespace && name">
+              <PauseCardCompact v-if="pauseProps" v-bind="pauseProps" />
+              <PauseCardCompact v-for="h in holdProps" :key="h.issue" v-bind="h" />
+            </template>
+          </template>
+          <template #prompt>
+            <!-- A milestone's composer is on its Pilot tab. -->
+            <Composer
+              v-if="!everything && namespace && name && !milestoneIID"
+              v-model="note.body"
+              v-model:target="note.target"
+              mode="note"
+              :placeholder="note.placeholder"
+              :hint="note.hint"
+              :busy="note.sending"
+              :disabled="!!note.disabledReason"
+              :error="note.error"
+              :targets="note.targets"
+              :suggestions="slashSuggestions"
+              :blocked="note.blocked"
+              :connect-url="note.connectUrl"
+              @send="note.send"
+            />
+            <p v-else-if="everything || !namespace || !name" class="pick muted">Pick a project in the rail to message a pilot or issue.</p>
+          </template>
+        </DeskChat>
       </div>
       <div v-else-if="tab === 'issues'" class="scroll board">
         <!-- The full pause card is on the Needs you tab. -->
@@ -669,6 +668,7 @@ function showDay(i: number): string | null {
           :namespace="namespace"
           :name="name"
           :milestone="milestone"
+          :problem="problem"
         />
         <UAlert v-else-if="milestoneFailed" :color="alertColor('danger')" variant="subtle" class="mt-3" description="The milestone could not be loaded." />
         <div v-else class="empty">Loading…</div>
@@ -811,18 +811,14 @@ function showDay(i: number): string | null {
 .scroll.board {
   padding-top: 18px;
 }
-/* The pause card and the composer stay on top while the stream scrolls. */
-.pinned {
-  position: sticky;
-  top: 0;
-  z-index: 4;
-  background: var(--bg);
+/* The stream tab is a chat: the feed scrolls, the composer stays below. */
+.scroll.stream {
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 16px;
 }
 .milestones {
   padding-top: 4px;
-}
-.pinned .pause {
-  margin-top: 14px;
 }
 .filters {
   margin-top: 10px;

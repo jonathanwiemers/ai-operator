@@ -46,15 +46,15 @@ instead.
 ### Answer on Needs you
 
 The pilot's and the operator's questions about a milestone wait on the
-milestone's [*Needs you* tab](desk.md#needs-you), under *Open*, on the issue's
-[problem card](pilot.md#the-problem-card). Click an
-option or write your answer, then send it. The buttons and the text box
-go at once and the card shows "✓ your answer · sending…". If the Desk
-refuses the answer, they come back with the error.
+milestone's [*Needs you* tab](desk.md#needs-you), in the issue's
+[problem thread](pilot.md#the-problem-thread). The open question's options
+sit at the bottom of the thread. Click an option or write your answer, then
+send it. Your answer shows in the thread at once, *sending* and then *sent*;
+if the Desk refuses it, it says *not sent* with the error and the options
+come back.
 
-Once the question is closed, the card shows only what was chosen, what that
-did and the outcome. The other options fold under *Other options (n)*. A
-question nobody answered folds all its options under *Options (n)*.
+Once the question is closed, the thread keeps it as one entry: the question,
+what was chosen and by whom, and the outcome.
 
 ### How a question closes
 

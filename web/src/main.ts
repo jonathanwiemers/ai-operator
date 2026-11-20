@@ -57,6 +57,14 @@ const routes: (RouteRecordRaw & { name: RouteName })[] = [
     component: Stream,
     props: true,
   },
+  // One problem's thread on the Needs you tab (spec desk-problem-thread,
+  // Decision 11); :problem is its row id or issue-<iid>.
+  {
+    path: '/projects/:namespace/:name/milestones/:iid/problems/:problem',
+    name: 'problem',
+    component: Stream,
+    props: true,
+  },
   {
     path: '/projects/:namespace/:name/milestones/:iid/issues/:issue',
     name: 'issue',

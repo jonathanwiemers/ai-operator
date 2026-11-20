@@ -150,8 +150,8 @@ commands. See [Security](security.md#who-may-command).
 ### Needs you
 
 A milestone's tab in the [Desk](#desk) for what waits for its owners: the
-open pause cards, questions and proposals, and below them what was handled,
-per issue. See [The Desk](../guides/desk.md#needs-you).
+open and resolved [problems](#problem-thread), each with its thread, and
+the pilot's proposals. See [The Desk](../guides/desk.md#needs-you).
 
 ### Pause
 
@@ -176,18 +176,20 @@ decision, and writes the [retrospective](#retrospective). See
 The agent that turns a milestone [spec](#spec) into
 [sub-issues](#sub-issue). See [Roles](roles.md#planner).
 
-### Problem card
+### Problem thread
 
-The one card on a milestone's *Needs you* tab for a stuck issue. It shows the
-[problem facts](#problem-facts), one cause line, options with their cost and
-the pilot chat. See [The problem card](../guides/pilot.md#the-problem-card).
+One stuck issue, or the milestone's own pause, on a milestone's *Needs you*
+tab, as a chat: its status, the cause and the
+[problem facts](#problem-facts) on top, everything that happened oldest
+first, and one place to act at the bottom, with the pilot chat. See
+[The problem thread](../guides/pilot.md#the-problem-thread).
 
 ### Problem facts
 
 What the operator collected about a stuck issue from task status and GitLab:
 the merge request, the pipeline, the failed run, saved work and what waits on
 the issue. The pilot gets the same facts. See
-[The problem card](../guides/pilot.md#the-problem-card).
+[The problem thread](../guides/pilot.md#the-problem-thread).
 
 ### Profile
 

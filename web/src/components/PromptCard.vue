@@ -19,6 +19,7 @@ import {
   textBox,
 } from '../promptCard'
 import type { Facts } from '../generated/problem'
+import type { AnswerEvent } from '../problemThread'
 import type { PromptView } from '../types'
 import Truncated from '../ui/Truncated.vue'
 import Badge from './Badge.vue'
@@ -50,7 +51,7 @@ const props = defineProps<{
   to?: RouteLocationRaw
   // unanchored: a copy of a card shown elsewhere with the anchor.
   unanchored?: boolean
-  // facts: the problem's facts (ProblemCard); a retry option warns when
+  // facts: the problem's facts (the problem thread); a retry option warns when
   // they show uncommitted lines (retryWarning).
   facts?: Facts
 }>()
@@ -67,7 +68,11 @@ const withText = computed(() => canAnswerText(props.prompt))
 const box = computed(() => textBox(props.prompt))
 const clickable = computed(() => open.value && props.prompt.canAnswer)
 
-const { sending, error, sent, answer, send } = usePromptAnswer(
+// answer: the answer on its way and how it went (the problem thread shows
+// it as the owner's message, Decision 8).
+const emit = defineEmits<{ answer: [e: AnswerEvent] }>()
+
+const { sending, error, sent, answer, busy, send } = usePromptAnswer(
   () => ({ namespace: props.namespace, name: props.name }),
   () => props.prompt,
 )
@@ -81,16 +86,24 @@ const failure = computed(() =>
   error.value || (sent.value && answer.value.state === 'failed' ? `${sent.value.label}: ${answer.value.reason}` : ''),
 )
 
+async function answerWith(label: string, choice: { option: string } | { text: string }): Promise<boolean> {
+  if (busy.value) return false
+  picked.value = label
+  const shown = { id: crypto.randomUUID(), label, task: props.prompt.target.task }
+  emit('answer', { ...shown, send: 'sending' })
+  const ok = await send(choice)
+  emit('answer', ok ? { ...shown, send: 'sent' } : { ...shown, send: 'failed', error: error.value })
+  return ok
+}
+
 function pick(o: { id: string; label: string }) {
-  picked.value = o.label
-  void send({ option: o.id })
+  void answerWith(o.label, { option: o.id })
 }
 
 const text = ref('')
 keepThroughSignIn(() => `prompt:${props.namespace}/${props.name}/${props.prompt.id}`, text)
 async function sendText() {
-  picked.value = 'your answer'
-  if (await send({ text: text.value })) text.value = ''
+  if (await answerWith(text.value.trim() || 'your answer', { text: text.value })) text.value = ''
 }
 
 // A Desk link from GitLab ends in #prompt-<id>: scroll to the full card

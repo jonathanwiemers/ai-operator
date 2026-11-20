@@ -32,7 +32,8 @@ type Event struct {
 }
 
 // InsertEvents writes events, skipping those whose key is already stored,
-// and returns how many it wrote.
+// and returns how many it wrote. A new problem.opened or problem.resolved
+// event also writes its problem (applyProblem).
 func (s *Store) InsertEvents(ctx context.Context, events []Event) (int64, error) {
 	if len(events) == 0 {
 		return 0, nil
@@ -55,16 +56,30 @@ func (s *Store) InsertEvents(ctx context.Context, events []Event) (int64, error)
 	}
 	var n int64
 	err := pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		n = 0
 		br := tx.SendBatch(ctx, b)
-		for range events {
+		var problems []Event
+		for _, e := range events {
 			tag, err := br.Exec()
 			if err != nil {
 				_ = br.Close()
 				return err
 			}
 			n += tag.RowsAffected()
+			if tag.RowsAffected() > 0 && (e.Kind == KindProblemOpened || e.Kind == KindProblemResolved) {
+				problems = append(problems, e)
+			}
 		}
-		return br.Close()
+		if err := br.Close(); err != nil {
+			return err
+		}
+		// A replayed event (same key) does not write its problem again.
+		for _, e := range problems {
+			if err := applyProblem(ctx, tx, e); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	return n, err
 }

@@ -2,7 +2,6 @@
 import UAlert from '@nuxt/ui/components/Alert.vue'
 import UTooltip from '@nuxt/ui/components/Tooltip.vue'
 import { alertColor } from '../badgeTone'
-import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
 import USelect from '@nuxt/ui/components/Select.vue'
@@ -14,7 +13,6 @@ import {
   chatDraftKey,
   chatEfforts,
   chatWithPrefix,
-  focusTurns,
   chatPostBody,
   chatTurns,
   chatWaiting,
@@ -25,12 +23,14 @@ import {
   writeChatDraft,
   type ChatCommand,
 } from '../chatState'
+import { chatMessages } from '../chatView'
 import { live } from '../live'
 import { keepThroughSignIn } from '../signInDraft'
 import type { RouteLocationRaw } from 'vue-router'
 import type { AutopilotItem, AutopilotPhase, ChatKind, ChatMessage, ProposalView, TaskPhase } from '../types'
 import Badge from './Badge.vue'
-import ChatThread from './ChatThread.vue'
+import DeskChat from '../ui/DeskChat.vue'
+import ChatTurn from './ChatTurn.vue'
 import Composer, { type ComposerSend } from './Composer.vue'
 
 const props = defineProps<{
@@ -47,9 +47,7 @@ const props = defineProps<{
   autopilotPhase?: AutopilotPhase
   autopilotItems?: AutopilotItem[]
   proposals?: ProposalView[]
-  // focus lists the threads whose message starts with it first;
-  // messagePrefix goes before every message sent (a problem card, R9).
-  focus?: string
+  // messagePrefix goes before every message sent.
   messagePrefix?: string
 }>()
 
@@ -61,11 +59,10 @@ const error = ref('')
 let seq = 0
 let pollTimer: number | undefined
 
-// User messages and orphan agent/system rows; replies nest under their parent.
+// The chat oldest first, each reply after the message it answers (DeskChat).
 const grouped = computed(() => chatTurns(messages.value))
-const chronological = computed(() => grouped.value.chronological)
+const shown = computed(() => chatMessages(grouped.value.chronological))
 const repliesByParent = computed(() => grouped.value.repliesByParent)
-const turns = computed(() => focusTurns(grouped.value.turns, props.focus))
 const newestUser = computed(() => grouped.value.newestUser)
 
 const waiting = computed(() => {
@@ -312,155 +309,132 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="card chat">
-    <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
+  <div class="card flex h-[min(72dvh,680px)] min-h-[360px] flex-col gap-2 overflow-clip p-3" data-task-chat>
+    <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" :description="error" />
     <div v-if="loading && !messages.length" class="empty">Loading…</div>
-    <template v-else>
-      <div v-if="hasOlder" class="older">
-        <UButton
-          color="neutral"
-          variant="outline"
-          size="sm"
-          :disabled="loadingOlder"
-          :label="loadingOlder ? 'Loading…' : 'Older messages'"
-          @click="loadOlder"
-        />
-      </div>
-      <UEmpty v-if="!chronological.length" icon="i-lucide-message-square" title="No messages yet." variant="naked" size="sm" />
-      <ChatThread v-else :turns="turns" :replies="repliesByParent" />
-
-      <div v-if="statusLine" class="status">
-        <Badge tone="progress" dot pulse>{{ statusLine }}</Badge>
-        <RouterLink v-if="transcript" class="t" :to="transcript">Live transcript</RouterLink>
-      </div>
-
-      <Composer
-        v-if="canPost"
-        v-model="body"
-        mode="chat"
-        :placeholder="messagePrefix ? 'Write to the pilot about this problem…' : 'Message the agent…'"
-        hint="Enter+Ctrl/Cmd to send"
-        :busy="sending"
-        :disabled="sending"
-        :error="sendError"
-        :can-interrupt="canInterrupt"
-        @send="onSend"
-      >
-        <template #controls>
-          <div v-if="taskType === 'Implement'" :class="cmds">
-            <UButton v-bind="chip" label="Retry" :disabled="sending" @click="postCommand({ cmd: 'retry' })" />
-            <UButton v-bind="chip" label="Review again" :disabled="sending" @click="postCommand({ cmd: 'review' })" />
-            <UButton v-bind="chip" label="Model…" :disabled="sending" :aria-expanded="modelOpen" @click="modelOpen = !modelOpen" />
-            <div v-if="modelOpen" :class="[cmds, 'w-full pt-1.5 pb-0.5']">
-              <USelect v-model="useEngine" :items="engineItems" v-bind="field" aria-label="Engine" :disabled="sending" />
-              <UInput
-                v-model="useModel"
-                size="sm"
-                class="max-w-[22ch] min-w-[10ch] flex-1"
-                type="text"
-                placeholder="model"
-                aria-label="Model"
-                :disabled="sending"
-                @keydown.enter.prevent="postCommand(modelCommand(useEngine, useModel, useEffort ?? ''))"
-              />
-              <USelect
-                v-model="useEffort"
-                :items="effortItems"
-                v-bind="field"
-                placeholder="effort…"
-                aria-label="Effort"
-                :disabled="sending"
-              />
-              <UButton
-                v-bind="chip"
-                label="Use"
-                :disabled="sending || !useModel.trim()"
-                @click="postCommand(modelCommand(useEngine, useModel, useEffort ?? ''))"
-              />
-              <UButton v-bind="chip" label="Default" :disabled="sending" @click="postCommand({ cmd: 'use', default: true })" />
-              <UButton
-                v-bind="chip"
-                label="Effort"
-                :disabled="sending || !useEffort"
-                @click="postCommand({ cmd: 'effort', effort: useEffort || 'default' })"
-              />
+    <DeskChat
+      v-else
+      label="Chat with the agent"
+      :messages="shown"
+      :older="hasOlder"
+      :loading-older="loadingOlder"
+      :waiting="!!waiting"
+      empty="No messages yet."
+      @older="loadOlder"
+    >
+      <template #content="{ message }">
+        <ChatTurn v-if="message.metadata.chat" :message="message.metadata.chat" />
+      </template>
+      <template #bar>
+        <div v-if="statusLine" class="flex items-center gap-2.5" data-chat-status>
+          <Badge tone="progress" dot pulse>{{ statusLine }}</Badge>
+          <RouterLink v-if="transcript" class="text-[13px]" :to="transcript">Live transcript</RouterLink>
+        </div>
+      </template>
+      <template #prompt>
+        <Composer
+          v-if="canPost"
+          v-model="body"
+          mode="chat"
+          :placeholder="messagePrefix ? 'Write to the pilot about this problem…' : 'Message the agent…'"
+          hint="Enter+Ctrl/Cmd to send"
+          :busy="sending"
+          :disabled="sending"
+          :error="sendError"
+          :can-interrupt="canInterrupt"
+          @send="onSend"
+        >
+          <template #controls>
+            <div v-if="taskType === 'Implement'" :class="cmds">
+              <UButton v-bind="chip" label="Retry" :disabled="sending" @click="postCommand({ cmd: 'retry' })" />
+              <UButton v-bind="chip" label="Review again" :disabled="sending" @click="postCommand({ cmd: 'review' })" />
+              <UButton v-bind="chip" label="Model…" :disabled="sending" :aria-expanded="modelOpen" @click="modelOpen = !modelOpen" />
+              <div v-if="modelOpen" :class="[cmds, 'w-full pt-1.5 pb-0.5']">
+                <USelect v-model="useEngine" :items="engineItems" v-bind="field" aria-label="Engine" :disabled="sending" />
+                <UInput
+                  v-model="useModel"
+                  size="sm"
+                  class="max-w-[22ch] min-w-[10ch] flex-1"
+                  type="text"
+                  placeholder="model"
+                  aria-label="Model"
+                  :disabled="sending"
+                  @keydown.enter.prevent="postCommand(modelCommand(useEngine, useModel, useEffort ?? ''))"
+                />
+                <USelect
+                  v-model="useEffort"
+                  :items="effortItems"
+                  v-bind="field"
+                  placeholder="effort…"
+                  aria-label="Effort"
+                  :disabled="sending"
+                />
+                <UButton
+                  v-bind="chip"
+                  label="Use"
+                  :disabled="sending || !useModel.trim()"
+                  @click="postCommand(modelCommand(useEngine, useModel, useEffort ?? ''))"
+                />
+                <UButton v-bind="chip" label="Default" :disabled="sending" @click="postCommand({ cmd: 'use', default: true })" />
+                <UButton
+                  v-bind="chip"
+                  label="Effort"
+                  :disabled="sending || !useEffort"
+                  @click="postCommand({ cmd: 'effort', effort: useEffort || 'default' })"
+                />
+              </div>
             </div>
-          </div>
-          <div v-else-if="taskType === 'Spec' && autopilotPhase" :class="cmds">
-            <UButton
-              v-if="autopilotPhase === 'Paused'"
-              v-bind="chip"
-              label="Resume"
-              :disabled="sending"
-              @click="postCommand({ cmd: 'resume' })"
-            />
-            <UButton
-              v-else-if="autopilotPhase === 'Running'"
-              v-bind="chip"
-              label="Pause"
-              :disabled="sending"
-              @click="postCommand({ cmd: 'pause' })"
-            />
-            <template v-if="skippable.length">
-              <span class="text-[13px] font-semibold text-(--text-3)">Skip…</span>
-              <USelect
-                v-model="skipIssue"
-                :items="skippable.map((it) => ({ label: `#${it.iid}`, value: it.iid }))"
-                v-bind="field"
-                placeholder="issue…"
-                aria-label="Issue to skip"
+            <div v-else-if="taskType === 'Spec' && autopilotPhase" :class="cmds">
+              <UButton
+                v-if="autopilotPhase === 'Paused'"
+                v-bind="chip"
+                label="Resume"
                 :disabled="sending"
+                @click="postCommand({ cmd: 'resume' })"
               />
-              <UButton v-bind="chip" label="Skip" :disabled="sending || !skipIssue" @click="postCommand(skipCommand(skipIssue ?? 0))" />
-            </template>
-          </div>
-          <div v-else-if="taskType === 'Coordinate' && proposals?.length" :class="cmds">
-            <template v-for="p in proposals" :key="p.id">
-              <UTooltip :text="p.summary" :disabled="!p.summary">
-                <UButton
-                  v-bind="chip"
-                  :label="`Accept P${p.id}`"
+              <UButton
+                v-else-if="autopilotPhase === 'Running'"
+                v-bind="chip"
+                label="Pause"
+                :disabled="sending"
+                @click="postCommand({ cmd: 'pause' })"
+              />
+              <template v-if="skippable.length">
+                <span class="text-[13px] font-semibold text-(--text-3)">Skip…</span>
+                <USelect
+                  v-model="skipIssue"
+                  :items="skippable.map((it) => ({ label: `#${it.iid}`, value: it.iid }))"
+                  v-bind="field"
+                  placeholder="issue…"
+                  aria-label="Issue to skip"
                   :disabled="sending"
-                  @click="postCommand({ cmd: 'accept', proposal: p.id })"
                 />
-              </UTooltip>
-              <UTooltip :text="p.summary" :disabled="!p.summary">
-                <UButton
-                  v-bind="chip"
-                  :label="`Reject P${p.id}`"
-                  :disabled="sending"
-                  @click="postCommand({ cmd: 'reject', proposal: p.id })"
-                />
-              </UTooltip>
-            </template>
-          </div>
-        </template>
-      </Composer>
-    </template>
+                <UButton v-bind="chip" label="Skip" :disabled="sending || !skipIssue" @click="postCommand(skipCommand(skipIssue ?? 0))" />
+              </template>
+            </div>
+            <div v-else-if="taskType === 'Coordinate' && proposals?.length" :class="cmds">
+              <template v-for="p in proposals" :key="p.id">
+                <UTooltip :text="p.summary" :disabled="!p.summary">
+                  <UButton
+                    v-bind="chip"
+                    :label="`Accept P${p.id}`"
+                    :disabled="sending"
+                    @click="postCommand({ cmd: 'accept', proposal: p.id })"
+                  />
+                </UTooltip>
+                <UTooltip :text="p.summary" :disabled="!p.summary">
+                  <UButton
+                    v-bind="chip"
+                    :label="`Reject P${p.id}`"
+                    :disabled="sending"
+                    @click="postCommand({ cmd: 'reject', proposal: p.id })"
+                  />
+                </UTooltip>
+              </template>
+            </div>
+</template>
+        </Composer>
+      </template>
+    </DeskChat>
   </div>
 </template>
-
-<style scoped>
-/* clip, not hidden: hidden would make the card the scroll container of the
-   composer, which is sticky on phones. */
-.chat {
-  overflow: clip;
-}
-.older {
-  display: flex;
-  justify-content: center;
-  padding: 10px;
-  border-bottom: 1px solid var(--border);
-}
-.status {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 16px;
-  border-top: 1px solid var(--border);
-  background: var(--surface-2);
-}
-.status .t {
-  font-size: 13px;
-}
-</style>

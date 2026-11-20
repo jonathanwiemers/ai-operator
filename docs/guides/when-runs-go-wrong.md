@@ -70,7 +70,7 @@ A failed implementer run saves its work too, whatever the reason, for example
 an answer the operator could not read. If the workspace holds uncommitted
 lines, the runner commits them as a checkpoint with the reason `run-failed`
 before it posts the failure note. The
-[problem card](pilot.md#the-problem-card) shows "348 lines saved as WIP
+[problem thread](pilot.md#the-problem-thread) shows "348 lines saved as WIP
 commit `80cd646`", and a retry starts from that commit, not from a clean
 checkout.
 
@@ -191,8 +191,8 @@ them.
 ## Next
 
 - [When autopilot pauses](pauses.md): the problems that need you.
-- [The problem card](pilot.md#the-problem-card): facts, options and the
-  pilot chat.
+- [The problem thread](pilot.md#the-problem-thread): facts, history,
+  options and the pilot chat.
 - [Restart a stuck run](../reference/commands.md#restart-a-stuck-run): when
   a run hangs.
 - [Lifecycle and CI](../reference/lifecycle-and-ci.md): the times and limits

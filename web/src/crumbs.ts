@@ -12,8 +12,8 @@ import type { RouteName } from './routeNames.ts'
 export interface CrumbLink {
   name: RouteName
   params: Record<string, string>
-  // query: only the Plans crumb's ?tab=plans, never the route's query.
-  query?: { tab: 'plans' }
+  // query: only the Plans and Needs you crumbs' tab, never the route's query.
+  query?: { tab: 'plans' | 'needs' }
 }
 
 export interface Crumb {
@@ -72,6 +72,14 @@ function titleOf(
 }
 
 // crumbsFor maps a route to its breadcrumbs; every route has at least one.
+// problemLabel: "Problem #42" for issue-42, "Milestone problem" for
+// issue-0, "Problem" for a row id.
+export function problemLabel(id: string): string {
+  const m = /^issue-(\d+)$/.exec(id)
+  if (!m) return 'Problem'
+  return Number(m[1]) ? `Problem #${Number(m[1])}` : 'Milestone problem'
+}
+
 export function crumbsFor(route: CrumbRoute, names: CrumbNames = {}): Crumb[] {
   const p = route.params
   const namespace = param(p, 'namespace')
@@ -119,6 +127,15 @@ export function crumbsFor(route: CrumbRoute, names: CrumbNames = {}): Crumb[] {
     case 'stream-milestone': {
       const iid = iidOf(param(p, 'iid'))
       trail = iid ? [overview, project, milestone(iid)] : [overview, project, { label: param(p, 'iid') || 'Milestone' }]
+      break
+    }
+    case 'problem': {
+      const iid = iidOf(param(p, 'iid'))
+      const needs: Crumb = {
+        label: 'Needs you',
+        to: { name: 'stream-milestone', params: { namespace, name, iid: String(iid) }, query: { tab: 'needs' } },
+      }
+      trail = iid ? [overview, project, milestone(iid), needs, { label: problemLabel(param(p, 'problem')) }] : [overview, project, { label: 'Problem' }]
       break
     }
     case 'issue': {

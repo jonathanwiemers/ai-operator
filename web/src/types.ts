@@ -72,6 +72,10 @@ export type {
   CostDriverView,
   TaskResponse,
   TaskPermissions as Permissions,
+  ProblemStatus,
+  ProblemView,
+  ProblemList,
+  ProblemThread,
 } from './generated/views'
 
 export type {
@@ -134,6 +138,11 @@ export type StreamKind =
   | 'release.decided'
   | 'release.started'
   | 'release.ended'
+  | 'problem.opened'
+  | 'problem.resolved'
+  | 'hold.set'
+  | 'hold.cleared'
+  | 'pilot.acted'
 
 // StreamEventData is a stream event's data (Go: map[string]any): the keys
 // of all kinds.
@@ -193,6 +202,14 @@ export interface StreamEventData {
   mergeRequests?: number[]
   attempt?: number
   version?: string
+  // problem.opened / problem.resolved: why it got stuck and who resolved
+  // it; hold.set / hold.cleared carry holdKind and reason; pilot.acted why,
+  // lines, ran and by. All untrusted text.
+  holdKind?: string
+  cause?: string
+  resolvedBy?: string
+  lines?: string[]
+  ran?: boolean
   releaseURL?: string
 }
 

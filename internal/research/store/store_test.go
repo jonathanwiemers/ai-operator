@@ -69,7 +69,7 @@ func TestPoolConfig(t *testing.T) {
 func TestMigrateEmptyAndConcurrent(t *testing.T) {
 	s := storetest.New(t)
 	ctx := t.Context()
-	exec(t, s.Pool(), "DROP TABLE IF EXISTS plan_decision_signoffs, plan_decision_versions, desk_decision_revisits, desk_decisions, desk_backfill, desk_backfill_projects, desk_milestone_releases, desk_follow_ups, desk_milestone_issues, desk_milestones, agent_calls, chat_messages, history_events, research_items, research_results, research_runs, schema_migrations CASCADE")
+	exec(t, s.Pool(), "DROP TABLE IF EXISTS desk_problems, plan_decision_signoffs, plan_decision_versions, desk_decision_revisits, desk_decisions, desk_backfill, desk_backfill_projects, desk_milestone_releases, desk_follow_ups, desk_milestone_issues, desk_milestones, agent_calls, chat_messages, history_events, research_items, research_results, research_runs, schema_migrations CASCADE")
 	exec(t, s.Pool(), "DROP FUNCTION IF EXISTS chat_notify")
 
 	var wg sync.WaitGroup
@@ -83,7 +83,7 @@ func TestMigrateEmptyAndConcurrent(t *testing.T) {
 			t.Fatalf("concurrent Migrate: %v", err)
 		}
 	}
-	for _, table := range []string{"research_runs", "research_results", "research_items", "history_events", "chat_messages", "agent_calls", "desk_milestones", "desk_milestone_issues", "desk_follow_ups", "desk_milestone_releases", "desk_backfill", "desk_backfill_projects", "desk_decisions", "desk_decision_revisits", "plan_decision_versions", "plan_decision_signoffs", "schema_migrations"} {
+	for _, table := range []string{"research_runs", "research_results", "research_items", "history_events", "chat_messages", "agent_calls", "desk_milestones", "desk_milestone_issues", "desk_follow_ups", "desk_milestone_releases", "desk_backfill", "desk_backfill_projects", "desk_decisions", "desk_decision_revisits", "plan_decision_versions", "plan_decision_signoffs", "desk_problems", "schema_migrations"} {
 		var exists bool
 		if err := s.Pool().QueryRow(ctx, "SELECT to_regclass($1) IS NOT NULL", table).Scan(&exists); err != nil || !exists {
 			t.Errorf("table %s missing (%v)", table, err)

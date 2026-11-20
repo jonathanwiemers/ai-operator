@@ -10,7 +10,6 @@ import {
   chatWaiting,
   chatWithPrefix,
   commandLabel,
-  focusTurns,
   problemChatRef,
   modelCommand,
   parseChatDraft,
@@ -308,25 +307,6 @@ test('chatWithPrefix: the prefix and a blank line go before the text, none witho
   assert.equal(chatWithPrefix('rerun it', 'problem: #558'), 'problem: #558\n\nrerun it')
   assert.equal(chatWithPrefix('rerun it', undefined), 'rerun it')
   assert.equal(chatWithPrefix('rerun it', ''), 'rerun it')
-})
-
-test('focusTurns: the focus threads first, then the rest, each in order', () => {
-  const u = (id, body) => ({ id, role: 'user', kind: 'message', body, at: '' })
-  const turns = [
-    u(1, 'How far is #557?'),
-    u(2, 'problem: #558\n\nrerun it'),
-    { id: 3, role: 'system', kind: 'message', body: 'problem: #558 orphan', at: '' },
-    u(4, 'problem: #5581\n\nother'),
-    u(5, 'problem: #558'),
-    u(6, 'problem: #55\n\nshorter'),
-    { id: 7, role: 'user', kind: 'message', at: '' },
-  ]
-  assert.deepEqual(
-    focusTurns(turns, 'problem: #558').map((m) => m.id),
-    [2, 5, 1, 3, 4, 6, 7],
-  )
-  assert.equal(focusTurns(turns, undefined), turns)
-  assert.equal(focusTurns(turns, ''), turns)
 })
 
 test('chatDraftKey: a prefix keeps its own draft', () => {

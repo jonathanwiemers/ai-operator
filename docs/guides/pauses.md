@@ -43,12 +43,14 @@ description lists every hold under its status line.
 
 ![Pause card on the milestone's Needs you tab: why it paused, the ways out and the pilot's question](../assets/screenshots/milestone-pilot.webp)
 
-The milestone's [*Needs you* tab](desk.md#needs-you) shows a pause that names one issue on that issue's
-[problem card](pilot.md#the-problem-card). Other pauses get a card: the cause, the paused
-issue and its merge request, what ends the pause by itself, and buttons for
-the ways out: *Retry*, *Review again*, *Resume*, *Skip*, links to the
-issue's chat, the pipeline, the merge request or the plan, and for an owner
-*Merge anyway*. Each hold has its own card with *Resume*. The *Issues* and
+The milestone's [*Needs you* tab](desk.md#needs-you) shows a pause that names one issue in that issue's
+[problem thread](pilot.md#the-problem-thread). Other pauses, such as a spent
+budget, are the milestone's own problem. At the bottom of the thread are the
+cause, the paused issue and its merge request, what ends the pause by itself,
+and buttons for the ways out: *Retry*, *Review again*, *Resume*, *Skip*,
+links to the issue's chat, the pipeline, the merge request or the plan, and
+for an owner *Merge anyway*. A hold shows the same way in its issue's
+thread, with *Resume*. The *Issues* and
 *Stream* tabs, the Board and the Inbox show a short card that links there.
 
 The buttons send the same commands as the comments below, and the card shows

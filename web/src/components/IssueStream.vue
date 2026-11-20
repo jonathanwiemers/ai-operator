@@ -1,19 +1,19 @@
 <script setup lang="ts">
 import UAlert from '@nuxt/ui/components/Alert.vue'
 import { alertColor } from '../badgeTone'
-import UEmpty from '@nuxt/ui/components/Empty.vue'
-import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, ref, watch } from 'vue'
 import { hasFeature } from '../api'
 import { getStream, LoginRequiredError } from '../client'
 import { live } from '../live'
-import { chatStreamKinds, dayLabel, groupThreads, kindsForFilter, sameLocalDay, streamEventKey } from '../stream'
+import { streamMessages } from '../chatView'
+import { chatStreamKinds, groupThreads, kindsForFilter, streamEventKey } from '../stream'
+import DeskChat from '../ui/DeskChat.vue'
 import EventCard from './stream/EventCard.vue'
 import type { PromptView, StreamEvent, StreamKind } from '../types'
 
 // An issue's stream (R10): GET /api/v1/stream with project, milestone and
-// issue, newest first, *Load older* pages back, live events come in on
-// top. It reads history, so it outlives the issue's tasks. Without an issue
+// issue, as a chat (DeskChat): oldest first, *Load older* pages back, live
+// events come in at the bottom. It reads history, so it outlives the issue's tasks. Without an issue
 // it is the milestone's stream, and kinds fixes its kinds (the Pilot tab,
 // R11); chat kinds are asked for only with the chat feature.
 const props = defineProps<{
@@ -36,7 +36,7 @@ const loadingOlder = ref(false)
 const error = ref('')
 let seq = 0
 
-const items = computed(() => groupThreads(events.value))
+const messages = computed(() => streamMessages(groupThreads(events.value)))
 
 function streamQuery(extra: Record<string, string> = {}): URLSearchParams {
   const params = new URLSearchParams({
@@ -129,40 +129,29 @@ watch(
   },
 )
 
-// showDay is the day label above item i when it starts a new day.
-function showDay(i: number): string | null {
-  const at = (n: number) => {
-    const it = items.value[n]!
-    return it.kind === 'thread' ? it.at : it.event.at
-  }
-  if (i === 0) return dayLabel(at(0))
-  return sameLocalDay(at(i), at(i - 1)) ? null : dayLabel(at(i))
-}
 </script>
 
 <template>
-  <div class="istream">
-    <UAlert v-if="!historyOn" :color="alertColor('info')" variant="subtle" class="mt-3" description="History needs the research database." />
-    <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
+  <div class="flex h-[min(72dvh,720px)] min-h-[320px] min-w-0 flex-col gap-2" data-issue-stream>
+    <UAlert v-if="!historyOn" :color="alertColor('info')" variant="subtle" description="History needs the research database." />
+    <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" :description="error" />
     <div v-if="loading && !events.length" class="empty">Loading…</div>
-    <UEmpty v-else-if="!events.length" icon="i-lucide-history" title="No events yet." variant="naked" size="sm" />
-
-    <template v-for="(item, i) in items" :key="item.kind === 'thread' ? item.key : streamEventKey(item.event)">
-      <div v-if="showDay(i)" class="day">{{ showDay(i) }}</div>
-      <EventCard v-if="item.kind === 'thread'" :notes="item.notes" :can-steer="canSteer" @posted="loadInitial" />
-      <EventCard v-else :event="item.event" :can-steer="canSteer" :prompts="prompts" @posted="loadInitial" />
-    </template>
-
-    <div v-if="older" class="mt-[18px] flex justify-center">
-      <UButton
-        color="neutral"
-        variant="outline"
-        size="sm"
-        :disabled="loadingOlder"
-        :label="loadingOlder ? 'Loading…' : 'Load older'"
-        @click="loadOlder"
-      />
-    </div>
+    <DeskChat
+      v-else
+      label="Events"
+      :messages="messages"
+      :older="!!older"
+      :loading-older="loadingOlder"
+      empty="No events yet."
+      no-prompt
+      @older="loadOlder"
+    >
+      <template #content="{ message }">
+        <div v-if="message.metadata.day" class="day">{{ message.metadata.day }}</div>
+        <EventCard v-if="message.metadata.notes" :notes="message.metadata.notes" :can-steer="canSteer" @posted="loadInitial" />
+        <EventCard v-else-if="message.metadata.event" :event="message.metadata.event" :can-steer="canSteer" :prompts="prompts" @posted="loadInitial" />
+      </template>
+    </DeskChat>
   </div>
 </template>
 
@@ -176,10 +165,7 @@ function showDay(i: number): string | null {
   color: var(--text-3);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  margin: 22px 0 10px;
-}
-.day:first-child {
-  margin-top: 0;
+  margin: 14px 0 10px;
 }
 .day::after {
   content: '';

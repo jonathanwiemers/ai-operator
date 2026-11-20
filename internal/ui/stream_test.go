@@ -168,7 +168,7 @@ func TestInbox(t *testing.T) {
 	if len(items) != 3 || items[0].Kind != "proposal" || items[0].ProposalID != 4 || items[2].IssueIID != 143 || items[2].Reason != "needs-input" {
 		t.Fatalf("inbox = %+v", items)
 	}
-	if p := items[1]; p.Kind != "pause" || p.MilestoneIID != 21 || p.Title != "Poker" || p.IssueIID != 391 || p.PauseKind != aiv1.PauseReviewErrors || p.Reason != "1 reviewers failed on #391" {
+	if p := items[1]; p.Kind != "problem" || p.MilestoneIID != 21 || p.Title != "Poker" || p.IssueIID != 391 || p.PauseKind != aiv1.PauseReviewErrors || p.Reason != "paused (reviewErrors): 1 reviewers failed on #391" {
 		t.Errorf("a paused autopilot is in the inbox, a running one is not: %+v", p)
 	}
 	if p := items[1]; p.PausedSince == nil || !p.PausedSince.Equal(pausedAt.Time) || p.At == nil || !p.At.Equal(pausedAt.Time) {

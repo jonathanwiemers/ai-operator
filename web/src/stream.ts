@@ -23,6 +23,11 @@ export const pilotStreamKinds = [
   'release.decided',
   'release.started',
   'release.ended',
+  'problem.opened',
+  'problem.resolved',
+  'hold.set',
+  'hold.cleared',
+  'pilot.acted',
 ] as const satisfies readonly StreamKind[]
 
 export const runtimeStreamKinds = [

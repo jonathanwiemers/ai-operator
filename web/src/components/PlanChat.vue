@@ -1,16 +1,17 @@
 <script setup lang="ts">
 import UAlert from '@nuxt/ui/components/Alert.vue'
 import { alertColor } from '../badgeTone'
-import UEmpty from '@nuxt/ui/components/Empty.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { chatPostError } from '../api'
 import { getPlanChat, LoginRequiredError, postPlanChat } from '../client'
 import * as cs from '../chatState'
+import { chatMessages } from '../chatView'
 import { keepThroughSignIn } from '../signInDraft'
 import type { AgentPlanPhase, PlanDecision } from '../generated/api'
 import type { ChatMessage } from '../types'
 import Badge from './Badge.vue'
-import ChatThread from './ChatThread.vue'
+import DeskChat from '../ui/DeskChat.vue'
+import ChatTurn from './ChatTurn.vue'
 import Composer, { type ComposerSend } from './Composer.vue'
 
 // PlanChat is a plan's chat (TaskChat without commands): the newest 100
@@ -30,6 +31,7 @@ const props = defineProps<{
 const messages = ref<ChatMessage[]>([])
 const error = ref('')
 const grouped = computed(() => cs.chatTurns(messages.value))
+const shown = computed(() => chatMessages(grouped.value.chronological))
 const waiting = computed(() => {
   const u = grouped.value.newestUser
   const pending = !!u && cs.agentTurnPending(u.kind, u.state, grouped.value.repliesByParent.has(u.id))
@@ -98,25 +100,32 @@ onUnmounted(() => window.clearInterval(timer))
 </script>
 
 <template>
-  <div class="card overflow-clip">
-    <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
-    <UEmpty v-if="!grouped.turns.length" icon="i-lucide-message-square" title="No messages yet." variant="naked" size="sm" />
-    <ChatThread v-else :turns="grouped.turns" :replies="grouped.repliesByParent" :decisions="decisions" />
-    <div v-if="waiting" class="flex items-center border-t border-(--border) bg-(--surface-2) px-4 py-2.5">
-      <Badge tone="progress" dot pulse>{{ waiting.label }}</Badge>
-    </div>
-    <Composer
-      v-if="canPost"
-      v-model="body"
-      mode="chat"
-      placeholder="Tell the agent what the milestone should do…"
-      hint="Enter+Ctrl/Cmd to send"
-      :blocked="blocked"
-      :busy="sending"
-      :disabled="sending"
-      :error="sendError"
-      :can-interrupt="!!waiting?.canInterrupt"
-      @send="onSend"
-    />
+  <div class="card flex h-[min(72dvh,680px)] min-h-[360px] flex-col gap-2 overflow-clip p-3" data-plan-chat>
+    <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" :description="error" />
+    <DeskChat label="Plan chat" :messages="shown" :waiting="!!waiting" empty="No messages yet.">
+      <template #content="{ message }">
+        <ChatTurn v-if="message.metadata.chat" :message="message.metadata.chat" :decisions="decisions" />
+      </template>
+      <template #bar>
+        <div v-if="waiting" class="flex items-center" data-chat-status>
+          <Badge tone="progress" dot pulse>{{ waiting.label }}</Badge>
+        </div>
+      </template>
+      <template #prompt>
+        <Composer
+          v-if="canPost"
+          v-model="body"
+          mode="chat"
+          placeholder="Tell the agent what the milestone should do…"
+          hint="Enter+Ctrl/Cmd to send"
+          :blocked="blocked"
+          :busy="sending"
+          :disabled="sending"
+          :error="sendError"
+          :can-interrupt="!!waiting?.canInterrupt"
+          @send="onSend"
+        />
+      </template>
+    </DeskChat>
   </div>
 </template>

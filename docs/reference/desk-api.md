@@ -87,6 +87,8 @@ and leave out the cookie:
 | `GET /api/v1/projects/{namespace}/{name}` | One project: its tasks by milestone, the autopilot queue, finishing milestones and cost. | see |
 | `GET /api/v1/projects/{namespace}/{name}/milestones/{iid}` | One milestone: autopilot state, pause and its ways out, prompts, issues, releases, the pilot and the retrospective. | see |
 | `GET /api/v1/projects/{namespace}/{name}/milestones/{iid}/issues/{issue}` | One issue of the milestone and its figures. | see |
+| `GET /api/v1/projects/{namespace}/{name}/milestones/{iid}/problems` | The milestone's problems, open first: issue, title, status, cause and times. Without the research database only the open ones. | see |
+| `GET /api/v1/projects/{namespace}/{name}/milestones/{iid}/problems/{id}` | One problem's thread: facts, events oldest page first with `older` and `?before=`, its open question, the pilot task and what you may do. `{id}` is the problem's id or `issue-<iid>`. | see |
 | `GET /api/v1/projects/{namespace}/{name}/milestones/{iid}/thread` | The comments of the milestone's tracking issue. | see, GitLab connected |
 | `POST /api/v1/projects/{namespace}/{name}/milestones/{iid}/notes` | Post `{"body": "…"}` to the milestone's pilot on the tracking issue. | `steer`, GitLab connected |
 | `POST /api/v1/projects/{namespace}/{name}/milestones/{iid}/followup` | Create the follow-up milestone of the retrospective's follow-ups. | `steer`, owner subject, GitLab connected |
@@ -120,7 +122,7 @@ the [glossary](../concepts/glossary.md#task).
 | `GET /api/v1/projects/{namespace}/{name}/tasks/{task}/logs` | Raw log of the task's pod. `?container=runner` or `agent`, `?tail=`, `?follow=1`. | `steer`, owner subject |
 | `GET /api/v1/projects/{namespace}/{name}/tasks/{task}/chat` | The task's chat, newest first. Bodies only with `conversation`. | see, research database |
 | `POST /api/v1/projects/{namespace}/{name}/tasks/{task}/chat` | Send a message, an interrupt or a command (retry, pause, answer, revisit, restart, …). | Desk chat, `chat`, `agents.chat` on the project; owner subject for `merge`, `start`, `unstart`, `endmilestone`, `parallel`, `restart`, `answer`, `accept`, `reject`, `draft`, `revisit` |
-| `POST /api/v1/projects/{namespace}/{name}/tasks/{task}/warm` | Wake the milestone's pilot without a message, so it answers fast. The Desk calls it when you open a problem card. | owner subject |
+| `POST /api/v1/projects/{namespace}/{name}/tasks/{task}/warm` | Wake the milestone's pilot without a message, so it answers fast. The Desk calls it when you open a problem thread. | owner subject |
 | `GET /api/v1/projects/{namespace}/{name}/tasks/{task}/thread` | The comments of the task's issue, merge request and tracking issue. | see, GitLab connected |
 | `POST /api/v1/projects/{namespace}/{name}/tasks/{task}/notes` | Post a comment to the issue, the merge request or the tracking issue. | `steer`, GitLab connected |
 

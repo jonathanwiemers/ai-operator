@@ -33,7 +33,6 @@ test('needsOpen: a pause, a hold and two prompts on one issue are one problem (R
   assert.equal(p.paused, true)
   assert.equal(p.hold?.iid, 558)
   assert.deepEqual(p.prompts.map((q) => q.id), ['Q1', 'Q2'])
-  assert.deepEqual(p.entries.map((e) => e.kind), ['prompt', 'prompt'])
   assert.equal(n.count, 1)
   assert.equal(needsLabel(n.count), 'Needs you · 1')
 })

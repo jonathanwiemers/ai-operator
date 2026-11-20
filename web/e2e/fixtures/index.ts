@@ -7,14 +7,17 @@ import { answerDecisions } from './decisions'
 import { doneMilestones, openMilestones, overview } from './overview'
 import { shopPlanOverview } from './plans'
 import { metricsCode, metricsFlow, metricsPauses } from './metrics'
+import { listProblems, problemThread, type ProblemsOpts } from './problems'
 import { inbox, projects, projectSets, researches } from './rail'
 import { researchAPI } from './research'
 import { about, features, me } from './session'
 import { answerSpend } from './spend'
 import { answerStream, milestones, refundsIssue, shopDetail, shopHistory } from './stream'
 import { answerSearch, gitlabStatus, pilotChat, refunds, refundsChat, refundsLogs, refundsResponse, refundsThread } from './task'
+import type { MilestoneView } from '../../src/types'
 
 export { now } from './clock'
+export { listProblems, problemThread, type ProblemsOpts } from './problems'
 
 // A fixture is a JSON body, or a function of the query that returns one.
 type Fixture = unknown | ((query: URLSearchParams) => unknown)
@@ -56,9 +59,25 @@ export const api: Record<string, Fixture> = {
   ...researchAPI,
 }
 
+const shopProblems = /^\/projects\/team-a\/shop\/milestones\/(\d+)\/problems(?:\/([^/]+))?$/
+
+// answerProblems builds the list or thread for a milestone (and optional
+// history override). Specs that replace the milestone in the route mock
+// call this with that view so the problems endpoints stay in sync.
+export function answerProblems(m: MilestoneView, id: string | undefined, opts?: ProblemsOpts): unknown {
+  if (!id) return listProblems(m, opts)
+  return problemThread(m, decodeURIComponent(id), opts)
+}
+
 // answer is the fixture's body for an API path (without /api/v1) and its
 // query, undefined without a fixture.
 export function answer(path: string, query: URLSearchParams): unknown {
+  const problems = shopProblems.exec(path)
+  if (problems) {
+    const m = milestones[problems[1]!]
+    if (!m) return undefined
+    return answerProblems(m, problems[2], query.get('history') === '0' ? { history: false } : undefined)
+  }
   if (!Object.hasOwn(api, path)) return undefined
   const f = api[path]
   return typeof f === 'function' ? (f as (q: URLSearchParams) => unknown)(query) : f

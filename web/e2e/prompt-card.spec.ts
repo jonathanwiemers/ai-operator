@@ -1,5 +1,5 @@
-// The prompt card after an answer and the one-line prompt rows of the
-// stream (#528: R9, R10, R11). Run with npm run e2e (built UI, Chromium).
+// The prompt card in the problem thread bar after an answer, and the
+// pilot tab's one-line prompt rows. Run with npm run e2e (built UI, Chromium).
 import { expect, test, type Page } from '@playwright/test'
 import { answer, now } from './fixtures'
 import { refundsPrompt } from './fixtures/task'
@@ -19,8 +19,6 @@ interface Problems {
   pageErrors: string[]
 }
 
-// open shows path with the API answered from the fixtures (GET only) and
-// the chat POSTs of the prompt's target task answered by chat.
 async function open(
   page: Page,
   baseURL: string | undefined,
@@ -49,7 +47,6 @@ async function open(
     if (p === '/events' && req.method() === 'GET') {
       return r.fulfill({ status: 200, contentType: 'text/event-stream', body: 'retry: 3600000\n\n' })
     }
-    // A problem card wakes the pilot (#586).
     if (req.method() === 'POST' && p.endsWith('/warm')) return r.fulfill({ status: 204 })
     const body = req.method() === 'GET' ? answer(p, url.searchParams) : undefined
     if (body === undefined) {
@@ -59,7 +56,6 @@ async function open(
     if (typeof body === 'string') return r.fulfill({ status: 200, contentType: 'text/plain; charset=utf-8', body })
     return r.fulfill({ status: 200, json: body })
   })
-  // Registered after the fixtures, so it answers the POSTs first.
   const posts: unknown[] = []
   await page.route(
     (url) => url.pathname === chatPath,
@@ -104,40 +100,18 @@ for (const size of widths) {
     expect(problems).toEqual(clean)
   })
 
-  test(`a closed card shows the choice and folds the rest@${size.width}`, async ({ page, baseURL }) => {
-    const { problems } = await open(page, baseURL, '/projects/team-a/shop/milestones/14#prompt-Q3', size)
-
-    // Answered: the chosen option with its action, the outcome, the label.
-    const q3 = page.locator('#prompt-Q3')
-    await expect(q3).toBeInViewport()
-    const shown = q3.locator('li:visible')
-    await expect(shown).toHaveCount(1)
-    await expect(shown).toContainText('✓ Release SDK 4 first')
-    await expect(shown).toContainText('→ Plans a release after #280')
-    await expect(q3.getByText('Planned release 2 after #280.')).toBeVisible()
-    await expect(q3.getByText('Answered by jo in the Desk: Release SDK 4 first')).toBeVisible()
-    await expect(q3.getByText('Ship together')).toBeHidden()
-    await q3.getByText('Other options (1)').click()
-    await expect(q3.getByText('Ship together')).toBeVisible()
-    await expect(q3.getByRole('button')).toHaveCount(0)
-
-    // Closed by the pilot: no option in sight, all fold under Options. Its
-    // row under Handled unfolds the card.
-    const q2 = page.locator('#prompt-Q2')
-    await page.locator('#problem-0 [data-entry="prompt"]').filter({ hasText: 'Q2' }).locator('summary').first().click()
-    await expect(q2.getByText('Handled by the pilot: the pause ended')).toBeVisible()
-    await expect(q2.getByText('Revert a1b2c3d')).toBeHidden()
-    await expect(q2.getByText('Options (2)')).toBeVisible()
-
-    // Replaced: the label links to the newer prompt.
-    const q1 = page.locator('#prompt-Q1')
-    await page.locator('#problem-0 [data-entry="prompt"]').filter({ hasText: 'Q1' }).locator('summary').first().click()
-    await expect(q1.getByText('Replaced by')).toBeVisible()
-    await expect(q1.getByRole('link', { name: 'Q3', exact: true })).toHaveAttribute('href', /#prompt-Q3$/)
+  test(`the answer shows as the owner's message in the thread@${size.width}`, async ({ page, baseURL }) => {
+    const { problems, posts } = await open(page, baseURL, needsTab, size)
+    const card = page.locator(`#prompt-${refundsPrompt.id}`)
+    await card.getByRole('button', { name: 'Refuse above one capture', exact: true }).click()
+    const thread = page.locator('[data-problem-thread]')
+    await expect(thread.getByText('Refuse above one capture', { exact: true })).toBeVisible()
+    await expect(thread.locator('[role=log]').getByText('sent', { exact: true })).toBeVisible()
+    expect(posts).toHaveLength(1)
     expect(problems).toEqual(clean)
   })
 
-  test(`the pilot tab shows an open prompt as one row without buttons, the row leads to its card@${size.width}`, async ({ page, baseURL }) => {
+  test(`the pilot tab shows an open prompt as one row without buttons, the row leads to its thread@${size.width}`, async ({ page, baseURL }) => {
     const { problems } = await open(page, baseURL, pilotTab, size, undefined, false)
     const events = page.locator('section', { has: page.getByRole('heading', { name: 'Pilot events' }) })
     const row = events.locator('[data-prompt-row]')
@@ -145,11 +119,10 @@ for (const size of widths) {
     await expect(row.getByRole('link', { name: `${refundsPrompt.id} asked:` })).toBeVisible()
     await expect(row.getByText('open', { exact: true })).toBeVisible()
     await expect(row.getByRole('button')).toHaveCount(0)
-    // The card is on Needs you only.
     await expect(page.locator(`[data-prompt="${refundsPrompt.id}"]`)).toHaveCount(0)
     await row.getByRole('link', { name: `${refundsPrompt.id} asked:` }).click()
-    await expect(page.locator(`#prompt-${refundsPrompt.id}`)).toBeInViewport()
-    await expect(page.locator(`[data-prompt="${refundsPrompt.id}"]`)).toHaveCount(1)
+    await expect(page).toHaveURL(/\/milestones\/14\/problems\/issue-281$/)
+    await expect(page.locator(`#prompt-${refundsPrompt.id}`)).toBeVisible()
     expect(problems).toEqual(clean)
   })
 }

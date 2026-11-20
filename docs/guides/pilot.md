@@ -40,7 +40,7 @@ inert: no mentions besides the owners', no quick actions.
 
 Open the milestone's *Pilot* tab. From top to bottom it shows the pilot's
 prompts with its autonomy and cost, and *Message the pilot*, the message box.
-Stuck issues have their [problem card](#the-problem-card) on *Needs you*. Type your question there; the answer comes in the
+Stuck issues have their [problem thread](#the-problem-thread) on *Needs you*. Type your question there; the answer comes in the
 same thread.
 
 ![Pause card on the milestone's Needs you tab: why it paused, the ways out and the pilot's question](../assets/screenshots/milestone-pilot.webp)
@@ -57,12 +57,14 @@ your message goes out as a `/pilot` comment in your name; with neither you
 see the tab but cannot write in it. See
 [Owners and pings](owners-and-pings.md).
 
-## The problem card
+## The problem thread
 
-When an issue is stuck, the milestone's *Needs you* tab shows one **problem
-card** for it, not a pause, a hold and several questions side by side. It
-starts with the [problem facts](../concepts/glossary.md#problem-facts), which
-the operator collects, not the pilot:
+When an issue is stuck, the milestone's *Needs you* tab shows one **problem**
+for it, not a pause, a hold and several questions side by side. Open it to
+see its thread. On top are the status and the cause, for example "the run
+failed: decoding implementer answer: no JSON object in agent result", and the
+[problem facts](../concepts/glossary.md#problem-facts), which the operator
+collects, not the pilot:
 
 - the issue, and the merge request with its head, the commits ahead of the
   base and the last push;
@@ -71,19 +73,25 @@ the operator collects, not the pilot:
 - saved work, such as "348 lines saved as WIP commit `80cd646`";
 - what waits on the issue, such as `#558 → #559 → #560`.
 
-Under the facts is one line with the cause, for example "the run failed:
-decoding implementer answer: no JSON object in agent result". Then come the
-options. Each says what it does and what it costs or throws away. If a retry
-would lose uncommitted lines, the card warns you, whatever the pilot wrote.
+Below them is the history, oldest first, like a chat: when it got stuck,
+each question and its answer, each retry, what the pilot did and why, and
+"stuck again" when it comes back. New entries appear at the bottom while you
+read there.
 
-Under the options are a text box and the pilot chat. What you write goes to
-the pilot as `problem: #558`, in the same thread as the *Pilot* tab. If you
-clearly ask for an action ("rerun it with a hint to answer in JSON"), the
-pilot runs it. Otherwise it asks back. Every action shows in the card's
-history.
+At the bottom is one place to act. While a question is open it shows its
+options; otherwise it shows the ways out of the pause or hold. Each option
+says what it does and what it costs or throws away. If a retry would lose
+uncommitted lines, it warns you, whatever the pilot wrote. Your answer shows
+in the thread at once, marked *sending* and then *sent*. If the operator does
+not react within a minute, a note says so and links the task's logs.
+
+Under it is the text box. What you write goes to the pilot as
+`problem: #558`, in the same thread as the *Pilot* tab. If you clearly ask
+for an action ("rerun it with a hint to answer in JSON"), the pilot runs it
+and logs it in the thread. Otherwise it asks back.
 
 The pilot stays up while a problem is open, so it answers within seconds.
-Opening a card wakes it if it is asleep, for owners only. The longest it stays
+Opening a thread wakes it if it is asleep, for owners only. The longest it stays
 up is set by
 [`problemWarmMax`](../reference/lifecycle-and-ci.md#speclifecycle). An idle
 pod costs no tokens.
@@ -144,9 +152,9 @@ acted on its own", with what it did, why, and how many actions are left. The
 audit pings nobody.
 
 The Desk shows the same actions. On the milestone's
-[*Needs you* tab](desk.md#needs-you), *Handled* lists them under the issue
-they were for, with what the pilot did, why and the result, marked "Pilot"
-or with the owner who accepted it. The newest 30 are kept. The
+[*Needs you* tab](desk.md#needs-you), each shows in its problem's thread,
+with what the pilot did, why and the result, marked "Pilot" or with the
+owner who accepted it. The
 [Inbox](desk.md#inbox) shows those of the last 7 days under *Handled*. The
 audit comment stays. An action that came from a question is not listed
 twice: its outcome is in the question's answer. Each problem also reads

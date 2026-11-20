@@ -392,6 +392,7 @@ the files of the custom components that must render one.
 | `useKeyboardInset` | `web/src/ui/useKeyboardInset.ts` | Lifts the [composer](#composer) above the phone keyboard; Nuxt UI has no such helper. |
 | Charts | `web/src/ui/charts/` | [Charts](#charts) draw with Chart.js; Nuxt UI has no chart component. |
 | BottomTabBar | `web/src/ui/BottomTabBar.vue` | The phone's [bottom bar](#navigation); Nuxt UI has no bottom tab bar. |
+| [DeskChat](#deskchat) | `web/src/ui/DeskChat.vue` | Wraps `UChatMessages` and `UChatPrompt`; they lack *Load older* with a kept scroll anchor and compact operator events. |
 
 ### Adding a custom component
 
@@ -757,6 +758,47 @@ Escape close it; `context-sheet-<page>@<width>.png` show it open. At
 1280 px the project page keeps the panel at its side and neither page has
 the button.
 
+### DeskChat
+
+Every conversation of the Desk has one layout: the history above, oldest
+first, and the text box at the bottom. `web/src/ui/DeskChat.vue` wraps
+`UChatMessages` and `UChatPrompt` from Nuxt UI; the pure part is
+`web/src/chatView.ts` (tested in `web/test/chatView.test.mjs`).
+
+- **Messages.** `DeskChatMessage` is Nuxt UI's message shape (a local type,
+  no `ai` package): `user` is an owner (right), `assistant` the pilot or an
+  agent (left, outlined), `system` an operator event (a compact line).
+  `eventMessages` turns a stream page (newest first) into messages oldest
+  first; a chat body loses its composer prefix (`stripPrefix`, e.g.
+  `problem: #42`). `chatMessages` turns a task chat (`ChatMessage`, oldest
+  first) into messages that keep the original in `metadata.chat`;
+  replies follow their parent in time order, never nested.
+- **Cards.** `streamMessages` turns the stream's items (`groupThreads`,
+  newest first) into full-width `card` messages oldest first, with
+  `metadata.day` on a day's first card; the caller renders the
+  `EventCard` in the `content` slot. The Stream tab, the issue stream
+  (`IssueStream.vue`) and the Pilot tab's events read this way.
+- **Scrolling.** New messages scroll into view only when the reader is at
+  the bottom (`atBottom`, 48 px slack) or the last message is the owner's
+  own, still sending. *Load older* (`older` prop, `older` event) adds
+  messages above and keeps the one in view where it was (`anchoredTop`).
+  `UChatMessages` adds the jump-to-bottom button.
+- **Sending.** The caller owns the draft (`v-model`), the API call and the
+  messages. `localMessage` shows the owner's message at once with
+  *sending*; the caller sets `sent` or `failed` from the answer and drops it
+  when the recorded message arrives.
+- **Slots.** `content` replaces a message's body (an event card, or
+  `ChatTurn.vue` for a task or plan chat message: author, time, state
+  badge and reason, a command's label, the plan's answers), `bar` holds
+  controls above the text box (a prompt's options, the pause cards),
+  `prompt` replaces the text box (the [composer](#composer) with targets
+  and commands). `noPrompt` leaves it out.
+- **Where.** The problem thread, the task's *Chat with the agent*
+  (`TaskChat.vue`, its command buttons in the composer under `prompt`),
+  the plan chat (`PlanChat.vue`), the Stream tab and the issue stream.
+  Each sits in a box of bounded height (`min(72dvh, …)`) so the text box
+  stays at its bottom.
+
 ### Composer
 
 `web/src/components/Composer.vue` is the one text box of the Desk: the
@@ -792,10 +834,12 @@ milestone's *Pilot* tab in `MilestonePilot.vue`).
   `clientKey` in session storage until a 2xx and puts the command buttons
   into the `controls` slot.
 
-Where it sits: a note composer stays at the top of its pane (sticky) as the
-stream scrolls. On a phone the chat composer is sticky at the bottom of the
-screen, inside the chat card: above the bottom bar, and while typing above
-the keyboard. Chrome on Android resizes the page for the keyboard
+Where it sits: at the bottom of its `DeskChat`, below the history, the note
+composer of the Stream tab too. On a phone `DeskChat` keeps its text box
+sticky at the bottom of the screen, inside the chat: above the bottom bar,
+and while typing above the keyboard. Not while the bar shows something (a
+question's or a pause's card can be taller than the screen, and the text
+box would cover its buttons): CSS `:empty` on the bar decides. Chrome on Android resizes the page for the keyboard
 (`interactive-widget=resizes-content`); iOS Safari does not, so
 `web/src/ui/useKeyboardInset.ts` sets `--keyboard-inset` on `<html>` from
 `visualViewport` (the height the keyboard covers, 0 without one) while a
@@ -1147,9 +1191,10 @@ and in the context sheet) are Tailwind utilities and Nuxt UI tokens,
 without scoped CSS.
 
 - The Pilot tab keeps its order: the pilot line (autonomy, cost, *Pilot
-  task*), the message box (*Ask the pilot* is `TaskChat` with the merged
-  `Composer`, so its input is 16 px on phones) and pilot events (a
-  question is one line there). The questions and the pause history are on
+  task*), the message box (*Ask the pilot* is `TaskChat` in a
+  `DeskChat` with the merged `Composer`, so its input is 16 px on phones)
+  and pilot events (`IssueStream`, cards in a `DeskChat`; a question is
+  one line there). The questions and the pause history are on
   the Needs you tab. On phones
   the *Pilot task* link is 44 px high.
 
@@ -1196,65 +1241,50 @@ payload and the stepper's payload and pending limit
 ### Needs you tab
 
 The milestone's Needs you tab (`web/src/components/MilestoneNeeds.vue`,
-utilities only) sits between Issues and Pilot. `needsOpen`
-(`web/src/needsOpen.ts`) groups the milestone view for it.
+utilities only) sits between Issues and Pilot (spec
+`desk-problem-thread`, Decision 11). Its route is
+`/projects/:namespace/:name/milestones/:iid/problems/:problem` (name
+`problem`, `:problem` a row id or `issue-<iid>`, `problemParam` in
+`web/src/problemThread.ts`); the tab without one selects the first open
+problem.
 
-- *Open* (live milestones only): one problem card
-  (`web/src/components/ProblemCard.vue`) per open problem of `needsCases`,
-  then the pilot's open proposals (P-n) with *Accept* and *Reject*, which
-  post the same chat command to the pilot task as the chat's buttons did.
-  A card is an issue, or the milestone (IID 0, *Milestone*), headed
-  `#N title`; it holds the milestone's pause when it belongs to the issue
-  (`autopilot.pauseIssue`, 0 for a budget or red-main pause), the issue's
-  hold (both the full `PauseCard`, with its own prompt), the problem's
-  other open prompts (the merged `PromptCard`, by `issueIID`) and its
-  history folded (`web/src/components/NeedsEntries.vue`, without the
-  `#prompt-<id>` anchors, which stay under *Handled*). The card carries
-  `#problem-<iid>`; the problem's *Handled* block then has no id. The
-  tab's label is *Needs you · n*, n the problems and proposals under *Open*.
-  With the `chat` grant and a pilot, the card ends its options with the
-  pilot's chat (`AskPilot`, the Pilot tab's thread): `TaskChat`'s `focus`
-  lists the threads that start with `problem: #N` (`problem: milestone`
-  for IID 0, `problemChatRef`) first, the rest below (`focusTurns`), and
-  its composer, the free-text box, puts `messagePrefix` and a blank line
-  before what it sends (`chatWithPrefix`), with a draft of its own. A
-  mounted card wakes the pilot once (`warmTask`, `POST …/warm`).
-- *Handled*: one block per problem (`web/src/components/NeedsProblem.vue`)
-  from `needsCases` (`web/src/needsCases.ts`): an issue, or the milestone,
-  with its prompts, the pilot's actions (`pilot.acted`) and its pauses,
-  newest first. The heading names the issue (a link to its page) or
-  *Milestone*, says *Open* or *Handled*, and "Pilot attempts: u of m" while
-  the milestone has a pilot. Open problems come first and start unfolded;
-  a chevron button (`aria-expanded`) folds the entries. The heading is no
-  `<summary>`, whose children are presentational: the issue link stays a
-  link.
-  A closed prompt is a row (ID, question, label) that unfolds the full
-  closed `PromptCard`; an open prompt's row links up to its card under
-  *Open* and has no buttons. An action shows "Pilot" or "@owner", the
-  summary and the why as text and the result lines as markdown without
-  HTML. A pause shows its kind (`pauseTitle`), its time span and who ended
-  it how (`pauseEnd`). The pause totals end the section on one line. A
-  stored milestone shows only *Handled*.
-- A prompt or problem link (`#prompt-Q<n>`, `#problem-<iid>`) without
-  `?tab=` opens this tab; it unfolds the problem (and a closed prompt's
-  row) and scrolls to it. On phones each fold is 44 px high.
+- **List.** `GET …/milestones/{iid}/problems` (`getProblems`), open ones
+  first, each a `RouterLink` row: `#N` or *Milestone*, the title, the
+  status badge (`statusLine`: *Waiting for you*, *Operator acting*,
+  *Pilot looking*, *Resolved*), its time and the cause. Under the list are
+  the pilot's open proposals (P-n) with *Accept* and *Reject*, which post
+  the same chat command to the pilot task as before, and the pause totals.
+  The tab's label is *Needs you · n* (`needsOpen`).
+- **Thread.** `web/src/components/ProblemThread.vue` beside the list from
+  1024 px, below it on smaller screens: the heading (a link to the issue)
+  with the status, the cause, `ProblemFacts`, then a
+  [DeskChat](#deskchat) of `GET …/problems/{problem}` (`getProblem`, *Load
+  older* through its `older` cursor). The `bar` holds one thing: the
+  newest open question's `PromptCard`, else the `PauseCard` of the pause
+  or hold that belongs to the problem (`needsOpen`), never both. The text
+  box writes to the pilot task with `problem: #N` (`problemChatRef`,
+  `chatWithPrefix`). A mounted thread wakes the pilot once (`warmTask`,
+  `POST …/warm`).
+- **Answers.** `PromptCard` and `PauseCard` emit `answer`
+  (`AnswerEvent`); the thread shows the owner's message at once
+  (`withAnswer`, `localMessages`) until an event at or after it arrives,
+  and after 60 s without one adds *No reaction from the operator yet.*
+  with the task's logs (Decision 8).
+- **Without history.** The thread is the closed questions
+  (`promptMessage`) and says that history is off.
+- **Old links.** `#problem-<iid>` and `#prompt-Q<n>` (`problemFromHash`)
+  replace the route with their problem's thread.
 
-The e2e cases in `web/e2e/needs-you.spec.ts` at 375 and 1280 px check that
-a prompt link opens this tab at the card, that an open prompt shows once
-and is counted in the label, that a pause card's own prompt is not listed
-again, that a pause, a hold and two prompts on one issue are one card and
-a budget pause a card of its own, that the card's box posts
-`problem: #558` and the text, lists that thread first and wakes the pilot
-once, that the Pilot tab has no questions and no pause history, and that
-*Handled* lists one problem per issue, open ones first, with its entries
-newest first, the attempts, unfolding rows and problem links; the
-route checks cover `stream-milestone-needs` at the three widths.
+The e2e cases in `web/e2e/needs-you.spec.ts` at 375 and 1280 px check the
+list, the thread with its bar and its pilot box, the thread as a chat
+(oldest first, opened at the newest message, the text box below), the
+answer that shows at once, and old links; the route checks cover `stream-milestone-needs` at
+the three widths.
 
 ### Pause cards
 
-The full pause card (`web/src/components/PauseCard.vue`, on the Needs you
-tab), the pause rows of the Needs you tab's problems
-(`web/src/components/NeedsEntries.vue`) and the compact card (`web/src/components/PauseCardCompact.vue`, Inbox, board,
+The full pause card (`web/src/components/PauseCard.vue`, in a problem
+thread's bar on the Needs you tab) and the compact card (`web/src/components/PauseCardCompact.vue`, Inbox, board,
 stream) are Tailwind utilities and Nuxt UI tokens, without scoped CSS.
 
 - The full card's reason is block markdown. Its actions, the Way out's
@@ -1262,9 +1292,8 @@ stream) are Tailwind utilities and Nuxt UI tokens, without scoped CSS.
   phones, where the action row and each remedy stack into a column and the
   skip select is 16 px. Commands post to the task chat as before
   (`pauseCard.ts`).
-- The pause rows' reasons and the compact card's reason are inline
-  markdown clamped in `Truncated` (one and two lines): a tap opens the
-  rest in place. No `title` holds their text.
+- The compact card's reason is inline markdown clamped in `Truncated`
+  (two lines): a tap opens the rest in place. No `title` holds their text.
 
 The e2e case `milestone pilot › pause cards: reason opens on tap, Skip
 posts@<width>` at 375 and 1280 px opens a clipped history reason on a

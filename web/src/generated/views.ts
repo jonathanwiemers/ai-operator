@@ -1453,6 +1453,67 @@ export interface PlanProject {
 }
 
 //////////
+// source: problems.go
+
+/**
+ * ProblemStatus is the live state of a problem, computed from the CRD and
+ * never stored: waiting for an owner, the operator acting on an accepted
+ * action or an automatic way out, the pilot looking at it, or resolved.
+ */
+export type ProblemStatus = string;
+export const ProblemWaiting: ProblemStatus = "waiting";
+export const ProblemActing: ProblemStatus = "acting";
+export const ProblemPilot: ProblemStatus = "pilot";
+export const ProblemResolved: ProblemStatus = "resolved";
+/**
+ * ProblemView is one problem of a milestone: an issue (0: the milestone
+ * itself) that got stuck. ID is the desk_problems row, 0 for a problem the
+ * history database does not know (it is off, or the operator has not
+ * recorded it yet). Cause is untrusted text.
+ */
+export interface ProblemView {
+  id: number /* int64 */;
+  issueIID: number /* int64 */;
+  title?: string;
+  state: string;
+  status: ProblemStatus;
+  cause: string;
+  openedAt: string;
+  reopenedAt?: string;
+  resolvedAt?: string;
+  resolvedBy?: string;
+}
+/**
+ * ProblemList is the problems of a milestone, open first, then newest
+ * first. History is false without the history database: only the open
+ * problems, from the CRD.
+ */
+export interface ProblemList {
+  problems: ProblemView[];
+  history: boolean;
+}
+/**
+ * ProblemThread is one problem with what is needed to act on it and its
+ * timeline. Prompt is the newest open question about it (its options are
+ * the one bar to act), Exits the ways out of its hold or pause while no
+ * question is open. Prompts are its closed questions, for a thread without
+ * history. Events are the timeline, newest first; Older is the cursor of
+ * the next page. Pilot is the Coordinate task whose chat takes messages.
+ */
+export interface ProblemThread {
+  problem: ProblemView;
+  facts?: problem.Facts;
+  prompt?: PromptView;
+  prompts: PromptView[];
+  exits: ExitView[];
+  events: StreamEvent[];
+  older?: string;
+  history: boolean;
+  pilot?: string;
+  permissions: MilestonePermissions;
+}
+
+//////////
 // source: projectsets.go
 
 /**
@@ -1978,7 +2039,7 @@ export interface HistoryResponse {
 export interface InboxItem {
   namespace: string;
   project: string;
-  kind: 'task' | 'proposal' | 'pause' | 'prompt' | 'pilotError' | 'companionReady' | 'budgetWarning';
+  kind: 'task' | 'problem' | 'proposal' | 'pause' | 'prompt' | 'pilotError' | 'companionReady' | 'budgetWarning';
   task?: string;
   issueIID?: number /* int64 */;
   milestoneIID?: number /* int64 */;

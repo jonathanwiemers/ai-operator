@@ -15,6 +15,7 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/history"
+	"github.com/jonathanwiemers/ai-operator/internal/problem"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 )
 
@@ -54,7 +55,9 @@ var (
 	pilotKinds = []string{history.KindPromptPosted, history.KindPromptAnswered, history.KindPromptClosed,
 		history.KindNeeds, history.KindAutopilot, history.KindAutopilotPaused, history.KindAutopilotResumed,
 		history.KindProposal, history.KindPilotWriteFailed, history.KindNote, "chat.user", "chat.agent",
-		history.KindRetrospective, history.KindReleaseDecided, history.KindReleaseStarted, history.KindReleaseEnded}
+		history.KindRetrospective, history.KindReleaseDecided, history.KindReleaseStarted, history.KindReleaseEnded,
+		history.KindProblemOpened, history.KindProblemResolved, history.KindHoldSet, history.KindHoldCleared,
+		history.KindPilotActed}
 	runtimeKinds = []string{history.KindRunStarted, history.KindRunFinished, history.KindPush, history.KindCI,
 		history.KindReview, history.KindMerged, history.KindClosed, history.KindCheckpoint}
 )
@@ -514,7 +517,7 @@ func (t *HistoryTotals) add(d store.Day) {
 type InboxItem struct {
 	Namespace    string `json:"namespace"`
 	Project      string `json:"project"`
-	Kind         string `json:"kind" tstype:"'task' | 'proposal' | 'pause' | 'prompt' | 'pilotError' | 'companionReady' | 'budgetWarning'"`
+	Kind         string `json:"kind" tstype:"'task' | 'problem' | 'proposal' | 'pause' | 'prompt' | 'pilotError' | 'companionReady' | 'budgetWarning'"`
 	Task         string `json:"task,omitempty"`
 	IssueIID     int64  `json:"issueIID,omitempty"`
 	MilestoneIID int64  `json:"milestoneIID,omitempty"`
@@ -635,9 +638,13 @@ func inboxOf(projects map[string]*aiv1.AgentProject, tasks []aiv1.AgentTask, now
 				items = append(items, it)
 			}
 		}
+		// A spec task's problems (problem.Open) are one item each; they
+		// stand for its assessment prompts, pause and holds.
+		problems := problemItems(base, t, now)
+		items = append(items, problems...)
 		needsInputPrompt := false
 		for _, pr := range t.Status.Prompts {
-			if pr.State.Closed() {
+			if pr.State.Closed() || (problems != nil && pr.Source.Kind == aiv1.PromptAssessment) {
 				continue
 			}
 			it := base
@@ -664,7 +671,7 @@ func inboxOf(projects map[string]*aiv1.AgentProject, tasks []aiv1.AgentTask, now
 		}
 		if a := t.Status.Autopilot; a != nil && t.Spec.Milestone != nil && (a.Phase == aiv1.AutopilotPaused || a.Phase == aiv1.AutopilotRunning) {
 			paused := a.Phase == aiv1.AutopilotPaused
-			if paused {
+			if paused && problems == nil {
 				it := base
 				it.Kind, it.IssueIID, it.Title, it.Reason, it.PauseKind = "pause", a.PausedFor, t.Spec.Milestone.Title, a.PausedReason, a.PauseKind
 				if a.PausedAt != nil {
@@ -674,7 +681,7 @@ func inboxOf(projects map[string]*aiv1.AgentProject, tasks []aiv1.AgentTask, now
 				items = append(items, it)
 			}
 			for _, ai := range a.Items {
-				if h := ai.Hold; h != nil && ai.State == aiv1.AutopilotItemActive {
+				if h := ai.Hold; h != nil && ai.State == aiv1.AutopilotItemActive && problems == nil {
 					it := base
 					it.Kind, it.IssueIID, it.Title, it.Reason, it.PauseKind, it.Hold = "pause", ai.IID, t.Spec.Milestone.Title, h.Reason, h.Kind, true
 					if !h.Since.IsZero() {
@@ -714,6 +721,45 @@ func inboxOf(projects map[string]*aiv1.AgentProject, tasks []aiv1.AgentTask, now
 		return a.After(*b)
 	})
 	return items
+}
+
+// problemItems are the Inbox items of t's open problems, one per issue (0:
+// the milestone), while t is a spec task whose autopilot, if any, runs or is
+// paused; nil otherwise. A non-nil result, even empty, means the problems
+// stand for the task's assessment prompts, pause and holds.
+func problemItems(base InboxItem, t *aiv1.AgentTask, now time.Time) []InboxItem {
+	if t.Spec.Type != aiv1.TaskTypeSpec || t.Spec.Milestone == nil {
+		return nil
+	}
+	if a := t.Status.Autopilot; a != nil && a.Phase != aiv1.AutopilotPaused && a.Phase != aiv1.AutopilotRunning {
+		return nil
+	}
+	items := []InboxItem{}
+	for _, iid := range problem.Open(t) {
+		it := base
+		it.Kind, it.IssueIID, it.Reason = "problem", iid, problem.Why(t, iid)
+		if it.Title = issueTitle(t, iid); it.Title == "" {
+			it.Title = t.Spec.Milestone.Title
+		}
+		since := problemSince(t, iid, now)
+		it.At = &since
+		if kind, ok := problemKind(t.Status.Autopilot, iid); ok {
+			it.PauseKind, it.PausedSince = kind, &since
+			it.Hold = iid != 0 && heldItem(t.Status.Autopilot, iid)
+		}
+		items = append(items, it)
+	}
+	return items
+}
+
+// heldItem is whether iid is an active item of ap with a hold.
+func heldItem(ap *aiv1.AutopilotStatus, iid int64) bool {
+	for _, it := range ap.Items {
+		if it.IID == iid && it.Hold != nil && it.State == aiv1.AutopilotItemActive {
+			return true
+		}
+	}
+	return false
 }
 
 // handledWindow and handledMax bound the Inbox's Handled list.

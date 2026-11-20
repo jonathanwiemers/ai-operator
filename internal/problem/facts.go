@@ -157,3 +157,27 @@ func IIDs(st *aiv1.AgentTask) []int64 {
 	slices.Sort(out)
 	return slices.Compact(out)
 }
+
+// Open are the problems of st's milestone: IIDs, and 0 (the milestone
+// itself) while the autopilot is paused over the whole milestone
+// (aiv1.ProblemIssue is 0) or an assessment prompt without an issue is open;
+// sorted, unique.
+func Open(st *aiv1.AgentTask) []int64 {
+	if st == nil {
+		return nil
+	}
+	out := IIDs(st)
+	milestone := false
+	if ap := st.Status.Autopilot; ap != nil && ap.Phase == aiv1.AutopilotPaused && aiv1.ProblemIssue(ap) == 0 {
+		milestone = true
+	}
+	for _, p := range st.Status.Prompts {
+		if p.Source.Kind == aiv1.PromptAssessment && p.State == aiv1.PromptOpen && p.Source.IssueIID == 0 {
+			milestone = true
+		}
+	}
+	if milestone {
+		out = append([]int64{0}, out...)
+	}
+	return out
+}

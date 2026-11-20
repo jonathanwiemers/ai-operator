@@ -108,6 +108,7 @@ packages:
       - plans.go
       - plans_all.go
       - projectsets.go
+      - problems.go
       - prompt.go
       - queue.go
       - release.go

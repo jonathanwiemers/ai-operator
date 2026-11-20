@@ -236,6 +236,7 @@ func grant(ctx context.Context, tx pgx.Tx, g Grants) error {
 			"REVOKE ALL ON " + sc + ".desk_backfill, " + sc + ".desk_backfill_projects FROM " + id,
 			"REVOKE ALL ON " + sc + ".desk_decisions, " + sc + ".desk_decision_revisits FROM " + id,
 			"REVOKE ALL ON " + sc + ".plan_decision_versions, " + sc + ".plan_decision_signoffs FROM " + id,
+			"REVOKE ALL ON " + sc + ".desk_problems FROM " + id,
 		} {
 			if _, err := tx.Exec(ctx, stmt); err != nil {
 				return fmt.Errorf("revoke from role %q: %w", w, err)

@@ -28,6 +28,7 @@ import {
   type PauseActionID,
 } from '../pauseCard'
 import type { Facts } from '../generated/problem'
+import type { AnswerEvent } from '../problemThread'
 import type { HoldView, MilestoneView } from '../types'
 import Badge from './Badge.vue'
 import CompanionChip from './CompanionChip.vue'
@@ -54,6 +55,9 @@ import RelTime from './RelTime.vue'
 // 4): no "Autopilot paused" heading, which only repeats it (D627-P2); a
 // kind's heading ("CI is red") names the cause and stays, as does a hold's.
 const props = defineProps<{ namespace: string; name: string; milestone: MilestoneView; hold?: HoldView; noReason?: boolean; facts?: Facts; noStatus?: boolean }>()
+// answer: a way out or the pause prompt's answer on its way (the problem
+// thread shows it as the owner's message, Decision 8).
+const emit = defineEmits<{ answer: [e: AnswerEvent] }>()
 
 const ap = computed(() => props.milestone.autopilot)
 const kind = computed(() => (props.hold ? props.hold.kind : ap.value?.pauseKind))
@@ -199,15 +203,19 @@ async function send(a: PauseAction, cmd: ChatCommand) {
   unsent = { task, body, clientKey }
   sending.value = a.id
   postError.value = ''
+  const shown = { id: crypto.randomUUID(), label: label(a, cmd), task }
+  emit('answer', { ...shown, send: 'sending' })
   try {
     const r = await postTaskChat(props.namespace, props.name, task, { body, clientKey, kind: 'command' })
     unsent = null
     confirmHead.value = ''
     sent.value = { id: r.id, task, label: label(a, cmd) }
     answer.value = { state: 'pending' }
+    emit('answer', { ...shown, send: 'sent' })
     void loadAnswer()
   } catch (e) {
     postError.value = chatPostError(e)
+    emit('answer', { ...shown, send: 'failed', error: postError.value })
   } finally {
     sending.value = null
   }
@@ -359,7 +367,7 @@ const wrap = '[overflow-wrap:anywhere]'
       </ul>
     </div>
 
-    <PromptCard v-if="prompt" :namespace="namespace" :name="name" :prompt="prompt" :facts="facts" />
+    <PromptCard v-if="prompt" :namespace="namespace" :name="name" :prompt="prompt" :facts="facts" @answer="emit('answer', $event)" />
 
     <div v-else-if="shown.length" class="mt-1" :class="stack" data-pause-actions>
       <template v-for="s in shown" :key="s.action.id">

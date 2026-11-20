@@ -242,16 +242,16 @@ works on the issue, and the issue's own stream.
 
 ![Needs you tab with the pause card, its ways out and an open question](../assets/screenshots/milestone-pilot.webp)
 
-What waits for the milestone's owners. While something is open, the tab
-reads *Needs you · n*: n problems and proposals. *Open* has one
-[problem card](../concepts/glossary.md#problem-card) per stuck issue (see
-[the card](pilot.md#the-problem-card)), a *Milestone* card for a budget pause,
-then proposals. *Handled* lists one problem per issue, and one for the milestone: the
-questions about it, what the pilot did on its own and the pauses, newest
-first, with "Pilot attempts: 2 of 2" for the pilot's tries on the issue's
-current head. Open problems come first. Click a closed question to see its
-full card. The last line sums up the pauses. A link to a question
-(`#prompt-Q3`) or a problem (`#problem-280`) opens this tab there.
+What waits for the milestone's owners; the tab reads *Needs you · n* while
+n problems and proposals are open. On the left are the
+[problems](../concepts/glossary.md#problem-thread), one per stuck issue and
+one for the milestone (a budget pause), open first, each with its status
+(*Waiting for you*, *Operator acting*, *Pilot looking*, *Resolved*), time and
+cause. Under them are the pilot's proposals with *Accept* and *Reject*, and
+the pause totals. Click a problem to open its **thread** beside the list
+(below on a phone): what happened, oldest first, and one place to act at the
+bottom ([The problem thread](pilot.md#the-problem-thread)). Each problem has
+its own address; old `#prompt-Q3` or `#problem-280` links open it.
 
 ### Decisions
 

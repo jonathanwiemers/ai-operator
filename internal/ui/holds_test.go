@@ -150,18 +150,16 @@ func TestInboxHolds(t *testing.T) {
 		spec("done", 24, &aiv1.AutopilotStatus{Phase: aiv1.AutopilotDone, Items: []aiv1.AutopilotItem{{IID: 9, State: aiv1.AutopilotItemActive, Hold: hold}}}),
 	}
 	items := inboxOf(map[string]*aiv1.AgentProject{"agents/orbit": ap}, tasks, time.Now())
-	if len(items) != 3 {
+	// One problem per issue; the budget pause with one held item is that
+	// item's problem (aiv1.ProblemIssue); a done milestone has none.
+	if len(items) != 2 {
 		t.Fatalf("inbox = %+v", items)
 	}
-	// Newest first: the two holds (an hour old), then the milestone pause.
-	if p := items[0]; p.Kind != "pause" || !p.Hold || p.MilestoneIID != 22 || p.Title != "running" || p.IssueIID != 1 || p.PauseKind != aiv1.PauseCIRed ||
-		p.Reason != "job `lint` failed" || p.PausedSince == nil || !p.PausedSince.Equal(heldAt.Time) || p.At == nil || !p.At.Equal(heldAt.Time) {
+	if p := items[0]; p.Kind != "problem" || !p.Hold || p.MilestoneIID != 22 || p.Title != "running" || p.IssueIID != 1 || p.PauseKind != aiv1.PauseCIRed ||
+		p.Reason != "held (ciRed): job `lint` failed" || p.PausedSince == nil || !p.PausedSince.Equal(heldAt.Time) || p.At == nil || !p.At.Equal(heldAt.Time) {
 		t.Errorf("a hold of a running milestone: %+v", p)
 	}
-	if p := items[1]; p.Kind != "pause" || !p.Hold || p.MilestoneIID != 23 || p.IssueIID != 5 || p.PauseKind != aiv1.PauseFindings || p.Reason != "2 findings" {
+	if p := items[1]; p.Kind != "problem" || !p.Hold || p.MilestoneIID != 23 || p.IssueIID != 5 || p.PauseKind != aiv1.PauseFindings || p.Reason != "held (findings): 2 findings" {
 		t.Errorf("a hold of a paused milestone: %+v", p)
-	}
-	if p := items[2]; p.Kind != "pause" || p.Hold || p.MilestoneIID != 23 || p.IssueIID != 0 || p.PauseKind != aiv1.PauseBudget || p.PausedSince == nil || !p.PausedSince.Equal(pausedAt.Time) {
-		t.Errorf("the milestone pause: %+v", p)
 	}
 }
