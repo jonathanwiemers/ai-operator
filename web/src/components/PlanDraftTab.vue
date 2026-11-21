@@ -21,11 +21,15 @@ const props = defineProps<{
 // create asks PlanDraft.vue for the create dialog of the saved draft: the
 // dialog lives there, outside the tabs, so it stays open when this tab goes
 // (key 0 saved as a new draft, or the next draft moving on).
-const emit = defineEmits<{ view: [PlanView]; create: [{ key: number; title: string; draft: string }] }>()
+// edited: the stored unsaved edit changed (one blocks Create all).
+const emit = defineEmits<{ view: [PlanView]; create: [{ key: number; title: string; draft: string }]; edited: [] }>()
 const key = props.draft.key
 const editor = ref(readDraftEdit(props.namespace, props.plan, key) ?? takeAgent(props.draft))
 const [mode, conflict, error] = [ref(editor.value.dirty ? 'edit' : 'preview'), ref<DiffLine[] | null>(null), ref('')]
-watch(editor, (s) => writeDraftEdit(props.namespace, props.plan, key, s))
+watch(editor, (s) => {
+  writeDraftEdit(props.namespace, props.plan, key, s)
+  emit('edited')
+})
 watch(() => props.draft, (d) => {
   const r = onServerDraft(editor.value, d)
   if (r.action === 'replace') [editor.value, conflict.value] = [takeAgent(d), null]

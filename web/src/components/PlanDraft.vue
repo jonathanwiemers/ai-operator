@@ -4,7 +4,10 @@
 // without drafts shows one empty tab, saved or created as a new draft.
 import { computed, ref, watch } from 'vue'
 import UTabs from '@nuxt/ui/components/Tabs.vue'
-import { canMove, draftLabel, draftLocked, nextToCreate } from '../planDraft'
+import UButton from '@nuxt/ui/components/Button.vue'
+import { canMove, draftLabel, draftLocked, nextToCreate, readDraftEdit } from '../planDraft'
+import { uncreated } from '../planCreateAll'
+import PlanCreateAllDialog from './PlanCreateAllDialog.vue'
 import PlanCreateDialog from './PlanCreateDialog.vue'
 import PlanDraftTab from './PlanDraftTab.vue'
 import type { PlanDraftView, PlanView } from '../generated/views'
@@ -30,6 +33,16 @@ const creating = ref(false)
 const openCreate = (d: { key: number; title: string; draft: string }) => [createFor.value, creating.value] = [d, true]
 // The dialog's title: the draft's, the plan's for a single draft.
 const title = (d: PlanDraftView) => d.title || (drafts.value.length === 1 ? props.view.title : '')
+// Create all (Decision 11), with more than one uncreated draft. It creates
+// the saved texts, so an unsaved edit in any tab (stored per draft, also for
+// tabs not shown) blocks it; edits bumps when a tab's edit changes.
+const showAll = computed(() => uncreated(props.view.drafts).length > 1)
+const edits = ref(0)
+const unsaved = computed(() => {
+  void edits.value
+  return props.view.drafts.filter((d) => readDraftEdit(props.namespace, props.plan, d.key)).map(draftLabel)
+})
+const creatingAll = ref(false)
 </script>
 
 <template>
@@ -39,12 +52,21 @@ const title = (d: PlanDraftView) => d.title || (drafts.value.length === 1 ? prop
         <PlanDraftTab :namespace="namespace" :name="name" :plan="plan" :view="view" :draft="item.draft" :title="title(item.draft)"
           :can-edit="canEdit && !draftLocked(item.draft)" :can-create="canEdit && next?.key === item.draft.key"
           :can-left="canMove(drafts, item.draft.key, -1)" :can-right="canMove(drafts, item.draft.key, 1)"
-          @view="(v) => emit('view', v)" @create="openCreate">
-          <template v-if="canEdit" #actions><slot name="actions" /></template>
+          @view="(v) => emit('view', v)" @create="openCreate" @edited="edits++">
+          <template v-if="canEdit" #actions>
+            <template v-if="showAll && next?.key === item.draft.key">
+              <UButton size="sm" color="neutral" variant="outline" label="Create all" :disabled="unsaved.length > 0"
+                :aria-describedby="unsaved.length ? 'plan-create-all-note' : undefined" data-create-all @click="creatingAll = true" />
+              <span v-if="unsaved.length" id="plan-create-all-note" class="text-xs text-(--text-2)">Save {{ unsaved.join(', ') }} first to create all.</span>
+            </template>
+            <slot name="actions" />
+          </template>
         </PlanDraftTab>
       </template>
     </UTabs>
     <PlanCreateDialog v-if="createFor" :key="createFor.key" v-model:open="creating" :namespace="namespace" :name="name" :plan="plan"
       :draft-key="createFor.key" :title="createFor.title" :draft="createFor.draft" :pending="view.decisionsPending ?? 0" @created="emit('created')" />
+    <PlanCreateAllDialog v-if="creatingAll || showAll" v-model:open="creatingAll" :namespace="namespace" :name="name" :plan="plan"
+      :drafts="view.drafts" :pending="view.decisionsPending ?? 0" @created="emit('created')" />
   </div>
 </template>
