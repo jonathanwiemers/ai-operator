@@ -43,7 +43,44 @@ export const shopTimeline: TimelineView = {
   ],
 }
 
+// The Overview's window (?from=&to=): team-a/shop's three issues of %14
+// plus #20 of %15, still running, alongside #13; team-b's long-named
+// project ran #7 of %3 this morning and #4 three days ago (only in 7 d).
+const longProject = 'a-project-with-a-rather-long-name.example'
+const daysAgo = (d: number, h: number) => new Date(Date.UTC(2026, 10, 10 - d, h)).toISOString()
+
+export const overviewTimelineRows: TimelineRowView[] = [
+  ...shopTimeline.rows,
+  {
+    ...issue(20, 'Refund by wallet', 1, [seg('running', at(10, 30), at(11)), { kind: 'running', start: at(11, 20) }], ''),
+    milestoneIID: 15,
+    milestoneTitle: 'Refunds',
+    mergedAt: undefined,
+    deskURL: '/projects/team-a/shop/milestones/15/issues/20',
+  },
+  ...[
+    { iid: 7, title: 'Index the catalogue', segments: [seg('running', at(8, 30), at(10)), seg('waiting', at(10), at(11))], mergedAt: at(11) },
+    { iid: 4, title: 'Add the search box', segments: [seg('running', daysAgo(3, 9), daysAgo(3, 11))], mergedAt: daysAgo(3, 11) },
+  ].map(
+    (r): TimelineRowView => ({
+      namespace: 'team-b',
+      project: longProject,
+      milestoneIID: 3,
+      milestoneTitle: 'Search',
+      issueIID: r.iid,
+      issueTitle: r.title,
+      wave: 1,
+      segments: r.segments,
+      mergedAt: r.mergedAt,
+      deskURL: `/projects/team-b/${longProject}/milestones/3/issues/${r.iid}`,
+    }),
+  ),
+]
+
 export function answerTimeline(q: URLSearchParams): TimelineView {
   if (q.get('project') === 'team-a/shop' && q.get('milestone') === '14') return shopTimeline
+  const from = q.get('from')
+  const to = q.get('to')
+  if (from && to && !q.get('milestone')) return { history: true, from, to, now: now.toISOString(), truncated: false, rows: overviewTimelineRows }
   return { history: true, from: now.toISOString(), to: now.toISOString(), now: now.toISOString(), truncated: false, rows: [] }
 }

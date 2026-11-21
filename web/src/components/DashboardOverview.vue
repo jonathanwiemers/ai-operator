@@ -2,7 +2,7 @@
 import UAlert from '@nuxt/ui/components/Alert.vue'
 import { alertColor } from '../badgeTone'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
-import { computed } from 'vue'
+import { computed, defineAsyncComponent } from 'vue'
 import EngineUsage from './EngineUsage.vue'
 import MilestoneSections from './MilestoneSections.vue'
 import StatTile from './StatTile.vue'
@@ -13,9 +13,11 @@ import { activeLimits, finishingLabel, overviewStrip, type StripChip } from '../
 import type { WorkingNow } from '../types'
 
 // The dashboard's Overview tab (decision 4): the summary strip, Working
-// now, and the milestone lists (In progress, Recently done). It reloads on
+// now, the Timeline across projects (R11), and the milestone lists (In progress, Recently done). It reloads on
 // project and task changes.
 const now = useNow()
+// The Timeline loads in its own chunk, out of the initial bundle (D667-P1).
+const OverviewTimeline = defineAsyncComponent(() => import('./OverviewTimeline.vue'))
 const { data: overview, error, loading } = useResource(() => getOverview, ['project', 'task'])
 const strip = computed(() => (overview.value ? overviewStrip(overview.value) : []))
 
@@ -110,6 +112,12 @@ function runningFor(w: WorkingNow): string {
             <EngineUsage v-for="u in w.engineUsage ?? []" :key="u.engine" :usage="u" />
           </article>
         </div>
+      </section>
+
+      <section class="section" aria-labelledby="overview-timeline-head">
+        <h2 id="overview-timeline-head" class="text-[15px]">Timeline</h2>
+        <OverviewTimeline v-if="overview.history" />
+        <UAlert v-else :color="alertColor('info')" variant="subtle" description="Done milestones and spend need the research database." data-timeline-no-history />
       </section>
 
       <MilestoneSections />

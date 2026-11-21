@@ -48,7 +48,9 @@ function segStyle(s: SegmentLayout, token?: ChartToken) {
 </script>
 
 <template>
-  <div>
+  <!-- A milestone legend (the Overview) comes first, above the axis; the
+       segment key comes after the bars. -->
+  <div class="flex flex-col">
     <div class="overflow-x-auto rounded-(--radius-sm) border border-(--border) bg-(--surface)" data-timeline>
       <div class="relative min-w-[40rem] pb-1.5">
         <!-- The grid lines and the now line, behind the bars. -->
@@ -84,9 +86,12 @@ function segStyle(s: SegmentLayout, token?: ChartToken) {
             </h3>
           </div>
           <div v-for="r in g.rows" :key="r.key" class="flex" data-timeline-row>
-            <div :class="labelCol" class="flex min-w-0 items-baseline gap-1.5 px-3 pt-2 text-[12.5px]" :title="r.sub || undefined">
-              <span class="font-medium whitespace-nowrap text-(--text-3) tabular-nums">{{ r.label }}</span>
-              <span v-if="r.sub" class="truncate">{{ r.sub }}</span>
+            <div :class="labelCol" class="flex min-w-0 items-baseline gap-1.5 px-3 pt-2 text-[12.5px]" :title="r.sub || (r.to ? r.label : undefined)">
+              <RouterLink v-if="r.to" :to="r.to" class="truncate font-medium" data-timeline-row-link>{{ r.label }}</RouterLink>
+              <template v-else>
+                <span class="font-medium whitespace-nowrap text-(--text-3) tabular-nums">{{ r.label }}</span>
+                <span v-if="r.sub" class="truncate">{{ r.sub }}</span>
+              </template>
             </div>
             <div :class="trackBox">
               <ul
@@ -131,7 +136,11 @@ function segStyle(s: SegmentLayout, token?: ChartToken) {
         </template>
       </div>
     </div>
-    <ul class="m-0 mt-2 flex list-none flex-wrap gap-x-4 gap-y-1 p-0 text-[12px] text-(--text-2)" data-timeline-key>
+    <ul
+      class="m-0 flex list-none flex-wrap gap-x-4 gap-y-1 p-0 text-[12px] text-(--text-2)"
+      :class="legend?.length ? 'order-first mb-2' : 'mt-2'"
+      data-timeline-key
+    >
       <template v-if="legend?.length">
         <li v-for="l in legend" :key="l.key" class="flex items-center gap-1.5">
           <span class="size-2.5 rounded-sm" :style="{ background: `var(${l.token})` }" aria-hidden="true" />{{ l.title }}

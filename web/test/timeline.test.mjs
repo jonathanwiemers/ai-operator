@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { clockTime } from '../src/format.ts'
-import { barLayout, barName, gapPct, issuesView, milestoneGroups, milestoneLayout, nowPct, overviewLayout, pack, ticks } from '../src/timeline.ts'
+import { barLayout, barName, gapPct, issuesView, legendTitle, milestoneGroups, milestoneLayout, nowPct, overviewGroups, overviewLayout, overviewWindow, pack, ticks, windowRange } from '../src/timeline.ts'
 
 process.env.TZ = 'UTC'
 
@@ -249,4 +249,30 @@ test('issuesView: Timeline by default with history, Lanes without', () => {
   assert.equal(issuesView('bogus', true), 'timeline')
   assert.equal(issuesView('timeline', false), 'lanes')
   assert.equal(issuesView(undefined, false), 'lanes')
+})
+
+test('overviewGroups: one row per project with bars, linked to the project', () => {
+  const rows = [
+    row({ issueIID: 1, deskURL: '/i/1', segments: [{ kind: 'running', start: at(60), end: at(120) }] }),
+    row({ issueIID: 2, deskURL: '/i/2', segments: [{ kind: 'running', start: at(90), end: at(150) }] }),
+    row({ project: 'cart', issueIID: 3, segments: [{ kind: 'running', start: at(-600), end: at(-500) }] }),
+  ]
+  const l = overviewLayout({ from: at(0), to: at(24 * 60), rows }, t0 + 24 * H)
+  const g = overviewGroups(l.projects)
+  assert.equal(g.length, 1)
+  assert.deepEqual(g[0].rows.map((r) => [r.label, r.to, r.lines.map((line) => line.map((b) => [b.label, b.to, b.token]))]), [
+    ['g/shop', { name: 'stream-project', params: { namespace: 'g', name: 'shop' } }, [[['#1', '/i/1', '--chart-1']], [['#2', '/i/2', '--chart-1']]]],
+  ])
+  assert.deepEqual(overviewGroups([]), [])
+})
+
+test('legendTitle, overviewWindow and windowRange', () => {
+  assert.equal(legendTitle({ milestoneIID: 5, title: 'Parser' }), '%5 Parser')
+  assert.equal(legendTitle({ milestoneIID: 0, title: 'No milestone' }), 'No milestone')
+  assert.equal(overviewWindow(undefined), '24h')
+  assert.equal(overviewWindow('bogus'), '24h')
+  assert.equal(overviewWindow('6h'), '6h')
+  assert.equal(overviewWindow('7d'), '7d')
+  assert.deepEqual(windowRange('6h', t0), { from: at(-360), to: at(0) })
+  assert.deepEqual(windowRange('7d', t0), { from: at(-7 * 24 * 60), to: at(0) })
 })

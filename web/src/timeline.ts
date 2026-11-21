@@ -2,6 +2,7 @@
 // the rows of GET /api/v1/timeline and a time window to bars, segments,
 // lines, ticks and accessible names in percent of the window. Pure, no DOM:
 // ui/Timeline.vue draws what it returns.
+import type { RouteLocationRaw } from 'vue-router'
 import type { ChartToken } from './chartData'
 import type { TimelineRowView, TimelineSegmentView, TimelineView } from './generated/views'
 import { clockTime, duration } from './format.ts'
@@ -292,6 +293,8 @@ export interface TimelineRowItem {
   key: string
   label: string
   sub?: string
+  // to: the label links there (the Overview's project rows).
+  to?: RouteLocationRaw
   lines: TimelineBarItem[][]
 }
 
@@ -316,6 +319,49 @@ export function milestoneGroups<R extends TimelineRow & Pick<TimelineRowView, 'd
       }),
     }))
     .filter((g) => g.rows.length > 0)
+}
+
+// overviewGroups turns overviewLayout's projects into the component's one
+// group: a row per project with bars in the window, labelled
+// "namespace/name" and linked to the project page (D667-P2).
+export function overviewGroups<R extends OverviewRow & Pick<TimelineRowView, 'deskURL'>>(projects: ProjectLine<R>[]): TimelineGroupItem[] {
+  const rows = projects
+    .filter((p) => p.lines.length > 0)
+    .map((p) => ({
+      key: p.key,
+      label: p.key,
+      to: { name: 'stream-project', params: { namespace: p.namespace, name: p.project } },
+      lines: p.lines.map((line) =>
+        line.map((b) => ({ key: `${b.row.milestoneIID}#${b.row.issueIID}`, to: b.row.deskURL, label: b.label, name: b.name, bar: b.bar, token: b.token })),
+      ),
+    }))
+  return rows.length ? [{ key: 'projects', heading: '', rows }] : []
+}
+
+// legendTitle is a legend entry's text: "%5 Parser", or "No milestone".
+export function legendTitle(e: Pick<LegendEntry, 'milestoneIID' | 'title'>): string {
+  return e.milestoneIID > 0 ? `%${e.milestoneIID} ${e.title}` : e.title
+}
+
+export type OverviewWindow = '6h' | '24h' | '7d'
+
+export const overviewWindows: { value: OverviewWindow; label: string; ms: number }[] = [
+  { value: '6h', label: '6 h', ms: 6 * hour },
+  { value: '24h', label: '24 h', ms: day },
+  { value: '7d', label: '7 d', ms: 7 * day },
+]
+
+// overviewWindow is the Overview timeline's window from ?window= (Decision
+// 4): 6h, 24h or 7d, 24h by default.
+export function overviewWindow(q: unknown): OverviewWindow {
+  return q === '6h' || q === '7d' ? q : '24h'
+}
+
+// windowRange is the window of the given length ending at now, as the
+// endpoint reads it.
+export function windowRange(w: OverviewWindow, now: number): { from: string; to: string } {
+  const len = overviewWindows.find((x) => x.value === w)!.ms
+  return { from: new Date(now - len).toISOString(), to: new Date(now).toISOString() }
 }
 
 export type IssuesView = 'timeline' | 'lanes'
