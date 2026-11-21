@@ -54,6 +54,11 @@ spec:
             {{- else if has .Values.logLevel $agentLevels }}
             - --agent-log-level={{ .Values.logLevel }}
             {{- end }}
+            {{- $agentLanguage := .Values.agent.language | default "" | toString }}
+            {{- if and $agentLanguage (not (regexMatch "^[A-Za-z]{2,3}(-[A-Za-z]{4})?(-([A-Za-z]{2}|[0-9]{3}))?(-([A-Za-z0-9]{5,8}|[0-9][A-Za-z0-9]{3}))*$" $agentLanguage)) }}
+            {{- fail "agent.language must be a language tag such as en, de or pt-BR (or \"\" to turn the rule off)" }}
+            {{- end }}
+            - --agent-language={{ $agentLanguage }}
             {{- if .Values.leaderElection }}
             - --leader-elect
             {{- end }}

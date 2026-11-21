@@ -45,6 +45,9 @@ type AgentPlanReconciler struct {
 	// do not set agents.image and agents.logLevel.
 	DefaultAgentImage    string
 	DefaultAgentLogLevel aiv1.LogLevel
+	// AgentLanguage is the operator's --agent-language, set as AI_AGENT_LANGUAGE
+	// in the agent container; empty sets nothing (no language rule).
+	AgentLanguage string
 	// Now is the clock; nil means time.Now.
 	Now func() time.Time
 
@@ -116,7 +119,7 @@ func (r *AgentPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if err := r.getOrCreate(ctx, buildPlanClaim(&plan, spec)); err != nil {
 		return ctrl.Result{}, err
 	}
-	pod := buildPlanPod(&plan, spec, r.Config)
+	pod := buildPlanPod(&plan, spec, r.Config, r.AgentLanguage)
 	if err := r.getOrCreate(ctx, pod); err != nil {
 		return ctrl.Result{}, err
 	}

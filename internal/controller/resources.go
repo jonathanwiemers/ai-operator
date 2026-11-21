@@ -98,7 +98,7 @@ var DefaultRunnerResources = corev1.ResourceRequirements{
 // targets are the project's valid companion targets (crossRepoTargets): a
 // task's companion gets its token (GITLAB_COMPANION_TOKEN) in the runner
 // container only while its project is one of them.
-func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec, deskURL string, targets []aiv1.CrossRepoTarget) *corev1.Pod {
+func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec, deskURL string, targets []aiv1.CrossRepoTarget, language string) *corev1.Pod {
 	own := []corev1.EnvVar{{Name: "AI_TASK_NAME", Value: task.Name}, namespaceEnv("AI_TASK_NAMESPACE")}
 	var extra []corev1.EnvVar
 	annotations := map[string]string{}
@@ -108,7 +108,7 @@ func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec, deskURL string, 
 		annotations[AnnotationCompanion] = project
 	}
 	meta := metav1.ObjectMeta{Name: task.Name, Namespace: task.Namespace, Labels: taskLabels(task), Annotations: annotations}
-	return workspacePod(meta, spec, deskURL, []string{"ai-runner"}, own, extra, agentResources(task, spec))
+	return workspacePod(meta, spec, deskURL, language, []string{"ai-runner"}, own, extra, agentResources(task, spec))
 }
 
 // namespaceEnv is the env var name set to the pod's namespace.
@@ -122,7 +122,7 @@ func namespaceEnv(name string) corev1.EnvVar {
 // meta.Name on the PVC naming.Workspace(meta.Name), the runner running
 // command with own first in its environment and extra after the log level,
 // the agent container with agentRes. meta.Annotations must not be nil.
-func workspacePod(meta metav1.ObjectMeta, spec aiv1.AgentProjectSpec, deskURL string, command []string, own, extra []corev1.EnvVar, agentRes corev1.ResourceRequirements) *corev1.Pod {
+func workspacePod(meta metav1.ObjectMeta, spec aiv1.AgentProjectSpec, deskURL, language string, command []string, own, extra []corev1.EnvVar, agentRes corev1.ResourceRequirements) *corev1.Pod {
 	agents := spec.Agents
 	claim := naming.Workspace(meta.Name)
 	runnerEnv := append(own, []corev1.EnvVar{
@@ -213,7 +213,7 @@ func workspacePod(meta metav1.ObjectMeta, spec aiv1.AgentProjectSpec, deskURL st
 	}}
 	podSpec.Containers = []corev1.Container{
 		runnerContainer(agents, command, runnerEnv, runnerMounts),
-		agentContainer(agents, agentEnv(agents, cacheEnv...), agentMounts, agentRes),
+		agentContainer(agents, agentEnv(agents, language, cacheEnv...), agentMounts, agentRes),
 	}
 
 	return &corev1.Pod{ObjectMeta: meta, Spec: podSpec}
@@ -280,8 +280,9 @@ func agentContainer(agents aiv1.AgentsSpec, env []corev1.EnvVar, mounts []corev1
 }
 
 // agentEnv is the agent container's environment: extra goes before the log
-// level and the project's agents.env.
-func agentEnv(agents aiv1.AgentsSpec, extra ...corev1.EnvVar) []corev1.EnvVar {
+// level, then AI_AGENT_LANGUAGE when language is set (the operator's
+// --agent-language), then the project's agents.env, which can override both.
+func agentEnv(agents aiv1.AgentsSpec, language string, extra ...corev1.EnvVar) []corev1.EnvVar {
 	env := []corev1.EnvVar{
 		{Name: "AI_WORKSPACE", Value: WorkspaceMountPath},
 		{Name: "AI_EXCHANGE", Value: ExchangeMountPath},
@@ -290,6 +291,9 @@ func agentEnv(agents aiv1.AgentsSpec, extra ...corev1.EnvVar) []corev1.EnvVar {
 	}
 	env = append(env, extra...)
 	env = append(env, logLevelEnv(agents)...)
+	if language != "" {
+		env = append(env, corev1.EnvVar{Name: "AI_AGENT_LANGUAGE", Value: language})
+	}
 	return append(env, agents.Env...)
 }
 

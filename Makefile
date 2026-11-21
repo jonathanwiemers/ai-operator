@@ -112,6 +112,13 @@ helm-lint: ## Lint and render the chart.
 	$(HELM) template ai-operator $(CHART) --namespace ai-operator-system -f hack/helm-ui-values.yaml > /dev/null
 	$(HELM) lint $(CHART) --strict -f hack/helm-research-values.yaml
 	$(HELM) template ai-operator $(CHART) --namespace ai-operator-system -f hack/helm-research-values.yaml > /dev/null
+	$(HELM) template ai-operator $(CHART) --namespace ai-operator-system | grep -q -- '- --agent-language=en$$'
+	$(HELM) template ai-operator $(CHART) --namespace ai-operator-system --set agent.language="" | grep -q -- '- --agent-language=$$'
+	! $(HELM) template ai-operator $(CHART) --namespace ai-operator-system --set agent.language="not a tag" > /dev/null 2>&1
+	! $(HELM) template ai-operator $(CHART) --namespace ai-operator-system --set agent.language=en-12 > /dev/null 2>&1
+	$(HELM) template ai-operator $(CHART) --namespace ai-operator-system --set agent.language=pt-BR | grep -q -- '- --agent-language=pt-BR$$'
+	$(HELM) template ai-operator $(CHART) --namespace ai-operator-system --set agent.language=zh-Hant-TW > /dev/null
+	$(HELM) template ai-operator $(CHART) --namespace ai-operator-system --set agent.language="not a tag" 2>&1 | grep -q 'agent.language must be'
 
 .PHONY: helm-package
 helm-package: ## Package the chart as dist/ai-operator-$(VERSION).tgz.

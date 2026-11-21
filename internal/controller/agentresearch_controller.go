@@ -91,6 +91,9 @@ type AgentResearchReconciler struct {
 	// do not set agents.image and agents.logLevel.
 	DefaultAgentImage    string
 	DefaultAgentLogLevel aiv1.LogLevel
+	// AgentLanguage is the operator's --agent-language, set as AI_AGENT_LANGUAGE
+	// in the agent container; empty sets nothing (no language rule).
+	AgentLanguage string
 	// Candidates are the agents of runs without spec.agent, per depth, for
 	// projects that do not set spec.research.candidates.
 	Candidates aiv1.ResearchCandidates
@@ -230,7 +233,7 @@ func (r *AgentResearchReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	if err := r.patchStatus(ctx, &res, orig); err != nil {
 		return ctrl.Result{}, err
 	}
-	pod := buildResearchPod(&res, plan.spec, st.Run.ID, r.DBConn)
+	pod := buildResearchPod(&res, plan.spec, st.Run.ID, r.DBConn, r.AgentLanguage)
 	if err := controllerutil.SetControllerReference(&res, pod, r.Scheme); err != nil {
 		return ctrl.Result{}, err
 	}

@@ -55,6 +55,9 @@ type AgentTaskReconciler struct {
 	// DefaultAgentLogLevel is used for projects that do not set
 	// agents.logLevel.
 	DefaultAgentLogLevel aiv1.LogLevel
+	// AgentLanguage is the operator's --agent-language, set as AI_AGENT_LANGUAGE
+	// in the agent container; empty sets nothing (no language rule).
+	AgentLanguage string
 	// DeskURL is the Desk's base URL, handed to the runner as AI_DESK_URL.
 	// Empty: no links.
 	DeskURL string
@@ -225,7 +228,7 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 					break
 				}
 			}
-			pod = buildPod(&task, spec, r.DeskURL, crossRepoTargets(spec, r.CrossRepoAllowed, r.CrossRepoNever))
+			pod = buildPod(&task, spec, r.DeskURL, crossRepoTargets(spec, r.CrossRepoAllowed, r.CrossRepoNever), r.AgentLanguage)
 			if err := controllerutil.SetControllerReference(&task, pod, r.Scheme); err != nil {
 				return ctrl.Result{}, err
 			}

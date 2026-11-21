@@ -24,7 +24,7 @@ func testResearchPod(t *testing.T, depth aiv1.ResearchDepth, mutate func(*aiv1.A
 	r := newResearch("morning-news", "0 7 * * *")
 	r.Spec.Depth = depth
 	db := research.DatabaseConfig{Host: "pg.example", Port: 5433, Name: "ai_operator", SSLMode: "verify-full"}
-	return buildResearchPod(r, spec, testRunID, db)
+	return buildResearchPod(r, spec, testRunID, db, "")
 }
 
 func envOf(c *corev1.Container) map[string]corev1.EnvVar {
@@ -105,7 +105,7 @@ func TestResearchPodAgentLikeTask(t *testing.T) {
 	agent := container(pod, AgentContainer)
 	spec := researchProject().Spec.WithDefaults()
 	mutate(&spec)
-	task := container(buildPod(newImplTask("x", 1), spec, "", nil), AgentContainer)
+	task := container(buildPod(newImplTask("x", 1), spec, "", nil, ""), AgentContainer)
 
 	if agent.Image != task.Image || !reflect.DeepEqual(agent.EnvFrom, task.EnvFrom) ||
 		!reflect.DeepEqual(agent.Resources, task.Resources) || !reflect.DeepEqual(agent.Command, task.Command) ||

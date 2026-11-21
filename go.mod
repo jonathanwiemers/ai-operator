@@ -16,6 +16,7 @@ require (
 	github.com/prometheus/client_golang v1.24.0
 	github.com/robfig/cron/v3 v3.0.1
 	golang.org/x/oauth2 v0.37.0
+	golang.org/x/text v0.40.0
 	k8s.io/api v0.37.0
 	k8s.io/apiextensions-apiserver v0.37.0
 	k8s.io/apimachinery v0.37.0
@@ -79,7 +80,6 @@ require (
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/term v0.45.0 // indirect
-	golang.org/x/text v0.40.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	golang.org/x/tools v0.47.0 // indirect
 	gomodules.xyz/jsonpatch/v2 v2.4.0 // indirect

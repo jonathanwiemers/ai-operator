@@ -70,6 +70,13 @@ agent:
   # Defaults to logLevel if that is one of these, else info. An AgentProject
   # overrides it with spec.agents.logLevel.
   logLevel: ""
+  # Language every agent writes in, as a BCP 47 language tag (en, de, pt-BR).
+  # Every agent call gets a rule to write answers, comments, commit messages
+  # and drafts in this language. Empty ("") turns the rule off: the agents
+  # then copy the language they read. A pod picks up a change when it next
+  # starts. Helm checks the tag's shape; the operator also refuses to start
+  # with subtags that do not exist (xx).
+  language: en
   # Service account the agent pods use. Must match spec.agents.serviceAccountName
   # of your AgentProjects (default "ai-operator-agent").
   serviceAccountName: ai-operator-agent

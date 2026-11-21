@@ -41,7 +41,7 @@ func buildPlanClaim(plan *aiv1.AgentPlan, spec aiv1.AgentProjectSpec) *corev1.Pe
 // buildPlanPod returns the pod of an active plan, laid out like a task's
 // (buildPod): the GitLab token in the runner only, never a companion token.
 // The runner picks the engine and model of the project's spec role.
-func buildPlanPod(plan *aiv1.AgentPlan, spec aiv1.AgentProjectSpec, cfg PlanConfig) *corev1.Pod {
+func buildPlanPod(plan *aiv1.AgentPlan, spec aiv1.AgentProjectSpec, cfg PlanConfig, language string) *corev1.Pod {
 	own := []corev1.EnvVar{
 		{Name: "AI_PLAN_NAME", Value: plan.Name},
 		namespaceEnv("AI_PLAN_NAMESPACE"),
@@ -49,5 +49,5 @@ func buildPlanPod(plan *aiv1.AgentPlan, spec aiv1.AgentProjectSpec, cfg PlanConf
 	}
 	meta := planMeta(plan, plan.Name)
 	meta.Annotations = map[string]string{}
-	return workspacePod(meta, spec, "", []string{"ai-runner", "plan"}, own, nil, *spec.Agents.Resources.DeepCopy())
+	return workspacePod(meta, spec, "", language, []string{"ai-runner", "plan"}, own, nil, *spec.Agents.Resources.DeepCopy())
 }

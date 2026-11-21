@@ -76,6 +76,10 @@ type LocalAgent struct {
 	// (ai-runner step-gate --state-dir); empty is the temp dir, the gate's
 	// default.
 	StepGateDir string
+	// Language is the language tag every call writes in (AI_AGENT_LANGUAGE,
+	// the operator's --agent-language): prepareInvocation appends its rule
+	// (languageRule) to the system prompt. Empty: no rule.
+	Language string
 
 	mu      sync.Mutex
 	session Session
@@ -195,7 +199,7 @@ func statusSink(ctx context.Context) func(string) {
 	return fn
 }
 
-// prepareInvocation sets Dir, AddDirs and Env like Run, for one-shot calls
+// prepareInvocation sets Dir, AddDirs and Env and appends the language rule like Run, for one-shot calls
 // and sessions. The companion slug resolves to its checkout like the repo
 // of a tree call; only claude can work on a second checkout.
 func (a *LocalAgent) prepareInvocation(ctx context.Context, engine aiv1.Engine, inv *Invocation) error {
@@ -223,6 +227,8 @@ func (a *LocalAgent) prepareInvocation(ctx context.Context, engine aiv1.Engine, 
 	if engine == aiv1.EngineClaude && inv.BashMaxOutputChars > 0 {
 		env = append(env, fmt.Sprintf("BASH_MAX_OUTPUT_LENGTH=%d", inv.BashMaxOutputChars))
 	}
+	// Last, so the chart setting wins over the project's instructions.
+	inv.SystemPrompt = withLanguageRule(inv.SystemPrompt, a.Language)
 	inv.Env = env
 	return nil
 }

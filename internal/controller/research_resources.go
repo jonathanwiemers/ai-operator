@@ -36,7 +36,7 @@ func researchLabels(r *aiv1.AgentResearch) map[string]string {
 //     project's database writer login, which reads the research, calls the
 //     agent and writes the result to the database.
 //   - agent: "ai-runner agent-server" with the agent CLI credentials only.
-func buildResearchPod(r *aiv1.AgentResearch, spec aiv1.AgentProjectSpec, runID string, db research.DatabaseConfig) *corev1.Pod {
+func buildResearchPod(r *aiv1.AgentResearch, spec aiv1.AgentProjectSpec, runID string, db research.DatabaseConfig, language string) *corev1.Pod {
 	agents := spec.Agents
 	// The controller checked the writer login before.
 	login := spec.Research.WriterSecret.WithDefaults()
@@ -88,7 +88,7 @@ func buildResearchPod(r *aiv1.AgentResearch, spec aiv1.AgentProjectSpec, runID s
 	}
 	podSpec.Containers = []corev1.Container{
 		runnerContainer(agents, []string{"ai-runner", "research"}, runnerEnv, runnerMounts),
-		agentContainer(agents, agentEnv(agents), agentMounts, *agents.Resources.DeepCopy()),
+		agentContainer(agents, agentEnv(agents, language), agentMounts, *agents.Resources.DeepCopy()),
 	}
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{

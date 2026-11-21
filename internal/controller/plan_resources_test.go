@@ -51,7 +51,7 @@ func TestPlanLabels(t *testing.T) {
 		LabelProject:                   "shop",
 		LabelPlan:                      plan.Name,
 	}
-	pod, pvc := buildPlanPod(plan, testPlanSpec(), testPlanConfig), buildPlanClaim(plan, testPlanSpec())
+	pod, pvc := buildPlanPod(plan, testPlanSpec(), testPlanConfig, ""), buildPlanClaim(plan, testPlanSpec())
 	for what, got := range map[string]map[string]string{"labels": planLabels(plan), "pod": pod.Labels, "pvc": pvc.Labels} {
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("%s: got %v, want %v (no %s)", what, got, want, LabelTask)
@@ -79,7 +79,7 @@ func TestPlanClaim(t *testing.T) {
 
 func TestPlanPod(t *testing.T) {
 	plan := testPlan()
-	pod := buildPlanPod(plan, testPlanSpec(), testPlanConfig)
+	pod := buildPlanPod(plan, testPlanSpec(), testPlanConfig, "")
 	if pod.Name != plan.Name || pod.Namespace != ns {
 		t.Fatalf("pod %s/%s", pod.Namespace, pod.Name)
 	}
@@ -128,7 +128,7 @@ func TestPlanPod(t *testing.T) {
 
 func TestPlanPodMounts(t *testing.T) {
 	plan := testPlan()
-	pod := buildPlanPod(plan, testPlanSpec(), testPlanConfig)
+	pod := buildPlanPod(plan, testPlanSpec(), testPlanConfig, "")
 	mounts := func(c *corev1.Container) map[string]string {
 		m := map[string]string{}
 		for _, v := range c.VolumeMounts {
@@ -160,8 +160,8 @@ func TestPlanPodMounts(t *testing.T) {
 func TestPlanPodSharesTaskLayout(t *testing.T) {
 	plan := testPlan()
 	spec := testPlanSpec()
-	planPod := buildPlanPod(plan, spec, testPlanConfig)
-	taskPod := buildPod(newImplTask(plan.Name, 1), spec, "", nil)
+	planPod := buildPlanPod(plan, spec, testPlanConfig, "")
+	taskPod := buildPod(newImplTask(plan.Name, 1), spec, "", nil, "")
 	if !reflect.DeepEqual(planPod.Spec.Volumes, taskPod.Spec.Volumes) ||
 		!reflect.DeepEqual(planPod.Spec.InitContainers, taskPod.Spec.InitContainers) ||
 		!reflect.DeepEqual(*container(planPod, AgentContainer), *container(taskPod, AgentContainer)) {
@@ -181,7 +181,7 @@ func TestPlanPodSharesTaskLayout(t *testing.T) {
 func TestPlanPodBudget(t *testing.T) {
 	plan := testPlan()
 	budget := func() string {
-		return envOf(container(buildPlanPod(plan, testPlanSpec(), testPlanConfig), RunnerContainer))["AI_PLAN_MAX_BUDGET_USD"].Value
+		return envOf(container(buildPlanPod(plan, testPlanSpec(), testPlanConfig, ""), RunnerContainer))["AI_PLAN_MAX_BUDGET_USD"].Value
 	}
 	if got := budget(); got != "5" {
 		t.Fatalf("without spec.maxBudgetUSD the operator default applies, got %q", got)

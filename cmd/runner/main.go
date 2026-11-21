@@ -162,6 +162,7 @@ func localAgent() *runner.LocalAgent {
 		Workspaces: workspace,
 		Engines:    engines,
 		Exchange:   envOr("AI_EXCHANGE", "/exchange"),
+		Language:   os.Getenv("AI_AGENT_LANGUAGE"),
 	}
 }
 

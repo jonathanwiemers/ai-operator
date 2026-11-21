@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/text/language"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes"
@@ -54,6 +55,8 @@ func main() {
 	flag.StringVar(&selfProject, "self-project", "", "Full path of the GitLab project this operator is built from (e.g. my-group/ai-operator). A companion of one of its merge requests lands once this operator runs a release that contains the merge. Empty: that project's companions follow the tag rule like any other.")
 	var agentLogLevel string
 	flag.StringVar(&agentLogLevel, "agent-log-level", "info", "Log level (debug, info or error) of the agent pods of AgentProjects that do not set spec.agents.logLevel.")
+	var agentLanguage string
+	flag.StringVar(&agentLanguage, "agent-language", "en", "Language tag (BCP 47, e.g. en, de, pt-BR) every agent writes in. Empty: no language rule, the agents copy the language they read.")
 	var webhookAddr string
 	flag.StringVar(&webhookAddr, "webhook-bind-address", "", "The address the GitLab webhook receiver (POST "+webhook.Path+") binds to, on the leader only. Empty: no receiver.")
 	var researchDB research.DatabaseConfig
@@ -106,6 +109,10 @@ func main() {
 	case aiv1.LogLevelDebug, aiv1.LogLevelInfo, aiv1.LogLevelError:
 	default:
 		setupLog.Error(nil, "invalid --agent-log-level, want debug, info or error", "value", agentLogLevel)
+		os.Exit(1)
+	}
+	if err := validAgentLanguage(agentLanguage); err != nil {
+		setupLog.Error(err, "invalid --agent-language, want a BCP 47 language tag such as en or de, or empty", "value", agentLanguage)
 		os.Exit(1)
 	}
 	var prices *pricing.Table
@@ -241,6 +248,7 @@ func main() {
 		Scheme:               mgr.GetScheme(),
 		DefaultAgentImage:    defaultAgentImage,
 		DefaultAgentLogLevel: aiv1.LogLevel(agentLogLevel),
+		AgentLanguage:        agentLanguage,
 		APIReader:            mgr.GetAPIReader(),
 		DeskURL:              deskURL,
 		CrossRepoAllowed:     projectList(crossRepoAllowed),
@@ -261,6 +269,7 @@ func main() {
 			DBConn:               researchDB,
 			DefaultAgentImage:    defaultAgentImage,
 			DefaultAgentLogLevel: aiv1.LogLevel(agentLogLevel),
+			AgentLanguage:        agentLanguage,
 			Candidates:           candidates,
 			MaxUsagePercent:      int32(maxUsagePercent),
 			HistoryRetention:     historyRetention,
@@ -278,6 +287,7 @@ func main() {
 			HistoryRetention:     historyRetention,
 			DefaultAgentImage:    defaultAgentImage,
 			DefaultAgentLogLevel: aiv1.LogLevel(agentLogLevel),
+			AgentLanguage:        agentLanguage,
 		}
 		if err := plans.SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create controller", "controller", "AgentPlan")
@@ -320,4 +330,14 @@ func projectList(s string) []string {
 		}
 	}
 	return out
+}
+
+// validAgentLanguage reports whether s is a usable --agent-language: empty
+// (no language rule) or a BCP 47 language tag.
+func validAgentLanguage(s string) error {
+	if s == "" {
+		return nil
+	}
+	_, err := language.Parse(s)
+	return err
 }
