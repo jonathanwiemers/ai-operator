@@ -17,6 +17,7 @@ import { knownOverflow } from './known-overflow'
 import { knownA11y } from './known-a11y'
 import { knownRules } from './knownKeys'
 import { longBranch } from './fixtures/long'
+import { openAccountMenu, themeChoice } from './account'
 
 const widths = [
   { width: 375, height: 812 },
@@ -645,11 +646,12 @@ for (const path of ['/everything', '/projects/acme/shop/board', '/projects/acme/
   })
 }
 
-// The theme switch in the rail's footer (src/colorScheme.ts,
-// ThemeSwitch.vue): Auto follows the system live, Light and Dark hold over
-// a reload and ignore the system, Auto follows it again. Only .dark on
-// <html> changes, so the CSP is the same.
-test('theme switch: auto follows the system, a choice holds over a reload@1280', async ({ page, baseURL }) => {
+// The theme in the account menu at the bottom of the rail
+// (src/colorScheme.ts, accountMenu.ts): Auto follows the system live, Light
+// and Dark hold over a reload and ignore the system, Auto follows it again;
+// the checked item is the stored choice. Only .dark on <html> changes, so
+// the CSP is the same.
+test('theme: auto follows the system, a choice holds over a reload@1280', async ({ page, baseURL }) => {
   const route = routes.find((r) => r.name === 'overview')!
   const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
   await page.setViewportSize({ width: 1280, height: 800 })
@@ -663,12 +665,13 @@ test('theme switch: auto follows the system, a choice holds over a reload@1280',
   const html = page.locator('html')
   const bodyBackground = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor)
   const stored = () => page.evaluate(() => localStorage.getItem('desk.theme'))
-  const tab = (name: string) => page.locator('[data-theme-switch]').getByRole('tab', { name })
+  const tab = (name: 'Light' | 'Dark' | 'Auto') => themeChoice(page, name)
   const csp = async () => problems.csp.push(...(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)))
 
   // A fresh browser: Auto, following the system live.
   expect(await stored()).toBeNull()
-  await expect(tab('Auto')).toHaveAttribute('aria-selected', 'true')
+  await expect(await tab('Auto')).toHaveAttribute('aria-checked', 'true')
+  await expect(await tab('Dark')).toHaveAttribute('aria-checked', 'false')
   await expect(html).not.toHaveClass(/\bdark\b/)
   expect(await bodyBackground(), '--bg light').toBe('rgb(246, 246, 248)')
   await page.emulateMedia({ colorScheme: 'dark' })
@@ -677,31 +680,33 @@ test('theme switch: auto follows the system, a choice holds over a reload@1280',
   await page.emulateMedia({ colorScheme: 'light' })
   await expect(html).not.toHaveClass(/\bdark\b/)
 
-  // The three choices fit the rail, labels uncut.
-  const fit = await page.locator('[data-theme-switch]').evaluate((e) => {
-    const rail = e.closest('.rail-foot')!.getBoundingClientRect()
+  // The menu fits the viewport, labels uncut.
+  const fit = await (await openAccountMenu(page)).evaluate((e) => {
     const r = e.getBoundingClientRect()
-    const cut = [...e.querySelectorAll<HTMLElement>('[role=tab] span')].filter((s) => s.scrollWidth > s.clientWidth).length
-    return { inside: r.left >= rail.left && r.right <= rail.right, cut }
+    const cut = [...e.querySelectorAll<HTMLElement>('[role=menuitemcheckbox] span')].filter((s) => s.scrollWidth > s.clientWidth).length
+    return { inside: r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight, cut }
   })
   expect(fit).toEqual({ inside: true, cut: 0 })
 
-  // Dark holds over a reload and ignores a light system.
-  await tab('Dark').click()
+  // Dark holds over a reload and ignores a light system; the menu stays
+  // open with Dark checked.
+  await (await tab('Dark')).click()
   await expect(html).toHaveClass(/\bdark\b/)
+  await expect(await tab('Dark')).toHaveAttribute('aria-checked', 'true')
+  await expect(await tab('Auto')).toHaveAttribute('aria-checked', 'false')
   expect(await stored()).toBe('dark')
   await csp()
   await page.reload()
   await route.ready(page)
   await expect(html).toHaveClass(/\bdark\b/)
-  await expect(tab('Dark')).toHaveAttribute('aria-selected', 'true')
+  await expect(await tab('Dark')).toHaveAttribute('aria-checked', 'true')
   await page.emulateMedia({ colorScheme: 'dark' })
   await page.emulateMedia({ colorScheme: 'light' })
   await expect(html).toHaveClass(/\bdark\b/)
 
   // Light holds against a dark system.
   await page.emulateMedia({ colorScheme: 'dark' })
-  await tab('Light').click()
+  await (await tab('Light')).click()
   await expect(html).not.toHaveClass(/\bdark\b/)
   await csp()
   await page.reload()
@@ -710,7 +715,7 @@ test('theme switch: auto follows the system, a choice holds over a reload@1280',
   expect(await bodyBackground(), '--bg light under a dark system').toBe('rgb(246, 246, 248)')
 
   // Auto follows the system again, at once.
-  await tab('Auto').click()
+  await (await tab('Auto')).click()
   await expect(html).toHaveClass(/\bdark\b/)
   expect(await stored()).toBe('auto')
   await page.emulateMedia({ colorScheme: 'light' })
@@ -720,9 +725,10 @@ test('theme switch: auto follows the system, a choice holds over a reload@1280',
   expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
 })
 
-// On a phone the switch is in the rail sheet: it fits the sheet, its tabs
-// are 44 px high, and a choice there holds over a reload.
-test('theme switch in the rail sheet@375', async ({ page, baseURL }, testInfo) => {
+// On a phone the account button is at the bottom of the rail sheet: its
+// menu opens above the sheet, fits the screen, its items are 44 px high,
+// and a choice there holds over a reload.
+test('theme in the rail sheet@375', async ({ page, baseURL }, testInfo) => {
   const route = routes.find((r) => r.name === 'overview')!
   const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
   await page.setViewportSize({ width: 375, height: 812 })
@@ -737,24 +743,23 @@ test('theme switch in the rail sheet@375', async ({ page, baseURL }, testInfo) =
   const sheet = page.getByRole('dialog')
   await expect(sheet).toBeVisible()
   await sheet.evaluate((e) => Promise.all(e.getAnimations().map((a) => a.finished)))
-  const control = sheet.locator('[data-theme-switch]')
-  await control.scrollIntoViewIfNeeded()
-  const fit = await control.evaluate((e) => {
-    const box = e.closest('[role=dialog]')!.getBoundingClientRect()
+  await sheet.locator('[data-account-button]').scrollIntoViewIfNeeded()
+  const menu = await openAccountMenu(page)
+  const fit = await menu.evaluate((e) => {
     const r = e.getBoundingClientRect()
-    const tabs = [...e.querySelectorAll<HTMLElement>('[role=tab]')]
+    const items = [...e.querySelectorAll<HTMLElement>('[role=menuitemcheckbox], [role=menuitem]')]
     return {
-      inside: r.left >= box.left && r.right <= box.right,
-      low: tabs.filter((t) => t.getBoundingClientRect().height < 44).length,
-      cut: [...e.querySelectorAll<HTMLElement>('[role=tab] span')].filter((s) => s.scrollWidth > s.clientWidth).length,
+      inside: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight,
+      low: items.filter((t) => t.getBoundingClientRect().height < 44).length,
+      cut: [...e.querySelectorAll<HTMLElement>('[role=menuitemcheckbox] span')].filter((s) => s.scrollWidth > s.clientWidth).length,
     }
   })
   expect(fit).toEqual({ inside: true, low: 0, cut: 0 })
-  const shot = join(testInfo.project.outputDir, '..', 'screenshots', 'theme-switch-sheet@375.png')
+  const shot = join(testInfo.project.outputDir, '..', 'screenshots', 'account-menu-sheet@375.png')
   await page.screenshot({ path: shot })
   await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
 
-  await control.getByRole('tab', { name: 'Dark' }).click()
+  await menu.getByRole('menuitemcheckbox', { name: 'Dark' }).click()
   await expect(page.locator('html')).toHaveClass(/\bdark\b/)
   await page.reload()
   await route.ready(page)
@@ -830,18 +835,18 @@ for (const reopens of [true, false]) {
     await page.goto(route.path)
     await route.ready(page)
 
-    const indicator = page.locator('.who .live')
-    await expect(indicator).toHaveText('Live')
+    const indicator = page.locator('[data-account-button]:visible')
+    await expect(indicator).toHaveAttribute('data-live', 'Live')
     await expect.poll(() => page.evaluate(() => (window as unknown as { __streams: number }).__streams)).toBe(2)
     if (reopens) {
       for (let i = 0; i < 28; i++) {
-        expect((await indicator.textContent())?.trim(), `Live after ${i * 250}ms`).toBe('Live')
+        expect(await indicator.getAttribute('data-live'), `Live after ${i * 250}ms`).toBe('Live')
         await page.waitForTimeout(250)
       }
     } else {
       await page.waitForTimeout(3500)
-      await expect(indicator).toHaveText('Live')
-      await expect(indicator).toHaveText('Offline', { timeout: 5000 })
+      await expect(indicator).toHaveAttribute('data-live', 'Live')
+      await expect(indicator).toHaveAttribute('data-live', 'Offline', { timeout: 5000 })
       await expect.poll(() => said(page)).toEqual(['assertive: Offline'])
       await page.waitForTimeout(1000)
     }
@@ -4728,9 +4733,10 @@ test.describe('research list and form', () => {
   }
 })
 
-// The account area of the rail says how long the login lasts (RailNav.vue,
+// The account menu says how long the login lasts (RailNav.vue,
 // loginLasts): renewing, fixed, and nothing without idleUntil. At 375 px
-// (the rail sheet) the line wraps inside the sheet, in both color schemes.
+// (the menu opened from the rail sheet) the line wraps on the screen, in
+// both color schemes.
 test.describe('login lifetime line', () => {
   const start = routes.find((r) => r.name === 'stream-project-stream')!
   const variants = [
@@ -4753,7 +4759,7 @@ test.describe('login lifetime line', () => {
         await page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Projects' }).click()
         const sheet = page.getByRole('dialog')
         await sheet.evaluate((e) => Promise.all(e.getAnimations().map((a) => a.finished)))
-        const line = sheet.locator('[data-login-lasts]')
+        const line = (await openAccountMenu(page)).locator('[data-login-lasts]')
         if (v.text) {
           await expect(line).toHaveText(v.text)
           await line.scrollIntoViewIfNeeded()
@@ -4771,8 +4777,8 @@ test.describe('login lifetime line', () => {
   }
 })
 
-// The rail footer says which release runs and whether a newer one is on its
-// way (RailNav.vue, aboutLine). At 375 px it is in the rail sheet.
+// The account menu says which release runs and whether a newer one is on its
+// way (RailNav.vue, aboutLine). At 375 px it opens from the rail sheet.
 test.describe('about line', () => {
   const start = routes.find((r) => r.name === 'stream-project-stream')!
   for (const colorScheme of ['light', 'dark'] as const) {
@@ -4788,8 +4794,9 @@ test.describe('about line', () => {
       await page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Projects' }).click()
       const sheet = page.getByRole('dialog')
       await sheet.evaluate((e) => Promise.all(e.getAnimations().map((a) => a.finished)))
-      await expect(sheet.locator('[data-about-version]')).toHaveText('ai-operator 2026.11.3')
-      const note = sheet.locator('[data-about-note]')
+      const menu = await openAccountMenu(page)
+      await expect(menu.locator('[data-about-version]')).toHaveText('ai-operator 2026.11.3')
+      const note = menu.locator('[data-about-note]')
       await expect(note).toHaveText('Update to 2026.11.4 rolling out')
       await note.scrollIntoViewIfNeeded()
       const box = (await note.boundingBox())!

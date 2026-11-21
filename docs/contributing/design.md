@@ -4149,9 +4149,10 @@ A new colour token that text sits on, or a new chart token, joins the
 test's lists. Colours outside `style.css` are flagged by the `raw-colour`
 rule of the conventions check.
 
-**Light and dark.** The owner picks Light, Dark or Auto in the rail's footer
-(`components/ThemeSwitch.vue`, `UTabs`; on phones in the rail sheet; the
-component side is in [web-ui.md](web-ui.md#theme)). The
+**Light and dark.** The owner picks Light, Dark or Auto in the account
+menu at the bottom of the rail (`components/RailNav.vue`, checkbox items
+of `UDropdownMenu`; on phones in the rail sheet; the component side is in
+[web-ui.md](web-ui.md#theme)). The
 choice is kept per browser in `localStorage` under `desk.theme` (`light`,
 `dark`, `auto`); missing, unknown or unreadable is Auto, and every read and
 write is in try/catch. `themeController` in `web/src/colorScheme.ts`, created

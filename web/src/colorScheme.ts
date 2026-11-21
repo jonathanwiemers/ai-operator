@@ -1,6 +1,7 @@
 // The Desk's theme: Light, Dark or Auto (follow the system), chosen in the
-// sidebar footer (components/ThemeSwitch.vue) and kept per browser in
-// localStorage under desk.theme. style.css holds the light tokens on :root
+// account menu at the bottom of the sidebar (components/RailNav.vue,
+// accountMenu.ts) and kept per browser in localStorage under desk.theme.
+// style.css holds the light tokens on :root
 // and the dark ones on .dark; themeController keeps the `dark` class on
 // <html> in step with the choice and, in Auto, with prefers-color-scheme.
 // main.ts creates it before the app mounts; the CSP allows no inline script.
@@ -35,7 +36,7 @@ export interface ThemeController {
 export const darkQuery = '(prefers-color-scheme: dark)'
 export const themeKey = 'desk.theme'
 
-// The controller main.ts provides to the app, for ThemeSwitch.
+// The controller main.ts provides to the app, for the account menu (RailNav.vue).
 export const themeInjectionKey: InjectionKey<ThemeController> = Symbol('theme')
 
 const isTheme = (v: unknown): v is Theme => themes.includes(v as Theme)

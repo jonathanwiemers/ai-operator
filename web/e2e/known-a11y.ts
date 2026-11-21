@@ -30,9 +30,7 @@ export const knownA11y: Record<string, string> = {
   'inbox@1280-dark': `${R6} R6: color-contrast`,
   'metrics@375': `${R6} R6: color-contrast`,
   'metrics-dark@375': `${R6} R6: color-contrast`,
-  'metrics-dark@1280': `${R6} R6: color-contrast`,
   'metrics-filtered@375': `${R6} R6: color-contrast`,
-  'metrics-filtered@1280-dark': `${R6} R6: color-contrast`,
   'stream-project-stream@375': `${R6} R6: color-contrast`,
   'stream-project-stream@1180': `${R6} R6: target-size`,
   'stream-project-stream@1180-dark': `${R6} R6: target-size`,
@@ -101,7 +99,6 @@ export const knownA11y: Record<string, string> = {
   'research-runs@1280-dark': `${R6} R6: color-contrast`,
   'research-run@375': `${R6} R6: color-contrast`,
   'research-run@1280-dark': `${R6} R6: color-contrast`,
-  'not-found@1280-dark': `${R6} R6: color-contrast`,
 }
 
 assertKnownKeys('known-a11y.ts', knownA11y, { dark: true, rules: true })

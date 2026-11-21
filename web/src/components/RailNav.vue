@@ -1,28 +1,33 @@
 <script setup lang="ts">
 // The rail's content (docs/contributing/web-ui.md, "Navigation"): a vertical
 // UNavigationMenu with Inbox, Overview, Metrics, Plans, the projects with
-// their sets and the research (src/railItems.ts), then a footer with the
-// theme switch, the engine meters and the user. App.vue renders it in the
+// their sets and the research (src/railItems.ts), then the engine meters with
+// their reset times and, at the very bottom, the account button: avatar,
+// name and live dot, opening the account menu (src/accountMenu.ts) with the
+// login, Appearance, the Desk version and Sign out. App.vue renders it in the
 // sidebar on tablet and desktop and in the rail sheet on phones; App.vue
-// loads the data. Collapsed (the sidebar at 64 px) it shows only the pages,
-// as icons with their names as tooltips, and no footer.
-import { computed, ref, watch } from 'vue'
+// loads the data. Collapsed (the sidebar at 64 px) it shows the pages as
+// icons with their names as tooltips, no meters, and the account button as
+// avatar and dot.
+import { computed, inject, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { hasFeature, session } from '../api'
 import { logout } from '../client'
 import { aboutLine } from '../about'
-import { loginLasts, windowLabel } from '../format'
-import { live } from '../live'
+import { accountItems, initials } from '../accountMenu'
+import { themeInjectionKey, type Theme } from '../colorScheme'
+import { absTime, loginLasts, resetLabel, windowLabel } from '../format'
+import { live, useNow } from '../live'
 import { openSets, railItems } from '../railItems'
 import type { EngineUsage, ProjectSummary, ResearchSummary } from '../types'
 import type { ProjectSetSummary } from '../generated/views'
+import UAvatar from '@nuxt/ui/components/Avatar.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
+import UDropdownMenu from '@nuxt/ui/components/DropdownMenu.vue'
 import UNavigationMenu from '@nuxt/ui/components/NavigationMenu.vue'
 import UProgress from '@nuxt/ui/components/Progress.vue'
 import UTooltip from '@nuxt/ui/components/Tooltip.vue'
-import Truncated from '../ui/Truncated.vue'
 import RelTime from './RelTime.vue'
-import ThemeSwitch from './ThemeSwitch.vue'
 
 const props = defineProps<{
   projects: ProjectSummary[] | null
@@ -30,7 +35,8 @@ const props = defineProps<{
   projectSets?: ProjectSetSummary[] | null
   researches: ResearchSummary[] | null
   inboxCount: number
-  // The sidebar is collapsed (App.vue): the pages as icons, the rest hidden.
+  // The sidebar is collapsed (App.vue): the pages as icons, the account
+  // button as avatar and dot, the meters hidden.
   collapsed?: boolean
 }>()
 
@@ -39,8 +45,25 @@ const props = defineProps<{
 const emit = defineEmits<{ navigate: [] }>()
 
 const route = useRoute()
+const now = useNow()
 const about = computed(() => (session.about ? aboutLine(session.about) : null))
 const lasts = computed(() => (session.me?.authMode === 'oidc' ? loginLasts(session.me, Date.now()) : null))
+
+// The theme goes through the controller main.ts provides (colorScheme.ts),
+// which sets the `dark` class and keeps the choice in this browser.
+const themes = inject(themeInjectionKey, null)
+const theme = ref<Theme>(themes?.get() ?? 'auto')
+function setTheme(t: Theme) {
+  theme.value = t
+  themes?.set(t)
+}
+const account = computed(() =>
+  accountItems({ me: session.me ?? null, lasts: lasts.value, about: about.value, theme: theme.value, setTheme, signOut: () => void logout() }),
+)
+const username = computed(() => session.me?.username ?? '')
+const liveText = computed(() => (live.connected ? 'Live' : 'Offline'))
+const liveHint = computed(() => (live.connected ? 'Updates arrive live' : 'Reconnecting…'))
+const dot = computed(() => (live.connected ? 'bg-(--tone-success-fg)' : 'bg-(--text-3)'))
 
 const items = computed(() =>
   railItems({
@@ -81,7 +104,15 @@ const engineMeters = computed(() => {
       if (!prev || Date.parse(u.observedAt) > Date.parse(prev.observedAt)) byEngine.set(u.engine, u)
     }
   }
-  return [...byEngine.values()]
+  return [...byEngine.values()].flatMap((u) =>
+    (u.windows ?? []).map((w) => ({
+      key: `${u.engine} ${w.name}`,
+      label: `${u.engine} ${windowLabel(w.name)}`,
+      percent: w.percent,
+      reset: resetLabel(w.resetsAt, now.value),
+      resetTitle: absTime(w.resetsAt),
+    })),
+  )
 })
 </script>
 
@@ -132,34 +163,68 @@ const engineMeters = computed(() => {
       </template>
     </UNavigationMenu>
 
-    <div v-if="!collapsed" class="rail-foot grid gap-1.5 border-t border-(--border) px-3.5 py-2.5 text-xs text-(--text-2)">
-      <ThemeSwitch />
-      <div v-for="u in engineMeters" :key="u.engine" class="grid gap-1.5">
-        <div v-for="w in u.windows ?? []" :key="w.name" class="grid grid-cols-[72px_1fr_34px] items-center gap-2 text-[11.5px] whitespace-nowrap">
-          <span>{{ u.engine }} {{ windowLabel(w.name) }}</span>
-          <UProgress :model-value="Math.min(100, w.percent)" size="xs" :color="w.percent >= 80 ? 'warning' : 'info'" :aria-label="`${u.engine} ${windowLabel(w.name)}`" />
-          <span>{{ w.percent }}%</span>
-        </div>
+
+    <div v-if="!collapsed && engineMeters.length" class="rail-foot grid gap-1.5 border-t border-(--border) px-3.5 py-2.5 text-xs text-(--text-2)">
+      <div v-for="m in engineMeters" :key="m.key" data-usage-meter class="grid grid-cols-[72px_1fr_34px] items-center gap-x-2 gap-y-0.5 text-[11.5px] whitespace-nowrap">
+        <span>{{ m.label }}</span>
+        <UProgress :model-value="Math.min(100, m.percent)" size="xs" :color="m.percent >= 80 ? 'warning' : 'info'" :aria-label="m.label" />
+        <span>{{ m.percent }}%</span>
+        <!-- When the window resets, under the bar; muted once past (the
+             EngineUsage.vue rule). -->
+        <span v-if="m.reset" data-usage-reset class="col-span-2 col-start-2 text-[11px]" :class="m.reset.past && 'text-(--text-3)'" :title="m.resetTitle">{{ m.reset.text }}</span>
       </div>
-      <div class="who mt-1 flex flex-wrap items-center gap-2">
-        <UTooltip :text="live.connected ? 'Updates arrive live' : 'Reconnecting…'">
-          <span class="live inline-flex items-center gap-1.5 text-xs font-semibold" :class="live.connected ? 'text-(--tone-success-fg)' : 'text-(--text-3)'">
-            <span class="size-2 rounded-full" :class="live.connected ? 'bg-(--tone-success-fg) ring-3 ring-(--tone-success-bg)' : 'bg-(--text-3)'" />{{
-              live.connected ? 'Live' : 'Offline'
-            }}
-          </span>
+    </div>
+
+    <!-- The account button, also when collapsed: the menu opens upward, or
+         to the right of the 64 px sidebar. Its name carries the live state,
+         which the dot shows. Collapsed, the 36 px button ends 14 px before
+         the sidebar's edge: the offset puts the menu 8 px beyond it. -->
+    <div class="border-t border-(--border)" :class="collapsed ? 'flex justify-center p-2' : 'px-2 py-1.5'">
+      <UDropdownMenu
+        :items="account"
+        :content="{ side: collapsed ? 'right' : 'top', align: collapsed ? 'end' : 'start', sideOffset: collapsed ? 22 : 8 }"
+        :ui="{ content: 'z-40 w-60 max-w-[90vw]', item: 'max-tablet:min-h-11' }"
+      >
+        <UTooltip :text="`${username} · ${liveHint}`" :disabled="!collapsed" :content="{ side: 'right' }">
+          <UButton
+            color="neutral"
+            variant="ghost"
+            :block="!collapsed"
+            :aria-label="`Account, ${username}, ${liveText}`"
+            data-account-button
+            :data-live="liveText"
+            :class="['max-tablet:min-h-11', collapsed ? 'p-1.5' : 'justify-start']"
+          >
+            <span class="relative inline-flex shrink-0">
+              <UAvatar :text="initials(username)" size="xs" aria-hidden="true" />
+              <span v-if="collapsed" :class="['absolute -end-0.5 -bottom-0.5 size-2 rounded-full ring-2 ring-(--surface)', dot]" />
+            </span>
+            <template v-if="!collapsed">
+              <span class="min-w-0 flex-1 truncate text-start font-[550]">{{ username }}</span>
+              <UTooltip :text="liveHint">
+                <span :class="['me-1 size-2 shrink-0 rounded-full', dot, live.connected && 'ring-3 ring-(--tone-success-bg)']" />
+              </UTooltip>
+            </template>
+          </UButton>
         </UTooltip>
-        <!-- A clipped name opens on tap; the roles stay a hover hint, nothing depends on them. -->
-        <Truncated class="max-w-[110px] font-[550]" :title="(session.me?.roles ?? []).join(', ') || 'no roles'">{{ session.me?.username }}</Truncated>
-        <UButton v-if="session.me?.authMode === 'oidc'" label="Sign out" color="neutral" variant="outline" size="xs" class="ms-auto" @click="logout" />
-        <!-- Its own line under the name; wraps instead of overflowing. -->
-        <p v-if="lasts" data-login-lasts class="m-0 basis-full text-xs break-words text-(--text-3)">{{ lasts }}</p>
-      </div>
-      <div v-if="about" class="text-xs break-words text-(--text-3)">
-        <a v-if="about.href" :href="about.href" target="_blank" rel="noopener" data-about-version class="text-(--text-3) underline">{{ about.text }}</a>
-        <span v-else data-about-version>{{ about.text }}</span>
-        <p v-if="about.note" data-about-note class="m-0 text-(--tone-info-fg)">{{ about.note }}</p>
-      </div>
+
+        <template #who="{ item }">
+          <span class="grid min-w-0 gap-0.5 font-normal">
+            <span class="truncate font-semibold text-(--text)">{{ item.label }}</span>
+            <span class="text-(--text-3)">{{ item.roles }}</span>
+            <span v-if="item.lasts" data-login-lasts class="break-words text-(--text-3)">{{ item.lasts }}</span>
+          </span>
+        </template>
+        <template #theme-label="{ item }">
+          <span :data-theme="item.theme">{{ item.label }}</span>
+        </template>
+        <template #about-label="{ item }">
+          <span data-about-version :title="item.description">{{ item.label }}</span>
+        </template>
+        <template #about-description="{ item }">
+          <span data-about-note class="text-(--tone-info-fg)">{{ item.description }}</span>
+        </template>
+      </UDropdownMenu>
     </div>
   </div>
 </template>

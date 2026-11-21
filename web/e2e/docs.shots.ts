@@ -5,6 +5,7 @@
 import { join } from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
 import { answer, now } from './fixtures'
+import { openAccountMenu } from './account'
 
 interface Shot {
   // name is the file name, without extension.
@@ -51,15 +52,17 @@ const shots: Shot[] = [
       await expect(page.locator('[data-chart=spend] canvas[role=img]')).toBeVisible()
     },
   },
-  // The phone's rail sheet, with the Light/Dark/Auto switch at its bottom.
+  // The phone's rail sheet with the account menu open from its bottom:
+  // login, Appearance (Light/Dark/Auto), version and Sign out.
   {
-    name: 'theme-switch',
+    name: 'account-menu',
     path: '/',
     phone: true,
     ready: text('Checkout without account'),
     open: async (page) => {
       await openSheet((p) => p.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Projects' }))(page)
-      await page.getByRole('dialog').locator('[data-theme-switch]').scrollIntoViewIfNeeded()
+      await page.getByRole('dialog').locator('[data-account-button]').scrollIntoViewIfNeeded()
+      await openAccountMenu(page)
     },
   },
   // The Metrics page's value filters in the phone's Filters sheet.

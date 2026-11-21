@@ -1,7 +1,7 @@
 // Tests of src/format.ts: npm test (node --test, no extra dependencies).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { cost, costChip, costTooltip, deferringEngine, deskTitle, durationShort, fullTime, loginLasts, tokenCount } from '../src/format.ts'
+import { cost, costChip, costTooltip, deferringEngine, deskTitle, durationShort, fullTime, loginLasts, resetLabel, tokenCount } from '../src/format.ts'
 import { cronText } from '../src/cron.ts'
 
 test('fullTime shows the date, time and time zone', () => {
@@ -177,4 +177,15 @@ test('loginLasts: renewing names the date, fixed the time', () => {
   assert.ok(other.startsWith(`Signed in until ${day('2026-11-13T08:00:00')}, `), other)
   assert.equal(loginLasts({ renewing: true, idleUntil: null }, now), null)
   assert.equal(loginLasts({ renewing: false }, now), null)
+})
+
+test('resetLabel: the reset time while ahead, "reset" once past, null without a time', () => {
+  const now = new Date('2026-11-12T10:00:00').getTime()
+  const hm = (s) => new Date(s).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+  const wd = (s) => new Date(s).toLocaleDateString(undefined, { weekday: 'short' })
+  assert.deepEqual(resetLabel('2026-11-12T14:05:00', now), { text: `resets ${hm('2026-11-12T14:05:00')}`, past: false })
+  assert.deepEqual(resetLabel('2026-11-17T09:00:00', now), { text: `resets ${wd('2026-11-17T09:00:00')} ${hm('2026-11-17T09:00:00')}`, past: false })
+  assert.deepEqual(resetLabel('2026-11-12T09:59:00', now), { text: 'reset', past: true })
+  assert.deepEqual(resetLabel('2026-11-12T10:00:00', now), { text: 'reset', past: true })
+  for (const none of [undefined, null, '', 'not a time']) assert.equal(resetLabel(none, now), null)
 })

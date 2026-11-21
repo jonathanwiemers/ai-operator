@@ -377,6 +377,11 @@ loads anyway.
   Vite splits them into chunks of their own, which compress worse. The cap was
   raised to 127 kB, logged in the
   [Desk one-look spec](../specs/desk-one-look.spec.md#steering-log).
+  2026-11-21, with the account menu in the rail (#670, `UDropdownMenu` in
+  `RailNav.vue`): 176.9 kB, up from 176.4. Leaving out `UAvatar` changes
+  nothing; the menu regroups shared Reka UI chunks the route loads. The cap
+  was raised from 176.7 to 177.0 kB and the raise reported on its merge
+  request.
 
 ## UI kit
 
@@ -625,9 +630,12 @@ on the Metrics route (see [Bundle budget](#bundle-budget)).
 *Light*, *Dark* or *Auto* (decision 10 of
 [the one-look spec](../specs/desk-one-look.spec.md)):
 
-- **Switch.** `components/ThemeSwitch.vue`, a `UTabs` pill switch with
-  sun, moon and monitor icons (`data-theme-switch`), in the rail's footer;
-  on phones it comes with the rail into the [sheet](#sheets).
+- **Switch.** The *Appearance* group of the account menu at the bottom of
+  the rail (`components/RailNav.vue`, items from `src/accountMenu.ts`):
+  Light, Dark and Auto as `UDropdownMenu` checkbox items with sun, moon and
+  monitor icons (`data-theme` on each label). The checked item is the
+  stored choice, and the menu stays open after a choice. On phones the
+  account button comes with the rail into the [sheet](#sheets).
 - **State.** `themeController` in `src/colorScheme.ts`, created in
   `main.ts` before the app mounts and provided as `themeInjectionKey`. It
   keeps the choice in `localStorage` under `desk.theme` (`light`, `dark`,
@@ -646,11 +654,12 @@ on the Metrics route (see [Bundle budget](#bundle-budget)).
   `useChartColors.ts`, which watches the class.
 
 Tests: `test/colorScheme.test.mjs` (light, dark, auto, storage that
-throws, system changes ignored when fixed, with fakes), and the e2e
-`theme switch: auto follows the system, a choice holds over a reload@1280`
-and `theme switch in the rail sheet@375` (it fits the sheet, its tabs are
+throws, system changes ignored when fixed, with fakes),
+`test/accountMenu.test.mjs` (the checked item, the handlers), and the e2e
+`theme: auto follows the system, a choice holds over a reload@1280` and
+`theme in the rail sheet@375` (the menu fits the screen, its items are
 44 px high, a choice there holds over a reload;
-`theme-switch-sheet@375.png`).
+`account-menu-sheet@375.png`).
 
 ### Charts
 
@@ -2186,9 +2195,15 @@ state as a chip on its icon, its needs-you count as a badge and its state
 line under the name; a research shows its schedule in words (`cronText`
 in `cron.ts`, "daily at 07:15 Europe/Berlin", the raw cron as tooltip;
 raw for forms it does not read), *running* or *one-off*. Selecting a
-link emits `navigate`, which closes the [sheet](#sheets). Below the menu, the footer holds the theme switch, the
-engine meters (`UProgress`), the live indicator, the user and the about
-line.
+link emits `navigate`, which closes the [sheet](#sheets). Below the menu
+come the engine meters (`UProgress`, each with "resets 14:05" from
+`resetLabel` in `format.ts`, "reset" in `--text-3` once past; hidden when
+collapsed), then, at the very bottom and also when collapsed, the account
+button: `UAvatar` initials, the name and the live dot (collapsed: avatar
+and dot). It opens a `UDropdownMenu` (items from `src/accountMenu.ts`)
+with the login, roles and how long it lasts, Appearance (see
+[Theme](#theme)), the about line and *Sign out* (OIDC only); with auth
+off it reads "No login (auth off)".
 
 The *Projects* group lists the explicit projects first, then each
 AgentProjectSet (`GET /api/v1/projectsets`, loaded with the projects) as

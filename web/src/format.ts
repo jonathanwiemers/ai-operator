@@ -83,6 +83,16 @@ export function clockTime(iso: string | undefined | null, now: number): string {
   return t.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })
 }
 
+// resetLabel is the line under a usage meter (RailNav.vue): "resets 14:05"
+// while the window's reset is ahead, "reset" (past, shown muted) once it has
+// passed, and null without a time.
+export function resetLabel(resetsAt: string | undefined | null, now: number): { text: string; past: boolean } | null {
+  const at = clockTime(resetsAt, now)
+  if (!at) return null
+  if (Date.parse(resetsAt!) <= now) return { text: 'reset', past: true }
+  return { text: `resets ${at}`, past: false }
+}
+
 // loginLasts says how long the Desk login lasts (the account menu): a renewing
 // login slides with use and ends after the idle time, a fixed one at its expiry.
 export function loginLasts(me: Pick<Me, 'renewing' | 'idleUntil'>, now: number): string | null {
