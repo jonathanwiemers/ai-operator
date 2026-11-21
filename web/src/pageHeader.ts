@@ -12,3 +12,16 @@ export const pageHeaderUi = {
   links: 'flex flex-wrap items-center gap-2',
   description: 'mt-1 text-[13px] text-(--text-2) [overflow-wrap:anywhere]',
 }
+
+// toolbarUi is the :ui of the UDashboardToolbar at the top of a tab's content
+// (decision 3, D672-P1): the tab's switches and filters on the left (#left),
+// search or secondary items on the right (#right). Flat, without the
+// dashboard's border and padding, and wrapping on phones. searchToolbarUi
+// puts the right side on a row of its own below 760 px, so a search takes
+// the full width, last.
+export const toolbarUi = {
+  root: 'mb-3 min-h-0 flex-wrap gap-x-3 gap-y-2 border-0 px-0 sm:px-0',
+  left: 'min-w-0 flex-wrap',
+  right: 'min-w-0 flex-wrap',
+}
+export const searchToolbarUi = { ...toolbarUi, right: `${toolbarUi.right} basis-full tablet:basis-auto` }

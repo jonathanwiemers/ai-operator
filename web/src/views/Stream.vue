@@ -3,6 +3,7 @@ import UAlert from '@nuxt/ui/components/Alert.vue'
 import { computed, defineAsyncComponent, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import UButton from '@nuxt/ui/components/Button.vue'
+import UDashboardToolbar from '@nuxt/ui/components/DashboardToolbar.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
 import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
 import USelect from '@nuxt/ui/components/Select.vue'
@@ -58,7 +59,7 @@ import type {
 } from '../types'
 import { milestoneStatus } from '../milestoneRows'
 import { alertColor, toneText } from '../badgeTone'
-import { pageHeaderUi } from '../pageHeader'
+import { pageHeaderUi, searchToolbarUi } from '../pageHeader'
 import { useStreamNote } from '../streamNote'
 import { decisionsQuery, milestoneFromQuery } from '../decisions'
 import { milestoneTabFromRoute, milestoneTabs, milestoneTabsFor, projectTabsFor, tabFromQuery, tabQuery } from '../streamTabs'
@@ -487,11 +488,10 @@ watch(
     <div class="stream">
       <!-- The page header (decision 4): the milestone's status as eyebrow,
            the title, the cost as meta line, Metrics (a project) and Context
-           (below 1180 px) on the right. The tab strip follows; on phones it
-           and the search take a full row each, from 760 px they share one
-           row, the search on the right, shrinking from 180 px to 64 px
-           before it would wrap. On the dashboard's Activity tab (everything)
-           the dashboard has the header. -->
+           (below 1180 px) on the right, then the tab row. Filters, search
+           and the heatmap are in the Activity tab's toolbar (decision 3).
+           On the dashboard's Activity tab (everything) the dashboard has
+           the header. -->
       <div data-stream-head class="bg-(--bg) px-4 pt-3.5 tablet:px-7">
         <UPageHeader v-if="!everything" :title="title" :ui="pageHeaderUi">
           <template v-if="status" #headline>
@@ -525,33 +525,59 @@ watch(
             </UButton>
           </template>
         </UPageHeader>
-        <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <RouteTabs
-            v-if="!everything"
-            class="basis-full tablet:basis-auto"
-            :tabs="tabs"
-            :active="tab"
-            :to="tabTo"
+        <RouteTabs v-if="!everything" :tabs="tabs" :active="tab" :to="tabTo" />
+      </div>
+
+      <!-- A project's milestones (R9), in the dashboard's lists: the
+           project's default tab. -->
+      <div v-if="tab === 'milestones'" class="scroll board">
+        <div v-if="namespace && name" class="milestones">
+          <ProjectQueue
+            v-if="project"
+            class="mb-3"
+            :namespace="namespace"
+            :name="name"
+            :queue="project.queue ?? []"
+            :commands="project.queueCommands"
           />
-          <span class="hidden flex-1 tablet:block" />
-          <form
-            v-if="tab === 'activity'"
-            role="search"
-            class="basis-full tablet:max-w-45 tablet:grow tablet:basis-16"
-            @submit.prevent="applySearch"
-          >
-            <UInput
-              v-model="qDraft"
-              type="search"
-              placeholder="Search…"
-              aria-label="Search activity"
-              icon="i-lucide-search"
-              class="w-full"
-              :ui="{ base: 'tablet:text-sm/5' }"
-            />
-          </form>
+          <ProjectFinishing v-if="project" class="mb-3" :namespace="namespace" :name="name" :finishing="project.finishing ?? []" :gitlab="project.gitlab.url" />
+          <MilestoneSections :namespace="namespace" :name="name" />
         </div>
-        <div v-if="tab === 'activity' && heatDays.length" class="heat" title="Activity per day; click to jump">
+      </div>
+      <div v-else-if="tab === 'activity'" class="scroll stream">
+        <!-- The tab's toolbar (decision 3): the event kind (UTabs pills)
+             left, the search right; on phones the search takes a row of
+             its own, last. The heatmap follows (hidden on phones). -->
+        <UDashboardToolbar class="mt-3" :ui="searchToolbarUi" data-tab-toolbar>
+          <template #left>
+            <UTabs
+              :model-value="filter"
+              :items="filters.map((f) => ({ label: f.label, value: f.id }))"
+              variant="pill"
+              size="sm"
+              :content="false"
+              class="min-w-0 max-w-full"
+              :ui="{ list: 'w-auto max-w-full overflow-x-auto' }"
+              aria-label="Show events"
+              data-stream-filter
+              @update:model-value="setFilter($event as StreamFilter)"
+            />
+          </template>
+          <template #right>
+            <form role="search" class="w-full tablet:w-45" @submit.prevent="applySearch">
+              <UInput
+                v-model="qDraft"
+                type="search"
+                placeholder="Search…"
+                aria-label="Search activity"
+                icon="i-lucide-search"
+                class="w-full"
+                :ui="{ base: 'tablet:text-sm/5' }"
+              />
+            </form>
+          </template>
+        </UDashboardToolbar>
+        <div v-if="heatDays.length" class="heat" title="Activity per day; click to jump">
           <span>{{ heatRange.start }}</span>
           <span class="sr-only" data-heat-summary>{{ heatDescription }}</span>
           <div class="cells" @pointerover="showHeatHint" @focusin="showHeatHint" @pointerleave="heatHint = null" @focusout="heatHint = null">
@@ -572,38 +598,6 @@ watch(
           <UButton v-if="beforeJump" color="neutral" variant="link" size="xs" class="p-0 text-[11.5px] text-(--link)" label="clear" @click="clearJump" />
           <span v-else>{{ heatRange.end }}</span>
         </div>
-      </div>
-
-      <!-- A project's milestones (R9), in the dashboard's lists: the
-           project's default tab. -->
-      <div v-if="tab === 'milestones'" class="scroll board">
-        <div v-if="namespace && name" class="milestones">
-          <ProjectQueue
-            v-if="project"
-            class="mb-3"
-            :namespace="namespace"
-            :name="name"
-            :queue="project.queue ?? []"
-            :commands="project.queueCommands"
-          />
-          <ProjectFinishing v-if="project" class="mb-3" :namespace="namespace" :name="name" :finishing="project.finishing ?? []" :gitlab="project.gitlab.url" />
-          <MilestoneSections :namespace="namespace" :name="name" />
-        </div>
-      </div>
-      <div v-else-if="tab === 'activity'" class="scroll stream">
-        <!-- The event kind is a local switch (decision 8): UTabs pills. -->
-        <UTabs
-          :model-value="filter"
-          :items="filters.map((f) => ({ label: f.label, value: f.id }))"
-          variant="pill"
-          size="sm"
-          :content="false"
-          class="filters items-start"
-          :ui="{ list: 'w-auto max-w-full overflow-x-auto' }"
-          aria-label="Show events"
-          data-stream-filter
-          @update:model-value="setFilter($event as StreamFilter)"
-        />
 
         <UAlert v-if="!historyOn" :color="alertColor('info')" variant="subtle" class="mt-3" description="History needs the research database." />
         <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
@@ -786,7 +780,7 @@ watch(
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 0 0;
+  padding: 0 0 4px;
   font-size: 11.5px;
   color: var(--text-3);
 }
@@ -834,10 +828,6 @@ watch(
 }
 .milestones {
   padding-top: 4px;
-}
-.filters {
-  margin-top: 10px;
-  margin-bottom: 4px;
 }
 .day {
   display: flex;

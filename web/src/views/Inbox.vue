@@ -3,6 +3,7 @@ import UAlert from '@nuxt/ui/components/Alert.vue'
 import { alertColor } from '../badgeTone'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
+import UDashboardToolbar from '@nuxt/ui/components/DashboardToolbar.vue'
 import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
 import UTabs from '@nuxt/ui/components/Tabs.vue'
 import { computed, onMounted } from 'vue'
@@ -18,7 +19,7 @@ import { inboxRoute } from '../inboxRoute'
 import { pausedStrip } from '../inboxStrip'
 import { getInbox } from '../client'
 import { useResource } from '../live'
-import { pageHeaderUi } from '../pageHeader'
+import { pageHeaderUi, toolbarUi } from '../pageHeader'
 import { disableNotify, enableNotify, notify, notifyActive, refreshPermission } from '../notify'
 import Truncated from '../ui/Truncated.vue'
 
@@ -79,17 +80,21 @@ const reason = 'muted min-w-0 text-[13px] [&[role=button]]:relative [&[role=butt
         />
       </template>
     </UPageHeader>
-    <UTabs
-      :model-value="view"
-      :items="views"
-      variant="pill"
-      size="sm"
-      :content="false"
-      class="w-fit"
-      aria-label="Inbox view"
-      data-inbox-view
-      @update:model-value="setView"
-    />
+    <!-- The page's toolbar (decision 3): Open / Handled (?view=). -->
+    <UDashboardToolbar :ui="toolbarUi" data-tab-toolbar>
+      <template #left>
+        <UTabs
+          :model-value="view"
+          :items="views"
+          variant="pill"
+          size="sm"
+          :content="false"
+          aria-label="Inbox view"
+          data-inbox-view
+          @update:model-value="setView"
+        />
+      </template>
+    </UDashboardToolbar>
     <UAlert v-if="strip.count" :color="alertColor('warning')" variant="subtle" class="mt-3">
       <template #title>
         {{ strip.count }} {{ strip.count === 1 ? 'autopilot' : 'autopilots' }} paused<template v-if="strip.longestMs"

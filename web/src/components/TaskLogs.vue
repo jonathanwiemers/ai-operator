@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import UButton from '@nuxt/ui/components/Button.vue'
+import UDashboardToolbar from '@nuxt/ui/components/DashboardToolbar.vue'
 import UTabs from '@nuxt/ui/components/Tabs.vue'
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { ApiError, followTaskLogs, getTaskLogs, LoginRequiredError } from '../client'
 import { appendLog } from '../logTail'
+import { toolbarUi } from '../pageHeader'
 
 // TaskLogs is the task page's Logs tab (run watchdog R8): the last 500
 // lines of the task pod's runner or agent container log, scrolled to the
@@ -107,22 +109,27 @@ function download() {
 
 <template>
   <section class="section">
-    <div class="mb-2.5 flex flex-wrap items-center gap-2 text-[13px]">
-      <!-- The container is a local switch (decision 8): UTabs pills. -->
-      <UTabs
-        v-model="container"
-        :items="containers.map((c) => ({ label: c, value: c }))"
-        variant="pill"
-        size="sm"
-        :content="false"
-        :ui="{ list: 'w-auto max-w-full overflow-x-auto' }"
-        aria-label="Container"
-      />
-      <span class="flex-1" />
-      <UButton color="neutral" variant="outline" label="Reload" :disabled="follow" @click="load" />
-      <UButton color="neutral" :variant="follow ? 'solid' : 'outline'" label="Follow" :aria-pressed="follow" @click="follow = !follow" />
-      <UButton color="neutral" variant="outline" label="Download" :disabled="!text" @click="download" />
-    </div>
+    <!-- The tab's toolbar (decision 3): the container pills left, the log
+         actions right. -->
+    <UDashboardToolbar class="text-[13px]" :ui="toolbarUi" data-tab-toolbar>
+      <template #left>
+        <UTabs
+          v-model="container"
+          :items="containers.map((c) => ({ label: c, value: c }))"
+          variant="pill"
+          size="sm"
+          :content="false"
+          class="min-w-0 max-w-full"
+          :ui="{ list: 'w-auto max-w-full overflow-x-auto' }"
+          aria-label="Container"
+        />
+      </template>
+      <template #right>
+        <UButton color="neutral" variant="outline" label="Reload" :disabled="follow" @click="load" />
+        <UButton color="neutral" :variant="follow ? 'solid' : 'outline'" label="Follow" :aria-pressed="follow" @click="follow = !follow" />
+        <UButton color="neutral" variant="outline" label="Download" :disabled="!text" @click="download" />
+      </template>
+    </UDashboardToolbar>
     <div v-if="note" class="card empty">{{ note }}</div>
     <pre
       v-if="text"

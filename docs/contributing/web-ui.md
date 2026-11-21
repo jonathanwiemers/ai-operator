@@ -381,7 +381,10 @@ loads anyway.
   `RailNav.vue`): 176.9 kB, up from 176.4. Leaving out `UAvatar` changes
   nothing; the menu regroups shared Reka UI chunks the route loads. The cap
   was raised from 176.7 to 177.0 kB and the raise reported on its merge
-  request.
+  request. With the tab toolbar on *Where it goes* (#672, R2 of the header
+  and tabs milestone, `UDashboardToolbar`): 177.5 kB. The toolbar is
+  required there, so the cap was raised to 177.6 kB and the raise reported
+  on its merge request.
 
 ## UI kit
 
@@ -615,6 +618,16 @@ There are two filter kinds (decision 8 of
   *tokens | USD* (`?spendUnit=`) and *Where it goes*'s dimension (local).
   Page sections stay [RouteTabs](#routetabs). Chips and `UButtonGroup`
   toggles are not used.
+- **Toolbar.** Switches never form a second tab row: each sits in a
+  `UDashboardToolbar` at the top of its tab's content (decision 3 of the
+  header and tabs milestone), with the shared `toolbarUi` of
+  `src/pageHeader.ts` and a `data-tab-toolbar` hook. Switches and filters
+  go in `#left`, search or secondary items in `#right`. With a search,
+  `searchToolbarUi` puts the right side on a full-width row of its own
+  below 760 px, last. Used on Activity, Decisions, the Metrics and Logs tabs,
+  the Inbox and *Where it goes*. The e2e case `<route> tab toolbar` checks
+  at 375 and 1280 px that each toolbar sits below the tab row and does not
+  overflow.
 - **Value filters** (project, kind, engine) are `USelectMenu`, single-select
   with an *All* item and a search field. On the Metrics page they sit in one
   wrapping row from 760 px; below, a *Filters (n)* button opens them in a
@@ -1181,19 +1194,17 @@ is Tailwind utilities and Nuxt UI; only the activity heatmap strip keeps scoped 
   state), the title, the cost chip as meta line, and *Metrics* (a project)
   and *Context* (below 1180 px) on the right. On the dashboard's *Stream*
   tab the dashboard has the header, and Stream.vue shows none.
-- On phones the [RouteTabs](#routetabs) strip and the stream search (a
-  full-width `UInput`, 16 px; 14 px from tablet width as before) take a
-  full row each below the header. The
-  scope links (the project's *Everything* and its milestones) wrap onto more
-  lines, a long milestone title inside its link.
-- From tablet width (760 px) the tabs and the search share one row below
-  the header, the search on the right, and the scope links stay on one
-  line that scrolls inside itself.
+- The [RouteTabs](#routetabs) row follows; the header block holds nothing
+  else.
+- The Activity tab opens with its [toolbar](#filters): the event filter on
+  the left, the search (`UInput`, 16 px on phones, 14 px from 760 px) on
+  the right, on a full-width row of its own on phones. The heatmap follows
+  the toolbar, hidden below 760 px.
 - Stream rows (`stream/EventCard.vue`) break long URLs, branches and SHAs
   anywhere, so a row never widens the stream.
 
 The e2e case `stream-project header rows` at 375 and 1280 px checks the
-rows' order and widths; the route checks cover every project and milestone
+header holds the title and the tabs only, and the Activity toolbar's layout; the route checks cover every project and milestone
 tab at 375, 768 and 1280 px.
 
 ### Inbox

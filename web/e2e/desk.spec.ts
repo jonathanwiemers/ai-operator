@@ -1088,10 +1088,11 @@ test.describe('Milestones and Activity tabs', () => {
   })
 })
 
-// The stream header (Stream.vue, docs/contributing/web-ui.md "Stream header"): on a phone the
-// title, the tab strip and the search each take a full-width row, in that
-// order, and the search is 16 px; from 760 px the search sits beside the
-// tabs, on the right. The tabs follow the page header on every width.
+// The project header (Stream.vue, docs/contributing/web-ui.md "Stream
+// header"): the page header and the tab row only, the tabs below the title.
+// The Activity tab's toolbar (decision 3) sits in the tab's content: the
+// event filter left, the search right; on a phone the search is 16 px and
+// takes a full-width row below the filter. The heatmap follows the toolbar.
 for (const { width, height, phone } of [
   { width: 375, height: 812, phone: true },
   { width: 1280, height: 900, phone: false },
@@ -1107,27 +1108,74 @@ for (const { width, height, phone } of [
     await route.ready(page)
 
     const head = page.locator('[data-stream-head]')
-    const box = async (sel: string) => (await head.locator(sel).first().boundingBox())!
-    const tabsRow = head.locator('nav[aria-label="View"]').locator('xpath=..')
-    const row = (await tabsRow.evaluate((r) => r.getBoundingClientRect().toJSON())) as DOMRect
-    const title = await box('h1[data-slot=title]')
-    const tabs = await box('nav[aria-label="View"]')
-    const search = await box('input[type="search"]')
-    const size = await head.locator('input[type="search"]').evaluate((i) => getComputedStyle(i).fontSize)
-    // The tab strip follows the page header (decision 4).
+    const title = (await head.locator('h1[data-slot=title]').boundingBox())!
+    const tabs = (await head.locator('nav[aria-label="View"]').boundingBox())!
+    // The tab strip follows the page header (decision 4); no search or
+    // heatmap in the header block.
     expect(tabs.y, 'the tabs sit below the title').toBeGreaterThanOrEqual(title.y + title.height)
+    await expect(head.locator('[role="search"], .heat, [data-tab-toolbar]')).toHaveCount(0)
+
+    const bar = page.locator('main [data-tab-toolbar]')
+    await expect(bar).toHaveCount(1)
+    const row = (await bar.boundingBox())!
+    const filter = (await bar.locator('[data-stream-filter]').boundingBox())!
+    const input = bar.locator('[role="search"] input[type="search"]')
+    const search = (await input.boundingBox())!
+    expect(row.y, 'the toolbar sits below the tabs').toBeGreaterThanOrEqual(tabs.y + tabs.height)
     if (phone) {
-      expect(tabs.width, 'the tabs take the full row').toBeCloseTo(row.width, 0)
-      expect(search.y, 'the search sits below the tabs').toBeGreaterThanOrEqual(tabs.y + tabs.height)
+      expect(search.y, 'the search sits below the filter').toBeGreaterThanOrEqual(filter.y + filter.height)
       expect(search.width, 'the search takes the full row').toBeGreaterThan(row.width - 2)
-      expect(size).toBe('16px')
+      expect(await input.evaluate((i) => getComputedStyle(i).fontSize)).toBe('16px')
     } else {
       const mid = (b: { y: number; height: number }) => b.y + b.height / 2
-      expect(Math.abs(mid(search) - mid(tabs)), 'the search sits beside the tabs').toBeLessThan(8)
-      expect(search.x + search.width, 'the search is on the right').toBeGreaterThan(row.x + row.width - 60)
+      expect(Math.abs(mid(search) - mid(filter)), 'the search sits beside the filter').toBeLessThan(8)
+      expect(search.x + search.width, 'the search is on the right').toBeGreaterThan(row.x + row.width - 8)
+      const heat = (await page.locator('main .heat').boundingBox())!
+      expect(heat.y, 'the heatmap sits below the toolbar').toBeGreaterThanOrEqual(row.y + row.height)
     }
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
   })
+
+  // Every pill switch sits in a toolbar inside its tab's content (decision
+  // 3): not in the header block, without sideways overflow, holding the
+  // switch, and the page does not scroll sideways.
+  for (const [name, pills] of [
+    ['stream-project-activity', '[data-stream-filter]'],
+    ['stream-milestone-decisions', '[data-decision-state]'],
+    ['stream-project-metrics', '[data-spend-unit]'],
+    ['task-logs', '[aria-label="Container"]'],
+    ['inbox', '[data-inbox-view]'],
+  ] as const) {
+    test(`${name} tab toolbar@${width}`, async ({ page, baseURL }) => {
+      const route = routes.find((r) => r.name === name)!
+      const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+      await page.setViewportSize({ width, height })
+      await page.clock.setFixedTime(now)
+      await watch(page, new URL(baseURL ?? '').origin, problems)
+      await mockAPI(page, route, problems)
+      await page.goto(route.path)
+      await route.ready(page)
+
+      const bar = page.locator('main [data-tab-toolbar]')
+      await expect(bar).toHaveCount(1)
+      await expect(bar.locator(pills)).toHaveCount(1)
+      await expect(page.locator('[data-stream-head] [data-tab-toolbar], [data-stream-head] [role="tablist"]')).toHaveCount(0)
+      const fits = await bar.evaluate((b) => ({ scroll: b.scrollWidth, client: b.clientWidth }))
+      expect(fits.scroll, 'the toolbar does not overflow').toBeLessThanOrEqual(fits.client)
+      const sideways = await page.evaluate(() => {
+        const doc = document.scrollingElement ?? document.documentElement
+        return doc.scrollWidth - doc.clientWidth
+      })
+      expect(sideways, 'the page does not scroll sideways').toBe(0)
+      const nav = page.locator('main nav[aria-label="View"], main nav[aria-label="Task"]')
+      if (await nav.count()) {
+        const tabs = (await nav.first().boundingBox())!
+        const row = (await bar.boundingBox())!
+        expect(row.y, 'the toolbar sits below the tab row').toBeGreaterThanOrEqual(tabs.y + tabs.height)
+      }
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+  }
 }
 
 // The project page's Finishing section (ProjectFinishing.vue, R7): a done
@@ -5332,10 +5380,10 @@ test.describe('screen reader flows', () => {
       await expect(page.locator('main')).toMatchAriaSnapshot(`
         - ${milestoneH1}
         - navigation "View"
-        - search:
-          - searchbox "Search decisions"
         - tablist:
           - tab "All" [selected]
+        - search:
+          - searchbox "Search decisions"
         - heading /Provider SDK 4 with refund support/ [level=2]
         - article:
           - heading "Refund currency" [level=3]

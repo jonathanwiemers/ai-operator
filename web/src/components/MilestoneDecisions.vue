@@ -4,6 +4,7 @@ import { alertColor } from '../badgeTone'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import UDashboardToolbar from '@nuxt/ui/components/DashboardToolbar.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
 import UTabs from '@nuxt/ui/components/Tabs.vue'
 import Badge from './Badge.vue'
@@ -22,6 +23,7 @@ import {
   type DecisionGroup,
 } from '../decisions'
 import { useResource } from '../live'
+import { searchToolbarUi } from '../pageHeader'
 
 // The Decisions tab (R11): the stored decisions of a milestone (milestone 0:
 // the whole project, for the project tab) grouped by issue in the server's
@@ -126,31 +128,36 @@ const sectionHead =
     <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
     <UAlert v-else-if="data && !data.available" :color="alertColor('info')" variant="subtle" class="mt-3" description="Decisions need the history database." />
     <template v-else>
-      <div class="flex flex-wrap items-center gap-2">
-        <form role="search" class="basis-full tablet:basis-auto" @submit.prevent>
-          <UInput
-            v-model="draft"
-            type="search"
-            placeholder="Search decisions…"
-            aria-label="Search decisions"
-            icon="i-lucide-search"
-            class="w-full tablet:w-60"
-            :ui="{ base: 'tablet:text-sm/5' }"
+      <!-- The tab's toolbar (decision 3): the state pills (?state=) and the
+           controls slot left, the search right, on its own row on phones. -->
+      <UDashboardToolbar :ui="searchToolbarUi" data-tab-toolbar>
+        <template #left>
+          <UTabs
+            :model-value="state"
+            :items="stateItems"
+            variant="pill"
+            size="sm"
+            :content="false"
+            aria-label="State"
+            data-decision-state
+            @update:model-value="setState"
           />
-        </form>
-        <!-- A local switch (decision 8): UTabs pills, the state in ?state=. -->
-        <UTabs
-          :model-value="state"
-          :items="stateItems"
-          variant="pill"
-          size="sm"
-          :content="false"
-          aria-label="State"
-          data-decision-state
-          @update:model-value="setState"
-        />
-        <slot name="controls" />
-      </div>
+          <slot name="controls" />
+        </template>
+        <template #right>
+          <form role="search" class="w-full tablet:w-60" @submit.prevent>
+            <UInput
+              v-model="draft"
+              type="search"
+              placeholder="Search decisions…"
+              aria-label="Search decisions"
+              icon="i-lucide-search"
+              class="w-full"
+              :ui="{ base: 'tablet:text-sm/5' }"
+            />
+          </form>
+        </template>
+      </UDashboardToolbar>
 
       <div v-if="loading && !data" class="empty">Loading…</div>
       <UEmpty v-else-if="!groups.length" icon="i-lucide-scale" :title="emptyText" variant="naked" size="sm" />

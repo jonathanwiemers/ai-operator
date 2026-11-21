@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import UAlert from '@nuxt/ui/components/Alert.vue'
 import { alertColor } from '../badgeTone'
+import UDashboardToolbar from '@nuxt/ui/components/DashboardToolbar.vue'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UTabs from '@nuxt/ui/components/Tabs.vue'
 import { computed, ref, watch } from 'vue'
@@ -10,6 +11,7 @@ import { clockTime, duration, fullTime, tokenCount } from '../format'
 import { useNow } from '../live'
 import { measuredLabel, totalsLabel, totalsTooltip, writtenLabel } from '../lines'
 import { per100Label } from '../metricsCode'
+import { toolbarUi } from '../pageHeader'
 import DataList, { type DataListColumn } from '../ui/DataList.vue'
 import ModelBar from './ModelBar.vue'
 import StatTile from './StatTile.vue'
@@ -289,22 +291,41 @@ const mark = 'ms-1.5 rounded-full px-1.5 text-[11px] font-semibold'
 
 <template>
   <div>
-    <nav class="mb-3 flex flex-wrap items-center gap-x-1.5 text-[13px]" aria-label="Spend drill-down" data-spend-crumbs>
-      <template v-for="(c, i) in crumbs" :key="i">
-        <span v-if="i > 0" class="text-(--text-3)">›</span>
-        <RouterLink v-if="i < crumbs.length - 1" :to="to(c.scope)" :class="tap">{{ c.label }}</RouterLink>
-        <span v-else :class="tap" class="font-semibold" aria-current="page">{{ c.label }}</span>
+    <!-- The tab's toolbar (decision 3): the drill-down crumbs left, the bar
+         unit and the link to the Metrics page right. -->
+    <UDashboardToolbar :ui="toolbarUi" data-tab-toolbar>
+      <template #left>
+        <nav class="flex min-w-0 flex-wrap items-center gap-x-1.5 text-[13px]" aria-label="Spend drill-down" data-spend-crumbs>
+          <template v-for="(c, i) in crumbs" :key="i">
+            <span v-if="i > 0" class="text-(--text-3)">›</span>
+            <RouterLink v-if="i < crumbs.length - 1" :to="to(c.scope)" :class="tap">{{ c.label }}</RouterLink>
+            <span v-else :class="tap" class="font-semibold" aria-current="page">{{ c.label }}</span>
+          </template>
+          <span v-if="loading && data" class="faint">Loading…</span>
+        </nav>
       </template>
-      <span v-if="loading && data" class="faint">Loading…</span>
-      <RouterLink
-        :to="{ path: '/metrics', query: { project: `${namespace}/${name}` } }"
-        :class="tap"
-        class="ms-auto"
-        data-spend-costs
-      >
-        Metrics across projects
-      </RouterLink>
-    </nav>
+      <template #right>
+        <UTabs
+          v-if="!error && totals"
+          :model-value="unit"
+          :items="units"
+          variant="pill"
+          size="sm"
+          :content="false"
+          aria-label="Bar unit"
+          data-spend-unit
+          @update:model-value="setUnit"
+        />
+        <RouterLink
+          :to="{ path: '/metrics', query: { project: `${namespace}/${name}` } }"
+          :class="tap"
+          class="text-[13px]"
+          data-spend-costs
+        >
+          Metrics across projects
+        </RouterLink>
+      </template>
+    </UDashboardToolbar>
 
     <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
     <div v-else-if="!data || !totals" class="empty">Loading…</div>
@@ -363,17 +384,6 @@ const mark = 'ms-1.5 rounded-full px-1.5 text-[11px] font-semibold'
               <i class="me-1 inline-block size-2 rounded-xs align-[-1px]" :style="{ background: barColors[slot] }" />{{ m }} (subagent)
             </span>
           </div>
-          <UTabs
-            :model-value="unit"
-            :items="units"
-            variant="pill"
-            size="sm"
-            :content="false"
-            class="ms-auto"
-            aria-label="Bar unit"
-            data-spend-unit
-            @update:model-value="setUnit"
-          />
         </div>
         <UEmpty v-if="!children.length" icon="i-lucide-receipt" title="No agent calls recorded here." size="sm" />
         <div v-else :class="tableCard">
