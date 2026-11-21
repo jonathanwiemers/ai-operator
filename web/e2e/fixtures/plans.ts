@@ -13,6 +13,9 @@ function plan(p: Partial<PlanListItem> & Pick<PlanListItem, 'name' | 'title' | '
     tokens: 120_000,
     budgetUSD: '5',
     budgetLimitUSD: '20',
+    draftsTotal: 1,
+    draftsCreated: 0,
+    createdMilestones: [],
     permissions: { steer: true },
     ...p,
   }
@@ -28,6 +31,8 @@ const shopPlans: PlanListItem[] = [
     lastActivityAt: ago(60 * 24),
     createdMilestoneIID: 14,
     createdMilestoneURL: 'https://gitlab.example.com/team-a/shop/-/milestones/14',
+    draftsCreated: 1,
+    createdMilestones: [{ iid: 14, url: 'https://gitlab.example.com/team-a/shop/-/milestones/14' }],
     milestone: { state: 'running', progress: { merged: 2, total: 4, open: 2 }, stored: false },
   }),
   plan({
@@ -37,6 +42,8 @@ const shopPlans: PlanListItem[] = [
     lastActivityAt: ago(60 * 24 * 2),
     createdMilestoneIID: 15,
     createdMilestoneURL: 'https://gitlab.example.com/team-a/shop/-/milestones/15',
+    draftsCreated: 1,
+    createdMilestones: [{ iid: 15, url: 'https://gitlab.example.com/team-a/shop/-/milestones/15' }],
   }),
 ]
 

@@ -1390,12 +1390,39 @@ export interface PlanListItem {
   budgetLimitUSD: string;
   createdMilestoneIID?: number /* int64 */;
   createdMilestoneURL?: string;
+  /**
+   * DraftsTotal counts the plan's drafts, DraftsCreated those with a
+   * milestone; CreatedMilestones are theirs in list order, never null.
+   */
+  draftsTotal: number /* int */;
+  draftsCreated: number /* int */;
+  createdMilestones: PlanCreatedMilestone[];
   permissions: PlanPermissions;
   /**
    * Milestone is the created milestone's row on the Desk, nil without
    * one.
    */
   milestone?: PlanMilestone;
+}
+/**
+ * PlanCreatedMilestone is a milestone created from one of a plan's drafts.
+ */
+export interface PlanCreatedMilestone {
+  iid: number /* int64 */;
+  url?: string;
+}
+/**
+ * PlanDraftView is one draft of a plan.
+ */
+export interface PlanDraftView {
+  key: number /* int64 */;
+  title: string;
+  draft: string;
+  revision: number /* int64 */;
+  by?: string;
+  sha?: string;
+  createdMilestoneIID?: number /* int64 */;
+  createdMilestoneURL?: string;
 }
 /**
  * PlanMilestone is where a plan's created milestone stands, from its row
@@ -1416,9 +1443,14 @@ export interface PlanPermissions {
   steer: boolean;
 }
 /**
- * PlanView is one plan with its draft.
+ * PlanView is one plan with its drafts. Draft, DraftRevision, DraftBy and
+ * DraftSHA mirror the first draft without a milestone, else the last one.
  */
 export interface PlanView extends PlanListItem {
+  /**
+   * Drafts are the plan's drafts in list order, never null.
+   */
+  drafts: PlanDraftView[];
   draft: string;
   draftRevision: number /* int64 */;
   draftBy?: string;

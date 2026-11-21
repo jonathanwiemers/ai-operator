@@ -40,10 +40,33 @@ type PlanListItem struct {
 	BudgetLimitUSD      string              `json:"budgetLimitUSD"`
 	CreatedMilestoneIID int64               `json:"createdMilestoneIID,omitempty"`
 	CreatedMilestoneURL string              `json:"createdMilestoneURL,omitempty"`
-	Permissions         PlanPermissions     `json:"permissions"`
+	// DraftsTotal counts the plan's drafts, DraftsCreated those with a
+	// milestone; CreatedMilestones are theirs in list order, never null.
+	DraftsTotal       int                    `json:"draftsTotal"`
+	DraftsCreated     int                    `json:"draftsCreated"`
+	CreatedMilestones []PlanCreatedMilestone `json:"createdMilestones"`
+	Permissions       PlanPermissions        `json:"permissions"`
 	// Milestone is the created milestone's row on the Desk, nil without
 	// one.
 	Milestone *PlanMilestone `json:"milestone,omitempty"`
+}
+
+// PlanCreatedMilestone is a milestone created from one of a plan's drafts.
+type PlanCreatedMilestone struct {
+	IID int64  `json:"iid"`
+	URL string `json:"url,omitempty"`
+}
+
+// PlanDraftView is one draft of a plan.
+type PlanDraftView struct {
+	Key                 int64  `json:"key"`
+	Title               string `json:"title"`
+	Draft               string `json:"draft"`
+	Revision            int64  `json:"revision"`
+	By                  string `json:"by,omitempty"`
+	SHA                 string `json:"sha,omitempty"`
+	CreatedMilestoneIID int64  `json:"createdMilestoneIID,omitempty"`
+	CreatedMilestoneURL string `json:"createdMilestoneURL,omitempty"`
 }
 
 // PlanMilestone is where a plan's created milestone stands, from its row
@@ -60,13 +83,16 @@ type PlanPermissions struct {
 	Steer bool `json:"steer"`
 }
 
-// PlanView is one plan with its draft.
+// PlanView is one plan with its drafts. Draft, DraftRevision, DraftBy and
+// DraftSHA mirror the first draft without a milestone, else the last one.
 type PlanView struct {
-	PlanListItem  `json:",inline" tstype:",extends"`
-	Draft         string `json:"draft"`
-	DraftRevision int64  `json:"draftRevision"`
-	DraftBy       string `json:"draftBy,omitempty"`
-	DraftSHA      string `json:"draftSHA,omitempty"`
+	PlanListItem `json:",inline" tstype:",extends"`
+	// Drafts are the plan's drafts in list order, never null.
+	Drafts        []PlanDraftView `json:"drafts"`
+	Draft         string          `json:"draft"`
+	DraftRevision int64           `json:"draftRevision"`
+	DraftBy       string          `json:"draftBy,omitempty"`
+	DraftSHA      string          `json:"draftSHA,omitempty"`
 	// Decisions is the current list in status order, never null;
 	// DecisionsPending counts the open or not signed-off entries.
 	Decisions        []aiv1.PlanDecision `json:"decisions"`
@@ -78,10 +104,17 @@ func (s *Server) planItem(pl *aiv1.AgentPlan, steer bool) PlanListItem {
 	if c := pl.Status.Chat; c != nil && c.LastTurnTime != nil && c.LastTurnTime.After(last) {
 		last = c.LastTurnTime.Time
 	}
+	list, created := pl.DraftList(), []PlanCreatedMilestone{}
+	for _, d := range list {
+		if d.CreatedMilestoneIID != 0 {
+			created = append(created, PlanCreatedMilestone{IID: d.CreatedMilestoneIID, URL: d.CreatedMilestoneURL})
+		}
+	}
 	return PlanListItem{Name: pl.Name, Namespace: pl.Namespace, Project: pl.Spec.ProjectRef, Title: cmp.Or(pl.Status.Title, pl.Spec.Title), Phase: pl.Status.Phase, CreatedBy: pl.Spec.CreatedBy,
 		CreatedAt: pl.CreationTimestamp.Time, LastActivityAt: last, SpendUSD: pl.Status.SpendUSD, Tokens: pl.Status.Tokens,
 		BudgetUSD: pl.BudgetUSD(s.cfg.Plan.MaxBudgetUSD), BudgetLimitUSD: s.cfg.Plan.MaxBudgetUSDLimit,
 		CreatedMilestoneIID: pl.Status.CreatedMilestoneIID, CreatedMilestoneURL: createdMilestoneURL(pl),
+		DraftsTotal: len(list), DraftsCreated: len(created), CreatedMilestones: created,
 		Permissions: PlanPermissions{Steer: steer}}
 }
 
@@ -123,6 +156,31 @@ func writePlanDraft(s *aiv1.AgentPlanStatus) *aiv1.PlanDraft {
 		s.Drafts, i = append(s.Drafts, aiv1.PlanDraft{Key: s.NextDraftKey()}), len(s.Drafts)
 	}
 	return &s.Drafts[i]
+}
+
+// planDraftsLocked is why none of the plan's drafts may change: it failed, or
+// it is not active (every draft created, or claiming a milestone); "" when
+// they may.
+func planDraftsLocked(pl *aiv1.AgentPlan) string {
+	switch {
+	case pl.Status.Phase == aiv1.AgentPlanFailed:
+		return "the plan has failed"
+	case !pl.Active():
+		return "the plan has created its milestone"
+	}
+	return ""
+}
+
+// draftReadOnly is the 409 message for a change of the created draft d.
+func draftReadOnly(d aiv1.PlanDraft) string {
+	return fmt.Sprintf("the draft is created as %%%d and read-only", d.CreatedMilestoneIID)
+}
+
+// planTitleOK reports whether title, trimmed, is one line of at most
+// maxPlanTitle characters.
+func planTitleOK(title string) bool {
+	title = strings.TrimSpace(title)
+	return utf8.RuneCountInString(title) <= maxPlanTitle && !strings.ContainsAny(title, "\r\n")
 }
 
 // planOwner reports whether p may steer the project's plans: the steer grant
@@ -229,8 +287,12 @@ func (s *Server) setPlanMilestones(ctx context.Context, items []PlanListItem, vi
 }
 
 func (s *Server) planView(pl *aiv1.AgentPlan, steer bool) PlanView {
-	d := planDraft(pl)
-	return PlanView{PlanListItem: s.planItem(pl, steer), Draft: d.Draft, DraftRevision: d.Revision, DraftBy: d.By, DraftSHA: d.SHA,
+	d, drafts := planDraft(pl), []PlanDraftView{}
+	for _, d := range pl.DraftList() {
+		drafts = append(drafts, PlanDraftView{Key: d.Key, Title: d.Title, Draft: d.Draft, Revision: d.Revision, By: d.By, SHA: d.SHA,
+			CreatedMilestoneIID: d.CreatedMilestoneIID, CreatedMilestoneURL: d.CreatedMilestoneURL})
+	}
+	return PlanView{PlanListItem: s.planItem(pl, steer), Drafts: drafts, Draft: d.Draft, DraftRevision: d.Revision, DraftBy: d.By, DraftSHA: d.SHA,
 		Decisions: append([]aiv1.PlanDecision{}, pl.Status.Decisions...), DecisionsPending: planDecisionsPending(pl.Status.Decisions)}
 }
 
@@ -271,7 +333,7 @@ func (s *Server) createPlan(w http.ResponseWriter, r *http.Request) {
 		badRequest(w, "invalid request")
 		return
 	}
-	if req.Title = strings.TrimSpace(req.Title); utf8.RuneCountInString(req.Title) > maxPlanTitle || strings.ContainsAny(req.Title, "\r\n") {
+	if req.Title = strings.TrimSpace(req.Title); !planTitleOK(req.Title) {
 		fieldError(w, "title", fmt.Sprintf("the title must be one line of at most %d characters", maxPlanTitle))
 		return
 	}
@@ -382,7 +444,8 @@ func (s *Server) getPlanChat(w http.ResponseWriter, r *http.Request) {
 }
 
 // ownPlan is projectPlan for a change by the plan's owners, decoding the
-// request into req: 404 without the writer client, 403 for others.
+// request into req unless it is nil: 404 without the writer client, 403 for
+// others.
 func (s *Server) ownPlan(w http.ResponseWriter, r *http.Request, limit int64, req any) (*aiv1.AgentPlan, bool) {
 	pl, steer, ok := s.projectPlan(w, r)
 	switch {
@@ -391,7 +454,7 @@ func (s *Server) ownPlan(w http.ResponseWriter, r *http.Request, limit int64, re
 		notFound(w)
 	case !steer:
 		writeError(w, http.StatusForbidden, "only the project's owners change its plans")
-	case json.NewDecoder(http.MaxBytesReader(w, r.Body, limit)).Decode(req) != nil:
+	case req != nil && json.NewDecoder(http.MaxBytesReader(w, r.Body, limit)).Decode(req) != nil:
 		badRequest(w, "invalid request")
 	default:
 		return pl, true
@@ -399,26 +462,54 @@ func (s *Server) ownPlan(w http.ResponseWriter, r *http.Request, limit int64, re
 	return nil, false
 }
 
-// savePlanDraft saves the owner's edit {baseRevision, draft} as the next
-// revision: 409 with the current view when the draft changed since.
+// savePlanDraft saves the owner's edit {key, baseRevision, draft, title?} as
+// the draft's next revision. Key 0 is the draft the single-draft fields
+// mirror, or a new draft on a plan without any. 404 for an unknown key, 409
+// for a created draft, 409 with the current view when the draft changed since.
 func (s *Server) savePlanDraft(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		BaseRevision int64  `json:"baseRevision"`
-		Draft        string `json:"draft"`
+		Key          int64   `json:"key"`
+		BaseRevision int64   `json:"baseRevision"`
+		Draft        string  `json:"draft"`
+		Title        *string `json:"title"`
 	}
 	pl, ok := s.ownPlan(w, r, 8*maxPlanDraft, &req) // JSON escapes a byte in up to 6
+	if !ok {
+		return
+	}
+	base := pl.DeepCopy()
+	st := &pl.Status
+	st.MoveDrafts()
+	i := st.DraftIndex(req.Key)
+	if req.Key == 0 {
+		i = planDraftIndex(st.Drafts)
+	}
+	var cur aiv1.PlanDraft
+	if i >= 0 {
+		cur = st.Drafts[i]
+	}
 	switch {
-	case !ok:
-	case pl.Status.Phase == aiv1.AgentPlanCreated || planDraft(pl).CreatedMilestoneIID != 0:
-		writeError(w, http.StatusConflict, "the plan has created its milestone")
+	case planDraftsLocked(base) != "":
+		writeError(w, http.StatusConflict, planDraftsLocked(base))
 	case len(req.Draft) > maxPlanDraft:
 		fieldError(w, "draft", "the draft must be at most 64 KiB")
-	case planDraft(pl).Revision != req.BaseRevision:
-		writeJSON(w, http.StatusConflict, s.planView(pl, true))
+	case req.Title != nil && !planTitleOK(*req.Title):
+		fieldError(w, "title", fmt.Sprintf("the title must be one line of at most %d characters", maxPlanTitle))
+	case i < 0 && req.Key != 0:
+		notFound(w)
+	case cur.CreatedMilestoneIID != 0:
+		writeError(w, http.StatusConflict, draftReadOnly(cur))
+	case cur.Revision != req.BaseRevision:
+		writeJSON(w, http.StatusConflict, s.planView(base, true))
 	default:
-		base := pl.DeepCopy()
-		d := writePlanDraft(&pl.Status)
+		if i < 0 {
+			st.Drafts, i = append(st.Drafts, aiv1.PlanDraft{Key: st.NextDraftKey()}), len(st.Drafts)
+		}
+		d := &st.Drafts[i]
 		d.Draft, d.Revision, d.By = req.Draft, req.BaseRevision+1, "owner"
+		if req.Title != nil {
+			d.Title = strings.TrimSpace(*req.Title)
+		}
 		err := s.writer.Status().Patch(r.Context(), pl, client.MergeFromWithOptions(base, client.MergeFromWithOptimisticLock{}))
 		s.planPatched(w, r, pl, err, "plan.draft", "key", d.Key, "revision", d.Revision)
 	}

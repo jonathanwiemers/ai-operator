@@ -173,6 +173,8 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/v1/projects/{namespace}/{name}/plans", s.authed(s.createPlan))
 	mux.Handle("DELETE /api/v1/projects/{namespace}/{name}/plans/{plan}", s.authed(s.deletePlan))
 	mux.Handle("PUT /api/v1/projects/{namespace}/{name}/plans/{plan}/draft", s.authed(s.savePlanDraft))
+	mux.Handle("DELETE /api/v1/projects/{namespace}/{name}/plans/{plan}/drafts/{key}", s.authed(s.removePlanDraft))
+	mux.Handle("PUT /api/v1/projects/{namespace}/{name}/plans/{plan}/drafts/order", s.authed(s.orderPlanDrafts))
 	mux.Handle("POST /api/v1/projects/{namespace}/{name}/plans/{plan}/budget", s.authed(s.raisePlanBudget))
 	mux.Handle("POST /api/v1/projects/{namespace}/{name}/plans/{plan}/milestone", s.authed(s.createPlanMilestone))
 	mux.Handle("GET /api/v1/projects/{namespace}/{name}/plans/{plan}/chat", s.authed(s.getPlanChat))

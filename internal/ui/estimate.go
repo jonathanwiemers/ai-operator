@@ -23,7 +23,28 @@ type estimateReader interface {
 	MilestoneRequirements(ctx context.Context, key store.ProjectKey, iid int64) (int, error)
 }
 
-// estimate estimates ?plan=<name> (its saved draft's requirements) or
+// estimateDraft is the plan's draft of ?draft=<key>, the one the single-draft
+// fields mirror without it: 400 for an invalid key, 404 for an unknown one.
+func estimateDraft(w http.ResponseWriter, r *http.Request, pl *aiv1.AgentPlan) (aiv1.PlanDraft, bool) {
+	q := r.URL.Query().Get("draft")
+	if q == "" {
+		return planDraft(pl), true
+	}
+	key, err := strconv.ParseInt(q, 10, 64)
+	if err != nil || key <= 0 {
+		badRequest(w, "draft must be a draft key")
+		return aiv1.PlanDraft{}, false
+	}
+	list := pl.DraftList()
+	if i := slices.IndexFunc(list, func(d aiv1.PlanDraft) bool { return d.Key == key }); i >= 0 {
+		return list[i], true
+	}
+	notFound(w)
+	return aiv1.PlanDraft{}, false
+}
+
+// estimate estimates ?plan=<name> (its saved draft's requirements, of
+// ?draft=<key> or the mirrored one) or
 // ?milestone=<iid> (its planned issues, else its requirements) from the
 // project's last 10 finished milestones.
 func (s *Server) estimate(w http.ResponseWriter, r *http.Request) {
@@ -54,8 +75,10 @@ func (s *Server) estimate(w http.ResponseWriter, r *http.Request) {
 		} else if i := slices.IndexFunc(plans, func(pl aiv1.AgentPlan) bool { return pl.Name == plan }); i < 0 {
 			notFound(w)
 			return
+		} else if d, ok := estimateDraft(w, r, &plans[i]); !ok {
+			return
 		} else {
-			n = rules.CountRequirements(planDraft(&plans[i]).Draft)
+			n = rules.CountRequirements(d.Draft)
 		}
 	} else {
 		var tasks []aiv1.AgentTask

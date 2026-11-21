@@ -83,7 +83,10 @@ func TestPlansListAndGet(t *testing.T) {
 	sameJSON(t, got, `{"name":"shop-plan-old","namespace":"team-a","project":"shop","title":"Refunds","phase":"Created","createdBy":"ada@example.com",
 		"createdAt":"2026-11-10T09:00:00Z","lastActivityAt":"2026-11-10T12:00:00Z","spendUSD":"1.2000","tokens":900,
 		"budgetUSD":"8","budgetLimitUSD":"20","createdMilestoneIID":5,"createdMilestoneURL":"https://gitlab.example.com/m/5",
-		"permissions":{"steer":false},"draft":"# Refunds","draftRevision":4,"draftBy":"owner",
+		"draftsTotal":1,"draftsCreated":1,"createdMilestones":[{"iid":5,"url":"https://gitlab.example.com/m/5"}],
+		"permissions":{"steer":false},
+		"drafts":[{"key":1,"title":"","draft":"# Refunds","revision":4,"by":"owner","createdMilestoneIID":5,"createdMilestoneURL":"https://gitlab.example.com/m/5"}],
+		"draft":"# Refunds","draftRevision":4,"draftBy":"owner",
 		"decisions":[],"decisionsPending":0}`)
 
 	for _, path := range []string{shopPlans + "/billing-plan", shopPlans + "/nope", "/api/v1/projects/team-b/billing/plans",
