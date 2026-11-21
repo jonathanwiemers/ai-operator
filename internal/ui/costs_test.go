@@ -34,6 +34,8 @@ type fakeCosts struct {
 	code          store.CodeRange
 	codeCalls     []costSeriesCall
 	pausesCalls   []costSeriesCall
+	timeline      []store.Event
+	timelineQ     []store.TimelineQuery
 }
 
 type costSeriesCall struct {

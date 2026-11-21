@@ -47,6 +47,7 @@ import type {
   TaskResponse,
   ThreadPart,
   ThreadResponse,
+  TimelineView,
 } from './generated/views'
 import type { ResearchAgent, ResearchDepth, ResearchView } from './generated/api'
 import { decisionsSearch, type DecisionParams } from './decisions'
@@ -522,6 +523,24 @@ export function getMetricsFlow(params: CostsParams = {}): Promise<MetricsFlowVie
 // ignored by the server).
 export function getMetricsPauses(params: CostsParams = {}): Promise<MetricsPausesView> {
   return get<MetricsPausesView>(`/metrics/pauses${costsQuery(params)}`)
+}
+
+// TimelineParams selects the timeline: a milestone (project as
+// "namespace/name" and milestone iid), or a window of RFC 3339 times of at
+// most 7 days, optionally of one project.
+export type TimelineParams =
+  | { project: string; milestone: number }
+  | { from: string; to: string; project?: string }
+
+// getTimeline: GET /timeline, the issue bars of a milestone or of a window
+// across the viewer's projects; history is false without the history
+// database.
+export function getTimeline(params: TimelineParams): Promise<TimelineView> {
+  const q = new URLSearchParams()
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== '') q.set(k, String(v))
+  }
+  return get<TimelineView>(`/timeline?${q}`)
 }
 
 function costsQuery(params: CostsParams): string {

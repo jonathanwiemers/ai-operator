@@ -37,6 +37,18 @@ func MilestonePath(ns, proj string, iid int64) string {
 	return projectPath(ns, proj) + "/milestones/" + strconv.FormatInt(iid, 10)
 }
 
+// IssuePath is the Desk route of an issue of a milestone, without the
+// Desk's URL: never "".
+func IssuePath(ns, proj string, milestone, issue int64) string {
+	return MilestonePath(ns, proj, milestone) + "/issues/" + strconv.FormatInt(issue, 10)
+}
+
+// TaskPath is the Desk route of an AgentTask without the Desk's URL: never
+// "".
+func TaskPath(ns, proj, task string) string {
+	return projectPath(ns, proj) + "/tasks/" + url.PathEscape(task)
+}
+
 // Task is the Desk page of an AgentTask.
 func Task(base, ns, proj, task string) string {
 	p := project(base, ns, proj)

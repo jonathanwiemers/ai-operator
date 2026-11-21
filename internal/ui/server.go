@@ -198,6 +198,7 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("GET /api/v1/metrics/code", s.authed(s.metricsCode))
 	mux.Handle("GET /api/v1/metrics/flow", s.authed(s.metricsFlow))
 	mux.Handle("GET /api/v1/metrics/pauses", s.authed(s.metricsPauses))
+	mux.Handle("GET /api/v1/timeline", s.authed(s.timeline))
 	if s.cfg.Research.Enabled() {
 		mux.Handle("GET /api/v1/researches", s.researchHandler(s.researches))
 		mux.Handle("GET /api/v1/researches/{namespace}/{name}", s.researchHandler(s.researchDetail))

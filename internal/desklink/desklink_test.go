@@ -22,6 +22,8 @@ func TestLinks(t *testing.T) {
 		"milestone":       {Milestone(base, "ns", "proj", 4), base + "/projects/ns/proj/milestones/4"},
 		"trailing slash":  {Milestone(base+"/", "ns", "proj", 4), base + "/projects/ns/proj/milestones/4"},
 		"milestone path":  {MilestonePath("n s", "proj", 4), "/projects/n%20s/proj/milestones/4"},
+		"issue path":      {IssuePath("ns", "proj", 4, 11), "/projects/ns/proj/milestones/4/issues/11"},
+		"task path":       {TaskPath("n s", "proj", "t?"), "/projects/n%20s/proj/tasks/t%3F"},
 		"task":            {Task(base, "ns", "proj", "impl-7"), base + "/projects/ns/proj/tasks/impl-7"},
 		"escaped":         {Task(base, "n s", "p/q", "t?#"), base + "/projects/n%20s/p%2Fq/tasks/t%3F%23"},
 		"spec prompt":     {Prompt(base, holder(aiv1.TaskTypeSpec), "Q2"), base + "/projects/ns/proj/milestones/4#prompt-Q2"},

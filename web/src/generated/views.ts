@@ -2143,6 +2143,52 @@ export interface HandledItem {
 }
 
 //////////
+// source: timeline.go
+
+/**
+ * TimelineSegmentView is a part of an issue's bar: running, waiting or
+ * held from Start to End, End nil while it goes on.
+ */
+export interface TimelineSegmentView {
+  kind: 'running' | 'waiting' | 'held';
+  start: string;
+  end?: string;
+}
+/**
+ * TimelineRowView is one issue's bar. Titles and Wave come from the live
+ * plan of the milestone's spec task (else the implement task's issue);
+ * empty and 0 when unknown. DeskURL is the issue page of the Desk, or the
+ * task page for an issue without a milestone ("" without a task).
+ */
+export interface TimelineRowView {
+  namespace: string;
+  project: string;
+  milestoneIID: number /* int64 */;
+  milestoneTitle: string;
+  issueIID: number /* int64 */;
+  issueTitle: string;
+  wave: number /* int */;
+  segments: TimelineSegmentView[];
+  mergedAt?: string;
+  skippedAt?: string;
+  deskURL: string;
+}
+/**
+ * TimelineView is the answer of GET /api/v1/timeline: the bars of the
+ * issues in [From, To), sorted by project, wave, first start and issue.
+ * History is false without the history database (and Rows empty).
+ * Truncated: more issues matched than the store reads.
+ */
+export interface TimelineView {
+  history: boolean;
+  from: string;
+  to: string;
+  now: string;
+  rows: TimelineRowView[];
+  truncated: boolean;
+}
+
+//////////
 // source: transcript.go
 
 /**

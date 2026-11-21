@@ -117,6 +117,7 @@ packages:
       - search.go
       - spend.go
       - stream.go
+      - timeline.go
       - transcript.go
       - view.go
     frontmatter: |
