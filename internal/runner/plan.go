@@ -250,16 +250,16 @@ func (p *PlanRun) ask(ctx context.Context, st *state, plan *aiv1.AgentPlan, spec
 		return out, "", nil, "fetching the default branch: " + textutil.Truncate(err.Error(), 200)
 	}
 	sha, _ = p.Mirror.resolve(ctx, "refs/remotes/origin/"+proj.DefaultBranch)
-	milestones := p.writePlanFiles(ctx, plan.Spec.ProjectRef, spec.GitLab.Project)
-	_ = milestones // the prompt's index of the milestone files comes next
-	gl, err := planContext(ctx, p.GitLab, spec.GitLab.Project)
+	refs := planRefs(msg.Text)
+	milestones := p.writePlanFiles(ctx, plan.Spec.ProjectRef, spec.GitLab.Project, refs)
+	gl, err := planContext(ctx, p.GitLab, spec.GitLab.Project, milestones)
 	if err != nil {
 		p.Log.Info("plan turn without the GitLab context", "error", err.Error())
 	}
 	role, rev := spec.Agents.Spec, plan.Status.DraftRevision
 	inv := roleInvocation(role, planSystemPrompt, planTools, planTurnSchema, true)
 	inv.Role, inv.Kind, inv.Resume, inv.LogPrompt = "plan", aiv1.CallKindPlan, st.session("plan", role.Engine), spec.Agents.LogPrompts
-	inv.Prompt = buildPlanPrompt(planTurnInput{Message: msg.Text, Branch: proj.DefaultBranch, SHA: sha, GitLab: gl,
+	inv.Prompt = buildPlanPrompt(planTurnInput{Message: msg.Text, Refs: planRefList(refs, milestones), Branch: proj.DefaultBranch, SHA: sha, GitLab: gl,
 		FirstTurn: inv.Resume == "", Title: plan.Spec.Title, Draft: plan.Status.Draft,
 		Untitled:   plan.Spec.Title == "" && plan.Status.Title == "",
 		Edited:     plan.Status.DraftBy == "owner" && rev > st.PlanSeenRevision,

@@ -320,6 +320,17 @@ func (f *Fake) GetMilestone(_ context.Context, _ string, id int64) (*gitlab.Mile
 	return nil, &gitlab.Error{StatusCode: 404, Method: "GET", Path: "milestone"}
 }
 
+func (f *Fake) GetMilestoneByIID(_ context.Context, _ string, iid int64) (*gitlab.Milestone, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, m := range f.Milestones {
+		if m.IID == iid {
+			return &m, nil
+		}
+	}
+	return nil, &gitlab.Error{StatusCode: 404, Method: "GET", Path: "milestone"}
+}
+
 func (f *Fake) UpdateMilestoneDescription(_ context.Context, _ string, id int64, description string) (*gitlab.Milestone, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

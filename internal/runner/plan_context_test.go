@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 )
 
@@ -17,6 +18,8 @@ var _ planGitLab = gitlab.API(nil)
 type fakePlanGitLab struct {
 	milestones []gitlab.Milestone
 	issues     []gitlab.Issue
+	byIID      []gitlab.Milestone // only GetMilestoneByIID returns them
+	fetched    []int64            // the IIDs GetMilestoneByIID was asked for
 }
 
 func (f *fakePlanGitLab) GetProject(context.Context, string) (*gitlab.Project, error) {
@@ -29,6 +32,18 @@ func (f *fakePlanGitLab) ListMilestones(context.Context, string) ([]gitlab.Miles
 
 func (f *fakePlanGitLab) ListClosedMilestones(context.Context, string, int) ([]gitlab.Milestone, error) {
 	return slices.DeleteFunc(slices.Clone(f.milestones), func(m gitlab.Milestone) bool { return m.State != "closed" }), nil
+}
+
+// GetMilestoneByIID finds one of milestones or byIID, which no listing
+// returns, and records the IID.
+func (f *fakePlanGitLab) GetMilestoneByIID(_ context.Context, _ string, iid int64) (*gitlab.Milestone, error) {
+	f.fetched = append(f.fetched, iid)
+	for _, m := range append(slices.Clone(f.milestones), f.byIID...) {
+		if m.IID == iid {
+			return &m, nil
+		}
+	}
+	return nil, &gitlab.Error{StatusCode: 404}
 }
 
 func (f *fakePlanGitLab) ListIssues(context.Context, string, gitlab.ListIssuesOptions) ([]gitlab.Issue, error) {
@@ -85,8 +100,8 @@ func TestPlanToolsAreReadOnly(t *testing.T) {
 	}
 }
 
-// TestPlanContext pins the markdown byte for byte (golden).
-func TestPlanContext(t *testing.T) {
+// planContextGitLab has open milestones, 7 closed ones and two issues.
+func planContextGitLab() *fakePlanGitLab {
 	m3 := gitlab.Milestone{IID: 3, Title: "Desk: plans", Description: "/agent spec\n/agent autopilot\n\n# Desk: plans\n\n## Goal\n  Plan milestones.\nMore."}
 	gl := &fakePlanGitLab{milestones: []gitlab.Milestone{m3, {IID: 4, Title: "Later"}}}
 	for iid := int64(1); iid <= 7; iid++ {
@@ -96,7 +111,59 @@ func TestPlanContext(t *testing.T) {
 		{IID: 8, Title: "Plan CRD", Labels: []string{"agent::ready", "go"}, Milestone: &m3},
 		{IID: 9, Title: "Loose end"},
 	}
-	got, err := planContext(context.Background(), gl, "group/app")
+	return gl
+}
+
+// TestPlanContext pins the index of the milestone files byte for byte
+// (golden): open ones in queue order, then the others by IID; closed ones
+// newest first; a milestone fetched only because the owner names it is
+// left out.
+func TestPlanContext(t *testing.T) {
+	gl := planContextGitLab()
+	gl.milestones = append(gl.milestones, gitlab.Milestone{IID: 5, Title: "Next"}, gitlab.Milestone{IID: 2, Title: "Side"})
+	gl.byIID = []gitlab.Milestone{{IID: 90, Title: "Named", State: "closed"}}
+	tasks := []aiv1.AgentTask{
+		planSpecTask(3, &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning, Items: planItems(7, 3)}),
+		planSpecTask(5, &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning}),
+	}
+	infos, err := writePlanMilestones(context.Background(), t.TempDir(), gl, "group/app", tasks, []int64{90})
+	if err != nil || len(infos) != 10 {
+		t.Fatalf("%d infos, %v", len(infos), err)
+	}
+	got, err := planContext(context.Background(), gl, "group/app", infos)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `# GitLab project group/app (default branch main)
+
+## Open milestones
+
+- %3 Desk: plans · running, 3 of 7 issues merged · 1st of 2 in the autopilot queue · Goal: Plan milestones. · .plan-context/milestones/3.md
+- %5 Next · waiting for its turn · 2nd of 2 in the autopilot queue · .plan-context/milestones/5.md
+- %2 Side · no autopilot · not in the autopilot queue · .plan-context/milestones/2.md
+- %4 Later · no autopilot · not in the autopilot queue · .plan-context/milestones/4.md
+
+## Newest closed milestones
+
+- %106 Old 106 · no autopilot · not in the autopilot queue · .plan-context/milestones/106.md
+- %105 Old 105 · no autopilot · not in the autopilot queue · .plan-context/milestones/105.md
+- %104 Old 104 · no autopilot · not in the autopilot queue · .plan-context/milestones/104.md
+- %103 Old 103 · no autopilot · not in the autopilot queue · .plan-context/milestones/103.md
+- %102 Old 102 · no autopilot · not in the autopilot queue · .plan-context/milestones/102.md
+
+## Open issues, newest first
+
+- #9 Loose end (milestone: none; labels: )
+- #8 Plan CRD (milestone: Desk: plans; labels: agent::ready, go)
+`
+	if got != want {
+		t.Errorf("planContext =\n%s\nwant\n%s", got, want)
+	}
+}
+
+// Without milestone files the index has numbers and titles only.
+func TestPlanContextWithoutFiles(t *testing.T) {
+	got, err := planContext(context.Background(), planContextGitLab(), "group/app", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,9 +172,6 @@ func TestPlanContext(t *testing.T) {
 ## Open milestones
 
 - %3 Desk: plans
-  > # Desk: plans
-  > ## Goal
-  > Plan milestones.
 - %4 Later
 
 ## Newest closed milestones
@@ -133,7 +197,7 @@ func TestPlanContextBounds(t *testing.T) {
 	for iid := int64(1); iid <= 60; iid++ {
 		gl.issues = append(gl.issues, gitlab.Issue{IID: iid, Title: fmt.Sprintf("Issue %d", iid)})
 	}
-	got, err := planContext(context.Background(), gl, "group/app")
+	got, err := planContext(context.Background(), gl, "group/app", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +208,7 @@ func TestPlanContextBounds(t *testing.T) {
 	for i := range gl.issues {
 		gl.issues[i].Title = strings.Repeat("ä", 400)
 	}
-	got, err = planContext(context.Background(), gl, "group/app")
+	got, err = planContext(context.Background(), gl, "group/app", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +223,7 @@ func TestPlanContextBounds(t *testing.T) {
 
 func TestPlanContextError(t *testing.T) {
 	gl := &failingPlanGitLab{}
-	if _, err := planContext(context.Background(), gl, "group/app"); err == nil || !strings.Contains(err.Error(), "boom") {
+	if _, err := planContext(context.Background(), gl, "group/app", nil); err == nil || !strings.Contains(err.Error(), "boom") {
 		t.Errorf("planContext error = %v, want the ListIssues error", err)
 	}
 }

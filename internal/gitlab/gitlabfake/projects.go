@@ -123,6 +123,14 @@ func (p *Projects) GetMilestone(ctx context.Context, project string, id int64) (
 	return f.GetMilestone(ctx, project, id)
 }
 
+func (p *Projects) GetMilestoneByIID(ctx context.Context, project string, iid int64) (*gitlab.Milestone, error) {
+	f, err := p.route(project)
+	if err != nil {
+		return nil, err
+	}
+	return f.GetMilestoneByIID(ctx, project, iid)
+}
+
 func (p *Projects) UpdateMilestoneDescription(ctx context.Context, project string, id int64, description string) (*gitlab.Milestone, error) {
 	f, err := p.route(project)
 	if err != nil {

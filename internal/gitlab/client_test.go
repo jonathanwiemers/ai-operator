@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"reflect"
 	"runtime"
 	"slices"
@@ -650,6 +651,36 @@ func TestCreateMilestone(t *testing.T) {
 	}
 	if m.ID != 77 || m.IID != 5 || m.WebURL != "https://gl/m/5" {
 		t.Fatalf("unexpected milestone %+v", m)
+	}
+}
+
+// GetMilestoneByIID asks for one IID in any state; an empty list is a 404.
+func TestGetMilestoneByIID(t *testing.T) {
+	var queries []url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.EscapedPath() != "/api/v4/projects/group%2Fapp/milestones" {
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.EscapedPath())
+		}
+		q := r.URL.Query()
+		queries = append(queries, q)
+		if q.Get("iids[]") == "12" {
+			_, _ = w.Write([]byte(`[{"id":77,"iid":12,"title":"Old","state":"closed"}]`))
+			return
+		}
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "tok")
+
+	m, err := c.GetMilestoneByIID(context.Background(), "group/app", 12)
+	if err != nil || m.ID != 77 || m.IID != 12 || m.State != "closed" {
+		t.Fatalf("GetMilestoneByIID(12) = %+v, %v", m, err)
+	}
+	if q := queries[0]; q.Get("state") != "" || len(q["iids[]"]) != 1 {
+		t.Errorf("query %v, want one iids[] and no state filter", q)
+	}
+	if _, err := c.GetMilestoneByIID(context.Background(), "group/app", 99); !IsNotFound(err) {
+		t.Errorf("GetMilestoneByIID(99) error = %v, want not found", err)
 	}
 }
 

@@ -33,6 +33,7 @@ type API interface {
 	ListMilestones(ctx context.Context, project string) ([]Milestone, error)
 	ListClosedMilestones(ctx context.Context, project string, maxPages int) ([]Milestone, error)
 	GetMilestone(ctx context.Context, project string, id int64) (*Milestone, error)
+	GetMilestoneByIID(ctx context.Context, project string, iid int64) (*Milestone, error)
 	UpdateMilestoneDescription(ctx context.Context, project string, id int64, description string) (*Milestone, error)
 	CloseMilestone(ctx context.Context, project string, id int64) error
 	CreateMilestone(ctx context.Context, project string, opts CreateMilestoneOptions) (*Milestone, error)
@@ -930,6 +931,23 @@ func (c *Client) GetMilestone(ctx context.Context, project string, id int64) (*M
 	var m Milestone
 	_, err := c.do(ctx, http.MethodGet, fmt.Sprintf("%s/milestones/%d", projectPath(project), id), nil, nil, &m)
 	return &m, err
+}
+
+// GetMilestoneByIID returns the milestone %iid, open or closed; a 404 Error
+// when the project has none.
+func (c *Client) GetMilestoneByIID(ctx context.Context, project string, iid int64) (*Milestone, error) {
+	path := projectPath(project) + "/milestones"
+	var ms []Milestone
+	// Without state GitLab lists open and closed milestones.
+	if _, err := c.do(ctx, http.MethodGet, path, url.Values{"iids[]": {strconv.FormatInt(iid, 10)}}, nil, &ms); err != nil {
+		return nil, err
+	}
+	for _, m := range ms {
+		if m.IID == iid {
+			return &m, nil
+		}
+	}
+	return nil, &Error{StatusCode: http.StatusNotFound, Method: http.MethodGet, Path: fmt.Sprintf("%s?iids[]=%d", path, iid), Body: "no such milestone"}
 }
 
 func (c *Client) UpdateMilestoneDescription(ctx context.Context, project string, id int64, description string) (*Milestone, error) {
