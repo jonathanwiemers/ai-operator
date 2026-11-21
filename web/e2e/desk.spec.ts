@@ -151,7 +151,7 @@ const routes: Route[] = [
     colorScheme: 'dark',
     ready: projectMilestonesReady,
   },
-  ...(['issues', 'needs', 'decisions', 'pilot', 'retrospective', 'activity', 'board', 'metrics'] as const).map(
+  ...(['issues', 'activity', 'decisions', 'board', 'metrics', 'needs', 'retrospective'] as const).map(
     (tab): Route => ({
       name: `stream-milestone-${tab}`,
       path: `/projects/team-a/shop/milestones/14?tab=${tab}`,
@@ -245,6 +245,16 @@ const routes: Route[] = [
     ready: (page) => expect(page.getByRole('link', { name: 'Sign in with SSO' })).toBeVisible(),
   },
 ]
+
+// The milestone page with the pilot drawer open (Decision 8 of "Desk: one
+// header and one row of tabs on every page"): the drawer is not a tab, so it
+// is not in routes, whose checks read the page under it; the drawer's own
+// axe check is in e2e/pilot-drawer.spec.ts.
+const pilotRoute: Route = {
+  name: 'stream-milestone-pilot',
+  path: '/projects/team-a/shop/milestones/14?pilot=1',
+  ready: (page) => expect(page.getByRole('dialog').getByText(milestoneReady.pilot).first()).toBeVisible(),
+}
 
 // What a check saw go wrong besides overflow.
 interface Problems {
@@ -861,7 +871,7 @@ for (const reopens of [true, false]) {
 // "Pilot replied: <first sentence>" once, after the reply is complete
 // (src/chatView.ts replyAnnouncement), never while it is written.
 test('a pilot reply in parts is announced once, when complete@1280', async ({ page, baseURL }) => {
-  const route = routes.find((r) => r.name === 'stream-milestone-pilot')!
+  const route = pilotRoute
   const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
   await page.setViewportSize({ width: 1280, height: 800 })
   await page.clock.setFixedTime(now)
@@ -906,7 +916,7 @@ test('a pilot reply in parts is announced once, when complete@1280', async ({ pa
   )
   await page.goto(route.path)
   await route.ready(page)
-  const chat = page.locator('main [data-task-chat]')
+  const chat = page.getByRole('dialog').locator('[data-task-chat]')
   await expect(chat.locator('[data-chat-status]')).toBeVisible()
   await expect(chat.getByRole('log')).toHaveAttribute('aria-live', 'off')
   for (const [i, text] of ['Two issues', 'Two issues are in review. The third', 'Two issues are in review. The third waits for CI.'].entries()) {
@@ -954,10 +964,10 @@ for (const { width, height, labels } of [
 
 // RouteTabs (src/ui/RouteTabs.vue): on a phone the milestone's tabs are
 // wider than the screen. They scroll inside the strip's list, the page does
-// not, and the tab of ?tab=metrics, the last one, is scrolled into view on
+// not, and the tab of ?tab=retrospective, the last one, is scrolled into view on
 // load, inside the list's visible box.
 test('stream-milestone RouteTabs scroll inside the strip@375', async ({ page, baseURL }, testInfo) => {
-  const route = routes.find((r) => r.name === 'stream-milestone-metrics')!
+  const route = routes.find((r) => r.name === 'stream-milestone-retrospective')!
   const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
   await page.setViewportSize({ width: 375, height: 812 })
   await page.clock.setFixedTime(now)
@@ -967,7 +977,7 @@ test('stream-milestone RouteTabs scroll inside the strip@375', async ({ page, ba
   await route.ready(page)
 
   const strip = page.locator('main').getByRole('navigation', { name: 'View' })
-  const active = strip.getByRole('link', { name: 'Metrics' })
+  const active = strip.getByRole('link', { name: 'Retrospective' })
   await expect(active).toHaveAttribute('aria-current', 'page')
   await expect(active).toBeInViewport({ ratio: 1 })
   await expect(strip.getByRole('link', { name: 'Issues' })).not.toBeInViewport({ ratio: 1 })
@@ -1852,7 +1862,9 @@ for (const { width, height } of [widths[0]!, widths[2]!]) {
     await expect(budget).toContainText('The budget is used')
     await expect(budget).toContainText('open')
     await budget.locator('[data-long-pause]').click()
-    await expect(page).toHaveURL(/\/projects\/team-a\/shop\/milestones\/14\?tab=pilot$/)
+    // The pause link is the server's old ?tab=pilot: Issues with the pilot drawer.
+    await expect(page).toHaveURL(/\/projects\/team-a\/shop\/milestones\/14\?pilot=1$/)
+    await expect(page.getByRole('dialog', { name: 'Pilot' })).toBeVisible()
 
     problems.csp.push(...(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)))
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
@@ -3025,7 +3037,7 @@ test.describe('inline markdown', () => {
   for (const { width, height } of [widths[0]!, widths[2]!]) {
     for (const name of ['inbox', 'stream-milestone-activity', 'stream-milestone-pilot']) {
       test(`${name} shows no literal ** and no nested links@${width}`, async ({ page, baseURL }, testInfo) => {
-        const route = routes.find((r) => r.name === name)!
+        const route = [...routes, pilotRoute].find((r) => r.name === name)!
         const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
         await page.setViewportSize({ width, height })
         await page.clock.setFixedTime(now)
@@ -3034,8 +3046,10 @@ test.describe('inline markdown', () => {
         await page.goto(route.path)
         await route.ready(page)
 
-        await expect(page.locator('main .md-inline strong').first()).toBeVisible()
-        await expect(page.locator('main')).not.toContainText('**')
+        // The pilot drawer is a dialog outside main.
+        const scope = route === pilotRoute ? page.getByRole('dialog') : page.locator('main')
+        await expect(scope.locator('.md-inline strong').first()).toBeVisible()
+        await expect(scope).not.toContainText('**')
         expect(await page.evaluate(() => document.querySelectorAll('a a').length), 'nested links').toBe(0)
 
         const shot = join(testInfo.project.outputDir, '..', 'screenshots', `inline-markdown-${name}@${width}.png`)
@@ -4055,7 +4069,7 @@ test.describe('milestone decisions', () => {
 // a phone the links and the fold are 44 px high.
 test.describe('milestone pilot', () => {
   async function open(page: Page, baseURL: string | undefined, name: string, size: { width: number; height: number }, path?: string) {
-    const route = routes.find((r) => r.name === name)!
+    const route = [...routes, pilotRoute].find((r) => r.name === name)!
     const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
     await page.setViewportSize(size)
     await page.clock.setFixedTime(now)
@@ -4083,11 +4097,11 @@ test.describe('milestone pilot', () => {
   for (const size of widths) {
     const phone = size.width < 760
 
-    test(`pilot tab and prompt link@${size.width}`, async ({ page, baseURL }, testInfo) => {
+    test(`pilot drawer and prompt link@${size.width}`, async ({ page, baseURL }, testInfo) => {
       const problems = await open(page, baseURL, 'stream-milestone-pilot', size)
       expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
       if (phone) {
-        const links = await page.locator('main [data-pilot] a').evaluateAll((as) => as.map((a) => a.getBoundingClientRect().height))
+        const links = await page.getByRole('dialog').locator('[data-pilot] a').evaluateAll((as) => as.map((a) => a.getBoundingClientRect().height))
         expect(links.length, 'pilot links').toBeGreaterThan(0)
         for (const h of links) expect(h, 'pilot link height').toBeGreaterThanOrEqual(44)
       }
@@ -4292,7 +4306,8 @@ test.describe('milestone retrospective', () => {
       const tabs = main.getByRole('navigation', { name: 'View' })
       await expect(tabs.getByRole('link', { name: 'Issues' })).toHaveAttribute('aria-current', 'page')
       await expect(tabs.getByRole('link', { name: 'Retrospective' })).toHaveCount(0)
-      await expect(tabs.getByRole('link', { name: 'Pilot' })).toHaveCount(1)
+      await expect(tabs.getByRole('link', { name: /^Needs you/ })).toHaveCount(1)
+      await expect(tabs.getByRole('link', { name: 'Pilot' })).toHaveCount(0)
       expect(problems.pageErrors).toEqual([])
     })
 
@@ -5290,7 +5305,7 @@ test.describe('screen reader flows', () => {
     size: { width: number; height: number },
     before?: () => Promise<unknown>,
   ): Promise<Problems> {
-    const route = routes.find((r) => r.name === name)!
+    const route = [...routes, pilotRoute].find((r) => r.name === name)!
     const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
     await page.setViewportSize(size)
     await page.clock.setFixedTime(now)
@@ -5363,11 +5378,11 @@ test.describe('screen reader flows', () => {
         - navigation "View":
           - list:
             - listitem:
-              - link "Needs you · 3"
+              - link /^Needs you\\s*3$/
         - heading "Problems 3" [level=2]
         - navigation "Problems"
       `)
-      await expect(page.locator('main').getByRole('link', { name: 'Needs you · 3' })).toHaveAttribute('aria-current', 'page')
+      await expect(page.locator('main').getByRole('link', { name: /^Needs you\s*3$/ })).toHaveAttribute('aria-current', 'page')
 
       const card = page.locator(`#prompt-${refundsPrompt.id}`)
       const option = card.getByRole('button', { name: 'Split across captures', exact: true })
@@ -5434,19 +5449,17 @@ test.describe('screen reader flows', () => {
             - listitem:
               - link "Issues"
             - listitem:
-              - link "Needs you · 3"
+              - link "Activity"
             - listitem:
               - link "Decisions"
-            - listitem:
-              - link "Pilot"
-            - listitem:
-              - link "Retrospective"
-            - listitem:
-              - link "Activity"
             - listitem:
               - link "Board"
             - listitem:
               - link "Metrics"
+            - listitem:
+              - link /^Needs you\\s*3$/
+            - listitem:
+              - link "Retrospective"
       `)
       const view = page.locator('main').getByRole('navigation', { name: 'View' })
       await expect(view.getByRole('link', { name: 'Issues' })).toHaveAttribute('aria-current', 'page')
@@ -5475,15 +5488,15 @@ test.describe('screen reader flows', () => {
       await expect(page).toHaveTitle(`(${inbox.items.length}) ${paymentsMilestone.title} · Desk`)
       // The next Tab is the next tab, in visual order.
       await page.keyboard.press('Tab')
-      await expect(focused(page)).toMatchAriaSnapshot('- link "Pilot"')
+      await expect(focused(page)).toMatchAriaSnapshot('- link "Board"')
       // Same page, same title: nothing is said (focus is on the tab).
       await page.waitForTimeout(500)
       expect(await said(page), 'announcements').toEqual([])
       expect(problems).toEqual(clean)
     })
 
-    // Flow 3: send a message to the pilot and hear the reply, once, when it
-    // is complete.
+    // Flow 3: open the pilot drawer from Ask pilot, send a message to the
+    // pilot and hear the reply, once, when it is complete.
     test(`flow 3: send a message to the pilot and hear the reply@${size.width}`, async ({ page, baseURL }) => {
       const at = now.toISOString()
       const body = 'Where is the queue?'
@@ -5497,7 +5510,7 @@ test.describe('screen reader flows', () => {
       ]
       let part = 0
       const posts: unknown[] = []
-      const problems = await load(page, baseURL, 'stream-milestone-pilot', size, () =>
+      const problems = await load(page, baseURL, 'stream-milestone-issues', size, () =>
         page.route(
           (url) => url.pathname === chatPath('shop-m14-pilot'),
           (r) => {
@@ -5509,9 +5522,14 @@ test.describe('screen reader flows', () => {
         ),
       )
       await skipToMain(page)
-      const chat = page.locator('main [data-task-chat]')
-      await expect(page.locator('main')).toMatchAriaSnapshot(`
-        - ${milestoneH1}
+      const ask = page.locator('main').getByRole('button', { name: 'Ask pilot' })
+      await tabTo(page, ask)
+      await page.keyboard.press('Enter')
+      await expect(page).toHaveURL(/[?&]pilot=1$/)
+      const drawer = page.getByRole('dialog', { name: 'Pilot' })
+      const chat = drawer.locator('[data-task-chat]')
+      await expect(drawer).toMatchAriaSnapshot(`
+        - heading "Pilot"
         - heading "Message the pilot" [level=2]
       `)
       const box = chat.getByRole('textbox', { name: 'Message' })

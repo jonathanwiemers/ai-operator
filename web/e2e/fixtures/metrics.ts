@@ -11,6 +11,9 @@ import { now } from './clock'
 
 const shop = { namespace: 'team-a', project: 'shop' }
 const long = { namespace: 'team-b', project: 'a-project-with-a-rather-long-name.example' }
+// The server's deskURL of a long pause is still the old ?tab=pilot link (no Go
+// change in R5 of "Desk: one header and one row of tabs"); the Desk opens
+// it as Issues with the pilot drawer.
 const pilot = (ns: string, p: string, iid: number) => `/projects/${ns}/${p}/milestones/${iid}?tab=pilot`
 
 const days = Array.from({ length: 30 }, (_, i) => new Date(Date.UTC(2026, 9, 12 + i)).toISOString().slice(0, 10))

@@ -10,7 +10,7 @@ import Badge from './Badge.vue'
 import Composer from './Composer.vue'
 import IssueStream from './IssueStream.vue'
 
-// MilestonePilot is a milestone's Pilot tab: the pilot line (autonomy,
+// MilestonePilot is a milestone's pilot drawer (Stream.vue): the pilot line (autonomy,
 // cost, Pilot task), the composer to the pilot and the milestone's pilot
 // events (fixed kinds, no chips). The pause cards, the prompts, the older
 // proposals and the pause history are on the Needs you tab (R12). A stored

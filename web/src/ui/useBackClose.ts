@@ -17,6 +17,12 @@
 // open. vue-router replaces the sheet's entry; the entry is marked again,
 // and back carries the new address down to the entry below, so closing the
 // sheet keeps the filters.
+//
+// onClose runs once the entry is gone and the page stays (Back, or the
+// sheet's own close), not when a navigation closed the sheet or the pop
+// left the page: a sheet whose
+// open state is also in the query (the pilot drawer's ?pilot=1) drops it
+// there with router.replace.
 import { onBeforeUnmount, watch, type Ref } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -41,7 +47,7 @@ export function listenForSheets(): void {
   })
 }
 
-export function useBackClose(open: Ref<boolean>, opts: { keepOnQuery?: boolean } = {}): void {
+export function useBackClose(open: Ref<boolean>, opts: { keepOnQuery?: boolean; onClose?: () => void } = {}): void {
   if (!listening) throw new Error('useBackClose: listenForSheets() must run before createWebHistory()')
   const router = useRouter()
   const id = ++lastID
@@ -63,7 +69,12 @@ export function useBackClose(open: Ref<boolean>, opts: { keepOnQuery?: boolean }
     if (onEntry || leaving) return
     url = location.href
     opened = url
-    history.pushState({ ...(history.state as object | null), [key]: id }, '', url)
+    // A reload with the sheet open (its state in the URL, ?pilot=1) lands
+    // on the entry the sheet pushed before: take it over instead of pushing
+    // another, or closing would pop onto it and open the sheet again.
+    const cur = history.state as Record<string, unknown> | null
+    if (cur?.[key] !== undefined) history.replaceState({ ...cur, [key]: id }, '', url)
+    else history.pushState({ ...cur, [key]: id }, '', url)
     onEntry = true
   }
 
@@ -101,6 +112,8 @@ export function useBackClose(open: Ref<boolean>, opts: { keepOnQuery?: boolean }
       const to = pending
       pending = null
       void router.push(to)
+    } else if (same) {
+      opts.onClose?.()
     }
     return same
   }

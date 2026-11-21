@@ -29,7 +29,7 @@ import RelTime from './RelTime.vue'
 
 // PromptCard is one question to the owners (docs/contributing/web-ui.md, "Prompt card").
 //
-// In full (the task page, the Pilot tab, pause cards): the question, its
+// In full (the task page, the pilot drawer, pause cards): the question, its
 // context, the options (recommended first, a detail line each), a text box
 // when it takes free text, and who answered it. One click on an option, or
 // the text box, sends an answer command to the prompt's target task: the

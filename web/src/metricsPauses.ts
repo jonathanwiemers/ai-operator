@@ -145,12 +145,13 @@ export interface LongPauseRow {
   reason: string
   duration: string
   open: boolean
-  // to is the milestone's Pilot tab on the Desk.
+  // to is the milestone's pilot drawer on the Desk (the server's ?tab=pilot
+  // link, which Stream.vue opens as Issues plus the drawer).
   to: string
 }
 
 // longPauseRows are the ten longest pauses as rows linking to their
-// milestone's Pilot tab.
+// milestone's pilot drawer.
 export function longPauseRows(v: MetricsPausesView): LongPauseRow[] {
   return (v.longest ?? []).map((p: LongPauseView, i) => ({
     id: `${i}:${p.namespace}/${p.project}/${p.milestoneIID}/${p.since}`,

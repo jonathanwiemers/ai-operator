@@ -35,7 +35,7 @@ import DeskChat from '../ui/DeskChat.vue'
 import RouteTabs from '../ui/RouteTabs.vue'
 import { streamMessages } from '../chatView'
 import { live, useResource } from '../live'
-import { needsLabel, needsOpen } from '../needsOpen'
+import { needsOpen } from '../needsOpen'
 import { pausePrompt } from '../pauseCard'
 import {
   dayEndCursor,
@@ -64,7 +64,8 @@ import { pageHeaderUi, searchToolbarUi } from '../pageHeader'
 import { headerCost, keepCost, totalsCost } from '../headerCost'
 import { useStreamNote } from '../streamNote'
 import { decisionsQuery, milestoneFromQuery } from '../decisions'
-import { milestoneTabFromRoute, milestoneTabs, milestoneTabsFor, projectTabsFor, tabFromQuery, tabQuery } from '../streamTabs'
+import { milestoneTabFromRoute, milestoneTabs, milestoneTabsFor, pilotFromQuery, pilotQuery, projectTabsFor, tabFromQuery, tabQuery } from '../streamTabs'
+import { useBackClose } from '../ui/useBackClose'
 import NotFound from './NotFound.vue'
 import { announceChange } from '../ui/useAnnounce'
 
@@ -84,23 +85,28 @@ const everything = computed(() => !props.namespace || !props.name)
 const milestoneIID = computed(() => (props.iid ? Number(props.iid) : undefined))
 
 // tab: Milestones (the default), Activity, Decisions, Board, Metrics or Plans (feature plans) on projects, Issues (the default),
-// Needs you, Decisions, Pilot, Retrospective, Activity, Board or Metrics on milestones, kept in ?tab= so it can be
+// Activity, Decisions, Board, Metrics, Needs you or Retrospective on milestones, kept in ?tab= so it can be
 // linked to (a #prompt-Q<n> link without it opens Needs you); Everything has no
-// tabs. A stored milestone has no tasks, so no Board, and a milestone shows
-// Retrospective only once it has one (milestoneTabsFor). The Needs you tab's
-// label carries the count of its Open items ("Needs you · n", D530-P1).
+// tabs. A stored milestone has no tasks, so no Board, a milestone shows Needs
+// you only while something needs you and Retrospective only once it has one
+// (milestoneTabsFor). The Needs you tab's badge is the count of its Open
+// items (D674-P2). The pilot is a drawer (pilotOpen below), not a tab.
 const route = useRoute()
+// pageMilestone: the loaded milestone, once it is the route's.
+const pageMilestone = computed(() => (milestone.value?.iid === milestoneIID.value ? milestone.value : null))
+const needsCount = computed(() => (pageMilestone.value ? needsOpen(pageMilestone.value).count : 0))
 const tabs = computed(() => {
   if (everything.value) return []
   if (!milestoneIID.value) return projectTabsFor(hasFeature('plans'))
-  const m = milestone.value?.iid === milestoneIID.value ? milestone.value : null
-  const list = milestoneTabsFor(m)
-  const n = m ? needsOpen(m).count : 0
-  return n ? list.map((t) => (t.id === 'needs' ? { ...t, label: needsLabel(n) } : t)) : list
+  // A problem thread, or a #prompt- or #problem- link to one (MilestoneNeeds
+  // redirects it to the thread), keeps the Needs you tab, also once handled.
+  const problem = !!props.problem || /^#(prompt|problem)-/.test(route.hash)
+  return milestoneTabsFor(pageMilestone.value, { needs: needsCount.value, problem })
 })
+const tabBadges = computed(() => (milestoneIID.value && needsCount.value ? { needs: needsCount.value } : undefined))
 // A milestone's tab is read against all its tabs while it loads, so a
-// ?tab=retrospective link waits for it; once loaded, a hidden tab falls
-// back to the first one (Decision 12).
+// ?tab=needs or ?tab=retrospective link waits for it; once loaded, a hidden
+// tab falls back to the first one, Issues (Decision 7).
 const tab = computed((): string => {
   if (everything.value) return 'activity'
   if (props.problem) return 'needs'
@@ -133,7 +139,7 @@ const decisionsMilestoneItems = computed(() => {
 function setDecisionsMilestone(iid: number) {
   void router.replace({ query: decisionsQuery(route.query, { milestone: iid }) })
 }
-// A milestone's Activity tab has the runtime kinds only; the Pilot tab the rest.
+// A milestone's Activity tab has the runtime kinds only; the pilot drawer the rest.
 const filters = computed(() => (milestoneIID.value ? runtimeStreamFilters : streamFilters))
 const q = ref('')
 const qDraft = ref('')
@@ -175,7 +181,7 @@ const milestone = ref<MilestoneView | null>(null)
 // says so instead of loading forever).
 const milestoneFailed = ref(false)
 
-// The project's note composer (a milestone's is on its Pilot tab).
+// The project's note composer (a milestone's is in its pilot drawer).
 const note = useStreamNote(
   () => ({
     namespace: props.namespace ?? '',
@@ -411,7 +417,6 @@ const pageProject = computed(() => {
   const p = project.value
   return p && p.namespace === props.namespace && p.name === props.name ? p : null
 })
-const pageMilestone = computed(() => (milestone.value?.iid === milestoneIID.value ? milestone.value : null))
 
 // title: the milestone's title from the loaded milestone, else from the
 // project's list while it loads, else %<iid>; never the project's name.
@@ -440,6 +445,42 @@ const links = computed(() => {
   const m = pageMilestone.value ?? pageProject.value?.milestones.find((x) => x.iid === iid)
   return [{ label: 'Milestone in GitLab', href: m?.webURL }]
 })
+
+// The pilot drawer (Decision 8): MilestonePilot in a sheet from the header's
+// Ask pilot button, over any tab of a milestone. Its open state is
+// ?pilot=1 (D674-P3), so a reload or a link keeps it open; an old
+// ?tab=pilot link becomes Issues plus ?pilot=1. Opening sets the query and
+// pilotOpen follows it; closing (Escape, close button, overlay, Back) pops
+// useBackClose's entry, then drops ?pilot (onClose). Focus returns to the
+// button. The sheet loads with its first opening.
+const USlideover = defineAsyncComponent(() => import('@nuxt/ui/components/Slideover.vue'))
+const pilotOpen = ref(false)
+// pilotUsed: the drawer was opened once, so the sheet is loaded and mounted.
+const pilotUsed = ref(false)
+const pilotButton = ref<{ $el?: HTMLElement } | null>(null)
+useBackClose(pilotOpen, {
+  onClose: () => {
+    if (pilotFromQuery(route.query)) void router.replace({ query: pilotQuery(route.query, false) })
+  },
+})
+watch(
+  () => [milestoneIID.value, route.query] as const,
+  ([iid, query]) => {
+    if (iid && query.tab === 'pilot') void router.replace({ query: pilotQuery(query, true) })
+    pilotOpen.value = !!iid && pilotFromQuery(query)
+    if (pilotOpen.value) pilotUsed.value = true
+  },
+  { immediate: true },
+)
+function openPilot() {
+  void router.replace({ query: pilotQuery(route.query, true) })
+}
+function focusPilotButton(e: Event) {
+  const el = pilotButton.value?.$el
+  if (!el?.isConnected) return
+  e.preventDefault()
+  el.focus()
+}
 
 // The header's cost (headerCost.ts): one number per page, on every tab. The
 // views' cost of the page's scope or the Metrics tab's totals of the same
@@ -522,8 +563,22 @@ watch(
           </template>
           <template v-if="pageCost" #description><CostChip :cost="pageCost" data-header-cost /></template>
           <template #links>
-            <!-- The milestone's primary action (Ask pilot) goes first. -->
+            <!-- The milestone's primary action (Ask pilot) goes first; a
+                 stored milestone's drawer has the pilot's events only, so
+                 its button says Pilot (D674-P4). -->
             <HeaderActions :actions="links" :shown="0">
+              <UButton
+                v-if="milestoneIID"
+                ref="pilotButton"
+                size="sm"
+                class="min-h-11 justify-center tablet:min-h-0"
+                icon="i-lucide-message-circle"
+                :label="pageMilestone?.stored ? 'Pilot' : 'Ask pilot'"
+                aria-haspopup="dialog"
+                :aria-expanded="pilotOpen"
+                data-ask-pilot
+                @click="openPilot"
+              />
               <UButton
                 v-if="sheet"
                 color="neutral"
@@ -542,7 +597,7 @@ watch(
             </HeaderActions>
           </template>
         </UPageHeader>
-        <RouteTabs v-if="!everything" :tabs="tabs" :active="tab" :to="tabTo" />
+        <RouteTabs v-if="!everything" :tabs="tabs" :active="tab" :to="tabTo" :badges="tabBadges" />
       </div>
 
       <!-- A project's milestones (R9), in the dashboard's lists: the
@@ -654,7 +709,7 @@ watch(
             </template>
           </template>
           <template #prompt>
-            <!-- A milestone's composer is on its Pilot tab. -->
+            <!-- A milestone's composer is in its pilot drawer. -->
             <Composer
               v-if="!everything && namespace && name && !milestoneIID"
               v-model="note.body"
@@ -724,17 +779,6 @@ watch(
           </template>
         </MilestoneDecisions>
       </div>
-      <div v-else-if="tab === 'pilot'" class="scroll board">
-        <MilestonePilot
-          v-if="namespace && name && milestone && milestone.iid === milestoneIID"
-          :namespace="namespace"
-          :name="name"
-          :milestone="milestone"
-          :project="project"
-        />
-        <UAlert v-else-if="milestoneFailed" :color="alertColor('danger')" variant="subtle" class="mt-3" description="The milestone could not be loaded." />
-        <div v-else class="empty">Loading…</div>
-      </div>
       <div v-else-if="tab === 'retrospective'" class="scroll board">
         <MilestoneRetro
           v-if="namespace && name && milestone && milestone.iid === milestoneIID"
@@ -767,6 +811,32 @@ watch(
         <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
         <div v-if="!project && !error" class="empty">Loading…</div>
       </div>
+
+      <!-- The pilot drawer: from the right, the full width on phones. -->
+      <USlideover
+        v-if="milestoneIID && pilotUsed"
+        v-model:open="pilotOpen"
+        side="right"
+        title="Pilot"
+        :description="title"
+        close-icon="i-lucide-x"
+        :content="{ onCloseAutoFocus: focusPilotButton }"
+        :ui="{
+          overlay: 'z-40',
+          content: 'z-40 w-full tablet:max-w-[560px] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pr-[env(safe-area-inset-right)]',
+          header: 'min-h-0 gap-2 py-1 ps-4 pe-1 sm:ps-4 sm:pe-1',
+          title: 'text-[15px] font-bold',
+          description: 'truncate text-[13px]',
+          close: 'static ms-auto',
+        }"
+        data-pilot-drawer
+      >
+        <template #body>
+          <MilestonePilot v-if="namespace && name && pageMilestone" :namespace="namespace" :name="name" :milestone="pageMilestone" :project="project" />
+          <UAlert v-else-if="milestoneFailed" :color="alertColor('danger')" variant="subtle" description="The milestone could not be loaded." />
+          <div v-else class="empty">Loading…</div>
+        </template>
+      </USlideover>
     </div>
     </template>
 

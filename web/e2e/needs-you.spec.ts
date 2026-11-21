@@ -95,6 +95,8 @@ async function open(page: Page, baseURL: string | undefined, path: string, size:
 }
 
 const tab = (page: Page, name: RegExp) => page.getByRole('navigation', { name: 'View' }).getByRole('link', { name })
+// badge: the Needs you tab's count (RouteTabs badges, D674-P2); the label stays "Needs you".
+const badge = (page: Page) => tab(page, /^Needs you/).locator('[data-slot="linkTrailingBadge"]')
 const list = (page: Page) => page.locator('[data-needs-problems]')
 const thread = (page: Page, iid: number) =>
   page.locator(`[data-problem-thread="issue-${iid}"], [data-problem-thread="${1000 + iid}"], [data-problem-thread="${2000 + iid}"]`)
@@ -121,7 +123,8 @@ for (const size of widths) {
 
   test(`the problem list shows each problem once with its status@${size.width}`, async ({ page, baseURL }) => {
     const problems = await open(page, baseURL, `${milestonePath}?tab=needs`, size, { milestone: running })
-    await expect(tab(page, /^Needs you · 1$/)).toBeVisible()
+    await expect(tab(page, /^Needs you/)).toHaveAttribute('aria-current', 'page')
+    await expect(badge(page)).toHaveText('1')
     await expect(list(page).locator('[data-problem]')).toHaveCount(1)
     await expect(row(page, 0)).toContainText('Waiting for you')
     await expect(thread(page, 0).locator('[data-prompt="Q3"]')).toHaveCount(1)
@@ -201,9 +204,28 @@ for (const size of widths) {
     expect(problems).toEqual([])
   })
 
+  // Decision 7: Needs you is listed only while something needs you, with
+  // the count as its badge; Issues keeps the compact pause card as the way in.
+  test(`Needs you: hidden while running, shown with a badge when paused@${size.width}`, async ({ page, baseURL }) => {
+    // quiet has a retrospective; without it the row is the five tabs.
+    let problems = await open(page, baseURL, milestonePath, size, { milestone: { ...quiet, retrospective: undefined } })
+    const view = page.getByRole('navigation', { name: 'View' })
+    await expect(view.getByRole('link')).toHaveText(['Issues', 'Activity', 'Decisions', 'Board', 'Metrics'])
+    expect(problems).toEqual([])
+    problems = await open(page, baseURL, milestonePath, size, { milestone: budget })
+    await expect(view.getByRole('link')).toHaveText(['Issues', 'Activity', 'Decisions', 'Board', 'Metrics', /^Needs you\s*2$/, 'Retrospective'])
+    await expect(badge(page)).toHaveText('2')
+    const pause = page.locator('main .pause')
+    await expect(pause).toBeVisible()
+    await pause.getByRole('link', { name: 'Open', exact: true }).click()
+    await expect(page).toHaveURL(/\?tab=needs$/)
+    await expect(tab(page, /^Needs you/)).toHaveAttribute('aria-current', 'page')
+    expect(problems).toEqual([])
+  })
+
   test(`budget pause ways out; hold on #284@${size.width}`, async ({ page, baseURL }) => {
     const problems = await open(page, baseURL, `${milestonePath}?tab=needs`, size, { milestone: budget })
-    await expect(tab(page, /^Needs you · 2$/)).toBeVisible()
+    await expect(badge(page)).toHaveText('2')
     await expect(thread(page, 0).locator('[data-pause-card]')).toHaveCount(1)
     await expect(thread(page, 0).locator('[data-prompt]')).toHaveCount(0)
     await row(page, 284).click()
@@ -211,11 +233,15 @@ for (const size of widths) {
     expect(problems).toEqual([])
   })
 
-  test(`Pilot tab unchanged; proposals Accept/Reject@${size.width}`, async ({ page, baseURL }) => {
+  test(`an old ?tab=pilot link opens Issues and the pilot drawer; proposals Accept/Reject@${size.width}`, async ({ page, baseURL }) => {
     let problems = await open(page, baseURL, `${milestonePath}?tab=pilot`, size)
-    await expect(page.locator('[data-prompt]')).toHaveCount(0)
-    await expect(page.locator('[data-pauses]')).toHaveCount(0)
-    await expect(page.getByRole('textbox')).toBeVisible()
+    await expect(page).toHaveURL(/\/milestones\/14\?pilot=1$/)
+    // The page under the modal drawer is aria-hidden: the tab by CSS, not by role.
+    await expect(page.locator('main nav[aria-label="View"] a[aria-current="page"]')).toHaveText('Issues')
+    const drawer = page.getByRole('dialog', { name: 'Pilot' })
+    await expect(drawer.getByRole('textbox')).toBeVisible()
+    await expect(drawer.locator('[data-prompt]')).toHaveCount(0)
+    await expect(drawer.locator('[data-pauses]')).toHaveCount(0)
     expect(problems).toEqual([])
     problems = await open(page, baseURL, `${milestonePath}?tab=needs`, size)
     const p7 = page.locator('[data-needs-proposals] [data-proposal="7"]')
@@ -233,11 +259,19 @@ for (const size of widths) {
     problems = await open(page, baseURL, `${milestonePath}#prompt-Q6`, size)
     await expect(page).toHaveURL(/\/problems\/issue-280$/)
     expect(problems).toEqual([])
-    problems = await open(page, baseURL, `${milestonePath}?tab=needs`, size, { milestone: stored })
+    // Nothing open: no Needs you tab, ?tab=needs opens Issues (Decision 7);
+    // a problem link still opens its thread there.
+    for (const milestone of [stored, quiet]) {
+      problems = await open(page, baseURL, `${milestonePath}?tab=needs`, size, { milestone })
+      await expect(tab(page, /^Issues$/)).toHaveAttribute('aria-current', 'page')
+      await expect(tab(page, /^Needs you/)).toHaveCount(0)
+      await expect(list(page)).toHaveCount(0)
+      expect(problems).toEqual([])
+    }
+    problems = await open(page, baseURL, `${milestonePath}#problem-280`, size, { milestone: stored })
+    await expect(page).toHaveURL(/\/problems\/issue-280$/)
+    await expect(tab(page, /^Needs you/)).toHaveAttribute('aria-current', 'page')
     await expect(list(page).locator('[data-problem]').first()).toBeVisible()
-    expect(problems).toEqual([])
-    problems = await open(page, baseURL, `${milestonePath}?tab=needs`, size, { milestone: quiet })
-    await expect(list(page)).toContainText('Nothing needs you.')
     expect(problems).toEqual([])
     problems = await open(page, baseURL, `${milestonePath}?tab=needs`, size, { milestone: running, history: false })
     await expect(thread(page, 0).locator('[data-history-off]')).toContainText('History is off')

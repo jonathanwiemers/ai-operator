@@ -4,18 +4,21 @@
 //
 // Project pages: Milestones (the default: queue, Finishing, the milestone
 // sections) | Activity (the event feed) | Decisions (R14) | Board | Metrics,
-// and Plans with the plans feature (R13). Milestone pages: Issues | Needs
-// you | Decisions (R11, D546-P1) | Pilot | Retrospective | Activity | Board |
-// Metrics (decision 7, R12). The dashboard at /: Overview | Activity. The
+// and Plans with the plans feature (R13). Milestone pages: Issues | Activity
+// | Decisions (R11, D546-P1) | Board | Metrics, then Needs you while
+// something needs you and Retrospective once one exists (Decision 7 of
+// "Desk: one header and one row of tabs on every page"); the pilot is a
+// drawer, not a tab (Decision 8). The dashboard at /: Overview | Activity. The
 // task page (and the issue page with a live task): Overview | Chat | Live |
 // Logs | Calls (R10; Logs for the task's owners, run watchdog R8).
 // Renamed and merged tabs keep their old ids as aliases (tabAlias): Metrics
-// was named Spend (?tab=spend), Activity was named Stream (?tab=stream), and
-// a task's Details went into its Overview (?tab=details).
+// was named Spend (?tab=spend), Activity was named Stream (?tab=stream), a
+// task's Details went into its Overview (?tab=details), and a milestone's
+// Pilot tab became a drawer over Issues (?tab=pilot, see pilotQuery).
 // BaseTab: the tabs project and milestone pages share.
 export type BaseTab = 'activity' | 'board' | 'metrics'
 export type StreamTab = 'milestones' | BaseTab | 'decisions' | 'plans'
-export type MilestoneTab = 'issues' | 'needs' | 'decisions' | 'pilot' | 'retrospective' | BaseTab
+export type MilestoneTab = 'issues' | 'needs' | 'decisions' | 'retrospective' | BaseTab
 export type DashboardTab = 'overview' | 'activity'
 export type TaskTab = 'overview' | 'chat' | 'live' | 'logs' | 'calls'
 // A plan's tabs on phones: Chat, Decisions, Draft. Tablet and wider keep
@@ -64,27 +67,36 @@ export function projectTabsFor(plans: boolean): Tab<StreamTab>[] {
   return plans ? [...tabs, { id: 'plans', label: 'Plans' }] : tabs
 }
 
+// milestoneTabs are all of a milestone's tabs, in their order.
 export const milestoneTabs: Tab<MilestoneTab>[] = [
   { id: 'issues', label: 'Issues' },
-  { id: 'needs', label: 'Needs you' },
+  streamBaseTabs[0]!,
   { id: 'decisions', label: 'Decisions' },
-  { id: 'pilot', label: 'Pilot' },
+  ...streamBaseTabs.slice(1),
+  { id: 'needs', label: 'Needs you' },
   { id: 'retrospective', label: 'Retrospective' },
-  ...streamBaseTabs,
 ]
 
 // storedMilestoneTabs are a milestone's tabs once its tasks are gone: the
 // Board needs them. Decisions stays, it reads the history database.
 export const storedMilestoneTabs: Tab<MilestoneTab>[] = milestoneTabs.filter((t) => t.id !== 'board')
 
-// milestoneTabsFor are the tabs a milestone shows (Decision 12 of "Desk:
-// one look on every page"): no Board once its tasks are gone, and no
+// milestoneTabsFor are the tabs a milestone shows: no Board once its tasks
+// are gone, Needs you only while something needs you (opts.needs, the
+// count of needsOpen, D674-P1) or a problem thread is open or linked to
+// (opts.problem: the problem route, a #prompt- or #problem- hash), and no
 // Retrospective until one exists. Until the milestone has loaded (null)
-// the Retrospective stays hidden too, so it does not show and vanish. The
-// other tabs stay: their content arrives while the milestone runs (D632-P3).
-export function milestoneTabsFor(m: { stored?: boolean; retrospective?: unknown } | null): Tab<MilestoneTab>[] {
+// Needs you and Retrospective stay hidden, so they do not show and vanish;
+// a link to one waits (Stream.vue reads ?tab= against milestoneTabs while
+// loading). The other tabs stay: their content arrives while the milestone
+// runs (D632-P3).
+export function milestoneTabsFor(
+  m: { stored?: boolean; retrospective?: unknown } | null,
+  opts: { needs?: number; problem?: boolean } = {},
+): Tab<MilestoneTab>[] {
   const list = m?.stored ? storedMilestoneTabs : milestoneTabs
-  return m?.retrospective ? list : list.filter((t) => t.id !== 'retrospective')
+  const needs = !!opts.problem || (!!m && (opts.needs ?? 0) > 0)
+  return list.filter((t) => (t.id !== 'needs' || needs) && (t.id !== 'retrospective' || !!m?.retrospective))
 }
 
 export const dashboardTabs: Tab<DashboardTab>[] = [
@@ -108,8 +120,9 @@ type QueryValue = string | null | (string | null)[] | undefined
 // working: the Spend tab became Metrics (R17 of the milestone "Desk: one
 // Metrics page"), the Stream tab became Activity (R4 of "Desk: one header
 // and one row of tabs on every page"), and a task's Details tab went into
-// its Overview (R6 of the same milestone).
-const tabAliases: Readonly<Record<string, string>> = { spend: 'metrics', stream: 'activity', details: 'overview' }
+// its Overview (R6 of the same milestone), and a milestone's Pilot tab
+// became the pilot drawer over Issues (R5; Stream.vue opens the drawer).
+const tabAliases: Readonly<Record<string, string>> = { spend: 'metrics', stream: 'activity', details: 'overview', pilot: 'issues' }
 
 // tabAlias is the current id of a ?tab= value: the renamed tab's id for an
 // old one, the value itself otherwise.
@@ -149,6 +162,23 @@ export function taskTabFromRoute(v: QueryValue, hash: string, available: readonl
   const none = v == null || v === '' || (Array.isArray(v) && !v.length)
   if (none && hash === '#live-transcript' && available.some((t) => t.id === 'live')) return 'live'
   return tabFromQuery(v, available)
+}
+
+// pilotFromQuery says whether a milestone's pilot drawer is open: ?pilot=1
+// (Decision 8, D674-P3). Stream.vue replaces an old ?tab=pilot link by
+// pilotQuery(query, true) first.
+export function pilotFromQuery(query: Record<string, QueryValue>): boolean {
+  const v = query.pilot
+  return Array.isArray(v) ? v.includes('1') : v === '1'
+}
+
+// pilotQuery is the query with the pilot drawer open (?pilot=1) or closed
+// (no ?pilot), keeping the other parameters; an old ?tab=pilot goes, so
+// Issues shows under the drawer.
+export function pilotQuery<V>(query: Record<string, V>, open: boolean): Record<string, V | string> {
+  const { pilot: _, ...rest } = query
+  if (rest.tab === 'pilot') delete rest.tab
+  return open ? { ...rest, pilot: '1' } : rest
 }
 
 // tabQuery is the query for a tab, keeping the other parameters; the

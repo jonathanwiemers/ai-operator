@@ -1,5 +1,5 @@
 // useStreamNote is the state of a note composer (Composer.vue, mode note):
-// the project stream's and the milestone Pilot tab's. It loads the user's
+// the project stream's and the milestone pilot drawer's. It loads the user's
 // GitLab status, offers the targets (stream.ts noteTargets) and posts the
 // note; the composer only shows it (docs/contributing/web-ui.md, "Composer").
 import { computed, reactive, ref, watch } from 'vue'

@@ -20,7 +20,7 @@ export interface OpenProblem {
 export interface NeedsOpen {
   problems: OpenProblem[]
   proposals: ProposalView[]
-  // count: the problems and proposals, the n of "Needs you · n".
+  // count: the problems and proposals, the Needs you tab's badge.
   count: number
 }
 
@@ -49,9 +49,4 @@ export function needsOpen(m: MilestoneView): NeedsOpen {
     }))
   const proposals = m.pilot?.proposals ?? []
   return { problems, proposals, count: problems.length + proposals.length }
-}
-
-// needsLabel is the Needs you tab's label: "Needs you · n" while n > 0.
-export function needsLabel(count: number): string {
-  return count > 0 ? `Needs you · ${count}` : 'Needs you'
 }

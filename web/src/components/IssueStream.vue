@@ -14,7 +14,7 @@ import type { PromptView, StreamEvent, StreamKind } from '../types'
 // An issue's stream (R10): GET /api/v1/stream with project, milestone and
 // issue, as a chat (DeskChat): oldest first, *Load older* pages back, live
 // events come in at the bottom. It reads history, so it outlives the issue's tasks. Without an issue
-// it is the milestone's stream, and kinds fixes its kinds (the Pilot tab,
+// it is the milestone's stream, and kinds fixes its kinds (the pilot drawer,
 // R11); chat kinds are asked for only with the chat feature.
 const props = defineProps<{
   namespace: string

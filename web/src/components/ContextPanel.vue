@@ -11,7 +11,7 @@ import RelTime from './RelTime.vue'
 
 // ContextPanel sits beside a project stream: what needs you, the active
 // milestone's queue and companions, and the last 30 days. A milestone page has
-// no side panel: its parts live in the Issues and Pilot tabs. ContextLayout
+// no side panel: its parts live in the Issues tab and the pilot drawer. ContextLayout
 // lays it out: a column from 1180 px, below a sheet that Stream.vue's
 // Context button opens, on milestone pages too. Refs, URLs and titles
 // wrap anywhere, so the panel never scrolls sideways.

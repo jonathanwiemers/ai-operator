@@ -6,7 +6,7 @@ import UEmpty from '@nuxt/ui/components/Empty.vue'
 // milestone "Desk: one Metrics page"): the milestone pauses that started in the
 // range, per bucket by kind and in paused hours, the totals, who and how
 // ended them, per project without a project filter, and the ten longest,
-// each opening its milestone's Pilot tab. Kind and engine do not apply.
+// each opening its milestone's pilot drawer. Kind and engine do not apply.
 import { computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import type { MetricsPausesView } from '../generated/views'

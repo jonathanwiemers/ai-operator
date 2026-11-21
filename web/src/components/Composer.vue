@@ -20,7 +20,7 @@ import { useKeyboardInset } from '../ui/useKeyboardInset'
 
 // Composer is the one text box of the Desk (docs/contributing/web-ui.md, "Composer"): the
 // task's and a plan's chat (mode chat, TaskChat and PlanChat) and the stream's notes (mode note,
-// Stream and the milestone's Pilot tab). It holds the text, the send and
+// Stream and the milestone's pilot drawer). It holds the text, the send and
 // interrupt buttons, the note's target and command menus, the error line
 // and Ctrl/Cmd+Enter; the caller owns the draft, the busy and error state
 // and the API call, and puts its own controls (the chat's commands) into

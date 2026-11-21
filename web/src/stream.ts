@@ -69,7 +69,7 @@ export const streamFilters: { id: StreamFilter; label: string; kinds?: StreamKin
   { id: 'merged', label: 'Merged', kinds: ['merged', 'closed', 'item.skipped'] },
 ]
 
-// A milestone's Stream tab shows only runtime kinds, the Pilot tab the rest:
+// A milestone's Activity tab shows only runtime kinds, the pilot drawer the rest:
 // its chips are the ones of runtime kinds (Runs, CI & review, Merged) and
 // All names the runtime kinds (D230-P2).
 const isRuntimeKind = (k: StreamKind) => (runtimeStreamKinds as readonly StreamKind[]).includes(k)

@@ -259,7 +259,7 @@ export interface ChatDraft {
 }
 
 // chatDraftKey: a composer with a prefix (a problem card's) keeps its own
-// draft, apart from the Pilot tab's on the same task.
+// draft, apart from the pilot drawer's on the same task.
 export function chatDraftKey(namespace: string, name: string, task: string, prefix?: string): string {
   return `desk-chat:${namespace}/${name}/${task}${prefix ? `#${prefix}` : ''}`
 }
