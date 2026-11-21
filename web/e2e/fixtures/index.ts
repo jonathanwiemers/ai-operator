@@ -14,6 +14,7 @@ import { about, features, me } from './session'
 import { answerSpend } from './spend'
 import { answerStream, milestones, refundsIssue, shopDetail, shopHistory } from './stream'
 import { answerSearch, gitlabStatus, pilotChat, refunds, refundsChat, refundsLogs, refundsResponse, refundsThread } from './task'
+import { answerTimeline } from './timeline'
 import type { MilestoneView } from '../../src/types'
 
 export { now } from './clock'
@@ -46,6 +47,7 @@ export const api: Record<string, Fixture> = {
   '/gitlab': gitlabStatus,
   '/search': answerSearch,
   '/plans': shopPlanOverview,
+  '/timeline': answerTimeline,
   [shopPath]: shopDetail,
   [`${shopPath}/history`]: shopHistory,
   [`${shopPath}/decisions`]: answerDecisions,

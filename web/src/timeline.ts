@@ -274,3 +274,55 @@ export function overviewLayout<R extends OverviewRow>(
   const out = [...projects.values()].map(({ p, bars }) => ({ ...p, lines: pack(bars) }))
   return { ...windowOf(from, to, now), projects: out, legend: [...legend.values()] }
 }
+
+// TimelineBarItem, TimelineRowItem and TimelineGroupItem are what
+// ui/Timeline.vue draws: groups (waves) of labelled rows, each row one or
+// more lines of bars. A bar links to `to`; token colours it by milestone
+// (the Overview), else its segments take the tone tokens.
+export interface TimelineBarItem {
+  key: string
+  to: string
+  label: string
+  name: string
+  bar: BarLayout
+  token?: ChartToken
+}
+
+export interface TimelineRowItem {
+  key: string
+  label: string
+  sub?: string
+  lines: TimelineBarItem[][]
+}
+
+export interface TimelineGroupItem {
+  key: string
+  heading: string
+  rows: TimelineRowItem[]
+}
+
+// milestoneGroups turns milestoneLayout's waves into the component's
+// groups: one row per issue with a bar, labelled "#iid" and its title.
+export function milestoneGroups<R extends TimelineRow & Pick<TimelineRowView, 'deskURL'>>(groups: WaveGroup<R>[]): TimelineGroupItem[] {
+  return groups
+    .map((g) => ({
+      key: `w${g.wave}`,
+      heading: g.heading,
+      rows: g.bars.flatMap((b): TimelineRowItem[] => {
+        if (!b.bar) return []
+        const key = `${b.row.milestoneIID}#${b.row.issueIID}`
+        const bar = { key, to: b.row.deskURL, label: b.label, name: b.name, bar: b.bar }
+        return [{ key, label: b.label, sub: b.row.issueTitle, lines: [[bar]] }]
+      }),
+    }))
+    .filter((g) => g.rows.length > 0)
+}
+
+export type IssuesView = 'timeline' | 'lanes'
+
+// issuesView is the Issues tab's view from ?view= (Decision 15): Timeline
+// by default with the history feature, Lanes without it.
+export function issuesView(q: unknown, history: boolean): IssuesView {
+  if (!history) return 'lanes'
+  return q === 'lanes' ? 'lanes' : 'timeline'
+}

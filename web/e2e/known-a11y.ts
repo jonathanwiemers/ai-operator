@@ -47,6 +47,8 @@ export const knownA11y: Record<string, string> = {
   'stream-project-dark@1180': `${R6} R6: target-size`,
   'stream-milestone-issues@375': `${R6} R6: color-contrast, target-size`,
   'stream-milestone-issues@1180-dark': `${R6} R6: color-contrast`,
+  'stream-milestone-lanes@375': `${R6} R6: color-contrast, target-size`,
+  'stream-milestone-lanes@1180-dark': `${R6} R6: color-contrast`,
   'stream-milestone-needs@375': `${R6} R6: color-contrast`,
   'stream-milestone-needs@1180': `${R6} R6: color-contrast`,
   'stream-milestone-needs@1180-dark': `${R6} R6: color-contrast`,

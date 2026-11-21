@@ -1,12 +1,17 @@
 <script setup lang="ts">
+import UDashboardToolbar from '@nuxt/ui/components/DashboardToolbar.vue'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
-import { computed } from 'vue'
+import UTabs from '@nuxt/ui/components/Tabs.vue'
+import { computed, defineAsyncComponent } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { hasFeature } from '../api'
 import Badge from './Badge.vue'
 import CompanionsList from './CompanionsList.vue'
 import ExtLink from './ExtLink.vue'
 import QueueList from './QueueList.vue'
 import RelTime from './RelTime.vue'
 import { costTooltip } from '../format'
+import { issuesView } from '../timeline'
 import { mergedLabel, mergedTooltip, writtenLabel } from '../lines'
 import { queueDone, waitingForTurn } from '../milestoneQueue'
 import { issueProgress, issueStateTone, issueTime, progressPct, rowCost, rowTokens } from '../milestoneRows'
@@ -28,9 +33,10 @@ import type { MilestoneIssueRow, MilestoneView } from '../types'
 // then one row per issue with its state, merge request, wall, agent and
 // paused time, cost and tokens, written and merged lines (R16), and the
 // version it shipped in. Releases are
-// rows between the issues (R12, decision 15). Below the table the autopilot
-// queue is grouped by lane: running, landing, ready to land, waiting, held
-// (with Resume) and done (QueueList grouped). The page header holds the
+// rows between the issues (R12, decision 15). Below the table the Timeline
+// of the issues' runs, or the autopilot queue grouped by lane: running,
+// landing, ready to land, waiting, held (with Resume) and done (QueueList
+// grouped). The page header holds the
 // title. Titles, a release's why and reason are untrusted text and render
 // as text.
 //
@@ -48,6 +54,25 @@ const progress = computed(() => issueProgress(props.milestone.issues ?? []))
 const pct = computed(() => progressPct({ progress: progress.value }))
 const waiting = computed(() => waitingForTurn(props.milestone.autopilot?.queuedBehind, props.milestones))
 
+// Below the table: the Timeline or the Lanes (Decision 15). With the
+// history feature a pill switch in the section's toolbar picks one, kept
+// in ?view= (Timeline by default); without it only Lanes, with no switch.
+// The Timeline loads in its own chunk.
+const MilestoneTimeline = defineAsyncComponent(() => import('./MilestoneTimeline.vue'))
+const route = useRoute()
+const router = useRouter()
+const history = computed(() => hasFeature('history'))
+const view = computed(() => issuesView(route.query.view, history.value))
+const viewItems = [
+  { value: 'timeline', label: 'Timeline' },
+  { value: 'lanes', label: 'Lanes' },
+]
+const queued = computed(() => !props.milestone.stored && !!props.milestone.autopilot?.items?.length)
+function setView(v: string | number) {
+  if (v !== 'timeline' && v !== 'lanes') return
+  void router.replace({ query: { ...route.query, view: v } })
+}
+
 // Every issue links to its issue page, also once its task is gone.
 function issueTo(i: MilestoneIssueRow) {
   const { namespace, name } = props
@@ -61,8 +86,9 @@ const tap = 'min-h-11 tablet:min-h-0'
 // The edge tracks are 14 px wider than their content: a subgrid's padding
 // (px-3.5) is taken from them.
 const columns = 'desktop:grid-cols-[minmax(0,1fr)_90px_64px_64px_64px_64px_72px_64px_84px_112px]'
-const sectionHead =
-  'h3 m-0 mb-2 flex justify-between text-[11.5px] font-semibold tracking-[0.06em] text-(--text-3) uppercase'
+const headText = 'h3 m-0 flex text-[11.5px] font-semibold tracking-[0.06em] text-(--text-3) uppercase'
+const sectionHead = `${headText} mb-2 justify-between`
+const viewHead = `${headText} gap-2`
 </script>
 
 <template>
@@ -241,12 +267,39 @@ const sectionHead =
           Comment <code>/agent start</code> on the tracking issue to plan it now (owners).
         </small>
       </p>
-      <div v-if="milestone.autopilot?.items?.length" class="mt-[18px]" data-queue>
-        <h2 :class="sectionHead">
-          Queue <span>{{ queueDone(milestone.autopilot.items) }} / {{ milestone.autopilot.items.length }}</span>
-        </h2>
+    </template>
+    <section v-if="history || queued" class="mt-[18px]" aria-labelledby="issues-view-head" data-issues-view>
+      <UDashboardToolbar class="mb-2 min-h-0 flex-wrap border-0 px-0 sm:px-0" :ui="{ left: 'min-w-0' }">
+        <template #left>
+          <h2 id="issues-view-head" :class="viewHead">
+            <template v-if="view === 'timeline'">Timeline</template>
+            <template v-else>
+              Queue
+              <span v-if="queued">{{ queueDone(milestone.autopilot!.items!) }} / {{ milestone.autopilot!.items!.length }}</span>
+            </template>
+          </h2>
+        </template>
+        <template #right>
+          <UTabs
+            v-if="history"
+            :model-value="view"
+            :items="viewItems"
+            variant="pill"
+            size="sm"
+            :content="false"
+            aria-label="View"
+            data-issues-view-switch
+            @update:model-value="setView"
+          />
+        </template>
+      </UDashboardToolbar>
+      <MilestoneTimeline v-if="view === 'timeline'" :namespace="namespace" :name="name" :milestone="milestone.iid" />
+      <div v-else-if="queued" data-queue>
         <QueueList :namespace="namespace" :name="name" :milestone="milestone" grouped />
       </div>
+      <UEmpty v-else icon="i-lucide-list" title="Nothing is queued." variant="naked" size="sm" />
+    </section>
+    <template v-if="!milestone.stored">
       <div v-if="milestone.companions?.length" class="mt-[18px]">
         <h2 :class="sectionHead">Companions <span>{{ milestone.companions.length }}</span></h2>
         <CompanionsList :namespace="namespace" :name="name" :milestone="milestone" />

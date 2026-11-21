@@ -156,6 +156,12 @@ const routes: Route[] = [
       ready: (page) => expect(page.locator('main').getByText(milestoneReady[tab]).first()).toBeVisible(),
     }),
   ),
+  // The Issues tab's Lanes; Timeline is the default with history.
+  {
+    name: 'stream-milestone-lanes',
+    path: '/projects/team-a/shop/milestones/14?tab=issues&view=lanes',
+    ready: (page) => expect(page.locator('main [data-queue]')).toBeVisible(),
+  },
   // The task page and the issue page with a live task: Overview by default,
   // a variant per other tab (TaskBody.vue, R10).
   ...(['issue', 'task'] as const).flatMap((name): Route[] =>
@@ -3730,7 +3736,7 @@ test.describe('milestone decisions', () => {
       const json = { features: features.features.filter((f) => f.name !== 'history') }
       await page.route('**/api/v1/features', (r) => r.fulfill({ status: 200, json }))
     }
-    await page.goto('/projects/team-a/shop/milestones/14')
+    await page.goto('/projects/team-a/shop/milestones/14?view=lanes')
     await route.ready(page)
     return problems
   }
@@ -3865,7 +3871,7 @@ test.describe('milestone pilot', () => {
     })
 
     test(`queue lanes, order and numbers@${size.width}`, async ({ page, baseURL }, testInfo) => {
-      const problems = await open(page, baseURL, 'stream-milestone-issues', size)
+      const problems = await open(page, baseURL, 'stream-milestone-lanes', size)
       const queue = page.locator('main [data-queue]')
       await expect(queue).toBeVisible()
       const layout = await queue.evaluate((q) => {

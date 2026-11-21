@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { clockTime } from '../src/format.ts'
-import { barLayout, barName, gapPct, milestoneLayout, nowPct, overviewLayout, pack, ticks } from '../src/timeline.ts'
+import { barLayout, barName, gapPct, issuesView, milestoneGroups, milestoneLayout, nowPct, overviewLayout, pack, ticks } from '../src/timeline.ts'
 
 process.env.TZ = 'UTC'
 
@@ -219,4 +219,34 @@ test('overviewLayout: the window slides with now, keeping its length', () => {
   assert.equal(b.cutStart, true)
   assert.equal(b.left, 0)
   assert.equal(b.width, 100)
+})
+
+test('milestoneGroups: one row per issue with a bar, empty waves dropped', () => {
+  const now = t0 + 3 * H
+  const view = {
+    from: at(0),
+    to: at(180),
+    rows: [
+      row({ issueIID: 11, wave: 1, deskURL: '/i/11', segments: [{ kind: 'running', start: at(0), end: at(30) }], mergedAt: at(40) }),
+      row({ issueIID: 12, wave: 1, segments: [] }),
+      row({ issueIID: 13, wave: 2, segments: [] }),
+    ],
+  }
+  const groups = milestoneGroups(milestoneLayout(view, now).groups)
+  assert.equal(groups.length, 1)
+  assert.equal(groups[0].heading, 'W1')
+  assert.deepEqual(
+    groups[0].rows.map((r) => [r.key, r.label, r.sub, r.lines[0][0].to]),
+    [['5#11', '#11', 'Add parser', '/i/11']],
+  )
+  assert.match(groups[0].rows[0].lines[0][0].name, /^#11 Add parser, running 30 min, merged/)
+})
+
+test('issuesView: Timeline by default with history, Lanes without', () => {
+  assert.equal(issuesView(undefined, true), 'timeline')
+  assert.equal(issuesView('timeline', true), 'timeline')
+  assert.equal(issuesView('lanes', true), 'lanes')
+  assert.equal(issuesView('bogus', true), 'timeline')
+  assert.equal(issuesView('timeline', false), 'lanes')
+  assert.equal(issuesView(undefined, false), 'lanes')
 })

@@ -411,6 +411,7 @@ headings, focus, the announcer) and keeps the axe check green.
 | Charts | `web/src/ui/charts/` | [Charts](#charts) draw with Chart.js; Nuxt UI has no chart component. |
 | BottomTabBar | `web/src/ui/BottomTabBar.vue` | The phone's [bottom bar](#navigation); Nuxt UI has no bottom tab bar. |
 | [DeskChat](#deskchat) | `web/src/ui/DeskChat.vue` | Wraps `UChatMessages` and `UChatPrompt`; they lack *Load older* with a kept scroll anchor and compact operator events. |
+| Timeline | `web/src/ui/Timeline.vue` | Draws issue bars on a time axis with sticky row labels and a now line. Nothing in Nuxt UI draws a time axis, and Chart.js draws on a canvas that keyboard users cannot reach. Every bar is a link named with its state. |
 
 ### Adding a custom component
 
