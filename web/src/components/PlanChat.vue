@@ -3,7 +3,9 @@ import UAlert from '@nuxt/ui/components/Alert.vue'
 import { alertColor } from '../badgeTone'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { chatPostError } from '../api'
-import { getPlanChat, LoginRequiredError, postPlanChat } from '../client'
+import { getMilestones, getPlanChat, LoginRequiredError, postPlanChat } from '../client'
+import type { MilestoneRow, PlanDraftView } from '../generated/views'
+import type { RefItemSource } from '../stream'
 import * as cs from '../chatState'
 import { chatMessages } from '../chatView'
 import { keepThroughSignIn } from '../signInDraft'
@@ -26,7 +28,26 @@ const props = defineProps<{
   spendUSD?: string
   budgetUSD?: string
   decisions?: PlanDecision[]
+  // The plan's drafts, offered by the composer's % menu with the milestones.
+  drafts?: PlanDraftView[]
 }>()
+
+// The project's milestones for the % menu, loaded once when the composer
+// first has the focus; a failed load leaves the drafts only.
+const milestones = ref<MilestoneRow[]>([])
+let milestonesFor = ''
+async function loadMilestones() {
+  const project = `${props.namespace}/${props.name}`
+  if (milestonesFor === project) return
+  milestonesFor = project
+  try {
+    const list = await getMilestones({ state: 'all', project, limit: 200 })
+    if (milestonesFor === project) milestones.value = list.milestones
+  } catch {
+    if (milestonesFor === project) milestonesFor = ''
+  }
+}
+const references = computed<RefItemSource>(() => ({ milestones: milestones.value, drafts: props.drafts ?? [] }))
 
 const messages = ref<ChatMessage[]>([])
 const error = ref('')
@@ -123,6 +144,8 @@ onUnmounted(() => window.clearInterval(timer))
           :disabled="sending"
           :error="sendError"
           :can-interrupt="!!waiting?.canInterrupt"
+          :references="references"
+          @focusin="loadMilestones"
           @send="onSend"
         />
       </template>

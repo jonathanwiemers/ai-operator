@@ -11,6 +11,7 @@ import (
 	"time"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/milestoneorder"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 )
 
@@ -43,7 +44,9 @@ type MilestoneProgress struct {
 // costs without the history database). Phase is the autopilot's, in lower
 // case, empty without autopilot. FollowUpsOpen are the retrospective's
 // leftovers still open. NeedsYou: the milestone has an Inbox item. Stored:
-// its tasks are gone, the row is the snapshot's.
+// its tasks are gone, the row is the snapshot's. QueuePosition is the
+// milestone's place in its project's autopilot queue (milestoneorder.RunOrder),
+// from 1; 0 when it is not in the queue (done, no autopilot).
 //
 // It stays a view because a live row is built from the tasks, not the
 // snapshot, and the snapshot's state (open, closed), counts and spend
@@ -59,6 +62,7 @@ type MilestoneRow struct {
 	Cost               `tstype:",extends"`
 	NeedsYou           bool `json:"needsYou"`
 	Stored             bool `json:"stored"`
+	QueuePosition      int  `json:"queuePosition,omitempty"`
 }
 
 // MilestoneList is the answer of GET /api/v1/milestones. History: the
@@ -221,7 +225,7 @@ func liveMilestoneRows(projects map[string]*aiv1.AgentProject, tasks []aiv1.Agen
 	}
 	var rows []MilestoneRow
 	for k, pt := range byProject {
-		ap := projects[k]
+		ap, positions := projects[k], queuePositions(pt)
 		for i := range pt {
 			st := &pt[i]
 			if st.Spec.Type != aiv1.TaskTypeSpec || st.Spec.Milestone == nil || st.Spec.Milestone.IID == 0 {
@@ -229,10 +233,34 @@ func liveMilestoneRows(projects map[string]*aiv1.AgentProject, tasks []aiv1.Agen
 			}
 			row := liveMilestoneRow(ap, pt, st)
 			row.NeedsYou = needs[milestoneKey{row.Namespace, row.Project, row.IID}]
+			row.QueuePosition = positions[row.IID]
 			rows = append(rows, row)
 		}
 	}
 	return rows
+}
+
+// queuePositions is the queue position, from 1, of every open autopilot
+// milestone of one project's tasks, in milestoneorder.RunOrder: the order
+// the plan agent's milestone index shows. Done milestones and those without
+// autopilot (or with it turned off) have none.
+func queuePositions(tasks []aiv1.AgentTask) map[int64]int {
+	seen := map[int64]bool{}
+	var entries []milestoneorder.Entry
+	for i := range tasks {
+		t, ms := &tasks[i], tasks[i].Spec.Milestone
+		if ms == nil || ms.IID == 0 || t.Spec.Type != aiv1.TaskTypeSpec || !t.Spec.Autopilot || seen[ms.IID] ||
+			t.Status.Autopilot != nil && t.Status.Autopilot.Phase == aiv1.AutopilotOff {
+			continue
+		}
+		seen[ms.IID] = true
+		entries = append(entries, milestoneorder.EntryOf(ms.IID, t))
+	}
+	positions := map[int64]int{}
+	for i, iid := range milestoneorder.RunOrder(entries) {
+		positions[iid] = i + 1
+	}
+	return positions
 }
 
 // liveMilestoneRow is the row of the milestone of the spec task st, one of

@@ -2,8 +2,19 @@
 import UButton from '@nuxt/ui/components/Button.vue'
 import UFormField from '@nuxt/ui/components/FormField.vue'
 import UTextarea from '@nuxt/ui/components/Textarea.vue'
-import { nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue'
-import { noteTargetLabel, slashOpens, slashPick, type NoteTarget, type SlashSuggestion } from '../stream'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useId, useTemplateRef, watch } from 'vue'
+import {
+  noteTargetLabel,
+  refItems,
+  refPick,
+  refQuery,
+  slashOpens,
+  slashPick,
+  type NoteTarget,
+  type RefItem,
+  type RefItemSource,
+  type SlashSuggestion,
+} from '../stream'
 import { announce } from '../ui/useAnnounce'
 import { useKeyboardInset } from '../ui/useKeyboardInset'
 
@@ -38,6 +49,9 @@ const props = defineProps<{
   // the box, with a link to connect GitLab when there is one.
   blocked?: string
   connectUrl?: string
+  // chat: what "%" offers to reference (the plan chat's milestones and
+  // drafts); without it "%" opens nothing.
+  references?: RefItemSource
 }>()
 const body = defineModel<string>({ required: true })
 const target = defineModel<NoteTarget | null>('target', { default: null })
@@ -75,10 +89,75 @@ watch(
 function send(kind: ComposerSend['kind'] = 'message') {
   if (props.busy || props.disabled) return
   if (kind === 'message' && !body.value.trim()) return
+  refAt.value = null
   emit('send', { kind, body: body.value, target: target.value })
 }
 
+// The % menu (references), a listbox the text points into with
+// aria-activedescendant: refAt is the typed "%query", refActive the option
+// the arrow keys are on.
+const refAt = ref<{ start: number; query: string } | null>(null)
+const refActive = ref(0)
+const refOptions = computed(() => (refAt.value && props.references ? refItems(props.references, refAt.value.query) : []))
+const refOpen = computed(() => refOptions.value.length > 0)
+const refId = useId()
+const textarea = () => box.value?.querySelector('textarea')
+
+// refSync opens, narrows or closes the menu from the text before the caret.
+function refSync() {
+  const el = textarea()
+  const at = props.references && el ? refQuery(el.value, el.selectionStart) : null
+  if (at?.query !== refAt.value?.query) refActive.value = 0
+  refAt.value = at
+}
+
+// The number of options is said as it changes, not the options.
+watch(
+  () => (refAt.value ? refOptions.value.length : -1),
+  (n) => {
+    if (n >= 0) announce(n === 0 ? 'No references match' : `${n} reference${n === 1 ? '' : 's'}`)
+  },
+)
+watch(refActive, (i) => void nextTick(() => document.getElementById(`${refId}-${i}`)?.scrollIntoView({ block: 'nearest' })))
+
+function pickRef(item: RefItem | undefined) {
+  const el = textarea()
+  const at = refAt.value
+  if (!item || !el || !at) return
+  const next = refPick(body.value, at.start, el.selectionStart, item.ref)
+  body.value = next.body
+  refAt.value = null
+  void nextTick(() => {
+    el.focus()
+    el.setSelectionRange(next.caret, next.caret)
+  })
+}
+
+// While the % menu is open the arrows move, Enter picks instead of a new
+// line (Ctrl/Cmd+Enter still sends) and Escape closes it.
+function onKeydown(ev: KeyboardEvent) {
+  if (!refAt.value || ev.isComposing) return
+  const n = refOptions.value.length
+  if (ev.key === 'Escape') {
+    ev.preventDefault()
+    ev.stopPropagation()
+    refAt.value = null
+  } else if (n && (ev.key === 'ArrowDown' || ev.key === 'ArrowUp')) {
+    ev.preventDefault()
+    refActive.value = (refActive.value + (ev.key === 'ArrowDown' ? 1 : n - 1)) % n
+  } else if (n && ev.key === 'Enter' && !ev.ctrlKey && !ev.metaKey && !ev.shiftKey) {
+    ev.preventDefault()
+    pickRef(refOptions.value[refActive.value])
+  }
+}
+
+// A caret moved by the side arrows, Home or End can leave the "%query".
+function onKeyup(ev: KeyboardEvent) {
+  if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(ev.key)) refSync()
+}
+
 function onInput() {
+  refSync()
   if (!props.suggestions?.length) return
   slashOpen.value = slashOpens(body.value)
   if (slashOpen.value) targetOpen.value = false
@@ -99,6 +178,7 @@ function onDocClick(ev: MouseEvent) {
   if (!box.value?.contains(ev.target as Node | null)) {
     targetOpen.value = false
     slashOpen.value = false
+    refAt.value = null
   }
 }
 onMounted(() => document.addEventListener('click', onDocClick))
@@ -107,6 +187,20 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 const menu =
   'absolute top-[calc(100%+6px)] left-2.5 z-20 w-[min(340px,calc(100%-20px))] rounded-[10px] border border-(--border-strong) bg-(--surface) p-1.5 shadow-lg'
 const option = 'flex w-full items-baseline gap-2.5 rounded-[7px] px-2 py-1.5 text-left font-normal text-(--text)'
+// The chat's composer sits at the bottom of its card: its % menu opens up.
+const refMenu = menu.replace('top-[calc(100%+6px)]', 'bottom-[calc(100%+6px)]')
+// The text is the % menu's combobox, only where there is one.
+const refAttrs = computed(() =>
+  props.references
+    ? {
+        role: 'combobox',
+        'aria-autocomplete': 'list',
+        'aria-expanded': String(refOpen.value),
+        'aria-controls': refOpen.value ? refId : undefined,
+        'aria-activedescendant': refOpen.value ? `${refId}-${refActive.value}` : undefined,
+      }
+    : {},
+)
 </script>
 
 <template>
@@ -135,7 +229,11 @@ const option = 'flex w-full items-baseline gap-2.5 rounded-[7px] px-2 py-1.5 tex
           :aria-label="mode === 'chat' ? 'Message' : 'Note'"
           :disabled="disabled"
           :ui="{ root: 'flex w-full', base: 'px-3.5 pt-3 pb-1 text-base/5 text-(--text) tablet:text-sm/5' }"
+          v-bind="refAttrs"
           @input="onInput"
+          @click="refSync"
+          @keydown="onKeydown"
+          @keyup="onKeyup"
           @keydown.meta.enter="send()"
           @keydown.ctrl.enter="send()"
         />
@@ -201,6 +299,31 @@ const option = 'flex w-full items-baseline gap-2.5 rounded-[7px] px-2 py-1.5 tex
             <b class="font-mono text-[12.5px] font-semibold whitespace-nowrap">{{ s.cmd }}</b>
             <span class="truncate text-xs text-(--text-3)">{{ s.hint }}</span>
           </UButton>
+        </div>
+        <!-- The options keep the focus in the text (mousedown.prevent); the
+             keys move through them (aria-activedescendant). -->
+        <div v-if="refAt" :class="refMenu" @click.stop>
+          <div :id="`${refId}-label`" class="px-2 pt-1.5 pb-0.5 text-[11px] tracking-[0.05em] text-(--text-3) uppercase">
+            Milestones and drafts
+          </div>
+          <div v-if="refOpen" :id="refId" role="listbox" :aria-labelledby="`${refId}-label`" class="max-h-[264px] overflow-y-auto">
+            <div
+              v-for="(r, i) in refOptions"
+              :id="`${refId}-${i}`"
+              :key="r.ref"
+              role="option"
+              :aria-selected="i === refActive"
+              :class="[option, 'cursor-pointer', i === refActive && 'bg-(--surface-2)']"
+              @mousedown.prevent
+              @mousemove="refActive = i"
+              @click="pickRef(r)"
+            >
+              <b class="font-mono text-[12.5px] font-semibold whitespace-nowrap">{{ r.ref }}</b>
+              <span class="min-w-0 flex-1 truncate text-xs">{{ r.label }}</span>
+              <span class="text-[11px] whitespace-nowrap text-(--text-3)">{{ r.state }}</span>
+            </div>
+          </div>
+          <p v-else class="m-0 px-2 py-1.5 text-xs text-(--text-3)">No milestone or draft matches.</p>
         </div>
       </div>
     </UFormField>

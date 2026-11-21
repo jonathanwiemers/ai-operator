@@ -960,6 +960,15 @@ milestone's *Pilot* tab in `MilestonePilot.vue`).
   composer is `useStreamNote` (`src/streamNote.ts`): the GitLab status
   (loaded the first time the composer is shown), the targets
   (`noteTargets` in `src/stream.ts`) and the post.
+- `references` (the plan chat only, `PlanChat.vue`) adds the `%` menu:
+  typing `%` at the start, after a space or after `(` lists the project's
+  milestones and the plan's uncreated drafts (`refQuery`, `refItems` and
+  `refPick` in `src/refMenu.ts`). The text becomes its combobox
+  (`aria-expanded`, `aria-activedescendant`) and the menu a listbox, which
+  opens upwards. ArrowUp and ArrowDown move, Enter picks instead of a new
+  line, Escape or a click outside closes it, and the number of options is
+  announced. `PlanChat` loads the milestones (`state=all`) the first time
+  the composer gets the focus.
 - The chat's draft helpers (`chatDraftKey`, `readChatDraft`,
   `writeChatDraft`) and command builders (`modelCommand`, `skipCommand`)
   are in `src/chatState.ts`; `TaskChat.vue` keeps the draft and its

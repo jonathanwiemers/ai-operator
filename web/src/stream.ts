@@ -366,3 +366,6 @@ export function slashOpens(body: string): boolean {
 export function slashPick(cmd: string): string {
   return cmd.endsWith(' ') || cmd.endsWith('#') ? cmd : `${cmd} `
 }
+
+// The % reference menu's opening and picking, beside the / menu's.
+export { refItems, refPick, refQuery, type RefItem, type RefItemSource } from './refMenu.ts'

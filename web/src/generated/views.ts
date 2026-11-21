@@ -1160,7 +1160,9 @@ export interface MilestoneProgress {
  * costs without the history database). Phase is the autopilot's, in lower
  * case, empty without autopilot. FollowUpsOpen are the retrospective's
  * leftovers still open. NeedsYou: the milestone has an Inbox item. Stored:
- * its tasks are gone, the row is the snapshot's.
+ * its tasks are gone, the row is the snapshot's. QueuePosition is the
+ * milestone's place in its project's autopilot queue (milestoneorder.RunOrder),
+ * from 1; 0 when it is not in the queue (done, no autopilot).
  * It stays a view because a live row is built from the tasks, not the
  * snapshot, and the snapshot's state (open, closed), counts and spend
  * take another shape here. The snapshot's row carries iid, title, web URL,
@@ -1174,6 +1176,7 @@ export interface MilestoneRow extends store.MilestoneRow, Cost {
   progress: MilestoneProgress;
   needsYou: boolean;
   stored: boolean;
+  queuePosition?: number /* int */;
 }
 /**
  * MilestoneList is the answer of GET /api/v1/milestones. History: the
