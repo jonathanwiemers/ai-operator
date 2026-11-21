@@ -150,6 +150,8 @@ type PlanDraft struct {
 	// SHA is the default branch SHA the agent read for the draft.
 	// +optional
 	SHA string `json:"sha,omitempty"`
+	// CreatedMilestoneIID is the draft's milestone; -1 while the UI server
+	// creates it.
 	// +optional
 	CreatedMilestoneIID int64 `json:"createdMilestoneIID,omitempty"`
 	// +optional
@@ -267,7 +269,7 @@ func (p *AgentPlan) Active() bool {
 		return false
 	case AgentPlanCreated:
 		list := p.DraftList()
-		return slices.ContainsFunc(list, func(d PlanDraft) bool { return d.CreatedMilestoneIID != 0 }) && !p.AllDraftsCreated()
+		return slices.ContainsFunc(list, func(d PlanDraft) bool { return d.CreatedMilestoneIID > 0 }) && !p.AllDraftsCreated()
 	}
 	return true
 }
@@ -285,10 +287,10 @@ func (p *AgentPlan) DraftList() []PlanDraft {
 }
 
 // AllDraftsCreated reports whether every draft has its milestone; false
-// without drafts.
+// without drafts and while one is being created.
 func (p *AgentPlan) AllDraftsCreated() bool {
 	list := p.DraftList()
-	return len(list) > 0 && !slices.ContainsFunc(list, func(d PlanDraft) bool { return d.CreatedMilestoneIID == 0 })
+	return len(list) > 0 && !slices.ContainsFunc(list, func(d PlanDraft) bool { return d.CreatedMilestoneIID <= 0 })
 }
 
 // oldDraft is the single draft of a plan from before Drafts as key 1, and

@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"fmt"
 	"net/http"
 	"slices"
 	"strconv"
@@ -72,7 +71,7 @@ func (s *Server) orderPlanDrafts(w http.ResponseWriter, r *http.Request) {
 	case len(order) != len(st.Drafts) || len(req.Keys) != len(st.Drafts):
 		writeErrorResponse(w, http.StatusUnprocessableEntity, ErrorResponse{Error: "keys must list each of the plan's drafts once", Field: "keys"})
 	case moved >= 0:
-		writeError(w, http.StatusConflict, fmt.Sprintf("the draft is created as %%%d and cannot move", st.Drafts[moved].CreatedMilestoneIID))
+		writeError(w, http.StatusConflict, "the draft is "+draftCreated(st.Drafts[moved])+" and cannot move")
 	default:
 		st.Drafts = order
 		err := s.writer.Status().Patch(r.Context(), pl, client.MergeFromWithOptions(base, client.MergeFromWithOptimisticLock{}))

@@ -67,6 +67,9 @@ type PlanDraftView struct {
 	SHA                 string `json:"sha,omitempty"`
 	CreatedMilestoneIID int64  `json:"createdMilestoneIID,omitempty"`
 	CreatedMilestoneURL string `json:"createdMilestoneURL,omitempty"`
+	// Creating: the draft's milestone is being created; the draft is not
+	// created yet but read-only.
+	Creating bool `json:"creating,omitempty"`
 }
 
 // PlanMilestone is where a plan's created milestone stands, from its row
@@ -106,7 +109,7 @@ func (s *Server) planItem(pl *aiv1.AgentPlan, steer bool) PlanListItem {
 	}
 	list, created := pl.DraftList(), []PlanCreatedMilestone{}
 	for _, d := range list {
-		if d.CreatedMilestoneIID != 0 {
+		if d.CreatedMilestoneIID > 0 {
 			created = append(created, PlanCreatedMilestone{IID: d.CreatedMilestoneIID, URL: d.CreatedMilestoneURL})
 		}
 	}
@@ -129,10 +132,10 @@ func createdMilestoneURL(pl *aiv1.AgentPlan) string {
 }
 
 // planDraftIndex is the index in list of the draft the plan's single-draft
-// view and actions use: the first without a milestone, else the last; -1
-// without drafts.
+// view and actions use: the first without a milestone (or being created),
+// else the last; -1 without drafts.
 func planDraftIndex(list []aiv1.PlanDraft) int {
-	if i := slices.IndexFunc(list, func(d aiv1.PlanDraft) bool { return d.CreatedMilestoneIID == 0 }); i >= 0 {
+	if i := slices.IndexFunc(list, func(d aiv1.PlanDraft) bool { return d.CreatedMilestoneIID <= 0 }); i >= 0 {
 		return i
 	}
 	return len(list) - 1
@@ -145,17 +148,6 @@ func planDraft(pl *aiv1.AgentPlan) aiv1.PlanDraft {
 		return list[i]
 	}
 	return aiv1.PlanDraft{}
-}
-
-// writePlanDraft moves an old plan's draft into status.drafts and returns
-// the draft at planDraftIndex, added as a new key when there is none.
-func writePlanDraft(s *aiv1.AgentPlanStatus) *aiv1.PlanDraft {
-	s.MoveDrafts()
-	i := planDraftIndex(s.Drafts)
-	if i < 0 {
-		s.Drafts, i = append(s.Drafts, aiv1.PlanDraft{Key: s.NextDraftKey()}), len(s.Drafts)
-	}
-	return &s.Drafts[i]
 }
 
 // planDraftsLocked is why none of the plan's drafts may change: it failed, or
@@ -173,7 +165,16 @@ func planDraftsLocked(pl *aiv1.AgentPlan) string {
 
 // draftReadOnly is the 409 message for a change of the created draft d.
 func draftReadOnly(d aiv1.PlanDraft) string {
-	return fmt.Sprintf("the draft is created as %%%d and read-only", d.CreatedMilestoneIID)
+	return "the draft is " + draftCreated(d) + " and read-only"
+}
+
+// draftCreated says how far the draft d with a milestone IID is: "created as
+// %41", or "being created" while the UI server creates it (IID -1).
+func draftCreated(d aiv1.PlanDraft) string {
+	if d.CreatedMilestoneIID < 0 {
+		return "being created"
+	}
+	return fmt.Sprintf("created as %%%d", d.CreatedMilestoneIID)
 }
 
 // planTitleOK reports whether title, trimmed, is one line of at most
@@ -290,7 +291,7 @@ func (s *Server) planView(pl *aiv1.AgentPlan, steer bool) PlanView {
 	d, drafts := planDraft(pl), []PlanDraftView{}
 	for _, d := range pl.DraftList() {
 		drafts = append(drafts, PlanDraftView{Key: d.Key, Title: d.Title, Draft: d.Draft, Revision: d.Revision, By: d.By, SHA: d.SHA,
-			CreatedMilestoneIID: d.CreatedMilestoneIID, CreatedMilestoneURL: d.CreatedMilestoneURL})
+			CreatedMilestoneIID: max(d.CreatedMilestoneIID, 0), CreatedMilestoneURL: d.CreatedMilestoneURL, Creating: d.CreatedMilestoneIID < 0})
 	}
 	return PlanView{PlanListItem: s.planItem(pl, steer), Drafts: drafts, Draft: d.Draft, DraftRevision: d.Revision, DraftBy: d.By, DraftSHA: d.SHA,
 		Decisions: append([]aiv1.PlanDecision{}, pl.Status.Decisions...), DecisionsPending: planDecisionsPending(pl.Status.Decisions)}

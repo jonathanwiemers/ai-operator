@@ -51,10 +51,27 @@ func TestAgentPlanActiveDrafts(t *testing.T) {
 		"old claimed":           {AgentPlanStatus{Phase: AgentPlanCreated, Draft: "# Goal"}, false},
 		"claimed, none created": {AgentPlanStatus{Phase: AgentPlanCreated, Drafts: two(0, 0)}, false},
 		"old open":              {AgentPlanStatus{Phase: AgentPlanReady, Draft: "# Goal"}, true},
+		"last being created":    {AgentPlanStatus{Phase: AgentPlanIdle, Drafts: two(41, -1)}, true},
 	} {
 		p := &AgentPlan{Status: tc.st}
 		if got := p.Active(); got != tc.want {
 			t.Errorf("%s: Active() = %v, want %v", name, got, tc.want)
+		}
+	}
+}
+
+// A draft being created (IID -1) is not created yet.
+func TestAgentPlanAllDraftsCreated(t *testing.T) {
+	for _, tc := range []struct {
+		iids []int64
+		want bool
+	}{{nil, false}, {[]int64{41, 42}, true}, {[]int64{41, 0}, false}, {[]int64{41, -1}, false}} {
+		p := &AgentPlan{}
+		for i, iid := range tc.iids {
+			p.Status.Drafts = append(p.Status.Drafts, PlanDraft{Key: int64(i + 1), CreatedMilestoneIID: iid})
+		}
+		if got := p.AllDraftsCreated(); got != tc.want {
+			t.Errorf("%v: AllDraftsCreated() = %v, want %v", tc.iids, got, tc.want)
 		}
 	}
 }

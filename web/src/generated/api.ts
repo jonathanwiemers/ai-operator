@@ -235,6 +235,8 @@ export interface PlanDraft {
    */
   sha?: string;
   /**
+   * CreatedMilestoneIID is the draft's milestone; -1 while the UI server
+   * creates it.
    * +optional
    */
   createdMilestoneIID?: number /* int64 */;

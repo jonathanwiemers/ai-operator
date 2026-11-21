@@ -592,6 +592,9 @@ spec:
                       - owner
                       type: string
                     createdMilestoneIID:
+                      description: |-
+                        CreatedMilestoneIID is the draft's milestone; -1 while the UI server
+                        creates it.
                       format: int64
                       type: integer
                     createdMilestoneURL:

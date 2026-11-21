@@ -1423,6 +1423,11 @@ export interface PlanDraftView {
   sha?: string;
   createdMilestoneIID?: number /* int64 */;
   createdMilestoneURL?: string;
+  /**
+   * Creating: the draft's milestone is being created; the draft is not
+   * created yet but read-only.
+   */
+  creating?: boolean;
 }
 /**
  * PlanMilestone is where a plan's created milestone stands, from its row
