@@ -55,7 +55,7 @@ func (s *Server) estimate(w http.ResponseWriter, r *http.Request) {
 			notFound(w)
 			return
 		} else {
-			n = rules.CountRequirements(plans[i].Status.Draft)
+			n = rules.CountRequirements(planDraft(&plans[i]).Draft)
 		}
 	} else {
 		var tasks []aiv1.AgentTask

@@ -81,8 +81,48 @@ func (s *Server) planItem(pl *aiv1.AgentPlan, steer bool) PlanListItem {
 	return PlanListItem{Name: pl.Name, Namespace: pl.Namespace, Project: pl.Spec.ProjectRef, Title: cmp.Or(pl.Status.Title, pl.Spec.Title), Phase: pl.Status.Phase, CreatedBy: pl.Spec.CreatedBy,
 		CreatedAt: pl.CreationTimestamp.Time, LastActivityAt: last, SpendUSD: pl.Status.SpendUSD, Tokens: pl.Status.Tokens,
 		BudgetUSD: pl.BudgetUSD(s.cfg.Plan.MaxBudgetUSD), BudgetLimitUSD: s.cfg.Plan.MaxBudgetUSDLimit,
-		CreatedMilestoneIID: pl.Status.CreatedMilestoneIID, CreatedMilestoneURL: pl.Status.CreatedMilestoneURL,
+		CreatedMilestoneIID: pl.Status.CreatedMilestoneIID, CreatedMilestoneURL: createdMilestoneURL(pl),
 		Permissions: PlanPermissions{Steer: steer}}
+}
+
+// createdMilestoneURL is the URL of the plan's first created milestone, from
+// the draft that created it.
+func createdMilestoneURL(pl *aiv1.AgentPlan) string {
+	list := pl.DraftList()
+	if i := slices.IndexFunc(list, func(d aiv1.PlanDraft) bool { return d.CreatedMilestoneIID == pl.Status.CreatedMilestoneIID }); i >= 0 && pl.Status.CreatedMilestoneIID != 0 {
+		return list[i].CreatedMilestoneURL
+	}
+	return ""
+}
+
+// planDraftIndex is the index in list of the draft the plan's single-draft
+// view and actions use: the first without a milestone, else the last; -1
+// without drafts.
+func planDraftIndex(list []aiv1.PlanDraft) int {
+	if i := slices.IndexFunc(list, func(d aiv1.PlanDraft) bool { return d.CreatedMilestoneIID == 0 }); i >= 0 {
+		return i
+	}
+	return len(list) - 1
+}
+
+// planDraft is the draft at planDraftIndex, zero without drafts.
+func planDraft(pl *aiv1.AgentPlan) aiv1.PlanDraft {
+	list := pl.DraftList()
+	if i := planDraftIndex(list); i >= 0 {
+		return list[i]
+	}
+	return aiv1.PlanDraft{}
+}
+
+// writePlanDraft moves an old plan's draft into status.drafts and returns
+// the draft at planDraftIndex, added as a new key when there is none.
+func writePlanDraft(s *aiv1.AgentPlanStatus) *aiv1.PlanDraft {
+	s.MoveDrafts()
+	i := planDraftIndex(s.Drafts)
+	if i < 0 {
+		s.Drafts, i = append(s.Drafts, aiv1.PlanDraft{Key: s.NextDraftKey()}), len(s.Drafts)
+	}
+	return &s.Drafts[i]
 }
 
 // planOwner reports whether p may steer the project's plans: the steer grant
@@ -189,8 +229,8 @@ func (s *Server) setPlanMilestones(ctx context.Context, items []PlanListItem, vi
 }
 
 func (s *Server) planView(pl *aiv1.AgentPlan, steer bool) PlanView {
-	return PlanView{PlanListItem: s.planItem(pl, steer), Draft: pl.Status.Draft,
-		DraftRevision: pl.Status.DraftRevision, DraftBy: pl.Status.DraftBy, DraftSHA: pl.Status.DraftSHA,
+	d := planDraft(pl)
+	return PlanView{PlanListItem: s.planItem(pl, steer), Draft: d.Draft, DraftRevision: d.Revision, DraftBy: d.By, DraftSHA: d.SHA,
 		Decisions: append([]aiv1.PlanDecision{}, pl.Status.Decisions...), DecisionsPending: planDecisionsPending(pl.Status.Decisions)}
 }
 
@@ -369,17 +409,18 @@ func (s *Server) savePlanDraft(w http.ResponseWriter, r *http.Request) {
 	pl, ok := s.ownPlan(w, r, 8*maxPlanDraft, &req) // JSON escapes a byte in up to 6
 	switch {
 	case !ok:
-	case pl.Status.Phase == aiv1.AgentPlanCreated:
+	case pl.Status.Phase == aiv1.AgentPlanCreated || planDraft(pl).CreatedMilestoneIID != 0:
 		writeError(w, http.StatusConflict, "the plan has created its milestone")
 	case len(req.Draft) > maxPlanDraft:
 		fieldError(w, "draft", "the draft must be at most 64 KiB")
-	case pl.Status.DraftRevision != req.BaseRevision:
+	case planDraft(pl).Revision != req.BaseRevision:
 		writeJSON(w, http.StatusConflict, s.planView(pl, true))
 	default:
 		base := pl.DeepCopy()
-		pl.Status.Draft, pl.Status.DraftRevision, pl.Status.DraftBy = req.Draft, req.BaseRevision+1, "owner"
+		d := writePlanDraft(&pl.Status)
+		d.Draft, d.Revision, d.By = req.Draft, req.BaseRevision+1, "owner"
 		err := s.writer.Status().Patch(r.Context(), pl, client.MergeFromWithOptions(base, client.MergeFromWithOptimisticLock{}))
-		s.planPatched(w, r, pl, err, "plan.draft", "revision", pl.Status.DraftRevision)
+		s.planPatched(w, r, pl, err, "plan.draft", "key", d.Key, "revision", d.Revision)
 	}
 }
 

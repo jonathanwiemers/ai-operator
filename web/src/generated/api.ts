@@ -79,8 +79,8 @@ export const AgentPlanIdle: AgentPlanPhase = "Idle";
 export const AgentPlanCreated: AgentPlanPhase = "Created";
 export const AgentPlanFailed: AgentPlanPhase = "Failed";
 /**
- * AgentPlanStatus is the plan's draft, its milestone once created, and its
- * spend.
+ * AgentPlanStatus is the plan's drafts, their milestones once created, and
+ * its spend.
  */
 export interface AgentPlanStatus {
   /**
@@ -99,32 +99,56 @@ export interface AgentPlanStatus {
    */
   title?: string;
   /**
+   * Drafts are the plan's milestone drafts, in the order their milestones
+   * are created.
+   * +optional
+   * +listType=atomic
+   * +kubebuilder:validation:MaxItems=5
+   */
+  drafts?: PlanDraft[];
+  /**
+   * DraftSeq is the highest draft key ever given, so a removed draft's key
+   * is never reused.
+   * +optional
+   * +kubebuilder:validation:Minimum=0
+   */
+  draftSeq?: number /* int64 */;
+  /**
    * Draft is the milestone description in markdown.
+   * Deprecated: the single draft of a plan from before Drafts; MoveDrafts
+   * moves it to key 1.
    * +optional
    * +kubebuilder:validation:MaxLength=65536
    */
   draft?: string;
   /**
    * DraftRevision counts the draft's versions, by agent or owner.
+   * Deprecated: see Draft.
    * +optional
    */
   draftRevision?: number /* int64 */;
   /**
    * DraftBy is who wrote the current draft.
+   * Deprecated: see Draft.
    * +optional
    * +kubebuilder:validation:Enum=agent;owner
    */
   draftBy?: string;
   /**
    * DraftSHA is the default branch SHA the agent read for the draft.
+   * Deprecated: see Draft.
    * +optional
    */
   draftSHA?: string;
   /**
+   * CreatedMilestoneIID is the first milestone created from the plan, for
+   * the printer column.
    * +optional
    */
   createdMilestoneIID?: number /* int64 */;
   /**
+   * CreatedMilestoneURL is the created milestone's web URL.
+   * Deprecated: see Draft; each draft holds its own.
    * +optional
    */
   createdMilestoneURL?: string;
@@ -173,6 +197,51 @@ export interface AgentPlanStatus {
    * +kubebuilder:validation:Minimum=0
    */
   decisionSeq?: number /* int32 */;
+}
+/**
+ * PlanDraft is one milestone draft of a plan.
+ */
+export interface PlanDraft {
+  /**
+   * Key identifies the draft within the plan; it is never reused.
+   * +kubebuilder:validation:Minimum=1
+   */
+  key: number /* int64 */;
+  /**
+   * +optional
+   * +kubebuilder:validation:MaxLength=255
+   */
+  title?: string;
+  /**
+   * Draft is the milestone description in markdown.
+   * +optional
+   * +kubebuilder:validation:MaxLength=65536
+   */
+  draft?: string;
+  /**
+   * Revision counts the draft's versions, by agent or owner.
+   * +optional
+   */
+  revision?: number /* int64 */;
+  /**
+   * By is who wrote the current version.
+   * +optional
+   * +kubebuilder:validation:Enum=agent;owner
+   */
+  by?: string;
+  /**
+   * SHA is the default branch SHA the agent read for the draft.
+   * +optional
+   */
+  sha?: string;
+  /**
+   * +optional
+   */
+  createdMilestoneIID?: number /* int64 */;
+  /**
+   * +optional
+   */
+  createdMilestoneURL?: string;
 }
 /**
  * PlanDecision is one decision of a plan, at its current version.

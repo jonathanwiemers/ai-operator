@@ -59,7 +59,7 @@ func TestSavePlanDraft(t *testing.T) {
 		t.Errorf("view: %+v", got)
 	}
 	pl := env.getPlan(t, "shop-plan-new")
-	if s := pl.Status; s.Draft != got.Draft || s.DraftRevision != 1 || s.DraftBy != "owner" || s.Phase != aiv1.AgentPlanIdle {
+	if s, d := pl.Status, planDraft(pl); d.Draft != got.Draft || d.Revision != 1 || d.By != "owner" || d.Key != 1 || s.DraftSeq != 1 || s.Phase != aiv1.AgentPlanIdle {
 		t.Errorf("status: %+v", s)
 	}
 
@@ -74,7 +74,7 @@ func TestSavePlanDraft(t *testing.T) {
 	if stale.Draft != "## Goal\n\nSecond." || stale.DraftRevision != 2 || stale.Name != "shop-plan-new" {
 		t.Errorf("stale answer is not the current view: %+v", stale)
 	}
-	if s := env.getPlan(t, "shop-plan-new").Status; s.Draft != "## Goal\n\nSecond." || s.DraftRevision != 2 {
+	if s := planDraft(env.getPlan(t, "shop-plan-new")); s.Draft != "## Goal\n\nSecond." || s.Revision != 2 {
 		t.Errorf("stale edit saved: %+v", s)
 	}
 }
@@ -98,7 +98,7 @@ func TestSavePlanDraftRefused(t *testing.T) {
 	if code := env.send(t, http.MethodPut, shopPlans+"/nope/draft", draftEdit{0, "x"}, nil); code != http.StatusNotFound {
 		t.Errorf("unknown plan: %d", code)
 	}
-	if s := env.getPlan(t, "shop-plan-old").Status; s.Draft != "# Refunds" || s.DraftRevision != 4 {
+	if s := planDraft(env.getPlan(t, "shop-plan-old")); s.Draft != "# Refunds" || s.Revision != 4 {
 		t.Errorf("created plan changed: %+v", s)
 	}
 }
@@ -110,7 +110,7 @@ func TestSavePlanDraftResourceVersionConflict(t *testing.T) {
 	writer := interceptor.NewClient(env.reader.(client.WithWatch), interceptor.Funcs{
 		SubResourcePatch: func(ctx context.Context, c client.Client, sub string, obj client.Object, patch client.Patch, opts ...client.SubResourcePatchOption) error {
 			agent := env.getPlan(t, obj.GetName())
-			agent.Status.Draft, agent.Status.DraftRevision, agent.Status.DraftBy = "## Agent", 1, "agent"
+			agent.Status.Drafts, agent.Status.DraftSeq = []aiv1.PlanDraft{{Key: 1, Draft: "## Agent", Revision: 1, By: "agent"}}, 1
 			if err := c.Status().Update(ctx, agent); err != nil {
 				t.Fatal(err)
 			}
@@ -125,7 +125,7 @@ func TestSavePlanDraftResourceVersionConflict(t *testing.T) {
 	if got.Draft != "## Agent" || got.DraftRevision != 1 || got.DraftBy != "agent" {
 		t.Errorf("view: %+v", got)
 	}
-	if s := env.getPlan(t, "shop-plan-new").Status; s.Draft != "## Agent" {
+	if s := planDraft(env.getPlan(t, "shop-plan-new")); s.Draft != "## Agent" {
 		t.Errorf("owner's edit overwrote the agent's: %+v", s)
 	}
 }
@@ -191,7 +191,7 @@ func TestPlanEditAccess(t *testing.T) {
 			if code := env.send(t, http.MethodPost, shopPlans+"/shop-plan-new/budget", map[string]string{"maxBudgetUSD": "6"}, nil); code != tc.want {
 				t.Errorf("budget: %d, want %d", code, tc.want)
 			}
-			if pl := env.getPlan(t, "shop-plan-new"); pl.Status.DraftRevision != 0 || pl.Spec.MaxBudgetUSD != "" {
+			if pl := env.getPlan(t, "shop-plan-new"); len(pl.DraftList()) != 0 || pl.Spec.MaxBudgetUSD != "" {
 				t.Errorf("plan changed: %+v %+v", pl.Spec, pl.Status)
 			}
 		})

@@ -1,6 +1,8 @@
 package v1alpha1
 
 import (
+	"slices"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -40,8 +42,8 @@ const (
 	AgentPlanFailed   AgentPlanPhase = "Failed"
 )
 
-// AgentPlanStatus is the plan's draft, its milestone once created, and its
-// spend.
+// AgentPlanStatus is the plan's drafts, their milestones once created, and
+// its spend.
 type AgentPlanStatus struct {
 	// +optional
 	Phase AgentPlanPhase `json:"phase,omitempty"`
@@ -52,22 +54,47 @@ type AgentPlanStatus struct {
 	// +optional
 	// +kubebuilder:validation:MaxLength=255
 	Title string `json:"title,omitempty"`
+	// Drafts are the plan's milestone drafts, in the order their milestones
+	// are created.
+	// +optional
+	// +listType=atomic
+	// +kubebuilder:validation:MaxItems=5
+	Drafts []PlanDraft `json:"drafts,omitempty"`
+	// DraftSeq is the highest draft key ever given, so a removed draft's key
+	// is never reused.
+	// +optional
+	// +kubebuilder:validation:Minimum=0
+	DraftSeq int64 `json:"draftSeq,omitempty"`
 	// Draft is the milestone description in markdown.
+	//
+	// Deprecated: the single draft of a plan from before Drafts; MoveDrafts
+	// moves it to key 1.
 	// +optional
 	// +kubebuilder:validation:MaxLength=65536
 	Draft string `json:"draft,omitempty"`
 	// DraftRevision counts the draft's versions, by agent or owner.
+	//
+	// Deprecated: see Draft.
 	// +optional
 	DraftRevision int64 `json:"draftRevision,omitempty"`
 	// DraftBy is who wrote the current draft.
+	//
+	// Deprecated: see Draft.
 	// +optional
 	// +kubebuilder:validation:Enum=agent;owner
 	DraftBy string `json:"draftBy,omitempty"`
 	// DraftSHA is the default branch SHA the agent read for the draft.
+	//
+	// Deprecated: see Draft.
 	// +optional
 	DraftSHA string `json:"draftSHA,omitempty"`
+	// CreatedMilestoneIID is the first milestone created from the plan, for
+	// the printer column.
 	// +optional
 	CreatedMilestoneIID int64 `json:"createdMilestoneIID,omitempty"`
+	// CreatedMilestoneURL is the created milestone's web URL.
+	//
+	// Deprecated: see Draft; each draft holds its own.
 	// +optional
 	CreatedMilestoneURL string `json:"createdMilestoneURL,omitempty"`
 	// SpendUSD is the plan's model spend as a decimal string (4 decimals).
@@ -99,6 +126,34 @@ type AgentPlanStatus struct {
 	// +optional
 	// +kubebuilder:validation:Minimum=0
 	DecisionSeq int32 `json:"decisionSeq,omitempty"`
+}
+
+// PlanDraft is one milestone draft of a plan.
+type PlanDraft struct {
+	// Key identifies the draft within the plan; it is never reused.
+	// +kubebuilder:validation:Minimum=1
+	Key int64 `json:"key"`
+	// +optional
+	// +kubebuilder:validation:MaxLength=255
+	Title string `json:"title,omitempty"`
+	// Draft is the milestone description in markdown.
+	// +optional
+	// +kubebuilder:validation:MaxLength=65536
+	Draft string `json:"draft,omitempty"`
+	// Revision counts the draft's versions, by agent or owner.
+	// +optional
+	Revision int64 `json:"revision,omitempty"`
+	// By is who wrote the current version.
+	// +optional
+	// +kubebuilder:validation:Enum=agent;owner
+	By string `json:"by,omitempty"`
+	// SHA is the default branch SHA the agent read for the draft.
+	// +optional
+	SHA string `json:"sha,omitempty"`
+	// +optional
+	CreatedMilestoneIID int64 `json:"createdMilestoneIID,omitempty"`
+	// +optional
+	CreatedMilestoneURL string `json:"createdMilestoneURL,omitempty"`
 }
 
 // PlanDecision is one decision of a plan, at its current version.
@@ -202,8 +257,70 @@ func (p *AgentPlan) BudgetUSD(def string) string {
 	return def
 }
 
-// Active reports whether the plan may still take turns: it has neither
-// created its milestone nor failed.
+// Active reports whether the plan may still take turns: it has not failed,
+// and its phase is not Created, or some of its drafts have milestones and
+// others not yet. A Created plan without any created draft is claiming its
+// first milestone (or lost the record of it) and is not active.
 func (p *AgentPlan) Active() bool {
-	return p.Status.Phase != AgentPlanCreated && p.Status.Phase != AgentPlanFailed
+	switch p.Status.Phase {
+	case AgentPlanFailed:
+		return false
+	case AgentPlanCreated:
+		list := p.DraftList()
+		return slices.ContainsFunc(list, func(d PlanDraft) bool { return d.CreatedMilestoneIID != 0 }) && !p.AllDraftsCreated()
+	}
+	return true
+}
+
+// DraftList is the plan's drafts: status.drafts, else the single draft of a
+// plan from before them as key 1, when it has text or a created milestone.
+func (p *AgentPlan) DraftList() []PlanDraft {
+	if len(p.Status.Drafts) > 0 {
+		return p.Status.Drafts
+	}
+	if d, ok := p.Status.oldDraft(); ok {
+		return []PlanDraft{d}
+	}
+	return nil
+}
+
+// AllDraftsCreated reports whether every draft has its milestone; false
+// without drafts.
+func (p *AgentPlan) AllDraftsCreated() bool {
+	list := p.DraftList()
+	return len(list) > 0 && !slices.ContainsFunc(list, func(d PlanDraft) bool { return d.CreatedMilestoneIID == 0 })
+}
+
+// oldDraft is the single draft of a plan from before Drafts as key 1, and
+// whether there is one.
+func (s *AgentPlanStatus) oldDraft() (PlanDraft, bool) {
+	return PlanDraft{Key: 1, Title: s.Title, Draft: s.Draft, Revision: s.DraftRevision, By: s.DraftBy, SHA: s.DraftSHA,
+		CreatedMilestoneIID: s.CreatedMilestoneIID, CreatedMilestoneURL: s.CreatedMilestoneURL}, s.Draft != "" || s.CreatedMilestoneIID != 0
+}
+
+// MoveDrafts moves the single draft of a plan from before Drafts to key 1
+// and clears the deprecated fields, all but CreatedMilestoneIID. Every
+// writer of a draft calls it first; a no-op once Drafts is used.
+func (s *AgentPlanStatus) MoveDrafts() {
+	d, ok := s.oldDraft()
+	if len(s.Drafts) > 0 || !ok {
+		return
+	}
+	s.Drafts, s.DraftSeq = []PlanDraft{d}, max(s.DraftSeq, 1)
+	s.Draft, s.DraftRevision, s.DraftBy, s.DraftSHA, s.CreatedMilestoneURL = "", 0, "", "", ""
+}
+
+// NextDraftKey gives out the next draft key, one above every key given so
+// far, and records it in DraftSeq.
+func (s *AgentPlanStatus) NextDraftKey() int64 {
+	for _, d := range s.Drafts {
+		s.DraftSeq = max(s.DraftSeq, d.Key)
+	}
+	s.DraftSeq++
+	return s.DraftSeq
+}
+
+// DraftIndex is the index of the draft with key in Drafts, -1 without one.
+func (s *AgentPlanStatus) DraftIndex(key int64) int {
+	return slices.IndexFunc(s.Drafts, func(d PlanDraft) bool { return d.Key == key })
 }

@@ -171,8 +171,8 @@ spec:
             type: object
           status:
             description: |-
-              AgentPlanStatus is the plan's draft, its milestone once created, and its
-              spend.
+              AgentPlanStatus is the plan's drafts, their milestones once created, and
+              its spend.
             properties:
               calls:
                 description: Calls are the plan's engine calls, newest last.
@@ -433,9 +433,16 @@ spec:
                     type: array
                 type: object
               createdMilestoneIID:
+                description: |-
+                  CreatedMilestoneIID is the first milestone created from the plan, for
+                  the printer column.
                 format: int64
                 type: integer
               createdMilestoneURL:
+                description: |-
+                  CreatedMilestoneURL is the created milestone's web URL.
+
+                  Deprecated: see Draft; each draft holds its own.
                 type: string
               decisionSeq:
                 description: |-
@@ -535,24 +542,88 @@ spec:
                 type: array
                 x-kubernetes-list-type: atomic
               draft:
-                description: Draft is the milestone description in markdown.
+                description: |-
+                  Draft is the milestone description in markdown.
+
+                  Deprecated: the single draft of a plan from before Drafts; MoveDrafts
+                  moves it to key 1.
                 maxLength: 65536
                 type: string
               draftBy:
-                description: DraftBy is who wrote the current draft.
+                description: |-
+                  DraftBy is who wrote the current draft.
+
+                  Deprecated: see Draft.
                 enum:
                 - agent
                 - owner
                 type: string
               draftRevision:
-                description: DraftRevision counts the draft's versions, by agent or
-                  owner.
+                description: |-
+                  DraftRevision counts the draft's versions, by agent or owner.
+
+                  Deprecated: see Draft.
                 format: int64
                 type: integer
               draftSHA:
-                description: DraftSHA is the default branch SHA the agent read for
-                  the draft.
+                description: |-
+                  DraftSHA is the default branch SHA the agent read for the draft.
+
+                  Deprecated: see Draft.
                 type: string
+              draftSeq:
+                description: |-
+                  DraftSeq is the highest draft key ever given, so a removed draft's key
+                  is never reused.
+                format: int64
+                minimum: 0
+                type: integer
+              drafts:
+                description: |-
+                  Drafts are the plan's milestone drafts, in the order their milestones
+                  are created.
+                items:
+                  description: PlanDraft is one milestone draft of a plan.
+                  properties:
+                    by:
+                      description: By is who wrote the current version.
+                      enum:
+                      - agent
+                      - owner
+                      type: string
+                    createdMilestoneIID:
+                      format: int64
+                      type: integer
+                    createdMilestoneURL:
+                      type: string
+                    draft:
+                      description: Draft is the milestone description in markdown.
+                      maxLength: 65536
+                      type: string
+                    key:
+                      description: Key identifies the draft within the plan; it is
+                        never reused.
+                      format: int64
+                      minimum: 1
+                      type: integer
+                    revision:
+                      description: Revision counts the draft's versions, by agent
+                        or owner.
+                      format: int64
+                      type: integer
+                    sha:
+                      description: SHA is the default branch SHA the agent read for
+                        the draft.
+                      type: string
+                    title:
+                      maxLength: 255
+                      type: string
+                  required:
+                  - key
+                  type: object
+                maxItems: 5
+                type: array
+                x-kubernetes-list-type: atomic
               message:
                 type: string
               phase:

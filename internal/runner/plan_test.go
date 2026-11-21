@@ -92,7 +92,12 @@ func (e *planEnv) turn(t *testing.T, id int64, text string) *aiv1.AgentPlan {
 func (e *planEnv) ownerSave(t *testing.T, draft string) {
 	t.Helper()
 	p := e.plan(t)
-	p.Status.Draft, p.Status.DraftRevision, p.Status.DraftBy = draft, p.Status.DraftRevision+1, "owner"
+	p.Status.MoveDrafts()
+	if len(p.Status.Drafts) == 0 {
+		p.Status.Drafts = []aiv1.PlanDraft{{Key: p.Status.NextDraftKey()}}
+	}
+	d := &p.Status.Drafts[0]
+	d.Draft, d.Revision, d.By = draft, d.Revision+1, "owner"
 	if err := e.k8s.Status().Update(context.Background(), p); err != nil {
 		t.Fatal(err)
 	}
@@ -118,9 +123,9 @@ func TestPlanTurnWritesReplyAndDraft(t *testing.T) {
 	if rep.Text != "Which page?" || rep.Error != "" {
 		t.Fatalf("reply: %+v", rep)
 	}
-	s := p.Status
-	if s.Draft != "## Goal\n\nShow the version." || s.DraftRevision != 1 || s.DraftBy != "agent" || s.DraftSHA != e.mainSHA {
-		t.Fatalf("draft: %q rev %d by %q sha %q (main %s)", s.Draft, s.DraftRevision, s.DraftBy, s.DraftSHA, e.mainSHA)
+	s, d := p.Status, firstPlanDraft(p)
+	if d.Draft != "## Goal\n\nShow the version." || d.Revision != 1 || d.By != "agent" || d.SHA != e.mainSHA {
+		t.Fatalf("draft: %q rev %d by %q sha %q (main %s)", d.Draft, d.Revision, d.By, d.SHA, e.mainSHA)
 	}
 	if s.Phase != aiv1.AgentPlanReady || s.Chat.LastTurnTime == nil {
 		t.Fatalf("phase %s, lastTurnTime %v", s.Phase, s.Chat.LastTurnTime)
@@ -153,8 +158,8 @@ func TestPlanTurnResumesStoredSession(t *testing.T) {
 	if inv.Resume != "sess-plan-1" || strings.Contains(inv.Prompt, "The plan's title") {
 		t.Fatalf("second turn: resume %q, prompt:\n%s", inv.Resume, inv.Prompt)
 	}
-	if p.Status.DraftRevision != 1 {
-		t.Fatalf("an unchanged draft is no new revision: %d", p.Status.DraftRevision)
+	if firstPlanDraft(p).Revision != 1 {
+		t.Fatalf("an unchanged draft is no new revision: %d", firstPlanDraft(p).Revision)
 	}
 }
 
@@ -171,7 +176,7 @@ func TestPlanTurnRelaysOwnerEditOnce(t *testing.T) {
 	if strings.Contains(e.engine.calls[1].Prompt, "The owner edited the draft") {
 		t.Fatalf("second turn relays the edit again:\n%s", e.engine.calls[1].Prompt)
 	}
-	if p.Status.Draft != "## Goal\n\nOwner's words." || p.Status.DraftBy != "owner" || p.Status.DraftRevision != 1 {
+	if d := firstPlanDraft(p); d.Draft != "## Goal\n\nOwner's words." || d.By != "owner" || d.Revision != 1 {
 		t.Fatalf("an empty agent draft keeps the owner's: %+v", p.Status)
 	}
 }
@@ -184,7 +189,7 @@ func TestPlanTurnOwnerSaveDuringTurnWins(t *testing.T) {
 	}
 	p := e.turn(t, 10, "draft it")
 
-	if p.Status.Draft != "## Goal\n\nOwner's words." || p.Status.DraftBy != "owner" || p.Status.DraftRevision != 1 {
+	if d := firstPlanDraft(p); d.Draft != "## Goal\n\nOwner's words." || d.By != "owner" || d.Revision != 1 {
 		t.Fatalf("the owner's save was overwritten: %+v", p.Status)
 	}
 	if rep := lastReply(t, p, 10); rep.Text != "Here is a draft.\n\n"+planDraftKept {
@@ -194,6 +199,30 @@ func TestPlanTurnOwnerSaveDuringTurnWins(t *testing.T) {
 	e.turn(t, 11, "go on")
 	if !strings.Contains(e.engine.calls[1].Prompt, "The owner edited the draft; it is now:\n\n## Goal\n\nOwner's words.") {
 		t.Fatalf("next turn lacks the owner's draft:\n%s", e.engine.calls[1].Prompt)
+	}
+}
+
+// A plan from before status.drafts: its single draft is the agent's draft
+// 1, relayed as the owner's edit, and the turn moves it to key 1.
+func TestPlanTurnMovesOldDraft(t *testing.T) {
+	e := newPlanEnv(t, planAnswer("s", "Saw it.", ""), planAnswer("s", "Updated.", "## Goal\n\nAgent's words."))
+	p := e.plan(t)
+	p.Status.Draft, p.Status.DraftRevision, p.Status.DraftBy, p.Status.DraftSHA = "## Goal\n\nOld words.", 3, "owner", "abc"
+	if err := e.k8s.Status().Update(context.Background(), p); err != nil {
+		t.Fatal(err)
+	}
+	p = e.turn(t, 10, "look at it")
+	if !strings.Contains(e.engine.calls[0].Prompt, "The owner edited the draft; it is now:\n\n## Goal\n\nOld words.") {
+		t.Fatalf("the old draft is not relayed:\n%s", e.engine.calls[0].Prompt)
+	}
+	s := p.Status
+	if len(s.Drafts) != 1 || s.Drafts[0].Key != 1 || s.Drafts[0].Draft != "## Goal\n\nOld words." || s.Drafts[0].Revision != 3 || s.DraftSeq != 1 ||
+		s.Draft != "" || s.DraftRevision != 0 || s.DraftBy != "" || s.DraftSHA != "" {
+		t.Fatalf("not moved to key 1: %+v", s)
+	}
+	p = e.turn(t, 11, "now write it")
+	if d := p.Status.Drafts; len(d) != 1 || d[0].Key != 1 || d[0].Draft != "## Goal\n\nAgent's words." || d[0].Revision != 4 || d[0].By != "agent" || d[0].SHA != e.mainSHA {
+		t.Fatalf("the agent's draft is not applied to key 1: %+v", d)
 	}
 }
 
@@ -207,7 +236,7 @@ func TestPlanTurnInvalidAnswer(t *testing.T) {
 	if rep.Error != "the agent's answer was not valid" || rep.Text != "I think the draft should" {
 		t.Fatalf("reply: %+v", rep)
 	}
-	if p.Status.Draft != "" || p.Status.DraftRevision != 0 || p.Status.Phase != aiv1.AgentPlanReady {
+	if len(p.Status.Drafts) != 0 || p.Status.Draft != "" || p.Status.Phase != aiv1.AgentPlanReady {
 		t.Fatalf("status: %+v", p.Status)
 	}
 }

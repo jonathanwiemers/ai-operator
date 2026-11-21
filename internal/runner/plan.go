@@ -102,22 +102,31 @@ func (p *PlanRun) turn(ctx context.Context, plan *aiv1.AgentPlan, project *aiv1.
 	} else if ctx.Err() != nil {
 		return ctx.Err() // the pod stops: still in flight
 	}
-	base, draft, title := plan.Status.DraftRevision, strings.TrimSpace(out.Draft), planTitleFrom(out.Title)
+	base, draft, title := firstPlanDraft(plan).Revision, strings.TrimSpace(out.Draft), planTitleFrom(out.Title)
 	answers := msg.Decisions
 	if errStr != "" {
 		answers = nil // a failed or interrupted turn applies no answers: the owner sends them again
 	}
 	return p.answer(ctx, &st, func(s *aiv1.AgentPlanStatus) []aiv1.ChatReply {
 		text, refused := textutil.Truncate(prose(out.Reply), maxChatReplyBytes-128), true
+		s.MoveDrafts()
+		var cur aiv1.PlanDraft
+		if len(s.Drafts) > 0 {
+			cur = s.Drafts[0]
+		}
 		switch {
-		case draft == "" || draft == s.Draft:
+		case draft == "" || draft == cur.Draft:
 			refused = false
-		case s.DraftRevision != base:
+		case cur.Revision != base:
 			text += "\n\n" + planDraftKept
 		case len(draft) > maxPlanDraft:
 			text += "\n\n" + planDraftLarge
 		default:
-			s.Draft, s.DraftRevision, s.DraftBy, s.DraftSHA, refused = draft, base+1, "agent", sha, false
+			if len(s.Drafts) == 0 {
+				s.Drafts = []aiv1.PlanDraft{{Key: s.NextDraftKey()}}
+			}
+			d := &s.Drafts[0]
+			d.Draft, d.Revision, d.By, d.SHA, d.Title, refused = draft, base+1, "agent", sha, cmp.Or(title, d.Title), false
 		}
 		// The list follows the draft: not applied when the draft was refused.
 		// The owner's keeps sign off even when the list is not applied.
@@ -256,13 +265,14 @@ func (p *PlanRun) ask(ctx context.Context, st *state, plan *aiv1.AgentPlan, spec
 	if err != nil {
 		p.Log.Info("plan turn without the GitLab context", "error", err.Error())
 	}
-	role, rev := spec.Agents.Spec, plan.Status.DraftRevision
+	role, cur := spec.Agents.Spec, firstPlanDraft(plan)
+	rev := cur.Revision
 	inv := roleInvocation(role, planSystemPrompt, planTools, planTurnSchema, true)
 	inv.Role, inv.Kind, inv.Resume, inv.LogPrompt = "plan", aiv1.CallKindPlan, st.session("plan", role.Engine), spec.Agents.LogPrompts
 	inv.Prompt = buildPlanPrompt(planTurnInput{Message: msg.Text, Refs: planRefList(refs, milestones), Branch: proj.DefaultBranch, SHA: sha, GitLab: gl,
-		FirstTurn: inv.Resume == "", Title: plan.Spec.Title, Draft: plan.Status.Draft,
+		FirstTurn: inv.Resume == "", Title: plan.Spec.Title, Draft: cur.Draft,
 		Untitled:   plan.Spec.Title == "" && plan.Status.Title == "",
-		Edited:     plan.Status.DraftBy == "owner" && rev > st.PlanSeenRevision,
+		Edited:     cur.By == "owner" && rev > st.PlanSeenRevision,
 		MaxMRLines: spec.MaxMRLines(), Constraints: spec.HouseConstraints(),
 		DecisionIDs: planDecisionIDs(plan.Status.Decisions), NextDecisionID: int(plan.Status.DecisionSeq) + 1,
 		Answers: msg.Decisions, Decisions: plan.Status.Decisions})
@@ -298,6 +308,15 @@ func (p *PlanRun) ask(ctx context.Context, st *state, plan *aiv1.AgentPlan, spec
 	}
 	st.PlanSeenRevision = rev
 	return t, sha, call, ""
+}
+
+// firstPlanDraft is the plan's first draft, the one the agent's single draft
+// goes to; zero without one.
+func firstPlanDraft(plan *aiv1.AgentPlan) aiv1.PlanDraft {
+	if list := plan.DraftList(); len(list) > 0 {
+		return list[0]
+	}
+	return aiv1.PlanDraft{}
 }
 
 // addPlanCall appends c to the plan's calls, bounded as a run's are, and

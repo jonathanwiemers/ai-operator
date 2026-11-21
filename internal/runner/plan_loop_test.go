@@ -91,7 +91,7 @@ func TestPlanInterruptCancelsTurn(t *testing.T) {
 	if rep, ok := replyFor(p, 11); !ok || rep.Error != "" || rep.Text != "" {
 		t.Fatalf("interrupt message: %+v (answered %v)", rep, ok)
 	}
-	if p.Status.Phase != aiv1.AgentPlanReady || p.Status.DraftRevision != 0 {
+	if p.Status.Phase != aiv1.AgentPlanReady || len(p.DraftList()) != 0 {
 		t.Fatalf("status: %+v", p.Status)
 	}
 	st := savedState(t, e.run.Runner)
@@ -121,8 +121,8 @@ func TestPlanLateInterruptChangesNothing(t *testing.T) {
 	if rep, ok := replyFor(p, 11); !ok || rep.Error != "" || rep.Text != "" {
 		t.Fatalf("interrupt message: %+v (answered %v)", rep, ok)
 	}
-	if p.Status.DraftRevision != 1 || len(e.engine.calls) != 1 {
-		t.Fatalf("draft revision %d, engine calls %d", p.Status.DraftRevision, len(e.engine.calls))
+	if firstPlanDraft(p).Revision != 1 || len(e.engine.calls) != 1 {
+		t.Fatalf("draft revision %d, engine calls %d", firstPlanDraft(p).Revision, len(e.engine.calls))
 	}
 }
 

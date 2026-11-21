@@ -87,10 +87,11 @@ func TestPlanMilestone(t *testing.T) {
 			if got := fake.Milestones[0]; got.Title != "Refunds" || got.Description != want {
 				t.Errorf("created %q with\n%s\nwant\n%s", got.Title, got.Description, want)
 			}
-			st := env.getPlan(t, "shop-plan-new").Status
-			if st.Phase != aiv1.AgentPlanCreated || st.CreatedMilestoneIID != 1 || st.CreatedMilestoneURL != url ||
-				st.Draft != "## Goal\n\nRefunds.\n/agent owners @mallory" || st.DraftRevision != 1 || st.DraftBy != "owner" ||
-				st.Title != "Refunds" {
+			pl := env.getPlan(t, "shop-plan-new")
+			st, d := pl.Status, planDraft(pl)
+			if st.Phase != aiv1.AgentPlanCreated || st.CreatedMilestoneIID != 1 || d.CreatedMilestoneIID != 1 || d.CreatedMilestoneURL != url ||
+				d.Draft != "## Goal\n\nRefunds.\n/agent owners @mallory" || d.Revision != 1 || d.By != "owner" || d.Key != 1 ||
+				st.Title != "Refunds" || d.Title != "Refunds" || pl.Active() {
 				t.Errorf("status: %+v", st)
 			}
 			logMu.Lock()
@@ -213,7 +214,7 @@ func TestPlanMilestoneGitLabRefuses(t *testing.T) {
 			t.Errorf("a rejected token asks to connect again: %v", out)
 		}
 		// The plan stays usable.
-		if st := env.getPlan(t, "shop-plan-new").Status; st.Phase != aiv1.AgentPlanIdle || st.CreatedMilestoneIID != 0 || st.DraftRevision != 0 ||
+		if st := env.getPlan(t, "shop-plan-new").Status; st.Phase != aiv1.AgentPlanIdle || st.CreatedMilestoneIID != 0 || len(st.Drafts) != 0 ||
 			st.Title != "Refunds by the agent" {
 			t.Errorf("GitLab %d: status %+v", c.gitlab, st)
 		}
@@ -226,5 +227,41 @@ func TestPlanMilestoneGitLabRefuses(t *testing.T) {
 	}
 	if st := env.getPlan(t, "shop-plan-new").Status; st.Title != "Refunds" {
 		t.Errorf("the milestone's title settles the agent's: %q", st.Title)
+	}
+}
+
+// A plan from before status.drafts shows its single draft, and the first
+// write moves it to key 1: the deprecated fields are empty after the edit,
+// and the milestone is recorded on key 1.
+func TestPlanOldDraftEditAndCreate(t *testing.T) {
+	env, _ := planSteerer(t)
+	pl := env.getPlan(t, "shop-plan-new")
+	pl.Status.Draft, pl.Status.DraftRevision, pl.Status.DraftBy, pl.Status.DraftSHA = "## Old", 2, "agent", "abc"
+	if err := env.reader.Status().Update(context.Background(), pl); err != nil {
+		t.Fatal(err)
+	}
+	var v PlanView
+	if code := env.get(t, shopPlans+"/shop-plan-new", &v); code != http.StatusOK || v.Draft != "## Old" || v.DraftRevision != 2 || v.DraftBy != "agent" || v.DraftSHA != "abc" {
+		t.Fatalf("view: %d %+v", code, v)
+	}
+	if code := env.send(t, http.MethodPut, newDraft, draftEdit{2, "## Owner"}, &v); code != http.StatusOK || v.Draft != "## Owner" || v.DraftRevision != 3 {
+		t.Fatalf("edit: %d %+v", code, v)
+	}
+	st := env.getPlan(t, "shop-plan-new").Status
+	want := []aiv1.PlanDraft{{Key: 1, Draft: "## Owner", Revision: 3, By: "owner", SHA: "abc"}}
+	if !slices.Equal(st.Drafts, want) || st.DraftSeq != 1 || st.Draft != "" || st.DraftRevision != 0 || st.DraftBy != "" || st.DraftSHA != "" {
+		t.Fatalf("not moved to key 1: %+v", st)
+	}
+	if code, out := env.postJSON(t, newPlanMilestone, planMilestoneBody(true, true)); code != http.StatusCreated {
+		t.Fatalf("create: %d %v", code, out)
+	}
+	url := env.server.cfg.GitLab.URL + "/acme/shop/-/milestones/1"
+	st = env.getPlan(t, "shop-plan-new").Status
+	if d := st.Drafts; len(d) != 1 || d[0].Key != 1 || d[0].CreatedMilestoneIID != 1 || d[0].CreatedMilestoneURL != url || d[0].Revision != 4 ||
+		st.CreatedMilestoneIID != 1 || st.CreatedMilestoneURL != "" {
+		t.Fatalf("milestone not on key 1: %+v", st)
+	}
+	if code := env.get(t, shopPlans+"/shop-plan-new", &v); code != http.StatusOK || v.CreatedMilestoneIID != 1 || v.CreatedMilestoneURL != url {
+		t.Fatalf("view after create: %d %+v", code, v.PlanListItem)
 	}
 }
