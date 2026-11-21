@@ -1,12 +1,10 @@
 # The Desk
 
-The [Desk](../concepts/glossary.md#desk) is the web UI where you steer
-ai-operator. You see what needs you, follow every
-[milestone](../concepts/glossary.md#milestone) and
-[task](../concepts/glossary.md#task), and act on them: answer prompts, talk
-to the [pilot](../concepts/glossary.md#pilot), chat with an agent, resume a
-pause. This page shows how you get in, who sees what, and what each view
-shows. What you do in them is in
+The [Desk](../concepts/glossary.md#desk) is the web UI where you steer ai-operator. You see
+what needs you, follow every [milestone](../concepts/glossary.md#milestone) and
+[task](../concepts/glossary.md#task), and act on them: answer prompts, talk to the
+[pilot](../concepts/glossary.md#pilot), chat with an agent, resume a pause. This page shows
+how you get in, who sees what, and what each view shows. What you do in them is in
 [Steer from the Desk](steer-from-the-desk.md). To turn the Desk on, follow
 [Turn on the Desk](../getting-started/turn-on-the-desk.md).
 
@@ -63,7 +61,7 @@ ui:
   code, issue text and CI logs.
 
 Answering a milestone's prompts and the owner-only buttons (such as
-*Run next*, *Merge anyway*, *Revisit* and *Restart run*) also need your Desk user name on the milestone's
+*Move to top*, *Merge anyway*, *Revisit* and *Restart run*) also need your Desk user name on the milestone's
 `/agent owner-subjects` line (see [Owners and pings](owners-and-pings.md)).
 
 A user whose roles match no rule sees *No projects* in the rail. The roles
@@ -109,10 +107,9 @@ ui:
         researches: ["agents/news-*"]
 ```
 
-One-off researches are created in `ui.research.namespace` only, so the
-write rule must match names there (for example `agents/*`). A user may start
-10 per hour and delete only their own. Scheduled researches are managed with
-`kubectl`.
+One-off researches are created in `ui.research.namespace` only, so the write rule must
+match names there (for example `agents/*`). A user may start 10 per hour and delete only
+their own. Scheduled researches are managed with `kubectl`.
 
 ## Find your way
 
@@ -181,11 +178,13 @@ e-mail or push). Click *Notifications on* to turn them off.
   for how long, what is next, usage limits, and *N finishing* when done
   milestones still wait to be closed;
 - **In progress**: every milestone in work, those that need you first;
-- **Recently done**: the newest done milestones, *Show all* for more.
+- **Recently done**: the newest done milestones, *Show all* for more;
+- **Timeline**: which issue of which project ran when, in the last 6 h,
+  24 h or 7 d ([the Overview timeline](milestone-order-and-timeline.md#the-overview-timeline)).
 
 A milestone row shows its progress (merged of all issues), open issues, cost
-and tokens, and the retrospective's open leftovers; an unknown cost is a
-dash, never $0. The *Stream* tab shows every event of all your projects.
+and tokens, and the retrospective's open leftovers; an unknown cost is a dash,
+never $0. The *Stream* tab shows every event of all your projects.
 
 ## A project
 
@@ -194,21 +193,20 @@ dash, never $0. The *Stream* tab shows every event of all your projects.
 A project page has the tabs *Stream | Decisions | Board | Metrics*, and *Plans*
 with Desk chat:
 
-- **Stream**: the project's [autopilot queue and the milestones that are
-  finishing](steer-from-the-desk.md#the-queue-and-finishing), its
-  milestones in progress and done, then the stream: what happened, newest
-  first. A message box sits above the stream; a paused milestone pins its
-  short pause card over it.
+- **Stream**: the project's [run-order queue](milestone-order-and-timeline.md#the-queue),
+  which owners drag into order, the [milestones that are finishing](steer-from-the-desk.md#the-queue-and-finishing),
+  its milestones in progress and done, then the stream: what happened,
+  newest first. A message box sits above the stream; a paused milestone
+  pins its short pause card over it.
 - **Decisions**: the decisions of all its milestones, or of the one you pick.
 - **Board**: one board per milestone, plus the issues without one.
 - **Metrics**: what the project's agent calls cost, with its lines of code.
 - **Plans**: the project's [plans](write-a-milestone.md#draft-it-in-the-desk)
   and, for an owner, *Plan milestone*; a [plan's decisions](write-a-milestone.md#answer-the-agents-decisions) have a wizard.
 
-A switch narrows the stream: *All*, *Chat*, *Needs you*, *Runs*, *CI &
-review* and *Merged*. Comments on the same issue or merge request are one
-card. A strip shows the last 30 days; click a day to jump there. *Load
-older* goes further back.
+A switch narrows the stream: *All*, *Chat*, *Needs you*, *Runs*, *CI & review* and *Merged*.
+Comments on the same issue or merge request are one card. A strip shows the
+last 30 days; click a day to jump there. *Load older* goes further back.
 
 On a wide screen a panel beside the stream shows what needs you in the
 project, the active milestone's queue and the last 30 days. On a phone or
@@ -232,8 +230,9 @@ Between the issues sit the releases, at the point they were decided:
 *Release after #N*, *Releasing…* with its pipeline, or the version with a
 link to the GitLab release.
 
-Below, the queue groups the issues by lane: *Running*, *Landing*, *Ready to
-land*, *Waiting*, *Held* and *Done*, with the
+Below, *Timeline* shows when each issue ran, waited and was held (see
+[The issue timeline](milestone-order-and-timeline.md#the-issue-timeline)).
+*Lanes* groups the issues: *Running*, *Landing*, *Ready to land*, *Waiting*, *Held* and *Done*, with the
 [waves](../concepts/glossary.md#wave) of the plan. Each item shows its merge
 request, task and [decisions](../concepts/glossary.md#decision). Owners set
 how many issues run at a time here. A milestone with companion merge
@@ -396,5 +395,6 @@ More in [Security](../concepts/security.md#what-the-desk-login-protects).
 
 - [Steer from the Desk](steer-from-the-desk.md): chat, prompts, Revisit,
   pause cards, the queue and the planner.
+- [Order milestones and read the timeline](milestone-order-and-timeline.md).
 - [Turn on the Desk](../getting-started/turn-on-the-desk.md): set it up.
 - [Desk API](../reference/desk-api.md): the same data for scripts.

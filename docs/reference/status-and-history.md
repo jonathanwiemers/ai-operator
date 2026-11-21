@@ -1,8 +1,9 @@
 # Status and history events
 
 This page is for scripts and dashboards that read what the operator
-records about merges and pauses: the `mergedLines` status fields of an
-AgentTask and an AgentProject, and the history events in the research
+records about merges, pauses and the run order: the `mergedLines` status
+fields of an AgentTask and an AgentProject, the project's
+`milestoneOrder`, and the history events in the research
 database that the Desk's figures come from. How the Desk shows them is in
 [Lines of code](../guides/budgets-and-spend.md#lines-of-code).
 
@@ -68,6 +69,28 @@ It appears in two places, both read only:
 | `status.autopilot.items[].mergedLines` | AgentTask (the milestone's tracking task) | The issue's own merge request, counted when autopilot records the merge. |
 | `status.companions[].mergedLines` | [AgentProject](agentproject.md#other-spec-fields) | A [companion](../concepts/glossary.md#companion-repository) merge request, counted when its entry becomes merged: a merge by an owner, autopilot's own merge, or a resumed landing. It counts to the home issue. |
 
+## `milestoneOrder`
+
+The project's [run order](../concepts/glossary.md#run-order): the iids of
+its open autopilot milestones, first to run first. It is on the
+AgentProject, read only:
+
+```yaml
+status:
+  milestoneOrder: [5, 7, 6]
+```
+
+| Rule | What happens |
+|------|--------------|
+| Empty list | The operator seeds it from the old run-next marks (earliest mark first), then by iid, so nothing moves on upgrade. |
+| New milestone | It is ranked after the listed ones, by iid, and appended on the next sync. |
+| Done, closed or off autopilot | It is dropped on the next sync. |
+| `/agent move` or a drag in the Desk | The operator rewrites the list. |
+
+Only the first milestone starts new issues. Change the order with
+[`/agent move`](commands.md#on-the-tracking-issue), not by editing the
+status.
+
 ## History events
 
 The operator writes history events to the research database, one row per
@@ -103,3 +126,5 @@ event yet, so the pause figures count milestone pauses only.
   events, such as `GET /api/v1/metrics/code`.
 - [When autopilot pauses](../guides/pauses.md): the pause kinds and their
   ways out.
+- [Desk API](desk-api.md#timeline): the timeline built from the run, hold,
+  merge and skip events.

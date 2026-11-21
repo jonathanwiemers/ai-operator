@@ -212,3 +212,34 @@ R1 → R2 → R6 → R7, R3 → R4 → R8 → R9 → R10, R11 → R12, R13
 - Right after upgrading, a project whose %6 had a run-next mark keeps the same queue order as before. (Goal 4)
 
 ## Steering log
+
+What this milestone narrowed or left to others, checked against main and
+the milestone's commits after its last merge request:
+
+- **Milestones tab (R5, Decision 7).** %41 had not landed when this
+  milestone shipped, so the project page still has no *Milestones* tab. The
+  draggable queue (R6, R7, #662) sits where `ProjectQueue` was, at the top
+  of the project's *Stream* tab. The user docs describe it there. Moving it
+  is left to %41.
+- **Holds in history (R3)** shipped with `hold.set`, `hold.cleared` and an
+  extra `item.skipped` event, so the timeline can draw the skip marker;
+  #502 is closed by it. Holds from before that version are not rebuilt
+  (Non-goals).
+- **Timeline endpoint (R4)** caps an answer at 500 issues, newest first, and
+  says so with `truncated`; the Overview shows a note then.
+- **Now line (R9).** It moves with the Desk's shared 15-second clock, not
+  once a minute; a fetch happens only on live updates.
+- **Moves (R2).** A paused milestone can be moved; it stays paused at its
+  new place. A replayed command posts no second note but writes the order
+  again.
+- **Accessibility (R9, %37).** The axe checks of the queue and the
+  timelines pass except dark-mode colour contrast of the active pill and
+  the project pages, which stays with the Desk-wide #641.
+- **Bundle budget.** No commit of this milestone changed
+  `web/bundle-budget.json`: `vue-draggable-plus` loads with the lazily
+  loaded queue and the timelines in their own chunks, inside the existing
+  caps.
+- **Docs (R12, R13, #668).** The queue, dragging and the timelines
+  got their own guide, `docs/guides/milestone-order-and-timeline.md`,
+  because `docs/guides/desk.md` is at the 400-line cap (D668-P1).
+- No follow-up issue is referenced by this milestone's code or commits.

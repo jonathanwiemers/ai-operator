@@ -113,16 +113,30 @@ comes, the milestone is planned from its description of that moment.
 A milestone with `/agent spec` but no `/agent autopilot` is planned at once,
 as before. A milestone that was planned already keeps going.
 
-**Let a younger milestone go first.** Milestones run in the project's run
-order. New milestones join at the bottom. An owner comments `/agent start`
-on its tracking issue, or clicks *Run next* on the project's queue in the
-Desk. That moves the milestone to the top of the run order. A waiting
-milestone is planned on the next poll; a planned one starts its issues
-before the others. The others finish their running issues and then wait.
-A running issue is never stopped for it.
+**The run order.** Milestones run in the project's
+[run order](../concepts/glossary.md#run-order). The operator stores it on
+the project. A new autopilot milestone joins at the bottom; a done or
+closed one leaves. Only the first milestone starts new issues.
+
+**Move a milestone.** An owner drags it in the Desk's queue, or picks *Move
+to top*, *Move up* or *Move down* in its row menu. In GitLab, comment on its
+tracking issue:
+
+```
+/agent move before %6
+```
+
+`move top`, `move bottom` and `move after %6` work too, and `/agent start`
+is the same as `move top`. The tracking issue says `⏫ Moved before %6 (by
+@alice).` A waiting milestone at the top is planned on the next poll; a
+planned one starts its issues. The one it passed becomes *Holding*: its
+running issues finish, and it starts no new ones until the moved milestone
+is done. A running issue is never stopped. The Desk asks before such a
+move; a GitLab command applies at once. See
+[Order milestones and read the timeline](milestone-order-and-timeline.md).
 
 **A paused waiting milestone** stays paused when its turn comes, and is not
-planned until `/agent resume`. This also holds after `/agent start`.
+planned until `/agent resume`. This also holds after a move to the top.
 
 **Run slots.** All runs of a project share
 [`maxConcurrentRuns`](../reference/agentproject.md#other-spec-fields). When

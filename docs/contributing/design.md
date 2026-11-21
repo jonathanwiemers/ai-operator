@@ -278,8 +278,8 @@ patches so they never overwrite each other.
 
 A spec task starts at `runRequest` 1, except an autopilot milestone's while
 another open autopilot milestone of the project ranks ahead
-(`internal/milestoneorder`: run-next marks first, earliest mark first, then
-lowest iid; a milestone is open while its spec task is missing or not
+(`internal/milestoneorder`: the stored `status.milestoneOrder`, then unlisted ones by
+iid; a milestone is open while its spec task is missing or not
 `Done`; paused and waiting ones count). That task waits at 0 with the
 ahead iids in `spec.queuedBehind`; `syncSpecTask` keeps its owners, rules,
 budget, repos and description hash current without a run request and, once
@@ -493,8 +493,8 @@ stateDiagram-v2
   it queues too, even with a free slot. With capacity N the top N start
   together. The queue itself never leaves a slot idle, but `pick` starts no new
   issue of a milestone while `queuedAhead` lists other open autopilot
-  milestones ahead of it (`internal/milestoneorder`: marked milestones before
-  unmarked, earliest `startRequestedAt` first, then lowest iid), so only the
+  milestones ahead of it (`internal/milestoneorder`: the stored
+  `status.milestoneOrder`, then unlisted milestones by iid), so only the
   first in that order starts new issues and the others only finish what was
   already active. A run in progress is never preempted, and pilots stay
   outside. A run that lost its pod and a chat turn without a pending run
@@ -617,7 +617,7 @@ state · queue · Goal: <first Goal line> · <path>`, open ones in queue order,
 then the closed ones, newest first; then the 50 open issues, all under
 16 KiB. The queue position comes from `milestoneorder.RunOrder`: the
 started milestones (items, not done) by IID, then the others as `Rank`
-orders them (run-next marks first, earliest mark first, then lowest IID).
+orders them (the stored `status.milestoneOrder`, then unlisted by IID).
 The Desk's `queuePosition` on `GET /api/v1/milestones` is the same order,
 from 1.
 
@@ -4307,7 +4307,7 @@ own `--tone-*-bg` and `--tone-*-fg` tokens, so the look is as before. The
 | `internal/controller/agenttask_controller.go` | pod / PVC lifecycle, queueing, limits |
 | `internal/controller/chat.go` | Desk live chat: LISTEN/poll dispatch of `chat_messages` into `spec.source.chatMessages`, replies and command answers back into the table |
 | `internal/chatcmd` | Desk chat command JSON (`retry` / `review` / `use` / `effort` / `budget` / `pause` / `resume` / `skip` / `merge` / `start` / `unstart` / `endmilestone` / …) |
-| `internal/milestoneorder` | shared ranking of a project's open autopilot milestones (run-next marks, then age) for `queuedAhead`, planning hold and the Desk *Queue*; `RunOrder` (started milestones first) for the plan agent's queue position and the milestone rows' `queuePosition` |
+| `internal/milestoneorder` | shared ranking of a project's open autopilot milestones (the stored `status.milestoneOrder`, then age) for `queuedAhead`, planning hold and the Desk *Queue*; `RunOrder` (started milestones first) for the plan agent's queue position and the milestone rows' `queuePosition` |
 | `internal/controller/resources.go` | pod and PVC templates |
 | `internal/runner/runner.go` | run loop, status reporting, session state, mirror ⇄ workspace sync |
 | `internal/runner/steps.go` | run steps: step logging, current step, GitLab run log |

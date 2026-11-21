@@ -257,6 +257,62 @@ the agent dropped. `available` is `false` without the history database.
 | `GET /api/v1/metrics/code` | The lines of the range. Per bucket, it gives the written lines (the calls' added and deleted lines, by call time) and the merged lines by category (each merge and companion merge at its own time, `partial` when some diff had no count). It also gives the totals, and the issues merged in the range, each whole with its companions and its calls before the range: merged and measured counts, their lines and the cost per 100 merged production lines. Without `?project=`, it gives the same per project; companion lines count under the home project. It takes the parameters of `/api/v1/costs`; only the range and `?project=` apply, and research calls never count. | see, research database |
 | `GET /api/v1/metrics/flow` | The issues merged in the range, each once at its latest merge: merged issues per bucket, the median wall time (first run start to merge) and median agent time (the sum of the issue's call durations), and the review and fix calls per merged issue. An issue counts whole, with its runs and calls before the range. It takes the parameters of `/api/v1/costs`; only the range and `?project=` apply. | see, research database |
 | `GET /api/v1/metrics/pauses` | The milestone pauses that started in the range: per bucket and kind, totals, open now, by kind, resolver and via, per project, and the ten longest with a link to the milestone's Pilot tab. It takes the parameters of `/api/v1/costs`; only the range and `?project=` apply. `truncated` is set when more than 20000 pause events were found, and only the newest were read. | see, research database |
+| `GET /api/v1/timeline` | When each issue ran, waited and was held, for one milestone or a time window. See [Timeline](#timeline). | see |
+
+### Timeline
+
+`GET /api/v1/timeline` draws the [timeline](../guides/milestone-order-and-timeline.md#the-issue-timeline)
+in the Desk. You ask for the last day of all your projects like this:
+
+```sh
+curl -s -b "$COOKIE" \
+  "$DESK/api/v1/timeline?from=2026-11-20T00:00:00Z&to=2026-11-21T00:00:00Z"
+```
+
+```json
+{
+  "history": true,
+  "from": "2026-11-20T00:00:00Z",
+  "to": "2026-11-21T00:00:00Z",
+  "now": "2026-11-21T09:30:00Z",
+  "rows": [
+    {
+      "namespace": "agents", "project": "shop",
+      "milestoneIID": 12, "milestoneTitle": "Checkout",
+      "issueIID": 340, "issueTitle": "Add coupon field", "wave": 1,
+      "segments": [
+        {"kind": "running", "start": "2026-11-20T08:00:00Z", "end": "2026-11-20T08:40:00Z"},
+        {"kind": "held", "start": "2026-11-20T08:40:00Z", "end": "2026-11-20T11:00:00Z"},
+        {"kind": "running", "start": "2026-11-20T11:00:00Z", "end": "2026-11-20T11:25:00Z"}
+      ],
+      "mergedAt": "2026-11-20T11:25:00Z",
+      "deskURL": "/projects/agents/shop/milestones/12/issues/340"
+    }
+  ],
+  "truncated": false
+}
+```
+
+It has two modes:
+
+- **One milestone**: `?project=namespace/name&milestone=<iid>`. Each issue
+  from its first run to now. `from` and `to` are not allowed here.
+- **A window**: `?from=&to=`, both RFC 3339 times, across every project
+  you may see. Add `?project=namespace/name` for one project. `to` must be
+  after `from`, and the window may be at most 7 days.
+
+| Field | Meaning |
+|-------|---------|
+| `history` | `false` without the research database. Then `rows` is empty. |
+| `from`, `to`, `now` | The window and the server's time. For one milestone, `from` is the first segment's start and `to` is now. |
+| `rows` | One per issue: project, milestone, issue, `wave` (0 when unknown) and `deskURL`, the issue's page in the Desk. |
+| `segments` | `kind` is `running`, `waiting` or `held`, with `start` and `end`. `end` is absent while the segment goes on. Segments are cut at the window's edges. |
+| `mergedAt`, `skippedAt` | When the issue merged or was skipped. Absent otherwise. Its life ends there. |
+| `truncated` | `true` when more than 500 issues matched. Only the newest are in `rows`. |
+
+Only projects you may see appear. A `project` you may not see answers 404.
+A wrong parameter answers 400 with the reason. Holds appear only from the
+operator version that records them; older issues show no `held` segments.
 
 ## Research
 

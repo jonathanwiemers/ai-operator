@@ -263,6 +263,14 @@ One piece of agent work in a [task](#task): a planning run, an
 implementing run with its reviews, a CI fix or a chat turn. Each run has a
 report and its cost; see [How it works](how-it-works.md#pods-per-issue).
 
+### Run order
+
+The order in which a project's open [autopilot](#autopilot) milestones run.
+Only the first starts new issues. New milestones join at the bottom; done
+or closed ones leave. An [owner](#owner) changes it by dragging in the
+[Desk](#desk) or with `/agent move`. See
+[Order milestones and read the timeline](../guides/milestone-order-and-timeline.md#the-queue).
+
 ### Runner
 
 The trusted container in each pod. It holds the GitLab token, talks to

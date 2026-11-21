@@ -33,23 +33,26 @@ In the order you need them for a milestone:
 11. [Steer from the Desk](steer-from-the-desk.md): chat with an agent, ask
     the pilot, answer prompts, revisit decisions, pause cards, the queue,
     the planner, costs and the Desk on a phone.
-12. [Read and revisit decisions](decisions.md): the Decisions tabs, search,
+12. [Order milestones and read the timeline](milestone-order-and-timeline.md):
+    drag milestones into run order, `/agent move`, and the issue and
+    Overview timelines.
+13. [Read and revisit decisions](decisions.md): the Decisions tabs, search,
     the card, the chain of revisits and what Revisit does.
-13. [Budgets and spend](budgets-and-spend.md): what counts as spend, budgets
+14. [Budgets and spend](budgets-and-spend.md): what counts as spend, budgets
     for a milestone and its issues, and the Metrics tab and Metrics page.
-14. [Cost levers](cost-levers.md): try fresh step sessions, a lower effort
+15. [Cost levers](cost-levers.md): try fresh step sessions, a lower effort
     and a cheaper profile side by side in an experiment, and read the arm
     table and the Context panel.
-15. [Releases](releases.md): release points in the plan, `/agent release`,
+16. [Releases](releases.md): release points in the plan, `/agent release`,
     the final release, the sweep and the version format.
-16. [Cross-repo changes](cross-repo-changes.md): a change that spans a
+17. [Cross-repo changes](cross-repo-changes.md): a change that spans a
     companion repository, and how its merge request lands.
-17. [Watch from Kubernetes](watch-from-kubernetes.md): `kubectl` views of
+18. [Watch from Kubernetes](watch-from-kubernetes.md): `kubectl` views of
     projects and tasks, run logs, and what happens when an agent container
     or a pod is lost.
-18. [Research](research.md): news flashes and one-off reports, turning
+19. [Research](research.md): news flashes and one-off reports, turning
     research on, choosing agents, retention and troubleshooting.
-19. [Project sets](project-sets.md): one AgentProjectSet for a whole GitLab
+20. [Project sets](project-sets.md): one AgentProjectSet for a whole GitLab
     group, active and dormant projects, globs and the request budget.
 
 ## Next

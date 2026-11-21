@@ -411,7 +411,7 @@ headings, focus, the announcer) and keeps the axe check green.
 | Charts | `web/src/ui/charts/` | [Charts](#charts) draw with Chart.js; Nuxt UI has no chart component. |
 | BottomTabBar | `web/src/ui/BottomTabBar.vue` | The phone's [bottom bar](#navigation); Nuxt UI has no bottom tab bar. |
 | [DeskChat](#deskchat) | `web/src/ui/DeskChat.vue` | Wraps `UChatMessages` and `UChatPrompt`; they lack *Load older* with a kept scroll anchor and compact operator events. |
-| Timeline | `web/src/ui/Timeline.vue` | Draws issue bars on a time axis with sticky row labels and a now line. Nothing in Nuxt UI draws a time axis, and Chart.js draws on a canvas that keyboard users cannot reach. Every bar is a link named with its state. |
+| [Timeline](#timeline) | `web/src/ui/Timeline.vue` | Draws issue bars on a time axis with sticky row labels and a now line. Nothing in Nuxt UI draws a time axis, and Chart.js draws on a canvas that keyboard users cannot reach. Every bar is a link named with its state. |
 
 ### Adding a custom component
 
@@ -932,6 +932,42 @@ first, and the text box at the bottom. `web/src/ui/DeskChat.vue` wraps
   Each sits in a box of bounded height (`min(72dvh, …)`) so the text box
   stays at its bottom.
 
+### Timeline
+
+`web/src/ui/Timeline.vue` draws rows of bars on a time axis in HTML and
+Tailwind utilities, from the pure layout module `web/src/timeline.ts`
+(node tests in `web/test/timeline.test.mjs`). Its data is
+`GET /api/v1/timeline` (`TimelineView` in `web/src/generated/`).
+
+- **Layout.** `barLayout` maps a row's segments and its merge or skip to
+  percent of the window and cuts them at its edges; `milestoneLayout` groups
+  issue rows by wave (headings W1, W2… as `waveChip`); `overviewLayout`
+  gives one row per project, `pack` puts overlapping bars on extra lines,
+  and milestones get `--chart-1` … `--chart-6`, then `--chart-other`.
+  `nowPct` places the now line (null outside the window); `ticks` labels
+  whole hours (`HH:00`) up to 36 h and local midnights beyond.
+- **Look.** Segments are absolutely placed spans: running `tone-progress`,
+  waiting `tone-muted`, held `tone-warning` (on the Overview the milestone's
+  chart colour, mixed 40/12/25 %). A diamond marks the merge
+  (`tone-success-fg`) or the skip (`tone-muted-fg`). The legend lists the
+  segment kinds, or the milestones (`legendTitle`: `%5 Parser`), then
+  *Merged* and *Skipped*. Light and dark come from the tokens.
+- **Phones.** The label column is `sticky left-0` (112 px, 224 px from
+  tablet), and the track has `min-w-[40rem]` inside an `overflow-x-auto`
+  box, so at 375 px the axis scrolls sideways under fixed labels.
+- **Accessibility.** A bar is a `RouterLink` to `deskURL`, its `aria-label`
+  and `title` from `barName` ("#42 Add parser, running 12 min, merged
+  14:05"; the Overview adds ", in %5"). A bar without a link is a `span`
+  with `role="img"`. Each line is a labelled `<ul>`.
+- **Live.** The hosts (`MilestoneTimeline.vue`, `OverviewTimeline.vue`,
+  each a lazy `defineAsyncComponent`) reload with `useResource` on `task`
+  and `project` events. The now line and an open bar's end move with
+  `useNow`, the 15-second clock of `live.ts`, without a fetch.
+
+The e2e cases in `web/e2e/timeline.spec.ts` and
+`web/e2e/overview-timeline.spec.ts` cover the switch, the bars and their
+links, packing, the windows, the no-history case and the axe check.
+
 ### Composer
 
 `web/src/components/Composer.vue` is the one text box of the Desk: the
@@ -1187,6 +1223,12 @@ The dashboard (`web/src/views/Dashboard.vue`) and its Overview tab
   project page.
 - The milestone lists use the shared milestone row grid
   (`MilestoneList.vue`); *Show all* is a `UButton`.
+- *Timeline* follows *Working now*: `OverviewTimeline.vue` with the
+  [Timeline](#timeline), a `UTabs` pill switch *6 h / 24 h / 7 d* in a
+  `UDashboardToolbar` (`?window=6h|24h|7d`, `overviewWindow` falls back to
+  `24h`) and the milestone legend. Without `overview.history` it shows the
+  same info `UAlert` as the milestone lists; over 500 issues
+  (`truncated`) a note says the timeline is cut.
 
 The e2e cases `overview cards › working now columns@<width>` at 375, 768
 and 1280 px check the columns and the Inbox chip's height
@@ -1204,6 +1246,40 @@ live in `projectQueue.ts` and `finishing.ts`; *Close issue* calls
 `waiting`/`holding` rows with no spend for
 `GET …/estimate?milestone=` (see [Planner](#planner)). Tailwind utilities
 and Nuxt UI, without scoped CSS; light and dark, readable at 375 px.
+
+**Drag and menu.** With `queueCommands` each row has a drag handle
+(`i-lucide-grip-vertical`, `data-queue-handle`) and, with more than one
+row, a `UDropdownMenu` (trigger named *Move %N*) with *Move to top*, *Move
+up* and *Move down* (`menuMoves`). The handle is pointer only and
+`aria-hidden`; the menu is the way for keyboard, screen readers and
+phones. Both end in `request(from, to)`, and `moveCommand` turns the new
+index into the command: index 0 `{"cmd":"move","to":"top"}`, the last
+`{"to":"bottom"}`, up `{"before": <iid at the new index>}`, down
+`{"after": …}`.
+
+- **Pending and rollback.** A sent move sets `pending` (the new iid
+  order): the rows show it with a *Moving…* badge and the menu is locked
+  until `project.queue` reports that order, or the milestone leaves the
+  queue. A failed post, a failed answer, or an answer that does not start
+  with "Moved" (a refusal) clears `pending`, so the row goes back, and
+  shows the reason in a `role="alert"` line.
+- **Confirmation.** A move that passes a `running` entry (`passedRunning`)
+  first opens a `UModal` *Move above the running milestone?* with
+  `confirmText` and *Cancel* / *Move*. Cancel, Escape or Back sends
+  nothing. If the queue changed while it was open, *Move* sends nothing
+  and says so.
+- **The dependency.** Dragging uses `vue-draggable-plus` (SortableJS,
+  pinned in `web/package.json`), the one library added for it: Nuxt UI has
+  no sortable list. `forceFallback` keeps touch and mouse the same, and
+  `animation` is 0 under `prefers-reduced-motion`. Only `ProjectQueue.vue`
+  imports it, and `Stream.vue` loads that component with
+  `defineAsyncComponent`, so the library is in the project page's chunks
+  and never in the initial bundle or other routes
+  ([Bundle budget](#bundle-budget)).
+
+The e2e cases in `web/e2e/project-queue.spec.ts` drag and use the menu on
+a three-milestone fixture, cancel and confirm a move above the running
+milestone, and run the axe check.
 
 ### Plans
 
@@ -1263,6 +1339,11 @@ Tailwind utilities and Nuxt UI tokens, without scoped CSS.
   and with the same content at every width.
 - Links in rows (issue title, merge request, release, pipeline) are at
   least 44 px high on phones.
+- Under the table, with the `history` feature, a `UTabs` pill switch
+  *Timeline / Lanes* (`?view=timeline|lanes`, `issuesView`; Timeline by
+  default) picks `MilestoneTimeline.vue` (the [Timeline](#timeline) from
+  `GET /api/v1/timeline?project=&milestone=`) or the `QueueList grouped`
+  lanes. Without the feature there is no switch and the lanes show.
 
 The e2e cases `milestone issues › issues and releases@<width>` at 375, 768
 and 1280 px check the order of issues and releases, that numbers stay on
@@ -2147,9 +2228,12 @@ fields the operator uses (`internal/milestoneorder` over the project's
 the Desk and `pick` cannot disagree. Queue states: `running`, `holding`
 (*Holding for %N*), `waiting`, `paused`, `budget`. With Desk chat and the
 `chat` grant (`project.queueCommands`) the rows post `kind: "command"` to
-the milestone's Spec task: *Run next* `{"cmd":"start"}` (owner subjects
-only, like `/agent start`: to the top of the run order), *Pause* / *Resume* `{"cmd":"pause"}` /
-`{"cmd":"resume"}`.
+the moved milestone's Spec task: a drag or a menu pick sends `{"cmd":"move"}`
+with `to`, `before` or `after` (owner subjects only, checked by the
+operator, like `/agent move`; see
+[Project Queue and Finishing](#project-queue-and-finishing)), and *Pause* /
+*Resume* send `{"cmd":"pause"}` / `{"cmd":"resume"}`. *Run next* and
+*Clear mark* are gone with the run-next marks.
 
 Finishing lists done autopilot milestones whose Spec task still exists,
 oldest first, with what holds the close (`closeMilestone`): *Re-planning*,

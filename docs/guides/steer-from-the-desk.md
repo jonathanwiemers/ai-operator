@@ -8,7 +8,7 @@ What the views show is in [The Desk](desk.md).
 
 Most actions need the `chat` grant. Some also need your Desk user name
 among the milestone's [owners](../concepts/glossary.md#owner), on its
-`/agent owner-subjects` line: answering prompts, *Revisit*, *Run next*, *Merge anyway*, *Restart run*, and planning or follow-up
+`/agent owner-subjects` line: answering prompts, *Revisit*, *Move to top*, *Merge anyway*, *Restart run*, and planning or follow-up
 milestones. See
 [Who sees what](desk.md#who-sees-what).
 Everything you do here, you can also do with a comment in GitLab; the
@@ -216,10 +216,11 @@ Each kind and its ways out are in [When autopilot pauses](pauses.md).
 A project's *Stream* tab lists its open autopilot milestones in the order
 they run: *Running*, *Holding for %N* (planned, waits for the first),
 *Waiting to plan*, *Paused* or *Budget*, each with its issues done and its
-spend. With the `chat` grant each row has buttons:
+spend. With the `chat` grant each row has:
 
-- *Run next* moves the milestone to the top of the run order. Only the
-  milestone's owners can do this, like `/agent start`.
+- a drag handle and a menu with *Move to top*, *Move up* and *Move down*.
+  Only the milestone's owners can move it, like `/agent move`. See
+  [Order milestones and read the timeline](milestone-order-and-timeline.md#move-a-milestone).
 - *Pause* and *Resume*, as on the pause card.
 
 Below, *Finishing* lists done milestones still open in GitLab, oldest first,
