@@ -946,9 +946,10 @@ for (const { width, height, labels } of [
   })
 }
 
-// RouteTabs (src/ui/RouteTabs.vue): on a phone the milestone's six tabs are
-// wider than the screen. They scroll inside the strip, the page does not,
-// and the tab of ?tab=metrics, the last one, is scrolled into view on load.
+// RouteTabs (src/ui/RouteTabs.vue): on a phone the milestone's tabs are
+// wider than the screen. They scroll inside the strip's list, the page does
+// not, and the tab of ?tab=metrics, the last one, is scrolled into view on
+// load, inside the list's visible box.
 test('stream-milestone RouteTabs scroll inside the strip@375', async ({ page, baseURL }, testInfo) => {
   const route = routes.find((r) => r.name === 'stream-milestone-metrics')!
   const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
@@ -964,23 +965,69 @@ test('stream-milestone RouteTabs scroll inside the strip@375', async ({ page, ba
   await expect(active).toHaveAttribute('aria-current', 'page')
   await expect(active).toBeInViewport({ ratio: 1 })
   await expect(strip.getByRole('link', { name: 'Issues' })).not.toBeInViewport({ ratio: 1 })
+  expect(
+    await active.evaluate((a) => {
+      const list = a.closest('[data-slot="list"]')!.getBoundingClientRect()
+      const tab = a.getBoundingClientRect()
+      return tab.left >= list.left - 0.5 && tab.right <= list.right + 0.5
+    }),
+    'the active tab is inside the list it scrolls in',
+  ).toBe(true)
 
   const shot = join(testInfo.project.outputDir, '..', 'screenshots', 'route-tabs@375.png')
   await page.screenshot({ path: shot })
   await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
 
   const widths = await strip.evaluate((nav) => {
+    const list = nav.querySelector<HTMLElement>('[data-slot="list"]')!
     const doc = document.scrollingElement ?? document.documentElement
     const main = document.querySelector('main')!
     return {
-      strip: nav.scrollWidth > nav.clientWidth,
+      strip: list.scrollWidth > list.clientWidth,
       page: doc.scrollWidth - doc.clientWidth,
       pane: main.scrollWidth - main.clientWidth,
+      wider: document.documentElement.scrollWidth > innerWidth,
     }
   })
-  expect(widths, 'the strip scrolls, the page and the content pane do not').toEqual({ strip: true, page: 0, pane: 0 })
+  expect(widths, 'the strip scrolls, the page and the content pane do not').toEqual({ strip: true, page: 0, pane: 0, wider: false })
   expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
 })
+
+// RouteTabs mark the shown tab (D669-P1): every tab links to the same path
+// and only ?tab= differs, so the router's match would mark all of them. The
+// active tab alone has aria-current="page", and a tab row never sits inside
+// another one.
+for (const { name, label, current } of [
+  { name: 'stream-project-stream', label: 'View', current: 'Stream' },
+  { name: 'task', label: 'Task', current: 'Overview' },
+]) {
+  test(`${name} RouteTabs mark one tab current@1280`, async ({ page, baseURL }) => {
+    const route = routes.find((r) => r.name === name)!
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.clock.setFixedTime(now)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, route, problems)
+    await page.goto(route.path)
+    await route.ready(page)
+
+    const strip = page.locator('main').getByRole('navigation', { name: label })
+    await expect(strip.getByRole('link').nth(1)).toBeVisible()
+    await expect(strip.locator('[aria-current]')).toHaveCount(1)
+    await expect(strip.locator('a[aria-current="page"]')).toHaveText(new RegExp(`^${current}`))
+    const marks = await strip.getByRole('link').evaluateAll((as) => as.map((a) => a.getAttribute('aria-current')))
+    expect(marks.filter((m) => m === 'page'), 'one current tab').toHaveLength(1)
+    expect(marks.filter((m) => m !== null && m !== 'page'), 'the others carry no aria-current').toEqual([])
+
+    const nested = await page.locator('main').evaluate((main) =>
+      [...main.querySelectorAll('nav[aria-label="View"], nav[aria-label="Task"]')]
+        .filter((n) => n.parentElement?.closest('nav') || n.querySelector('nav'))
+        .map((n) => n.getAttribute('aria-label')),
+    )
+    expect(nested, 'no tab row inside another').toEqual([])
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+}
 
 // The stream header (Stream.vue, docs/contributing/web-ui.md "Stream header"): on a phone the
 // title, the tab strip and the search each take a full-width row, in that
@@ -2705,7 +2752,9 @@ test.describe('task tabs', () => {
         const overview = strip.getByRole('link', { name: /^Overview/ })
         await expect(overview).toHaveAttribute('aria-current', 'page')
         expect(openQuestions, 'the fixture has an open question').toBeGreaterThan(0)
-        await expect(overview).toHaveText(`Overview ${openQuestions}`)
+        // The count is the item's badge, a separate element after the label.
+        await expect(overview).toHaveText(new RegExp(`^Overview\\s*${openQuestions}$`))
+        await expect(overview.locator('[data-slot="linkTrailing"]')).toHaveText(String(openQuestions))
         await expect(page.locator(`main nav[aria-label="Task"] + section > ${pageName === 'task' ? 'h2' : 'h3'}`)).toHaveText('Summary of the last run')
 
         for (const t of taskTabs.slice(1)) {
@@ -3779,7 +3828,7 @@ test.describe('milestone decisions', () => {
     await route.ready(page)
 
     const main = page.locator('main')
-    const tabs = page.getByRole('navigation', { name: 'View' }).locator(':scope > a')
+    const tabs = page.getByRole('navigation', { name: 'View' }).getByRole('link')
     await expect(tabs.nth(0)).toHaveText('Stream')
     await expect(tabs.nth(1)).toHaveText('Decisions')
     await expect(tabs.nth(1)).toHaveAttribute('aria-current', 'page')
@@ -5118,7 +5167,9 @@ test.describe('screen reader flows', () => {
       await expect(page.locator('main')).toMatchAriaSnapshot(`
         - ${milestoneH1}
         - navigation "View":
-          - link "Needs you · 3"
+          - list:
+            - listitem:
+              - link "Needs you · 3"
         - heading "Problems 3" [level=2]
         - navigation "Problems"
       `)
@@ -5185,14 +5236,23 @@ test.describe('screen reader flows', () => {
       await expect(page.locator('main')).toMatchAriaSnapshot(`
         - ${milestoneH1}
         - navigation "View":
-          - link "Issues"
-          - link "Needs you · 3"
-          - link "Decisions"
-          - link "Pilot"
-          - link "Retrospective"
-          - link "Stream"
-          - link "Board"
-          - link "Metrics"
+          - list:
+            - listitem:
+              - link "Issues"
+            - listitem:
+              - link "Needs you · 3"
+            - listitem:
+              - link "Decisions"
+            - listitem:
+              - link "Pilot"
+            - listitem:
+              - link "Retrospective"
+            - listitem:
+              - link "Stream"
+            - listitem:
+              - link "Board"
+            - listitem:
+              - link "Metrics"
       `)
       const view = page.locator('main').getByRole('navigation', { name: 'View' })
       await expect(view.getByRole('link', { name: 'Issues' })).toHaveAttribute('aria-current', 'page')

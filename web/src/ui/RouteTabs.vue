@@ -1,11 +1,16 @@
 <script setup lang="ts" generic="T extends string">
-// A tab strip of links (docs/contributing/web-ui.md, "RouteTabs"): each tab is a RouterLink,
-// so the tab lives in the URL (?tab=, streamTabs.ts) and can be shared,
-// reloaded and opened in a new tab. Nuxt UI's UTabs switches local state
-// with buttons. The strip never widens the page: it scrolls sideways inside
-// itself, and the active tab is scrolled into view.
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+// A row of underline tabs that are links (docs/contributing/web-ui.md,
+// "RouteTabs"): UNavigationMenu, horizontal, with the highlight under the
+// active tab. Each tab is a link, so the tab lives in the URL (?tab=,
+// streamTabs.ts) and can be shared, reloaded and opened in a new tab;
+// Nuxt UI's UTabs switches local state with buttons. The row never widens
+// the page: its list scrolls sideways inside itself, and the active tab is
+// scrolled into view.
+import UNavigationMenu from '@nuxt/ui/components/NavigationMenu.vue'
+import type { NavigationMenuItem } from '@nuxt/ui'
+import { computed, onBeforeUnmount, onMounted, useId, watch } from 'vue'
 import type { RouteLocationRaw } from 'vue-router'
+import { badgeLook } from '../badgeTone'
 import type { Tab } from '../streamTabs'
 
 const props = defineProps<{
@@ -17,35 +22,61 @@ const props = defineProps<{
   label?: string
 }>()
 
-const strip = ref<HTMLElement | null>(null)
+// All tabs link to the same path and differ only in ?tab=, and the router's
+// active match ignores the query: every tab would be active. So each item
+// says whether it is active, and only that one gets aria-current="page".
+const warning = badgeLook.warning
+const items = computed<NavigationMenuItem[]>(() =>
+  props.tabs.map((t): NavigationMenuItem => {
+    const count = props.badges?.[t.id] ?? 0
+    return {
+      label: t.label,
+      to: props.to(t.id),
+      active: t.id === props.active,
+      // The warning tone of a Desk badge (badgeTone.ts).
+      badge: count > 0 ? { label: String(count), ...warning } : undefined,
+    }
+  }),
+)
 
-// reveal scrolls the strip, and only the strip (scrollIntoView would move
+// The menu renders several root nodes, so the nav is found by its id.
+const id = useId()
+function list(): HTMLElement | null {
+  return document.getElementById(id)?.querySelector<HTMLElement>('[data-slot="list"]') ?? null
+}
+
+// reveal scrolls the list, and only the list (scrollIntoView would move
 // the page too), so the active tab is inside it. It stops at a tab's start,
-// where the strip snaps, so snapping does not move the tab out again.
+// where the list snaps, so snapping does not move the tab out again.
+// Tab widths are fractional and offsetLeft rounds, so positions come from
+// the boxes, and the end keeps a pixel to spare for the scroll's rounding.
 function reveal(): void {
-  const nav = strip.value
-  if (!nav) return
-  const links = [...nav.querySelectorAll<HTMLElement>(':scope > a')]
-  const el = links.find((a) => a.getAttribute('aria-current') === 'page')
+  const ul = list()
+  if (!ul) return
+  const el = ul.querySelector<HTMLElement>('a[aria-current="page"]')?.closest('li')
   if (!el) return
-  const start = el.offsetLeft
-  const end = start + el.offsetWidth
-  if (start < nav.scrollLeft) {
-    nav.scrollLeft = start
-  } else if (end > nav.scrollLeft + nav.clientWidth) {
-    const min = end - nav.clientWidth
-    nav.scrollLeft = links.find((a) => a.offsetLeft >= min)?.offsetLeft ?? min
+  const origin = ul.getBoundingClientRect().left + ul.clientLeft - ul.scrollLeft
+  const startOf = (li: Element) => li.getBoundingClientRect().left - origin
+  const start = startOf(el)
+  const end = start + el.getBoundingClientRect().width
+  if (start < ul.scrollLeft) {
+    ul.scrollLeft = Math.floor(start)
+  } else if (end > ul.scrollLeft + ul.clientWidth) {
+    const min = end - ul.clientWidth + 1
+    const tab = [...ul.querySelectorAll(':scope > li')].map(startOf).find((s) => s >= min)
+    ul.scrollLeft = tab === undefined ? Math.ceil(min) : Math.floor(tab)
   }
 }
 
-// The strip's width changes when the header around it loads or the phone
+// The list's width changes when the header around it loads or the phone
 // turns; the active tab stays in view.
 let resize: ResizeObserver | undefined
 onMounted(() => {
   reveal()
-  if (typeof ResizeObserver !== 'undefined' && strip.value) {
+  const ul = list()
+  if (typeof ResizeObserver !== 'undefined' && ul) {
     resize = new ResizeObserver(() => reveal())
-    resize.observe(strip.value)
+    resize.observe(ul)
   }
 })
 onBeforeUnmount(() => resize?.disconnect())
@@ -53,26 +84,24 @@ watch(() => [props.active, props.tabs], reveal, { flush: 'post' })
 </script>
 
 <template>
-  <nav
-    ref="strip"
+  <!-- No item has children, so the menu opens no viewport or popover. The
+       list is the scroller; its end padding lets the last tab scroll fully
+       into view whatever the rounding of the widest scroll. Tabs are 44 px
+       high on phones (style.css, "Hit areas"). The focus
+       outline sits on the link's inset ::before, inside the list's clip. -->
+  <UNavigationMenu
+    :id="id"
     :aria-label="label ?? 'View'"
-    class="relative flex min-w-0 max-w-full snap-x snap-proximity gap-0.5 overflow-x-auto rounded-(--radius-sm) bg-(--surface-3) p-0.5"
-  >
-    <RouterLink
-      v-for="t in tabs"
-      :key="t.id"
-      :to="to(t.id)"
-      :aria-current="active === t.id ? 'page' : undefined"
-      class="inline-flex min-h-11 shrink-0 snap-start items-center gap-1.5 rounded-[5px] px-3 py-[3px] text-[13px] font-medium whitespace-nowrap hover:no-underline tablet:min-h-0"
-      :class="active === t.id ? 'bg-(--surface) text-(--text) shadow-(--shadow)' : 'text-(--text-2) hover:text-(--text)'"
-    >
-      {{ t.label }}
-      <span
-        v-if="(badges?.[t.id] ?? 0) > 0"
-        class="rounded-full bg-(--tone-warning-bg) px-1.5 text-[11px] leading-4 font-semibold text-(--tone-warning-fg)"
-      >
-        {{ badges?.[t.id] }}
-      </span>
-    </RouterLink>
-  </nav>
+    orientation="horizontal"
+    highlight
+    color="neutral"
+    :items="items"
+    class="min-w-0 max-w-full border-b border-(--border)"
+    :ui="{
+      list: 'snap-x snap-proximity overflow-x-auto pe-0.5',
+      item: 'shrink-0 snap-start py-0',
+      link: 'min-h-11 whitespace-nowrap before:inset-1 after:bottom-0 hover:no-underline tablet:min-h-0',
+      viewportWrapper: 'hidden',
+    }"
+  />
 </template>

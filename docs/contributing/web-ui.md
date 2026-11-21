@@ -404,7 +404,7 @@ headings, focus, the announcer) and keeps the axe check green.
 | Component | File | Why Nuxt UI does not cover it |
 | --- | --- | --- |
 | [DataList](#datalist) | `web/src/ui/DataList.vue` | Shows cards below 760 px; `UTable` has no card layout. |
-| [RouteTabs](#routetabs) | `web/src/ui/RouteTabs.vue` | Keeps the tab in the URL; `UTabs` state is local. |
+| [RouteTabs](#routetabs) | `web/src/ui/RouteTabs.vue` | Wraps `UNavigationMenu` for `?tab=` links: explicit active tab, in-strip scroll and reveal of the active tab. |
 | [Truncated](#truncated) | `web/src/ui/Truncated.vue` | Cuts long text and shows the whole of it on demand; no Nuxt UI component does both. |
 | `useBackClose` | `web/src/ui/useBackClose.ts` | Lets the Back button close a [sheet](#sheets); Nuxt UI overlays do not touch history. |
 | `useKeyboardInset` | `web/src/ui/useKeyboardInset.ts` | Lifts the [composer](#composer) above the phone keyboard; Nuxt UI has no such helper. |
@@ -753,12 +753,20 @@ the task page's plan and conditions and its agent calls use it too.
 
 ### RouteTabs
 
-`web/src/ui/RouteTabs.vue` is a tab strip of links. Nuxt UI's `UTabs`
-switches local state with buttons; the Desk's tabs live in `?tab=`
-(`web/src/streamTabs.ts`), so they can be shared, reloaded and opened in a
-new tab. Each tab is a `RouterLink`, the active one with
-`aria-current="page"`, in a `<nav>` styled as the segmented strip the
-stream page always had.
+`web/src/ui/RouteTabs.vue` is the row of underline tabs that switch pages
+(level 1). Nuxt UI's `UTabs` switches local state with buttons; the Desk's
+tabs live in `?tab=` (`web/src/streamTabs.ts`), so they can be shared,
+reloaded and opened in a new tab. RouteTabs renders `UNavigationMenu`
+horizontal with `highlight` and `color="neutral"`: each tab is a link, the
+active one underlined and with `aria-current="page"`, in a `<nav>` with a
+border line under the row. Switches inside a tab (pills, filters) are level
+2 and never look like this row.
+
+All tabs link to the same path and differ only in `?tab=`, and vue-router's
+active match ignores the query, so it would mark every tab. Each item sets
+`active` from the `active` prop instead: exactly one link has
+`aria-current="page"`. No item has children, so the menu opens no viewport
+or popover; its empty viewport wrapper is hidden.
 
 ```vue
 <RouteTabs :tabs="milestoneTabs" :active="tab" :to="(id) => ({ query: tabQuery(route.query, id, milestoneTabs) })" />
@@ -766,14 +774,17 @@ stream page always had.
 
 - `tabs`: `Tab<T>[]` from `streamTabs.ts`; `active`: the shown tab's id.
 - `to`: the link of a tab, usually `tabQuery` on the current query.
-- `badges`: optional counts per tab id, shown after the label when above 0.
+- `badges`: optional counts per tab id, shown after the label when above 0,
+  as the item's badge in the warning tone (`badgeLook.warning`).
 - `label`: the `<nav>`'s `aria-label`, `View` by default.
 
-The strip never widens the page: it is `min-w-0 max-w-full` and scrolls
-sideways inside itself (`overflow-x-auto`, snapping to tab starts). On mount,
-when `active` or `tabs` change and when the strip is resized, it scrolls
-itself, not the page, so the active tab is fully in view. Below 760 px each
-tab is at least 44 px high. A parent that is a flex row lets the strip wrap
+The strip never widens the page: the nav is `min-w-0 max-w-full` and the
+menu's list (`[data-slot=list]`) scrolls sideways inside it
+(`overflow-x-auto`, snapping to tab starts). On mount, when `active` or
+`tabs` change and when the list is resized, RouteTabs scrolls the list, not
+the page, so the active tab (`a[aria-current="page"]`) is fully in view.
+Below 760 px each tab is at least 44 px high. The focus outline sits on the
+link's inset `::before`, inside the list's clip. A parent that is a flex row lets the strip wrap
 to a line of its own (`flex-wrap`), as the stream page's title row does, so
 it gets the full width before it scrolls. The stream page is the first user;
 the task page (`TaskBody.vue`) shows its tabs with `label="Task"` and the
