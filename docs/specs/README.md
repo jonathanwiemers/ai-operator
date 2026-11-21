@@ -63,6 +63,7 @@ git history does; otherwise "no milestone".
 18. [Desk: one look on every page](desk-one-look.spec.md) — One shell, header and set of building blocks from Nuxt UI, readable text, a light/dark/auto switch, and the rule that enforces it. Milestone: Desk: one look on every page, built from Nuxt UI, with readable text and a light/dark/auto switch.
 19. [One thread per problem, every conversation like a chat](desk-problem-thread.spec.md) — A `problems` table, one thread per stuck issue with one bar to act and an answer that shows at once, and `UChatMessages`/`UChatPrompt` for the Pilot tab, chats and streams. Milestone: no milestone (single MR).
 20. [Desk: works by keyboard and screen reader](desk-accessible.spec.md) — WCAG 2.2 AA: an axe-core check on every route with a known list, landmarks and a skip link, focus return, one announcer, charts and status not by colour alone, reduced motion and a VoiceOver pass. Milestone: Desk: works by keyboard and screen reader, with an accessibility check on every page.
+21. [Desk plans: draft a series of milestones that build on the queue](plan-milestone-series.spec.md) — Milestone files for the plan agent with queue position and `%N` references, a "Builds on" part, up to 5 drafts per plan created in strict order with `%draft-N` replaced, and a `%` menu in the plan chat. Milestone: Desk plans: draft a series of milestones that build on the queue.
 
 ## Research
 

@@ -82,7 +82,7 @@ and leave out the cookie:
 | `GET /api/v1/projects` | Your projects, with task counts and cost. A project an AgentProjectSet created has `set`, the set's name. | see |
 | `GET /api/v1/projectsets` | Your AgentProjectSets: group, `include` and `exclude`, the last discovery, the counts (`active`, `dormant`, `excluded`, `explicit`, `nameTaken`) and each matched project with its state and reason. An empty list on a cluster without the AgentProjectSet resource. | see, on the set's name |
 | `GET /api/v1/overview` | The dashboard: what is running, paused and waiting, what needs you, spend today and this week. | see |
-| `GET /api/v1/milestones` | The milestones of your projects. `?state=open` (default), `done` or `all`; `?project=`, `?limit=`. | see |
+| `GET /api/v1/milestones` | The milestones of your projects. `?state=open` (default), `done` or `all`; `?project=`, `?limit=`. An open autopilot milestone has `queuePosition`, its place in the project's run order, from 1. | see |
 | `GET /api/v1/search?q=` | Find tasks by `#issue`, `!merge request` or a part of the title. | see |
 | `GET /api/v1/projects/{namespace}/{name}` | One project: its tasks by milestone, the autopilot queue, finishing milestones and cost. | see |
 | `GET /api/v1/projects/{namespace}/{name}/milestones/{iid}` | One milestone: autopilot state, pause and its ways out, prompts, issues, releases, the pilot and the retrospective. | see |
@@ -94,7 +94,7 @@ and leave out the cookie:
 | `POST /api/v1/projects/{namespace}/{name}/milestones/{iid}/followup` | Create the follow-up milestone of the retrospective's follow-ups. | `steer`, owner subject, GitLab connected |
 | `POST /api/v1/projects/{namespace}/{name}/milestones/{iid}/followups/dismiss` | Dismiss the retrospective's remaining follow-ups. | `steer`, owner subject, GitLab connected |
 | `POST /api/v1/projects/{namespace}/{name}/milestones/{iid}/issues/{issue}/close` | Close an issue that keeps a done autopilot milestone open. | `steer`, owner subject, GitLab connected |
-| `GET /api/v1/projects/{namespace}/{name}/estimate` | Estimated cost of `?plan=` or `?milestone=`, from the project's last finished milestones. | see, research database; Desk chat with `?plan=` |
+| `GET /api/v1/projects/{namespace}/{name}/estimate` | Estimated cost of `?plan=` (with `&draft=`, a draft key) or `?milestone=`, from the project's last finished milestones. | see, research database; Desk chat with `?plan=` |
 | `GET /api/v1/projects/{namespace}/{name}/decisions` | The agents' decisions with their revisit chain and what *Revisit* does. `?milestone=` (an IID, empty for all), `?q=` (search), `?state=all`, `active` or `superseded`. `available: false` without the history database. | see |
 
 ## Prompts and the pilot's actions
@@ -135,18 +135,75 @@ exists in GitLab.
 |-----------------|---------|-------|
 | `GET /api/v1/plans` | The plans of every project you may see, last active first, and those projects with whether you may start plans in them. `?project=namespace/name` narrows both to one project. | see, Desk chat |
 | `GET /api/v1/projects/{namespace}/{name}/plans` | The project's plans, newest first. | see, Desk chat |
-| `GET /api/v1/projects/{namespace}/{name}/plans/{plan}` | One plan with its draft. | see, Desk chat |
+| `GET /api/v1/projects/{namespace}/{name}/plans/{plan}` | One plan with its drafts. | see, Desk chat |
 | `POST /api/v1/projects/{namespace}/{name}/plans` | Start a plan, with an optional `{"title": "…"}`. | `steer`, Desk chat |
 | `DELETE /api/v1/projects/{namespace}/{name}/plans/{plan}` | Delete a plan. | `steer`, Desk chat |
-| `PUT /api/v1/projects/{namespace}/{name}/plans/{plan}/draft` | Save your edit of the draft. | `steer`, Desk chat |
+| `PUT /api/v1/projects/{namespace}/{name}/plans/{plan}/draft` | Save your edit of the draft `key`. | `steer`, Desk chat |
+| `DELETE /api/v1/projects/{namespace}/{name}/plans/{plan}/drafts/{key}` | Remove a draft that has no milestone. | `steer`, Desk chat |
+| `PUT /api/v1/projects/{namespace}/{name}/plans/{plan}/drafts/order` | Reorder the drafts. | `steer`, Desk chat |
 | `POST /api/v1/projects/{namespace}/{name}/plans/{plan}/budget` | Raise the plan's budget, up to its limit. | `steer`, Desk chat |
-| `POST /api/v1/projects/{namespace}/{name}/plans/{plan}/milestone` | Create the milestone in GitLab from the draft. | `steer`, Desk chat, GitLab connected |
+| `POST /api/v1/projects/{namespace}/{name}/plans/{plan}/milestone` | Create the milestone of the draft `key` in GitLab. | `steer`, Desk chat, GitLab connected |
 | `GET /api/v1/projects/{namespace}/{name}/plans/{plan}/chat` | The plan's chat. | see, Desk chat |
 | `GET /api/v1/projects/{namespace}/{name}/plans/{plan}/decisions` | The history of the plan's decisions: each decision's versions and sign-offs, newest first. | see, Desk chat |
 | `POST /api/v1/projects/{namespace}/{name}/plans/{plan}/chat` | Send the planner a message. | `steer`, Desk chat |
 
 On plans, `steer` also needs you to be an owner subject
 of the project's milestones, when any of them names owner subjects.
+
+### Plan drafts
+
+A plan holds up to 5 [plan drafts](../concepts/glossary.md#plan-draft).
+This example saves an edit of draft 2, puts draft 2 first and creates its
+milestone:
+
+```sh
+P="$DESK/api/v1/projects/$NS/$PROJECT/plans/$PLAN"
+curl -sS -X PUT -b "$COOKIE" -H 'Content-Type: application/json' \
+  "$P/draft" -d '{"key":2,"baseRevision":3,"draft":"# Page\n…"}'
+curl -sS -X PUT -b "$COOKIE" -H 'Content-Type: application/json' \
+  "$P/drafts/order" -d '{"keys":[2,1,3]}'
+curl -sS -X POST -b "$COOKIE" -H 'Content-Type: application/json' \
+  "$P/milestone" -d '{"key":2,"title":"Page","description":"…",
+                      "spec":true,"autopilot":true}'
+```
+
+`GET …/plans/{plan}` has `drafts`, in the order their milestones are
+created, never `null`. Each draft has `key`, `title`, `draft`, `revision`,
+`by` (`agent` or `owner`), `sha`, `createdMilestoneIID` and
+`createdMilestoneURL` once created, and `creating: true` while its
+milestone is being created. A key is given once per plan and never
+reused. A plan from before drafts shows its draft as key 1.
+
+The plan and the plan list have `draftsTotal`, `draftsCreated` and
+`createdMilestones`, a list of `iid` and `url` in draft order.
+
+The rules:
+
+- `PUT …/draft` takes `key`, `baseRevision` (the `revision` your edit
+  started from), `draft` and an optional `title`. Without `key` (or with
+  0), it edits the first draft without a milestone. When the draft's
+  revision is no longer `baseRevision`, the answer is `409` with the
+  current plan: show the newer draft.
+- `PUT …/drafts/order` takes `keys`, every draft's key once (`422`
+  otherwise).
+- `POST …/milestone` takes `key`, `title`, `description`, `spec` and
+  `autopilot`, with the same default for `key` as `PUT …/draft`. It answers
+  `201` with the milestone's `iid` and `webURL`.
+- Only the first draft without a milestone can be created: any other
+  answers `409` with "create draft 1 first", naming the draft to create.
+  Before it creates the
+  milestone, each `%draft-N` of a created draft becomes `%IID`. A
+  `%draft-N` of a draft not created yet answers `422` with
+  `field: "description"`, naming the reference.
+- A created draft is read-only: editing, removing or moving it answers
+  `409`.
+- When GitLab refuses the milestone, the draft stays uncreated and the
+  plan stays open.
+- `…/estimate?plan=` counts the draft `&draft=` names. Without it, it
+  counts the first draft without a milestone, else the last draft.
+
+Only the agent adds drafts. The plan's phase becomes `Created` once every
+draft has its milestone; until then the plan takes chat messages.
 
 ### Plan decisions
 
@@ -223,6 +280,8 @@ without it they answer 404.
 ## Limits
 
 - A chat message is at most 16 KiB, a one-off research request 32 KiB.
+- A plan holds at most 5 drafts. A draft is at most 64 KiB, its title at
+  most 255 characters on one line.
 - A plan chat message may answer at most 30 decisions, and an `other`
   answer is at most 2,000 characters. The agent returns at most 30
   decisions per plan, each with 2 to 5 options. A title is at most 120

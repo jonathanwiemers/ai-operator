@@ -31,6 +31,74 @@ The operator then creates the milestone in GitLab with your GitLab login.
 A plan has its own budget; the chart values are in the
 [chart README](../../charts/ai-operator/README.md#plan).
 
+### Draft a series of milestones
+
+One plan can draft several milestones that build on each other, for
+example a data model first and the page that shows it second:
+
+1. Ask the agent: "Split this into two milestones: the API first, then the
+   page." It writes two [plan drafts](../concepts/glossary.md#plan-draft),
+   and the right pane shows one tab per draft.
+2. In draft 2 the agent writes "builds on %draft-1" where it uses the API.
+3. Click *Create milestone* on draft 1. GitLab gives it the next number,
+   say %41.
+4. Click *Create milestone* on draft 2. Its description now says "builds
+   on %41".
+
+A plan holds up to 5 drafts, in order. Only the agent adds drafts: ask it
+in the chat. A draft the agent leaves out of its answer stays as it is.
+On a tab you can edit the draft, *Remove* it, and move it left or right
+with the arrow buttons. Once a draft has its milestone, its tab shows the
+*%IID* badge that links to it, and the draft is read-only: you can't
+edit, remove or move it any more.
+
+The drafts are created in list order, one by one, so their milestone
+numbers follow the order they build on each other:
+
+- *Create milestone* shows only on the first draft without a milestone.
+- **Create all** asks once for *Spec* and *Autopilot*, lists the drafts in
+  order and creates them one after the other with the same choices. It
+  stops at the first error. The dialog then shows which drafts were
+  created, which one failed and why, and which stay drafts.
+- On create, each `%draft-N` of a draft that already has its milestone
+  becomes that milestone's `%IID`. A `%draft-N` of a draft not created yet
+  is refused: create that draft first, or remove the reference.
+
+The plan stays open, and you can keep chatting, until every draft has its
+milestone.
+
+### Build on the queue
+
+Before it writes, the agent reads the project's open milestones and the 5
+newest closed ones: their goals, locked decisions, requirements, planned
+issues, autopilot state, place in the queue and what has merged. It writes
+the draft against the code as it will be when the new milestone's turn
+comes, because milestones run oldest first. The draft's Background gets a
+*Builds on* part that names each thing an earlier milestone adds and
+whether it is on main yet, for example:
+
+```markdown
+### Builds on
+
+- `status.decisions`, added by %34 R2, not on main yet.
+```
+
+The agent reuses the names and decisions of queued work and does not
+specify it again; it names it under Non-goals instead. When your request
+overlaps a queued milestone, the agent says so and proposes to merge it
+into that milestone or to narrow the draft. The same rules hold between
+the drafts of one plan.
+
+To point the agent at a milestone, name it in your message: "build on
+%38". The agent reads %38 in full before it answers, also when %38 is an
+older closed milestone.
+
+Type `%` in the plan chat to pick a reference from a menu. It lists the
+project's open milestones in queue order, then the newest closed ones,
+then the plan's drafts not created yet as `%draft-N`, each with its state.
+Type on to filter by number or title, use the arrow keys to move, Enter to
+insert the reference and Escape to close the menu.
+
 ### Answer the agent's decisions
 
 The agent returns its decisions as a list, not only as prose in the draft.
@@ -114,7 +182,8 @@ A plan that created a milestone links to it as *%N*, with the milestone's
 state (running, waiting, paused, planned or done) and how many of its
 issues are merged. When the operator does not plan that milestone, for
 example because you switched *Spec* off, *%N* opens it in GitLab and the
-row says *Not planned*.
+row says *Not planned*. A plan with several drafts also shows "2 of 3
+created" and links its other created milestones.
 
 ## Write it in GitLab
 
@@ -294,4 +363,5 @@ plan does not list it, and even if the linked issue is in another project.
 - [Your first milestone](../getting-started/first-milestone.md): a short
   spec on autopilot, step by step.
 - [Desk API](../reference/desk-api.md#plans): the plan endpoints, the
-  decisions history and the `decisions` field of the plan chat.
+  drafts, the decisions history and the `decisions` field of the plan
+  chat.

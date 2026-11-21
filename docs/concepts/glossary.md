@@ -171,6 +171,14 @@ fixes what it may on its own, asks the [owners](#owner) when it needs a
 decision, and writes the [retrospective](#retrospective). See
 [Roles](roles.md#pilot) and [The pilot](../guides/pilot.md).
 
+### Plan draft
+
+One milestone [spec](#spec) in a Desk plan, before it exists in GitLab. A
+plan holds up to 5 drafts in order, and their milestones are created in
+that order, so a later draft can build on an earlier one as `%draft-N`.
+See
+[Write a milestone](../guides/write-a-milestone.md#draft-a-series-of-milestones).
+
 ### Planner
 
 The agent that turns a milestone [spec](#spec) into

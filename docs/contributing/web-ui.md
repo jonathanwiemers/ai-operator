@@ -2170,14 +2170,16 @@ subjects of the project's live Spec tasks (the grant alone when none has
 any). Anyone who may see the project may list and read plans; bodies need
 `conversation`. The plan page polls every 5 s while visible. Chat is
 `GET`/`POST …/plans/{plan}/chat`, messages live in Postgres
-(`chat_messages.plan`). An owner edit is `PUT …/draft` (a new revision,
-`draftBy: owner`); the next turn tells the agent "the owner edited the
-draft; it is now: …". Calls are kind `plan`. Raising the cap is `POST
-…/budget` up to `plan.maxBudgetUSDLimit`. *Create milestone* uses the
-estimate of `GET …/estimate?plan=` (*not enough history* below three
-finished milestones) and `POST …/milestone` with the owner's GitLab token;
-the plan records the IID, its pod stops, and creating again is refused;
-audit line `plan.milestone`. The plan's title is `status.title`, else
+(`chat_messages.plan`). An owner edit is `PUT …/draft` with the draft's
+`key` (a new revision, `by: owner`); the next turn lists the drafts the
+owner edited since the agent saw them. Calls are kind `plan`. Raising the
+cap is `POST …/budget` up to `plan.maxBudgetUSDLimit`. *Create milestone*
+uses the estimate of `GET …/estimate?plan=&draft=` (*not enough history*
+below three finished milestones) and `POST …/milestone` with the draft's
+`key` and the owner's GitLab token; the draft records the IID and becomes
+read-only, and the pod stops once every draft is created; audit line
+`plan.milestone`. The drafts, the milestone files and the create order are
+in [Desk plans](design.md#desk-plans). The plan's title is `status.title`, else
 `spec.title`. The plan pod may only patch the status, so the agent's title
 goes there: while both are empty, each turn's prompt has a `## Title`
 section and the turn schema's `title` (first line, trimmed, at most 255
