@@ -56,10 +56,6 @@ func TestPlanViewDrafts(t *testing.T) {
 	if d := v.Drafts[0]; d.CreatedMilestoneIID != 41 || d.CreatedMilestoneURL != "https://gitlab.example.com/m/41" {
 		t.Errorf("draft 1: %+v", d)
 	}
-	// The single-draft fields mirror the first uncreated draft.
-	if v.DraftRevision != 3 || v.DraftSHA != "abc" {
-		t.Errorf("mirror: %+v", v)
-	}
 	var list []PlanListItem
 	if code := env.get(t, shopPlans, &list); code != http.StatusOK || len(list) != 2 {
 		t.Fatalf("list: %d", code)

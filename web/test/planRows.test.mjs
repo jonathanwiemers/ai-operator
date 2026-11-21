@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
+  planDraftsCreated,
   planHeaderLines,
   planMilestoneLink,
   planMilestoneTitle,
@@ -104,4 +105,13 @@ test('planHeaderLines: markers per toggle, then the owners lines', () => {
   assert.deepEqual(planHeaderLines(false, true)[0], '/agent autopilot')
   assert.equal(planHeaderLines(false, false).length, 2)
   assert.match(planHeaderLines(true, false)[1], /^\/agent owners /)
+})
+
+test('planDraftsCreated: N of M for several drafts, the milestones after the first', () => {
+  const m = (iid) => ({ iid, url: `https://gitlab.example/m/${iid}` })
+  assert.equal(planDraftsCreated({ draftsTotal: 1, draftsCreated: 1, createdMilestones: [m(7)], createdMilestoneIID: 7 }), null)
+  assert.equal(planDraftsCreated({ draftsTotal: 0, draftsCreated: 0, createdMilestones: [] }), null)
+  assert.deepEqual(planDraftsCreated({ draftsTotal: 3, draftsCreated: 0, createdMilestones: [] }), { label: '0 of 3 created', others: [] })
+  assert.deepEqual(planDraftsCreated({ draftsTotal: 3, draftsCreated: 2, createdMilestones: [m(7), m(9)], createdMilestoneIID: 7 }),
+    { label: '2 of 3 created', others: [m(9)] })
 })

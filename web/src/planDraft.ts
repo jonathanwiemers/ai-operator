@@ -1,20 +1,8 @@
-// Pure helpers for plan draft saves (PUT …/plans/{plan}/draft).
-import type { PlanView } from './generated/views'
+// Pure helpers for plan drafts: the editor (PUT …/plans/{plan}/draft), its
+// local storage and the draft list's order.
+import type { PlanDraftView } from './generated/views'
 
-// DraftConflict: 409 body is the server's current PlanView (revision moved).
-export class DraftConflict extends Error {
-  view: PlanView
-  constructor(view: PlanView) {
-    super('the draft changed on the server')
-    this.view = view
-  }
-}
-
-// draftConflictFrom maps a 409 PlanView body; error envelopes stay ApiErrors.
-export function draftConflictFrom(status: number, data: Record<string, unknown>): DraftConflict | null {
-  if (status !== 409 || typeof data.name !== 'string' || typeof data.draftRevision !== 'number') return null
-  return new DraftConflict(data as unknown as PlanView)
-}
+export { DraftConflict, draftConflictFrom } from './planConflict.ts'
 
 export interface DiffLine { kind: 'same' | 'add' | 'del'; text: string }
 
@@ -55,30 +43,63 @@ export function lineDiff(a: string, b: string): DiffLine[] {
 export interface EditorState { base: number; text: string; dirty: boolean }
 export type ServerDraft = { action: 'replace' } | { action: 'keep' } | { action: 'conflict'; diff: DiffLine[] }
 
-// onServerDraft decides what a polled view does to the editor: replace it
+// onServerDraft decides what a polled draft does to its editor: replace it
 // when clean (or equal), a conflict with the diff mine → agent's when dirty
 // and the server revision is newer, else keep the owner's edit.
-export function onServerDraft(s: EditorState, v: Pick<PlanView, 'draft' | 'draftRevision'>): ServerDraft {
-  if (!s.dirty || s.text === v.draft) return { action: 'replace' }
-  return v.draftRevision > s.base ? { action: 'conflict', diff: lineDiff(s.text, v.draft) } : { action: 'keep' }
+type DraftText = Pick<PlanDraftView, 'draft' | 'revision'>
+export function onServerDraft(s: EditorState, d: DraftText): ServerDraft {
+  if (!s.dirty || s.text === d.draft) return { action: 'replace' }
+  return d.revision > s.base ? { action: 'conflict', diff: lineDiff(s.text, d.draft) } : { action: 'keep' }
 }
-export const takeAgent = (v: Pick<PlanView, 'draft' | 'draftRevision'>): EditorState =>
-  ({ base: v.draftRevision, text: v.draft, dirty: false })
-export const keepMine = (s: EditorState, v: Pick<PlanView, 'draftRevision'>): EditorState =>
-  ({ ...s, base: v.draftRevision })
+export const takeAgent = (d: DraftText): EditorState => ({ base: d.revision, text: d.draft, dirty: false })
+export const keepMine = (s: EditorState, d: Pick<PlanDraftView, 'revision'>): EditorState => ({ ...s, base: d.revision })
 
-// Unsaved edits per plan in localStorage, so a closed tab keeps them.
-const editKey = (ns: string, plan: string) => `plan-draft:${ns}/${plan}`
-export function readDraftEdit(ns: string, plan: string): EditorState | null {
+// Unsaved edits per draft in localStorage, so a closed tab keeps them.
+const editKey = (ns: string, plan: string, key: number) => `plan-draft:${ns}/${plan}/${key}`
+export function readDraftEdit(ns: string, plan: string, key: number): EditorState | null {
   try {
-    const e = JSON.parse(localStorage.getItem(editKey(ns, plan)) ?? 'null')
+    const e = JSON.parse(localStorage.getItem(editKey(ns, plan, key)) ?? 'null')
     return typeof e?.base === 'number' && typeof e?.text === 'string' ? { base: e.base, text: e.text, dirty: true } : null
   } catch { return null }
 }
 // writeDraftEdit stores a dirty state and removes a clean one.
-export function writeDraftEdit(ns: string, plan: string, s: EditorState) {
+export function writeDraftEdit(ns: string, plan: string, key: number, s: EditorState) {
   try {
-    if (s.dirty) localStorage.setItem(editKey(ns, plan), JSON.stringify({ base: s.base, text: s.text }))
-    else localStorage.removeItem(editKey(ns, plan))
+    if (s.dirty) localStorage.setItem(editKey(ns, plan, key), JSON.stringify({ base: s.base, text: s.text }))
+    else localStorage.removeItem(editKey(ns, plan, key))
   } catch { /* storage disabled: edits last for this tab */ }
 }
+
+// The draft list (Decision 10): drafts are created in list order; a created
+// draft, or one being created, is read-only and keeps its place.
+type ListDraft = Pick<PlanDraftView, 'key' | 'createdMilestoneIID' | 'creating'>
+export const draftLocked = (d: ListDraft): boolean => !!d.createdMilestoneIID || !!d.creating
+
+// nextToCreate is the draft Create milestone is for: the first without a
+// milestone, null when every draft has one or the first is being created.
+export function nextToCreate<T extends ListDraft>(drafts: T[]): T | null {
+  const d = drafts.find((d) => !((d.createdMilestoneIID ?? 0) > 0))
+  return d && !draftLocked(d) ? d : null
+}
+
+// canMove: the draft key and its neighbour in dir (-1 left, 1 right) both
+// exist and neither is locked.
+export function canMove(drafts: ListDraft[], key: number, dir: -1 | 1): boolean {
+  const i = drafts.findIndex((d) => d.key === key)
+  const a = drafts[i], b = drafts[i + dir]
+  return !!a && !!b && !draftLocked(a) && !draftLocked(b)
+}
+
+// movedKeys is the key order with the draft key swapped with its neighbour
+// in dir, the order unchanged when it cannot move.
+export function movedKeys(drafts: ListDraft[], key: number, dir: -1 | 1): number[] {
+  const keys = drafts.map((d) => d.key)
+  if (!canMove(drafts, key, dir)) return keys
+  const i = keys.indexOf(key)
+  ;[keys[i], keys[i + dir]] = [keys[i + dir]!, keys[i]!]
+  return keys
+}
+
+// draftLabel is a draft's tab label: its title, else "Draft <key>" (the N of
+// %draft-N).
+export const draftLabel = (d: Pick<PlanDraftView, 'key' | 'title'>): string => d.title.trim() || `Draft ${d.key}`

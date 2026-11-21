@@ -5,7 +5,7 @@ import ExtLink from './ExtLink.vue'
 import UProgress from '@nuxt/ui/components/Progress.vue'
 import RelTime from './RelTime.vue'
 import { progressBar, progressUI, stateTone } from '../milestoneRows'
-import { planMilestoneLink, planPhaseTone, planSpendLabel, planTitle } from '../planRows'
+import { planDraftsCreated, planMilestoneLink, planPhaseTone, planSpendLabel, planTitle } from '../planRows'
 import type { PlanListItem } from '../generated/views'
 
 // One plan row (decision 10): project (only when the list spans projects),
@@ -13,7 +13,9 @@ import type { PlanListItem } from '../generated/views'
 // a created milestone its %N link with state and progress, or "Not planned"
 // while the Desk does not track it. The milestone shows by title, %N as its
 // secondary label, where the page knows the title (milestoneTitle: the
-// project page's milestones). Flex rows that wrap on phones.
+// project page's milestones). A plan with several drafts adds "N of M
+// created" and the links of its other created milestones (R6). Flex rows
+// that wrap on phones.
 const props = defineProps<{ item: PlanListItem; showProject?: boolean; milestoneTitle?: string }>()
 
 const title = computed(() => planTitle(props.item.title, props.item.createdAt))
@@ -22,6 +24,7 @@ const to = computed(() => ({
   name: 'plans' as const,
   params: { namespace: props.item.namespace, name: props.item.project, plan: props.item.name },
 }))
+const drafts = computed(() => planDraftsCreated(props.item))
 const bar = computed(() => (props.item.milestone ? progressBar(props.item.milestone.progress, title.value) : null))
 const project = computed(() => ({
   name: 'stream-project' as const,
@@ -57,6 +60,10 @@ const project = computed(() => ({
             <span class="min-w-9 text-right whitespace-nowrap text-(--text-2) tabular-nums">{{ item.milestone.progress.merged }}/{{ item.milestone.progress.total }}</span>
           </span>
         </template>
+      </span>
+      <span v-if="drafts" class="flex flex-wrap items-center gap-x-2 whitespace-nowrap tabular-nums" data-plan-drafts>
+        {{ drafts.label }}
+        <ExtLink v-for="m in drafts.others" :key="m.iid" :href="m.url">%{{ m.iid }}</ExtLink>
       </span>
     </span>
   </li>

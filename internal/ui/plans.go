@@ -86,16 +86,11 @@ type PlanPermissions struct {
 	Steer bool `json:"steer"`
 }
 
-// PlanView is one plan with its drafts. Draft, DraftRevision, DraftBy and
-// DraftSHA mirror the first draft without a milestone, else the last one.
+// PlanView is one plan with its drafts.
 type PlanView struct {
 	PlanListItem `json:",inline" tstype:",extends"`
 	// Drafts are the plan's drafts in list order, never null.
-	Drafts        []PlanDraftView `json:"drafts"`
-	Draft         string          `json:"draft"`
-	DraftRevision int64           `json:"draftRevision"`
-	DraftBy       string          `json:"draftBy,omitempty"`
-	DraftSHA      string          `json:"draftSHA,omitempty"`
+	Drafts []PlanDraftView `json:"drafts"`
 	// Decisions is the current list in status order, never null;
 	// DecisionsPending counts the open or not signed-off entries.
 	Decisions        []aiv1.PlanDecision `json:"decisions"`
@@ -288,12 +283,12 @@ func (s *Server) setPlanMilestones(ctx context.Context, items []PlanListItem, vi
 }
 
 func (s *Server) planView(pl *aiv1.AgentPlan, steer bool) PlanView {
-	d, drafts := planDraft(pl), []PlanDraftView{}
+	drafts := []PlanDraftView{}
 	for _, d := range pl.DraftList() {
 		drafts = append(drafts, PlanDraftView{Key: d.Key, Title: d.Title, Draft: d.Draft, Revision: d.Revision, By: d.By, SHA: d.SHA,
 			CreatedMilestoneIID: max(d.CreatedMilestoneIID, 0), CreatedMilestoneURL: d.CreatedMilestoneURL, Creating: d.CreatedMilestoneIID < 0})
 	}
-	return PlanView{PlanListItem: s.planItem(pl, steer), Drafts: drafts, Draft: d.Draft, DraftRevision: d.Revision, DraftBy: d.By, DraftSHA: d.SHA,
+	return PlanView{PlanListItem: s.planItem(pl, steer), Drafts: drafts,
 		Decisions: append([]aiv1.PlanDecision{}, pl.Status.Decisions...), DecisionsPending: planDecisionsPending(pl.Status.Decisions)}
 }
 
@@ -354,7 +349,7 @@ func (s *Server) createPlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.log.Info("audit", "action", "plan.create", "user", p.Username, "namespace", pl.Namespace, "name", pl.Name, "project", ap.Name)
-	writeJSON(w, http.StatusCreated, PlanView{PlanListItem: s.planItem(pl, true)})
+	writeJSON(w, http.StatusCreated, s.planView(pl, true))
 }
 
 // deletePlan deletes one of the project's plans; its pod and PVC follow.

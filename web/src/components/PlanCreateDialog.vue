@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import UAlert from '@nuxt/ui/components/Alert.vue'
 import { alertColor } from '../badgeTone'
-// Create milestone from a plan (R12, Decisions 8, 10): title, final draft, Spec / Autopilot, the appended lines and the estimate.
+// Create the milestone of a plan's draft (R12, Decisions 8, 10; draftKey 0: a new draft): title, final draft, Spec / Autopilot, the appended lines and the estimate.
 import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { createPlanMilestone, getEstimate } from '../client'
 import { estimateLabel } from '../estimate'
@@ -18,7 +18,7 @@ import type { FollowUpMilestoneView } from '../generated/views'
 import { useBackClose } from '../ui/useBackClose'
 
 const UModal = defineAsyncComponent(() => import('@nuxt/ui/components/Modal.vue'))
-const props = defineProps<{ namespace: string; name: string; plan: string; title: string; draft: string; pending?: number }>()
+const props = defineProps<{ namespace: string; name: string; plan: string; draftKey: number; title: string; draft: string; pending?: number }>()
 const route = useRoute()
 const warning = computed(() => createWarning(props.pending ?? 0))
 const emit = defineEmits<{ created: [] }>()
@@ -29,13 +29,13 @@ useBackClose(open)
 watch(open, async (o) => {
   if (!o) return
   [title.value, text.value, error.value, created.value, estimate.value] = [planMilestoneTitle(props.title, props.draft), props.draft, '', null, '…']
-  estimate.value = await getEstimate(props.namespace, props.name, { plan: props.plan }).then(estimateLabel, (e) => (e instanceof Error ? e.message : String(e)))
+  estimate.value = await getEstimate(props.namespace, props.name, { plan: props.plan, draft: props.draftKey }).then(estimateLabel, (e) => (e instanceof Error ? e.message : String(e)))
 }, { immediate: true })
 async function create() {
   [busy.value, error.value] = [true, '']
   try {
     created.value = await createPlanMilestone(props.namespace, props.name, props.plan,
-      { title: title.value.trim(), description: text.value.trim(), spec: spec.value, autopilot: autopilot.value })
+      { key: props.draftKey, title: title.value.trim(), description: text.value.trim(), spec: spec.value, autopilot: autopilot.value })
     emit('created')
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e)

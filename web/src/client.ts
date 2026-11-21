@@ -50,7 +50,7 @@ import type {
 } from './generated/views'
 import type { ResearchAgent, ResearchDepth, ResearchView } from './generated/api'
 import { decisionsSearch, type DecisionParams } from './decisions'
-import { draftConflictFrom, DraftConflict } from './planDraft'
+import { draftConflictFrom, DraftConflict } from './planConflict'
 import { plansPath } from './plansPath'
 import type { DecisionAnswer } from './generated/store'
 import type { ChatKind } from './types'
@@ -396,18 +396,14 @@ export function postPlanChat(
     throw e instanceof ApiError && e.status === 409 && e.message === decisionsChangedMessage ? new DecisionsChanged() : e
   })
 }
-// savePlanDraft: PUT .../draft; revision 409 → DraftConflict (server's view).
-export async function savePlanDraft(
-  namespace: string,
-  name: string,
-  plan: string,
-  body: { baseRevision: number; draft: string },
-): Promise<PlanView> {
-  const resp = await fetch(`/api/v1${planPath(namespace, name, plan)}/draft`, {
-    method: 'PUT',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+// planChange sends a change of a plan's drafts and answers the new view; a
+// 409 with the server's view is DraftConflict, other errors ApiErrors.
+async function planChange(method: 'PUT' | 'DELETE', path: string, body?: unknown): Promise<PlanView> {
+  const resp = await fetch(`/api/v1${path}`, {
+    method,
+    headers: { Accept: 'application/json', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
     credentials: 'same-origin',
-    body: JSON.stringify(body),
+    body: body === undefined ? undefined : JSON.stringify(body),
   })
   if (resp.status === 401) loginRequired()
   const data = (await resp.json().catch(() => ({}))) as Record<string, unknown> & { error?: string; field?: string }
@@ -416,6 +412,23 @@ export async function savePlanDraft(
   if (!resp.ok) throw new ApiError(data.error ?? `The server answered ${resp.status}.`, resp.status, data.field, data)
   return data as unknown as PlanView
 }
+// savePlanDraft: PUT .../draft of the draft key; a stale revision is DraftConflict.
+export function savePlanDraft(
+  namespace: string,
+  name: string,
+  plan: string,
+  body: { key: number; baseRevision: number; draft: string },
+): Promise<PlanView> {
+  return planChange('PUT', `${planPath(namespace, name, plan)}/draft`, body)
+}
+// deletePlanDraft: DELETE .../drafts/{key} of an uncreated draft.
+export function deletePlanDraft(namespace: string, name: string, plan: string, key: number): Promise<PlanView> {
+  return planChange('DELETE', `${planPath(namespace, name, plan)}/drafts/${key}`)
+}
+// orderPlanDrafts: PUT .../drafts/order, every draft key once.
+export function orderPlanDrafts(namespace: string, name: string, plan: string, keys: number[]): Promise<PlanView> {
+  return planChange('PUT', `${planPath(namespace, name, plan)}/drafts/order`, { keys })
+}
 export function raisePlanBudget(namespace: string, name: string, plan: string, maxBudgetUSD: string): Promise<PlanView> {
   return post(`${planPath(namespace, name, plan)}/budget`, { maxBudgetUSD })
 }
@@ -423,16 +436,18 @@ export function createPlanMilestone(
   namespace: string,
   name: string,
   plan: string,
-  body: { title: string; description: string; spec: boolean; autopilot: boolean },
+  body: { key: number; title: string; description: string; spec: boolean; autopilot: boolean },
 ): Promise<FollowUpMilestoneView> {
   return post(`${planPath(namespace, name, plan)}/milestone`, body)
 }
+// getEstimate: a plan's draft (key, the next to create without) or a milestone.
 export function getEstimate(
   namespace: string,
   name: string,
-  q: { plan: string } | { milestone: number },
+  q: { plan: string; draft?: number } | { milestone: number },
 ): Promise<EstimateView> {
   const params = new URLSearchParams('plan' in q ? { plan: q.plan } : { milestone: String(q.milestone) })
+  if ('plan' in q && q.draft) params.set('draft', String(q.draft))
   return get(`${projectPath(namespace, name)}/estimate?${params}`)
 }
 

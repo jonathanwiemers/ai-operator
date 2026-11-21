@@ -148,7 +148,7 @@ async function reload() {
             </li>
             <li v-for="r in sum.kept" :key="r.id" class="text-(--text-2) [overflow-wrap:anywhere]" data-wizard-kept>{{ r.id }} {{ r.title }}: kept</li>
           </ul>
-          <UAlert v-if="view.draftBy === 'owner'" data-wizard-owner-edit :color="alertColor('warning')" variant="subtle" class="mt-3" description="You edited the draft since the agent's last turn; the agent gets your edit." />
+          <UAlert v-if="view.drafts.some((d) => d.by === 'owner' && !d.createdMilestoneIID)" data-wizard-owner-edit :color="alertColor('warning')" variant="subtle" class="mt-3" description="You edited a draft since the agent's last turn; the agent gets your edit." />
           <UTextarea v-model="text" :rows="3" autoresize placeholder="More for the agent (optional)" aria-label="More for the agent"
             :ui="{ root: 'w-full', base: 'text-base tablet:text-sm' }" />
           <span v-if="blocked" class="text-(--text-2)">{{ blocked }}</span>

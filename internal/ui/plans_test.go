@@ -86,7 +86,6 @@ func TestPlansListAndGet(t *testing.T) {
 		"draftsTotal":1,"draftsCreated":1,"createdMilestones":[{"iid":5,"url":"https://gitlab.example.com/m/5"}],
 		"permissions":{"steer":false},
 		"drafts":[{"key":1,"title":"","draft":"# Refunds","revision":4,"by":"owner","createdMilestoneIID":5,"createdMilestoneURL":"https://gitlab.example.com/m/5"}],
-		"draft":"# Refunds","draftRevision":4,"draftBy":"owner",
 		"decisions":[],"decisionsPending":0}`)
 
 	for _, path := range []string{shopPlans + "/billing-plan", shopPlans + "/nope", "/api/v1/projects/team-b/billing/plans",
@@ -158,7 +157,7 @@ func TestCreatePlan(t *testing.T) {
 	if !regexp.MustCompile(`^plan-\d{8}-[a-z2-7]{6}$`).MatchString(name) {
 		t.Errorf("name %q", name)
 	}
-	if out["title"] != "Refunds v2" || out["createdBy"] != "ada@example.com" || out["draft"] != "" ||
+	if out["title"] != "Refunds v2" || out["createdBy"] != "ada@example.com" || !reflect.DeepEqual(out["drafts"], []any{}) ||
 		out["permissions"].(map[string]any)["steer"] != true {
 		t.Errorf("view: %v", out)
 	}

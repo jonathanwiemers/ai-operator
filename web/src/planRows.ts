@@ -92,3 +92,14 @@ export { plansPath } from './plansPath.ts'
 export function planHeaderLines(spec: boolean, autopilot: boolean): string[] {
   return [...(spec ? ['/agent spec'] : []), ...(autopilot ? ['/agent autopilot'] : []), "/agent owners @… (the project's owners)", '/agent owner-subjects … (theirs and yours)']
 }
+
+// planDraftsCreated is a plan row's "N of M created" for a plan with more
+// than one draft, with the created milestones the row's milestone link does
+// not show yet (the first one); null for one draft or none.
+export function planDraftsCreated(
+  item: Pick<PlanListItem, 'draftsTotal' | 'draftsCreated' | 'createdMilestones' | 'createdMilestoneIID'>,
+): { label: string; others: PlanListItem['createdMilestones'] } | null {
+  if (item.draftsTotal <= 1) return null
+  const others = item.createdMilestones.filter((m) => m.iid !== item.createdMilestoneIID)
+  return { label: `${item.draftsCreated} of ${item.draftsTotal} created`, others }
+}

@@ -93,8 +93,9 @@ onUnmounted(() => window.clearInterval(timer))
       </template>
       <template v-if="view" #description>
         <span data-plan-spend>{{ planSpendLabel(view.spendUSD, view.budgetUSD) }}</span>
-        <template v-if="view.createdMilestoneIID">
-          · <a :href="view.createdMilestoneURL">Milestone %{{ view.createdMilestoneIID }}</a>
+        <template v-if="view.createdMilestones.length">
+          · {{ view.createdMilestones.length > 1 ? 'Milestones' : 'Milestone' }}
+          <template v-for="(m, i) in view.createdMilestones" :key="m.iid">{{ i ? ', ' : '' }}<a :href="m.url">%{{ m.iid }}</a></template>
         </template>
       </template>
       <!-- Raise budget is the one action; Delete is in ⋯. -->

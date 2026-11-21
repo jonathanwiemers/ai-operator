@@ -2,7 +2,12 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
+  canMove,
   draftConflictFrom,
+  draftLabel,
+  draftLocked,
+  movedKeys,
+  nextToCreate,
   DraftConflict,
   keepMine,
   lineDiff,
@@ -23,17 +28,21 @@ const view = {
   tokens: 0,
   budgetUSD: '5',
   budgetLimitUSD: '20',
+  draftsTotal: 1,
+  draftsCreated: 0,
+  createdMilestones: [],
   permissions: { steer: true },
-  draft: '# Refunds',
-  draftRevision: 4,
+  drafts: [{ key: 1, title: 'Refunds', draft: '# Refunds', revision: 4 }],
+  decisions: [],
+  decisionsPending: 0,
 }
 
 test('draftConflictFrom: 409 with a plan view is DraftConflict', () => {
   const c = draftConflictFrom(409, view)
   assert.ok(c instanceof DraftConflict)
   assert.equal(c.view.name, 'shop-plan-new')
-  assert.equal(c.view.draftRevision, 4)
-  assert.equal(c.view.draft, '# Refunds')
+  assert.equal(c.view.drafts[0].revision, 4)
+  assert.equal(c.view.drafts[0].draft, '# Refunds')
 })
 
 test('draftConflictFrom: other statuses and error envelopes are not', () => {
@@ -95,7 +104,7 @@ test('lineDiff: a 64 KiB draft with a few edits diffs line by line', () => {
   assert.equal(diff.filter((l) => l.kind === 'del').length, 5)
 })
 
-const server = { draft: 'agent\ntext', draftRevision: 5 }
+const server = { key: 1, title: '', draft: 'agent\ntext', revision: 5 }
 
 test('onServerDraft: clean editor or equal text is replaced', () => {
   assert.deepEqual(onServerDraft({ base: 3, text: 'old', dirty: false }, server), { action: 'replace' })
@@ -120,7 +129,7 @@ test('takeAgent and keepMine', () => {
   assert.deepEqual(onServerDraft(mine, server), { action: 'keep' })
 })
 
-test('readDraftEdit/writeDraftEdit: per plan, clean removes, bad data is null', () => {
+test('readDraftEdit/writeDraftEdit: per draft, clean removes, bad data is null', () => {
   const store = new Map()
   globalThis.localStorage = {
     getItem: (k) => (store.has(k) ? store.get(k) : null),
@@ -128,21 +137,73 @@ test('readDraftEdit/writeDraftEdit: per plan, clean removes, bad data is null', 
     removeItem: (k) => store.delete(k),
   }
   try {
-    assert.equal(readDraftEdit('ns', 'p1'), null)
-    writeDraftEdit('ns', 'p1', { base: 2, text: 'edit', dirty: true })
-    assert.deepEqual(readDraftEdit('ns', 'p1'), { base: 2, text: 'edit', dirty: true })
-    assert.equal(readDraftEdit('ns', 'p2'), null)
-    assert.equal(readDraftEdit('other', 'p1'), null)
-    writeDraftEdit('ns', 'p1', { base: 3, text: 'edit', dirty: false })
-    assert.equal(readDraftEdit('ns', 'p1'), null)
-    store.set('plan-draft:ns/p1', '{bad')
-    assert.equal(readDraftEdit('ns', 'p1'), null)
-    store.set('plan-draft:ns/p1', '{"base":"x","text":"t"}')
-    assert.equal(readDraftEdit('ns', 'p1'), null)
+    assert.equal(readDraftEdit('ns', 'p1', 1), null)
+    writeDraftEdit('ns', 'p1', 1, { base: 2, text: 'edit', dirty: true })
+    writeDraftEdit('ns', 'p1', 2, { base: 7, text: 'two', dirty: true })
+    assert.deepEqual(readDraftEdit('ns', 'p1', 1), { base: 2, text: 'edit', dirty: true })
+    assert.deepEqual(readDraftEdit('ns', 'p1', 2), { base: 7, text: 'two', dirty: true })
+    assert.equal(readDraftEdit('ns', 'p1', 3), null)
+    assert.equal(readDraftEdit('ns', 'p2', 1), null)
+    assert.equal(readDraftEdit('other', 'p1', 1), null)
+    writeDraftEdit('ns', 'p1', 1, { base: 3, text: 'edit', dirty: false })
+    assert.equal(readDraftEdit('ns', 'p1', 1), null)
+    assert.deepEqual(readDraftEdit('ns', 'p1', 2), { base: 7, text: 'two', dirty: true })
+    store.set('plan-draft:ns/p1/1', '{bad')
+    assert.equal(readDraftEdit('ns', 'p1', 1), null)
+    store.set('plan-draft:ns/p1/1', '{"base":"x","text":"t"}')
+    assert.equal(readDraftEdit('ns', 'p1', 1), null)
   } finally {
     delete globalThis.localStorage
   }
   // No storage at all: nothing read, writes are dropped.
-  assert.equal(readDraftEdit('ns', 'p1'), null)
-  writeDraftEdit('ns', 'p1', { base: 1, text: 't', dirty: true })
+  assert.equal(readDraftEdit('ns', 'p1', 1), null)
+  writeDraftEdit('ns', 'p1', 1, { base: 1, text: 't', dirty: true })
+})
+
+const dr = (key, createdMilestoneIID, creating) => ({ key, title: '', draft: '', revision: 1, createdMilestoneIID, creating })
+
+test('nextToCreate: the first draft without a milestone', () => {
+  assert.equal(nextToCreate([]), null)
+  assert.equal(nextToCreate([dr(1), dr(2), dr(3)])?.key, 1)
+  assert.equal(nextToCreate([dr(1, 41), dr(3), dr(2)])?.key, 3)
+  assert.equal(nextToCreate([dr(1, 41), dr(2, 42), dr(3, 43)]), null)
+})
+
+test('nextToCreate: none while the first uncreated one is being created', () => {
+  assert.equal(nextToCreate([dr(1, 41), dr(2, 0, true), dr(3)]), null)
+  assert.equal(nextToCreate([dr(1, -1), dr(2)]), null) // a raw "creating" IID
+})
+
+test('draftLocked: created or being created', () => {
+  assert.equal(draftLocked(dr(1)), false)
+  assert.equal(draftLocked(dr(1, 41)), true)
+  assert.equal(draftLocked(dr(1, 0, true)), true)
+  assert.equal(draftLocked(dr(1, -1)), true)
+})
+
+test('canMove and movedKeys: uncreated drafts swap with a neighbour', () => {
+  const list = [dr(1), dr(2), dr(3)]
+  assert.equal(canMove(list, 1, -1), false)
+  assert.equal(canMove(list, 1, 1), true)
+  assert.equal(canMove(list, 3, 1), false)
+  assert.equal(canMove(list, 9, 1), false)
+  assert.deepEqual(movedKeys(list, 1, 1), [2, 1, 3])
+  assert.deepEqual(movedKeys(list, 3, -1), [1, 3, 2])
+  assert.deepEqual(movedKeys(list, 1, -1), [1, 2, 3])
+})
+
+test('canMove and movedKeys: created drafts stay where they are', () => {
+  const list = [dr(1, 41), dr(2), dr(3, 0, true), dr(4)]
+  assert.equal(canMove(list, 1, 1), false)
+  assert.equal(canMove(list, 2, -1), false)
+  assert.equal(canMove(list, 2, 1), false)
+  assert.equal(canMove(list, 3, 1), false)
+  assert.equal(canMove(list, 4, -1), false)
+  assert.deepEqual(movedKeys(list, 2, -1), [1, 2, 3, 4])
+  assert.deepEqual(movedKeys([dr(1, 41), dr(2), dr(3)], 3, -1), [1, 3, 2])
+})
+
+test('draftLabel: the title, else Draft <key>', () => {
+  assert.equal(draftLabel({ key: 2, title: ' Refunds ' }), 'Refunds')
+  assert.equal(draftLabel({ key: 2, title: '' }), 'Draft 2')
 })

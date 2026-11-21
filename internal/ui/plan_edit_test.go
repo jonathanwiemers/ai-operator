@@ -49,29 +49,37 @@ type draftEdit struct {
 
 const newDraft = shopPlans + "/shop-plan-new/draft"
 
+// firstDraft is v's first draft, zero without drafts.
+func firstDraft(v PlanView) PlanDraftView {
+	if len(v.Drafts) == 0 {
+		return PlanDraftView{}
+	}
+	return v.Drafts[0]
+}
+
 func TestSavePlanDraft(t *testing.T) {
 	env := planWriterEnv(t, "leads")
 	var got PlanView
 	if code := env.send(t, http.MethodPut, newDraft, draftEdit{0, "## Goal\n\nOwner's words."}, &got); code != http.StatusOK {
 		t.Fatalf("save: %d", code)
 	}
-	if got.Draft != "## Goal\n\nOwner's words." || got.DraftRevision != 1 || got.DraftBy != "owner" || !got.Permissions.Steer {
+	if d := firstDraft(got); len(got.Drafts) != 1 || d.Draft != "## Goal\n\nOwner's words." || d.Revision != 1 || d.By != "owner" || d.Key != 1 || !got.Permissions.Steer {
 		t.Errorf("view: %+v", got)
 	}
 	pl := env.getPlan(t, "shop-plan-new")
-	if s, d := pl.Status, planDraft(pl); d.Draft != got.Draft || d.Revision != 1 || d.By != "owner" || d.Key != 1 || s.DraftSeq != 1 || s.Phase != aiv1.AgentPlanIdle {
+	if s, d := pl.Status, planDraft(pl); d.Draft != firstDraft(got).Draft || d.Revision != 1 || d.By != "owner" || d.Key != 1 || s.DraftSeq != 1 || s.Phase != aiv1.AgentPlanIdle {
 		t.Errorf("status: %+v", s)
 	}
 
 	// The next edit builds on revision 1; an edit of revision 0 is stale.
-	if code := env.send(t, http.MethodPut, newDraft, draftEdit{1, "## Goal\n\nSecond."}, &got); code != http.StatusOK || got.DraftRevision != 2 {
+	if code := env.send(t, http.MethodPut, newDraft, draftEdit{1, "## Goal\n\nSecond."}, &got); code != http.StatusOK || firstDraft(got).Revision != 2 {
 		t.Fatalf("second save: %d %+v", code, got)
 	}
 	var stale PlanView
 	if code := env.send(t, http.MethodPut, newDraft, draftEdit{1, "stale"}, &stale); code != http.StatusConflict {
 		t.Fatalf("stale: %d", code)
 	}
-	if stale.Draft != "## Goal\n\nSecond." || stale.DraftRevision != 2 || stale.Name != "shop-plan-new" {
+	if d := firstDraft(stale); d.Draft != "## Goal\n\nSecond." || d.Revision != 2 || stale.Name != "shop-plan-new" {
 		t.Errorf("stale answer is not the current view: %+v", stale)
 	}
 	if s := planDraft(env.getPlan(t, "shop-plan-new")); s.Draft != "## Goal\n\nSecond." || s.Revision != 2 {
@@ -122,7 +130,7 @@ func TestSavePlanDraftResourceVersionConflict(t *testing.T) {
 	if code := env.send(t, http.MethodPut, newDraft, draftEdit{0, "## Owner"}, &got); code != http.StatusConflict {
 		t.Fatalf("conflict: %d", code)
 	}
-	if got.Draft != "## Agent" || got.DraftRevision != 1 || got.DraftBy != "agent" {
+	if d := firstDraft(got); d.Draft != "## Agent" || d.Revision != 1 || d.By != "agent" {
 		t.Errorf("view: %+v", got)
 	}
 	if s := planDraft(env.getPlan(t, "shop-plan-new")); s.Draft != "## Agent" {

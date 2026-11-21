@@ -244,10 +244,10 @@ func TestPlanOldDraftEditAndCreate(t *testing.T) {
 		t.Fatal(err)
 	}
 	var v PlanView
-	if code := env.get(t, shopPlans+"/shop-plan-new", &v); code != http.StatusOK || v.Draft != "## Old" || v.DraftRevision != 2 || v.DraftBy != "agent" || v.DraftSHA != "abc" {
+	if code := env.get(t, shopPlans+"/shop-plan-new", &v); code != http.StatusOK || len(v.Drafts) != 1 || firstDraft(v) != (PlanDraftView{Key: 1, Draft: "## Old", Revision: 2, By: "agent", SHA: "abc"}) {
 		t.Fatalf("view: %d %+v", code, v)
 	}
-	if code := env.send(t, http.MethodPut, newDraft, draftEdit{2, "## Owner"}, &v); code != http.StatusOK || v.Draft != "## Owner" || v.DraftRevision != 3 {
+	if code := env.send(t, http.MethodPut, newDraft, draftEdit{2, "## Owner"}, &v); code != http.StatusOK || firstDraft(v).Draft != "## Owner" || firstDraft(v).Revision != 3 {
 		t.Fatalf("edit: %d %+v", code, v)
 	}
 	st := env.getPlan(t, "shop-plan-new").Status

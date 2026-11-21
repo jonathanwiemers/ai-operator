@@ -1,74 +1,50 @@
 <script setup lang="ts">
-import UAlert from '@nuxt/ui/components/Alert.vue'
-import { alertColor } from '../badgeTone'
-// Plan draft pane (R11, Decision 5): Edit / Preview, explicit Save, and the
-// agent's newer draft offered as a diff while the owner has unsaved edits.
-import { ref, watch } from 'vue'
-import { savePlanDraft } from '../client'
-import { DraftConflict, keepMine, onServerDraft, readDraftEdit, takeAgent, writeDraftEdit, type DiffLine } from '../planDraft'
-import UButton from '@nuxt/ui/components/Button.vue'
-import UTextarea from '@nuxt/ui/components/Textarea.vue'
-import Markdown from './Markdown.vue'
+// Plan drafts (R8): one tab per draft in list order, with its title and,
+// once created, its %IID badge; arrow keys move between the tabs. A plan
+// without drafts shows one empty tab, saved or created as a new draft.
+import { computed, ref, watch } from 'vue'
+import UTabs from '@nuxt/ui/components/Tabs.vue'
+import { canMove, draftLabel, draftLocked, nextToCreate } from '../planDraft'
 import PlanCreateDialog from './PlanCreateDialog.vue'
-import type { PlanView } from '../generated/views'
+import PlanDraftTab from './PlanDraftTab.vue'
+import type { PlanDraftView, PlanView } from '../generated/views'
 
 const props = defineProps<{ namespace: string; name: string; plan: string; view: PlanView; canEdit: boolean }>()
 const emit = defineEmits<{ view: [PlanView]; created: [] }>()
-const editor = ref(readDraftEdit(props.namespace, props.plan) ?? takeAgent(props.view))
-const [mode, conflict, error] = [ref(editor.value.dirty ? 'edit' : 'preview'), ref<DiffLine[] | null>(null), ref('')]
-watch(editor, (s) => writeDraftEdit(props.namespace, props.plan, s))
-watch(() => props.view, (v) => {
-  const r = onServerDraft(editor.value, v)
-  if (r.action === 'replace') [editor.value, conflict.value] = [takeAgent(v), null]
-  else if (r.action === 'conflict') conflict.value = r.diff
-}, { immediate: true })
-const resolve = (agent: boolean) => {
-  editor.value = agent ? takeAgent(props.view) : keepMine(editor.value, props.view)
-  conflict.value = null
-}
+const empty: PlanDraftView = { key: 0, title: '', draft: '', revision: 0 }
+const drafts = computed(() => (props.view.drafts.length ? props.view.drafts : [empty]))
+const next = computed(() => nextToCreate(drafts.value))
+const items = computed(() => drafts.value.map((d) => ({
+  label: d.key ? draftLabel(d) : 'Draft 1', value: d.key, slot: 'draft' as const, draft: d,
+  badge: d.createdMilestoneIID ? `%${d.createdMilestoneIID}` : d.creating ? 'creating' : undefined,
+})))
+// The open tab is a draft key: the next to create at first, the first draft
+// once the open one is gone (removed, or key 0 saved as a new draft).
+const active = ref<string | number>(next.value?.key ?? drafts.value[0]!.key)
+watch(drafts, (list) => {
+  if (!list.some((d) => d.key === active.value)) active.value = (next.value ?? list[list.length - 1]!).key
+})
+// The create dialog's draft, set by a tab's Create milestone (after its save).
+const createFor = ref<{ key: number; title: string; draft: string } | null>(null)
 const creating = ref(false)
-// Create milestone saves unsaved edits first; on a 409 the newer draft shows instead.
-const create = async () => (creating.value = !editor.value.dirty || (await save()))
-async function save(): Promise<boolean> {
-  try {
-    const v = await savePlanDraft(props.namespace, props.name, props.plan, { baseRevision: editor.value.base, draft: editor.value.text })
-    editor.value = takeAgent(v)
-    emit('view', v)
-    return true
-  } catch (e) {
-    if (e instanceof DraftConflict) emit('view', e.view) // the watch above shows the newer draft
-    else error.value = e instanceof Error ? e.message : String(e)
-    return false
-  }
-}
+const openCreate = (d: { key: number; title: string; draft: string }) => [createFor.value, creating.value] = [d, true]
+// The dialog's title: the draft's, the plan's for a single draft.
+const title = (d: PlanDraftView) => d.title || (drafts.value.length === 1 ? props.view.title : '')
 </script>
 
 <template>
   <div class="card flex flex-col gap-2 px-4 py-3.5" data-plan-draft>
-    <div v-if="canEdit" class="flex flex-wrap items-center gap-1.5">
-      <UButton v-for="m in ['edit', 'preview']" :key="m" size="sm" color="neutral" :variant="mode === m ? 'solid' : 'ghost'"
-        :label="m === 'edit' ? 'Edit' : 'Preview'" @click="mode = m" />
-      <UButton class="ml-auto" size="sm" color="neutral" variant="outline" label="Save" :disabled="!editor.dirty" @click="save" />
-      <UButton size="sm" label="Create milestone" :disabled="!editor.text.trim()" @click="create" />
-      <slot name="actions" /><!-- the decision wizard's button (R7) -->
-    </div>
-    <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
-    <UAlert v-if="canEdit && conflict" data-newer-draft :color="alertColor('neutral')" variant="subtle" class="mt-3"
-      title="The agent has a newer draft">
-      <template #description>
-        (+ the agent's lines, − yours)
-        <pre class="my-2 max-h-80 overflow-auto text-xs"><div v-for="(l, i) in conflict" :key="i" :class="{ 'bg-(--tone-success-bg)': l.kind === 'add', 'bg-(--tone-danger-bg)': l.kind === 'del' }">{{ { add: '+', del: '−', same: ' ' }[l.kind] }} {{ l.text }}</div></pre>
+    <UTabs v-model="active" :items="items" variant="link" size="sm" aria-label="Drafts" :ui="{ list: 'overflow-x-auto' }">
+      <template #draft="{ item }">
+        <PlanDraftTab :namespace="namespace" :name="name" :plan="plan" :view="view" :draft="item.draft" :title="title(item.draft)"
+          :can-edit="canEdit && !draftLocked(item.draft)" :can-create="canEdit && next?.key === item.draft.key"
+          :can-left="canMove(drafts, item.draft.key, -1)" :can-right="canMove(drafts, item.draft.key, 1)"
+          @view="(v) => emit('view', v)" @create="openCreate">
+          <template v-if="canEdit" #actions><slot name="actions" /></template>
+        </PlanDraftTab>
       </template>
-      <template #actions>
-        <UButton size="sm" label="Use agent's draft" @click="resolve(true)" />
-        <UButton size="sm" color="neutral" variant="outline" label="Keep mine" @click="resolve(false)" />
-      </template>
-    </UAlert>
-    <UTextarea v-if="canEdit && mode === 'edit'" :model-value="editor.text" :rows="20" autoresize spellcheck="true"
-      :ui="{ root: 'w-full', base: 'font-mono text-base/5 tablet:text-[13px]/5' }" aria-label="Draft"
-      @update:model-value="(t: string) => (editor = { ...editor, text: t, dirty: true })" />
-    <Markdown v-else :text="(canEdit ? editor.text : view.draft) || 'No draft yet.'" />
-    <PlanCreateDialog v-model:open="creating" :namespace="namespace" :name="name" :plan="plan" :title="view.title"
-      :draft="editor.text" :pending="view.decisionsPending ?? 0" @created="emit('created')" />
+    </UTabs>
+    <PlanCreateDialog v-if="createFor" :key="createFor.key" v-model:open="creating" :namespace="namespace" :name="name" :plan="plan"
+      :draft-key="createFor.key" :title="createFor.title" :draft="createFor.draft" :pending="view.decisionsPending ?? 0" @created="emit('created')" />
   </div>
 </template>

@@ -1448,18 +1448,13 @@ export interface PlanPermissions {
   steer: boolean;
 }
 /**
- * PlanView is one plan with its drafts. Draft, DraftRevision, DraftBy and
- * DraftSHA mirror the first draft without a milestone, else the last one.
+ * PlanView is one plan with its drafts.
  */
 export interface PlanView extends PlanListItem {
   /**
    * Drafts are the plan's drafts in list order, never null.
    */
   drafts: PlanDraftView[];
-  draft: string;
-  draftRevision: number /* int64 */;
-  draftBy?: string;
-  draftSHA?: string;
   /**
    * Decisions is the current list in status order, never null;
    * DecisionsPending counts the open or not signed-off entries.
