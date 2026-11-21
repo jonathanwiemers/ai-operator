@@ -5016,3 +5016,323 @@ test('heatmap cells carry a date and count label@1280', async ({ page, baseURL }
   for (const c of await cells.all()) await expect(c).toHaveAttribute('aria-label', /^(\d{1,2} \p{L}+\.?|\p{L}+\.? \d{1,2}): \d+ events?$/u)
   await expect(page.locator('[data-heat-summary]')).toHaveText(/^\d+ events in 30 days; busiest day /)
 })
+
+// Screen reader flows (R9 of docs/specs/desk-accessible.spec.md, the
+// checklist in docs/contributing/accessibility.md): the four VoiceOver flows,
+// driven by keyboard only. Each step checks what a screen reader gets: the
+// focused element's role and name, the accessibility tree of the region it
+// reads, and what the announcer (src/ui/useAnnounce.ts) says.
+test.describe('screen reader flows', () => {
+  const sizes = [
+    { width: 1280, height: 800 },
+    { width: 375, height: 812 },
+  ]
+  const clean = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+  const chatPath = (task: string) => `/api/v1/projects/team-a/shop/tasks/${task}/chat`
+  const focused = (page: Page) => page.locator(':focus')
+
+  // load opens a route with the fixtures, the announcer recorded and an event
+  // stream that stays open (so Offline is not said); __change sends a change
+  // event. before registers routes that answer before the fixtures.
+  async function load(
+    page: Page,
+    baseURL: string | undefined,
+    name: string,
+    size: { width: number; height: number },
+    before?: () => Promise<unknown>,
+  ): Promise<Problems> {
+    const route = routes.find((r) => r.name === name)!
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await page.setViewportSize(size)
+    await page.clock.setFixedTime(now)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, route, problems)
+    await recordAnnouncements(page)
+    await page.addInitScript(() => {
+      const w = window as unknown as { __change: () => void; EventSource: unknown }
+      class SteadyEventSource extends EventTarget {
+        static CONNECTING = 0
+        static OPEN = 1
+        static CLOSED = 2
+        readyState = 0
+        constructor() {
+          super()
+          w.__change = () => this.dispatchEvent(new MessageEvent('change', { data: '{"kind":"task"}' }))
+          setTimeout(() => {
+            this.readyState = 1
+            this.dispatchEvent(new Event('open'))
+          }, 50)
+        }
+        close() {
+          this.readyState = 2
+        }
+      }
+      w.EventSource = SteadyEventSource
+    })
+    await before?.()
+    await page.goto(route.path)
+    await route.ready(page)
+    return problems
+  }
+
+  // skipToMain: the first Tab is the skip link, Enter puts the reader in main.
+  async function skipToMain(page: Page) {
+    await page.keyboard.press('Tab')
+    await expect(focused(page)).toMatchAriaSnapshot('- link "Skip to content"')
+    await page.keyboard.press('Enter')
+    await expect(page.locator('main')).toBeFocused()
+  }
+
+  // tabTo presses Tab until target has focus, at most max times.
+  async function tabTo(page: Page, target: ReturnType<Page['locator']>, max = 40) {
+    for (let i = 0; i < max; i++) {
+      await page.keyboard.press('Tab')
+      if (await target.evaluate((e) => e === document.activeElement).catch(() => false)) return
+    }
+    throw new Error(`${max} Tabs did not reach ${target}`)
+  }
+
+  const milestoneH1 = `'heading "${paymentsMilestone.title}" [level=1]'`
+
+  for (const size of sizes) {
+    // Flow 1: answer a problem card in Needs you.
+    test(`flow 1: answer a problem card in Needs you@${size.width}`, async ({ page, baseURL }) => {
+      const posts: unknown[] = []
+      const problems = await load(page, baseURL, 'stream-milestone-needs', size, () =>
+        page.route(
+          (url) => url.pathname === chatPath(refundsPrompt.target.task),
+          async (r) => {
+            if (r.request().method() !== 'POST') return r.fallback()
+            posts.push(r.request().postDataJSON())
+            return r.fulfill({ status: 200, json: { id: 991 } })
+          },
+        ),
+      )
+      await skipToMain(page)
+      await expect(page.locator('main')).toMatchAriaSnapshot(`
+        - ${milestoneH1}
+        - navigation "View":
+          - link "Needs you · 3"
+        - heading "Problems 3" [level=2]
+        - navigation "Problems"
+      `)
+      await expect(page.locator('main').getByRole('link', { name: 'Needs you · 3' })).toHaveAttribute('aria-current', 'page')
+
+      const card = page.locator(`#prompt-${refundsPrompt.id}`)
+      const option = card.getByRole('button', { name: 'Split across captures', exact: true })
+      await tabTo(page, option)
+      await expect(focused(page)).toMatchAriaSnapshot('- button "Split across captures"')
+      await expect(card).toMatchAriaSnapshot(`
+        - code: ${refundsPrompt.id}
+        - paragraph:
+          - text: Should a
+          - strong: partial refund
+          - text: be split across captures when it exceeds the amount of a single capture?
+        - list:
+          - listitem:
+            - button "Split across captures"
+            - text: recommended
+          - listitem:
+            - button "Refuse above one capture"
+        - textbox "Answer ${refundsPrompt.id} in your words"
+      `)
+
+      await page.keyboard.press('Enter')
+      // The buttons give way to the answer line, which takes the focus.
+      await expect(focused(page)).toMatchAriaSnapshot('- status: /✓ Split across captures · (sending…|sent)/')
+      await expect(card.getByRole('button')).toHaveCount(0)
+      expect(posts).toEqual([{ body: JSON.stringify({ cmd: 'answer', prompt: refundsPrompt.id, option: 'split' }), clientKey: expect.any(String), kind: 'command' }])
+      await expect(page.locator('[data-problem-thread] [role=log]')).toMatchAriaSnapshot(`
+        - article:
+          - text: sent
+          - paragraph: Split across captures
+      `)
+      // The status line is its own live region: the announcer stays quiet.
+      expect(await said(page), 'announcements').toEqual([])
+      expect(problems).toEqual(clean)
+    })
+
+    test(`flow 1: a refused answer is said and focus goes back to the options@${size.width}`, async ({ page, baseURL }) => {
+      const problems = await load(page, baseURL, 'stream-milestone-needs', size, () =>
+        page.route(
+          (url) => url.pathname === chatPath(refundsPrompt.target.task),
+          (r) => (r.request().method() === 'POST' ? r.fulfill({ status: 403, json: { error: 'forbidden' } }) : r.fallback()),
+        ),
+      )
+      await skipToMain(page)
+      const card = page.locator(`#prompt-${refundsPrompt.id}`)
+      await tabTo(page, card.getByRole('button', { name: 'Refuse above one capture', exact: true }))
+      await page.keyboard.press('Enter')
+      await expect(card.getByText('You may not chat on this project.')).toBeVisible()
+      await expect(focused(page)).toMatchAriaSnapshot('- button "Split across captures"')
+      await expect.poll(() => said(page)).toContainEqual('assertive: You may not chat on this project.')
+      expect((await said(page)).filter((s) => s.startsWith('polite: ')), 'polite announcements').toEqual([])
+      expect(problems).toEqual(clean)
+    })
+
+    // Flow 2: read a milestone page and switch tabs. The tabs are links in a
+    // "View" navigation (RouteTabs): Tab moves between them, Enter opens one.
+    test(`flow 2: read a milestone page and switch tabs@${size.width}`, async ({ page, baseURL }) => {
+      const problems = await load(page, baseURL, 'stream-milestone-issues', size)
+      await expect(page).toHaveTitle(`(${inbox.items.length}) ${paymentsMilestone.title} · Desk`)
+      await skipToMain(page)
+      await expect(page.locator('main')).toMatchAriaSnapshot(`
+        - ${milestoneH1}
+        - navigation "View":
+          - link "Issues"
+          - link "Needs you · 3"
+          - link "Decisions"
+          - link "Pilot"
+          - link "Retrospective"
+          - link "Stream"
+          - link "Board"
+          - link "Metrics"
+      `)
+      const view = page.locator('main').getByRole('navigation', { name: 'View' })
+      await expect(view.getByRole('link', { name: 'Issues' })).toHaveAttribute('aria-current', 'page')
+
+      const decisions = view.getByRole('link', { name: 'Decisions' })
+      await tabTo(page, decisions)
+      await expect(focused(page)).toMatchAriaSnapshot('- link "Decisions"')
+      await page.keyboard.press('Enter')
+      await expect(page).toHaveURL(/\?tab=decisions$/)
+      await expect(page.locator('main').getByText(milestoneReady.decisions).first()).toBeVisible()
+      // Focus stays on the tab, which is now the current one.
+      await expect(decisions).toBeFocused()
+      await expect(decisions).toHaveAttribute('aria-current', 'page')
+      await expect(view.getByRole('link', { name: 'Issues' })).not.toHaveAttribute('aria-current', 'page')
+      await expect(page.locator('main')).toMatchAriaSnapshot(`
+        - ${milestoneH1}
+        - navigation "View"
+        - search:
+          - searchbox "Search decisions"
+        - tablist:
+          - tab "All" [selected]
+        - heading /Provider SDK 4 with refund support/ [level=2]
+        - article:
+          - heading "Refund currency" [level=3]
+      `)
+      await expect(page).toHaveTitle(`(${inbox.items.length}) ${paymentsMilestone.title} · Desk`)
+      // The next Tab is the next tab, in visual order.
+      await page.keyboard.press('Tab')
+      await expect(focused(page)).toMatchAriaSnapshot('- link "Pilot"')
+      // Same page, same title: nothing is said (focus is on the tab).
+      await page.waitForTimeout(500)
+      expect(await said(page), 'announcements').toEqual([])
+      expect(problems).toEqual(clean)
+    })
+
+    // Flow 3: send a message to the pilot and hear the reply, once, when it
+    // is complete.
+    test(`flow 3: send a message to the pilot and hear the reply@${size.width}`, async ({ page, baseURL }) => {
+      const at = now.toISOString()
+      const body = 'Where is the queue?'
+      const question = { id: 521, at, role: 'user', kind: 'message', author: 'jo', authorName: 'Jo', body, state: 'delivered' }
+      const reply = (text: string, done: boolean) => ({ id: 522, at, role: 'agent', kind: 'message', authorName: 'pilot', body: text, ...(done ? { replyTo: 521 } : {}) })
+      const parts = [
+        [],
+        [question],
+        [question, reply('Two issues', false)],
+        [{ ...question, state: 'answered' }, reply('Two issues are in review. The third waits for CI.', true)],
+      ]
+      let part = 0
+      const posts: unknown[] = []
+      const problems = await load(page, baseURL, 'stream-milestone-pilot', size, () =>
+        page.route(
+          (url) => url.pathname === chatPath('shop-m14-pilot'),
+          (r) => {
+            if (r.request().method() === 'GET') return r.fulfill({ status: 200, json: { messages: parts[part] } })
+            posts.push(r.request().postDataJSON())
+            part = 1
+            return r.fulfill({ status: 200, json: { id: 521 } })
+          },
+        ),
+      )
+      await skipToMain(page)
+      const chat = page.locator('main [data-task-chat]')
+      await expect(page.locator('main')).toMatchAriaSnapshot(`
+        - ${milestoneH1}
+        - heading "Message the pilot" [level=2]
+      `)
+      const box = chat.getByRole('textbox', { name: 'Message' })
+      await tabTo(page, box)
+      await expect(focused(page)).toMatchAriaSnapshot('- textbox "Message"')
+      // An empty box is not an error.
+      await expect(box).not.toHaveAttribute('aria-invalid', 'true')
+      await page.keyboard.type(body)
+      await page.keyboard.press('ControlOrMeta+Enter')
+      await expect.poll(() => posts).toEqual([{ body, clientKey: expect.any(String), kind: 'message' }])
+      await expect(chat.getByRole('log')).toHaveAttribute('aria-live', 'off')
+      await expect(chat.getByRole('log')).toMatchAriaSnapshot(`
+        - article:
+          - paragraph: ${body}
+      `)
+      await expect(focused(page), 'focus stays in the box').toMatchAriaSnapshot('- textbox "Message"')
+
+      for (const p of [2, 3]) {
+        part = p
+        await page.evaluate(() => (window as unknown as { __change: () => void }).__change())
+        await expect(chat.getByText(p === 2 ? 'Two issues' : 'Two issues are in review. The third waits for CI.', { exact: true })).toBeVisible()
+        if (p === 2) expect(await said(page), 'nothing while the reply is written').toEqual([])
+      }
+      await expect.poll(() => said(page)).toEqual(['polite: Pilot replied: Two issues are in review.'])
+      await expect(chat.getByRole('log')).toMatchAriaSnapshot(`
+        - article:
+          - paragraph: ${body}
+        - article:
+          - paragraph: Two issues are in review. The third waits for CI.
+      `)
+      await expect(focused(page)).toMatchAriaSnapshot('- textbox "Message"')
+      expect(problems).toEqual(clean)
+    })
+
+    // Flow 4: read Metrics, including a chart as a table.
+    test(`flow 4: read Metrics, including a chart as a table@${size.width}`, async ({ page, baseURL }) => {
+      const problems = await load(page, baseURL, 'metrics', size)
+      await expect(page).toHaveTitle(`(${inbox.items.length}) Metrics · Desk`)
+      await skipToMain(page)
+      const spend = page.locator('[data-chart=spend]')
+      await expect(page.locator('main')).toMatchAriaSnapshot(`
+        - heading "Metrics" [level=1]
+        - combobox "Range"
+        - form "Filters"
+        - term: Known cost
+        - region "Spend over time":
+          - heading "Spend over time" [level=2]
+          - 'img /^Known cost per day by project, Oct 12 to Nov 10: \\$114\\.68 known in total\\. Largest: team-a\\/shop, \\$105\\.00\\./'
+          - list "Legend"
+          - button "Show as table"
+      `)
+      const toggle = spend.getByRole('button', { name: 'Show as table' })
+      await tabTo(page, toggle, 60)
+      await expect(focused(page)).toMatchAriaSnapshot('- button "Show as table"')
+      await expect(toggle).toHaveAttribute('aria-pressed', 'false')
+      await page.keyboard.press('Enter')
+      await expect(focused(page)).toMatchAriaSnapshot('- button "Hide table" [pressed]')
+      await expect(spend).toMatchAriaSnapshot(`
+        - button "Hide table" [pressed]
+        - group "Known cost per day by project, as a table":
+          - table:
+            - rowgroup:
+              - row:
+                - columnheader "Period"
+                - columnheader "team-a/shop"
+                - columnheader "Total"
+                - columnheader "Unknown cost"
+            - rowgroup:
+              - row "Oct 12 $1.50 $0.80 $0 $2.30 + 1 unknown call"
+      `)
+      // The next Tab is the table's scroll box (DataList), so the arrow keys
+      // scroll it.
+      await page.keyboard.press('Tab')
+      await expect(focused(page)).toMatchAriaSnapshot('- table')
+      expect(await spend.evaluate((e) => e.contains(document.activeElement)), 'focus in the chart').toBe(true)
+      // Back to the toggle, Enter hides the table again.
+      await page.keyboard.press('Shift+Tab')
+      await page.keyboard.press('Enter')
+      await expect(focused(page)).toMatchAriaSnapshot('- button "Show as table"')
+      expect(await said(page), 'announcements').toEqual([])
+      expect(problems).toEqual(clean)
+    })
+  }
+})

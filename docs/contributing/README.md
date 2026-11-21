@@ -13,12 +13,15 @@ In reading order:
    and security.
 2. **[Web UI development](web-ui.md)**: run the Desk locally, its checks,
    the bundle budget, the UI kit and its conventions, and the roadmap.
-3. **[Plan decisions](plan-decisions.md)**: how the runner versions a plan's
+3. **[Accessibility](accessibility.md)**: the WCAG 2.2 AA target, the axe
+   gate and its known list, landmarks, headings, focus, motion, colour,
+   charts, the announcer and the VoiceOver checklist.
+4. **[Plan decisions](plan-decisions.md)**: how the runner versions a plan's
    decisions, who signs off, and how the controller keeps their history.
-4. **[Releasing](releasing.md)**: calendar versions, who decides a release,
+5. **[Releasing](releasing.md)**: calendar versions, who decides a release,
    the release pipelines, published images and chart.
-5. **[Research internals](research.md)**: research runs in the operator and
+6. **[Research internals](research.md)**: research runs in the operator and
    the pod, results and new items, the block schema, and the database with
    its logins and grants.
-6. **[Sandbox test plan](sandbox-test-plan.md)**: an end-to-end run with a
+7. **[Sandbox test plan](sandbox-test-plan.md)**: an end-to-end run with a
    real GitLab project and the real agent CLIs.

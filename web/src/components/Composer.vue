@@ -2,7 +2,7 @@
 import UButton from '@nuxt/ui/components/Button.vue'
 import UFormField from '@nuxt/ui/components/FormField.vue'
 import UTextarea from '@nuxt/ui/components/Textarea.vue'
-import { onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef, watch } from 'vue'
 import { noteTargetLabel, slashOpens, slashPick, type NoteTarget, type SlashSuggestion } from '../stream'
 import { announce } from '../ui/useAnnounce'
 import { useKeyboardInset } from '../ui/useKeyboardInset'
@@ -57,6 +57,21 @@ const targetOpen = ref(false)
 const slashOpen = ref(false)
 const box = useTemplateRef<HTMLElement>('box')
 
+// The text is disabled while a send is on its way, which takes its focus:
+// focus comes back after, so a keyboard or screen reader user writes on.
+// The watcher runs before the DOM update, while the text still has focus.
+let refocus = false
+watch(
+  () => props.disabled,
+  (off) => {
+    if (off) refocus = !!box.value?.contains(document.activeElement)
+    else if (refocus) {
+      refocus = false
+      void nextTick(() => box.value?.querySelector('textarea')?.focus())
+    }
+  },
+)
+
 function send(kind: ComposerSend['kind'] = 'message') {
   if (props.busy || props.disabled) return
   if (kind === 'message' && !body.value.trim()) return
@@ -102,8 +117,10 @@ const option = 'flex w-full items-baseline gap-2.5 rounded-[7px] px-2 py-1.5 tex
       <UButton v-if="connectUrl" :href="connectUrl" color="primary" label="Connect GitLab" />
     </div>
     <!-- The field ties the error line to the text (aria-describedby and
-         aria-invalid); its root keeps the composer's own type size. -->
-    <UFormField v-else :error="error" :ui="{ root: 'text-[length:inherit]', error: 'mt-1.5 text-[13px] text-(--tone-danger-fg)' }">
+         aria-invalid); its root keeps the composer's own type size. Its
+         error prop is Boolean or String, so Vue casts "" (no error) to true:
+         pass undefined instead. -->
+    <UFormField v-else :error="error || undefined" :ui="{ root: 'text-[length:inherit]', error: 'mt-1.5 text-[13px] text-(--tone-danger-fg)' }">
       <div
         ref="box"
         class="relative rounded-xl border border-(--border-strong) bg-(--surface) shadow-(--shadow) focus-within:border-(--focus) focus-within:ring-3 focus-within:ring-(--focus)/20"

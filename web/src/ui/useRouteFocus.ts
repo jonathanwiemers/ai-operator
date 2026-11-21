@@ -9,7 +9,8 @@
 //   at most once per frame, whenever the page changes, so a loaded or renamed
 //   title shows up too.
 // - onRouteDone tells listeners (the announcer) when a navigation has
-//   settled: the page's title and whether focus moved.
+//   settled: the page's title, whether it is a new page and whether focus
+//   moved.
 import { nextTick, onBeforeUnmount, onMounted, watch, type WatchSource } from 'vue'
 import type { Router } from 'vue-router'
 import { deskTitle } from '../format'
@@ -19,6 +20,9 @@ import { textEntry } from '../textEntry'
 export interface RouteDone {
   // title is the page's h1 text, '' on a page without one.
   title: string
+  // newPage says whether the navigation went to a new path, not a new query
+  // or hash on the same one (a tab, a filter).
+  newPage: boolean
   // focused says whether focus moved to the h1.
   focused: boolean
 }
@@ -75,7 +79,7 @@ export function useRouteFocus(router: Router, inboxCount: WatchSource<number>): 
     const focused = p.focus && !!h && free(p.was) && focusHeading(h)
     held = focused && h ? { h, until: Date.now() + headingWaitMs } : null
     const title = h?.textContent?.replace(/\s+/g, ' ').trim() ?? ''
-    for (const fn of listeners) fn({ title, focused })
+    for (const fn of listeners) fn({ title, newPage: p.focus, focused })
   }
 
   function update() {

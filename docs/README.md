@@ -57,6 +57,7 @@ the [roles](concepts/roles.md) of the agents,
 
 **[contributing/](contributing/README.md)**: the [design](contributing/design.md),
 [web UI development](contributing/web-ui.md),
+[accessibility](contributing/accessibility.md),
 [plan decisions](contributing/plan-decisions.md),
 [releasing](contributing/releasing.md),
 [research internals](contributing/research.md) and the

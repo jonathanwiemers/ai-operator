@@ -395,7 +395,9 @@ holds what Nuxt UI lacks. The `raw-control` rule of the
 [conventions check](#conventions-check) (`npm test`) fails on a raw
 `<button>`, `<select>`, `<textarea>`, `<progress>` and
 `<input type="checkbox|radio|range">` in a `.vue` file; its `skip` list is
-the files of the custom components that must render one.
+the files of the custom components that must render one. Every page and
+control also follows the [accessibility rules](accessibility.md) (landmarks,
+headings, focus, the announcer) and keeps the axe check green.
 
 ### Custom components
 
@@ -697,14 +699,17 @@ Chart.js options live in one place; a view passes them data shaped by
 - `ChartTable.vue`: the table view (a scrolling `DataList`): a row per
   bucket, a column per series, the total (left out with `sum` false, for
   cumulative lines) and the unknown calls (or the chart's own per-row
-  `notes`). A *Table*
-  button (`aria-pressed`) shows it; hidden, it is `sr-only`, so screen
+  `notes`). A *Show as table*
+  button (`aria-pressed`, *Hide table* when open), the next Tab stop after
+  the chart, shows it; hidden, it is `sr-only`, so screen
   readers always reach the values a canvas cannot give them.
 
 Rules for every chart (decision 8): at most six series plus *Other*, colours
 from the tokens only, never colour alone (legend with values and the table
 view), readable at 375 px, no animation, costs in USD with two decimals and
 tokens in k/M. Unknown cost is never drawn as $0: it is marked per bucket.
+The summary and table rules for screen readers are in
+[Accessibility](accessibility.md#charts).
 
 ### DataList
 
@@ -910,6 +915,10 @@ first, and the text box at the bottom. `web/src/ui/DeskChat.vue` wraps
   messages. `localMessage` shows the owner's message at once with
   *sending*; the caller sets `sent` or `failed` from the answer and drops it
   when the recorded message arrives.
+- **Announcements.** The log is `role="log"` with `aria-live="off"`: it is
+  not a live region, so a streamed reply is not read word by word. A
+  complete reply is said once through the announcer ("Pilot replied: …"),
+  and a send error assertively ([Accessibility](accessibility.md#the-announcer)).
 - **Slots.** `content` replaces a message's body (an event card, or
   `ChatTurn.vue` for a task or plan chat message: author, time, state
   badge and reason, a command's label, the plan's answers), `bar` holds

@@ -22,6 +22,7 @@ import type { Facts } from '../generated/problem'
 import type { AnswerEvent } from '../problemThread'
 import type { PromptView } from '../types'
 import Truncated from '../ui/Truncated.vue'
+import { announce } from '../ui/useAnnounce'
 import Badge from './Badge.vue'
 import Markdown from './Markdown.vue'
 import RelTime from './RelTime.vue'
@@ -86,12 +87,31 @@ const failure = computed(() =>
   error.value || (sent.value && answer.value.state === 'failed' ? `${sent.value.label}: ${answer.value.reason}` : ''),
 )
 
+// The answer takes away the option or text box that had focus: focus goes
+// to the "✓ … sending…" line, so a keyboard or screen reader user stays in
+// the card, and back to the first option when the answer fails. A failure
+// is said at once (useAnnounce.ts); the error line shows it.
+const statusLine = ref<HTMLElement | null>(null)
+function refocus(to: () => HTMLElement | null | undefined) {
+  void nextTick(() => to()?.focus({ preventScroll: true }))
+}
+watch(failure, (e) => {
+  if (e) announce(e, { assertive: true })
+})
+
 async function answerWith(label: string, choice: { option: string } | { text: string }): Promise<boolean> {
   if (busy.value) return false
+  const held = !!el.value?.contains(document.activeElement)
   picked.value = label
   const shown = { id: crypto.randomUUID(), label, task: props.prompt.target.task }
   emit('answer', { ...shown, send: 'sending' })
-  const ok = await send(choice)
+  const sending = send(choice)
+  if (held) refocus(() => statusLine.value)
+  const ok = await sending
+  if (held && !ok) {
+    const back = 'text' in choice ? 'textarea' : 'button'
+    refocus(() => (el.value?.contains(document.activeElement) ? null : el.value?.querySelector<HTMLElement>(back)))
+  }
   emit('answer', ok ? { ...shown, send: 'sent' } : { ...shown, send: 'failed', error: error.value })
   return ok
 }
@@ -147,7 +167,7 @@ const err = 'm-0 text-[13px] text-(--tone-danger-fg)'
         </Truncated>
       </div>
       <div class="flex min-w-0 items-center gap-2">
-        <span v-if="open && settling" role="status" class="min-w-0 flex-1 truncate text-(--text-2)" :class="small">
+        <span v-if="open && settling" ref="statusLine" role="status" tabindex="-1" class="min-w-0 flex-1 truncate text-(--text-2) focus:outline-none" :class="small">
           ✓ {{ picked }} · {{ settled ? 'sent' : 'sending…' }}
         </span>
         <UButton
@@ -183,7 +203,7 @@ const err = 'm-0 text-[13px] text-(--tone-danger-fg)'
       />
 
       <template v-if="open && settling">
-        <p role="status" class="font-[650] wrap-anywhere">✓ {{ picked }} · {{ settled ? 'sent' : 'sending…' }}</p>
+        <p ref="statusLine" role="status" tabindex="-1" class="font-[650] wrap-anywhere focus:outline-none">✓ {{ picked }} · {{ settled ? 'sent' : 'sending…' }}</p>
         <Markdown
           v-if="settled && answer.state === 'answered' && !answer.redacted"
           :class="small"

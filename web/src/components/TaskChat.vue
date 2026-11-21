@@ -87,9 +87,12 @@ function mergeMessages(incoming: ChatMessage[]) {
   messages.value = [...byId.values()].sort((a, b) => b.id - a.id)
 }
 
-async function loadInitial() {
+// quiet: a refresh of an empty thread (after the first message), which keeps
+// the thread and its composer instead of showing Loading…, so the composer
+// keeps its focus.
+async function loadInitial(quiet = false) {
   const mine = ++seq
-  loading.value = true
+  if (!quiet) loading.value = true
   error.value = ''
   try {
     const page = await getTaskChat(props.namespace, props.name, props.task, { limit: 50 })
@@ -135,7 +138,7 @@ async function loadOlder() {
 // which an after= cursor would miss.
 async function loadNewer() {
   if (!messages.value.length) {
-    await loadInitial()
+    await loadInitial(true)
     return
   }
   const mine = seq

@@ -91,9 +91,10 @@ const inboxCount = ref(0)
 // Focus on the new page's h1 after a navigation, and the tab title.
 useRouteFocus(router, inboxCount)
 // The title is announced only when focus did not move to the h1, which a
-// screen reader reads by itself (D640-P1).
-onRouteDone(({ title, focused }) => {
-  if (!focused) announce(title)
+// screen reader reads by itself (D640-P1), and only for a new page: a tab
+// or filter on the same page keeps its title and the focus on its control.
+onRouteDone(({ title, newPage, focused }) => {
+  if (newPage && !focused) announce(title)
 })
 // Offline is announced once per drop of the event stream (D640-P3), not on
 // sign-out, which ends the stream too.

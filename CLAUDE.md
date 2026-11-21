@@ -57,6 +57,7 @@
   with small compromises in look. A custom component is allowed only when
   nothing in Nuxt UI fits; it is listed with its reason in the
   [UI kit](docs/contributing/web-ui.md#ui-kit) section, and `npm test`
-  (`raw-control`) fails on raw controls elsewhere.
+  (`raw-control`) fails on raw controls elsewhere; and keep the axe check
+  green (`docs/contributing/accessibility.md`).
 - Write and review milestone specs with the `milestone-spec` skill
   (`skills/milestone-spec/`).
