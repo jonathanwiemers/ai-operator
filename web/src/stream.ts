@@ -38,6 +38,7 @@ export const runtimeStreamKinds = [
   'review',
   'merged',
   'closed',
+  'item.skipped',
   'checkpoint',
 ] as const satisfies readonly StreamKind[]
 
@@ -65,7 +66,7 @@ export const streamFilters: { id: StreamFilter; label: string; kinds?: StreamKin
   { id: 'needs', label: 'Needs you', kinds: ['needs'] },
   { id: 'runs', label: 'Runs', kinds: ['run.started', 'run.finished', 'push', 'checkpoint'] },
   { id: 'ci', label: 'CI & review', kinds: ['ci', 'review'] },
-  { id: 'merged', label: 'Merged', kinds: ['merged', 'closed'] },
+  { id: 'merged', label: 'Merged', kinds: ['merged', 'closed', 'item.skipped'] },
 ]
 
 // A milestone's Stream tab shows only runtime kinds, the Pilot tab the rest:

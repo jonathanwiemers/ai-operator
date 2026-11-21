@@ -84,6 +84,9 @@ numbers where they apply (`milestone_iid`, `issue_iid`, `mr_iid`), a
 | `companion.merged` | A companion merge request of an issue merged. Recorded under the home project, milestone and issue, with the companion's merge request in `mr_iid`, and keyed `companion/<companion path>/<merge request>/merged`. It is a kind of its own, so it does not move the issue's merge time. The Desk's streams do not show it. | `companion` (the companion's path), `sha`, `mergeRequestURL`, and `lines` when measured. |
 | `autopilot.paused` | An autopilot milestone [paused](../concepts/glossary.md#pause), or the pause changed its kind. Recorded on the milestone's tracking issue. | `kind`, `reason`, and `item`, the issue it paused for. |
 | `autopilot.resumed` | The pause ended. | The same, plus `resolvedBy`, `via` (how it ended) and `pausedSec`. |
+| `hold.set` | An issue of an autopilot milestone got a [hold](../concepts/glossary.md#hold), or its hold restarted. Its time is the hold's start. | `holdKind`, `reason`, and `since`, the hold's start (RFC 3339). |
+| `hold.cleared` | The hold ended: it was lifted, or the issue merged, was skipped or left the milestone. | The same as its `hold.set`. |
+| `item.skipped` | Autopilot skipped an issue. Written once per issue. | None. |
 
 An issue's merged lines are the sum of the `lines` of its `merged` and
 `companion.merged` events; per project, companion lines count under the

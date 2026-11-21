@@ -85,3 +85,11 @@ func CodeQueries(q CostQuery, bucket string) (sqls []string, args [][]any) {
 	}
 	return sqls, args
 }
+
+// SetMaxTimelineIssues lowers how many issues TimelineEvents reads, for
+// truncation tests, until the test ends.
+func SetMaxTimelineIssues(t interface{ Cleanup(func()) }, n int) {
+	old := maxTimelineIssues
+	maxTimelineIssues = n
+	t.Cleanup(func() { maxTimelineIssues = old })
+}

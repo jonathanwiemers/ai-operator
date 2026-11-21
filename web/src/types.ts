@@ -123,6 +123,7 @@ export type StreamKind =
   | 'needs'
   | 'merged'
   | 'closed'
+  | 'item.skipped'
   | 'autopilot'
   | 'proposal'
   | 'autopilot.paused'
@@ -203,8 +204,9 @@ export interface StreamEventData {
   attempt?: number
   version?: string
   // problem.opened / problem.resolved: why it got stuck and who resolved
-  // it; hold.set / hold.cleared carry holdKind and reason; pilot.acted why,
-  // lines, ran and by. All untrusted text.
+  // it; hold.set / hold.cleared carry holdKind, reason and since (the
+  // hold's start, RFC 3339); pilot.acted why, lines, ran and by. All
+  // untrusted text.
   holdKind?: string
   cause?: string
   resolvedBy?: string

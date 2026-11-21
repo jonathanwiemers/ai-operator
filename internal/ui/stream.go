@@ -59,7 +59,7 @@ var (
 		history.KindProblemOpened, history.KindProblemResolved, history.KindHoldSet, history.KindHoldCleared,
 		history.KindPilotActed}
 	runtimeKinds = []string{history.KindRunStarted, history.KindRunFinished, history.KindPush, history.KindCI,
-		history.KindReview, history.KindMerged, history.KindClosed, history.KindCheckpoint}
+		history.KindReview, history.KindMerged, history.KindClosed, history.KindItemSkipped, history.KindCheckpoint}
 )
 
 // streamKinds are the event kinds a stream may be filtered by.

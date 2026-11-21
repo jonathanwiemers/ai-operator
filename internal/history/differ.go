@@ -30,6 +30,9 @@ const (
 	KindNeeds       = "needs"
 	KindMerged      = "merged"
 	KindClosed      = "closed"
+	// KindItemSkipped is an autopilot item that became Skipped, once per
+	// item of a spec task.
+	KindItemSkipped = "item.skipped"
 	KindAutopilot   = "autopilot"
 	KindProposal    = "proposal"
 
@@ -309,6 +312,13 @@ func (d *Differ) autopilot(t *aiv1.AgentTask, old, cur *aiv1.AutopilotStatus, no
 		}
 	}
 	for _, it := range cur.Items {
+		if it.State == aiv1.AutopilotItemSkipped && was[it.IID] != aiv1.AutopilotItemSkipped {
+			e := base(t, now)
+			e.Key = taskKey(t, fmt.Sprintf("skipped/%d", it.IID))
+			e.Kind, e.IssueIID, e.Summary = KindItemSkipped, it.IID, fmt.Sprintf("Skipped #%d", it.IID)
+			out = append(out, e)
+			continue
+		}
 		if it.State != aiv1.AutopilotItemMerged || was[it.IID] == aiv1.AutopilotItemMerged {
 			continue
 		}

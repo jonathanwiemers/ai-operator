@@ -214,9 +214,9 @@ function taskLink(ev: StreamEvent) {
         />
       </div>
 
-      <!-- merged / closed -->
-      <div v-else-if="e.kind === 'merged' || e.kind === 'closed'" class="compact">
-        <Badge :tone="e.kind === 'merged' ? 'success' : 'muted'">{{ e.kind }}</Badge>
+      <!-- merged / closed / item.skipped -->
+      <div v-else-if="e.kind === 'merged' || e.kind === 'closed' || e.kind === 'item.skipped'" class="compact">
+        <Badge :tone="e.kind === 'merged' ? 'success' : 'muted'">{{ e.kind === 'item.skipped' ? 'skipped' : e.kind }}</Badge>
         <ExtLink v-if="e.data.mergeRequestURL" :href="e.data.mergeRequestURL" class="t">MR</ExtLink>
       </div>
 

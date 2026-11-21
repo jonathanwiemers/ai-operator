@@ -31,7 +31,7 @@ test('kindsForFilter maps chips to API kinds', () => {
   assert.deepEqual(kindsForFilter('chat'), ['note', 'proposal', 'prompt.posted', 'prompt.answered', 'prompt.closed'])
   assert.deepEqual(kindsForFilter('runs'), ['run.started', 'run.finished', 'push', 'checkpoint'])
   assert.deepEqual(kindsForFilter('ci'), ['ci', 'review'])
-  assert.deepEqual(kindsForFilter('merged'), ['merged', 'closed'])
+  assert.deepEqual(kindsForFilter('merged'), ['merged', 'closed', 'item.skipped'])
   assert.deepEqual(kindsForFilter('needs'), ['needs'])
 })
 
@@ -172,7 +172,7 @@ test('pilot and runtime kinds partition every StreamKind', () => {
     'autopilot', 'proposal', 'autopilot.paused', 'autopilot.resumed', 'pilot.writeFailed',
     'retrospective', 'prompt.posted', 'prompt.answered', 'prompt.closed', 'chat.user', 'chat.agent', 'checkpoint',
     'release.decided', 'release.started', 'release.ended',
-    'problem.opened', 'problem.resolved', 'hold.set', 'hold.cleared', 'pilot.acted',
+    'problem.opened', 'problem.resolved', 'hold.set', 'hold.cleared', 'pilot.acted', 'item.skipped',
   ]
   for (const k of pilotStreamKinds) assert.ok(!runtimeStreamKinds.includes(k), `${k} is in both lists`)
   const union = [...pilotStreamKinds, ...runtimeStreamKinds]
@@ -186,7 +186,7 @@ test('the milestone Stream tab has runtime chips and kinds only', async () => {
   assert.deepEqual(runtimeStreamFilters.map((f) => f.id), ['all', 'runs', 'ci', 'merged'])
   assert.deepEqual(runtimeKindsForFilter('all'), [...runtimeStreamKinds])
   assert.deepEqual(runtimeKindsForFilter('runs'), ['run.started', 'run.finished', 'push', 'checkpoint'])
-  assert.deepEqual(runtimeKindsForFilter('merged'), ['merged', 'closed'])
+  assert.deepEqual(runtimeKindsForFilter('merged'), ['merged', 'closed', 'item.skipped'])
   // A pilot chip carried over from a project stream falls back to all.
   assert.deepEqual(runtimeKindsForFilter('chat'), [...runtimeStreamKinds])
   for (const f of ['all', 'runs', 'ci', 'merged', 'chat', 'needs']) {

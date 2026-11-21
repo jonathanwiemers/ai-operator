@@ -19,6 +19,7 @@ func TestStreamKindsPartition(t *testing.T) {
 		history.KindPromptPosted, history.KindPromptAnswered, history.KindPromptClosed, history.KindRetrospective,
 		history.KindCheckpoint, history.KindReleaseDecided, history.KindReleaseStarted, history.KindReleaseEnded,
 		history.KindProblemOpened, history.KindProblemResolved, history.KindHoldSet, history.KindHoldCleared, history.KindPilotActed,
+		history.KindItemSkipped,
 	}
 	all = append(all, chatStreamKinds...)
 	for _, k := range pilotKinds {

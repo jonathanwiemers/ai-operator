@@ -75,31 +75,46 @@ func resolvedBy(old, cur *aiv1.AgentTask, iid int64) string {
 }
 
 // holds returns hold.set and hold.cleared events of the autopilot's items:
-// a hold that starts (or restarts: a new since) and one that ends.
+// a hold that starts (or restarts: a new since) and one that ends. A hold
+// also ends when its item leaves the items or becomes merged or skipped.
+// Both carry the hold's start as since (RFC 3339); keys hold the item, the
+// start and the kind, so a replayed update is no new event.
 func holds(t *aiv1.AgentTask, old, cur *aiv1.AutopilotStatus, now time.Time) []store.Event {
-	if cur == nil {
-		return nil
-	}
 	was := map[int64]*aiv1.ItemHold{}
 	if old != nil {
 		for _, it := range old.Items {
-			was[it.IID] = it.Hold
+			if !itemEnded(it.State) {
+				was[it.IID] = it.Hold
+			}
 		}
+	}
+	var items []aiv1.AutopilotItem
+	if cur != nil {
+		items = cur.Items
 	}
 	var out []store.Event
 	emit := func(iid int64, kind string, h *aiv1.ItemHold, summary string) *store.Event {
 		e := base(t, now)
 		e.Key = taskKey(t, fmt.Sprintf("hold/%d/%d/%s", iid, h.Since.Unix(), kind))
 		e.Kind, e.IssueIID, e.Summary = kind, iid, textutil.Truncate(summary, maxText)
-		e.Data = map[string]any{"holdKind": string(h.Kind), "reason": textutil.Truncate(h.Reason, maxText)}
+		e.Data = map[string]any{"holdKind": string(h.Kind), "reason": textutil.Truncate(h.Reason, maxText),
+			"since": h.Since.UTC().Format(time.RFC3339)}
 		out = append(out, e)
 		return &out[len(out)-1]
 	}
-	for _, it := range cur.Items {
+	end := func(iid int64, h *aiv1.ItemHold) {
+		emit(iid, KindHoldCleared, h, fmt.Sprintf("Hold on #%d cleared (%s)", iid, h.Kind))
+	}
+	seen := map[int64]bool{}
+	for _, it := range items {
+		seen[it.IID] = true
 		prev := was[it.IID]
 		h := it.Hold
+		if itemEnded(it.State) {
+			h = nil
+		}
 		if prev != nil && (h == nil || !prev.Since.Equal(&h.Since)) {
-			emit(it.IID, KindHoldCleared, prev, fmt.Sprintf("Hold on #%d cleared (%s)", it.IID, prev.Kind))
+			end(it.IID, prev)
 		}
 		if h != nil && (prev == nil || !prev.Since.Equal(&h.Since)) {
 			e := emit(it.IID, KindHoldSet, h, fmt.Sprintf("Held #%d (%s): %s", it.IID, h.Kind, h.Reason))
@@ -108,7 +123,19 @@ func holds(t *aiv1.AgentTask, old, cur *aiv1.AutopilotStatus, now time.Time) []s
 			}
 		}
 	}
+	if old != nil {
+		for _, it := range old.Items {
+			if h := was[it.IID]; h != nil && !seen[it.IID] {
+				end(it.IID, h)
+			}
+		}
+	}
 	return out
+}
+
+// itemEnded is whether an autopilot item is done: merged or skipped.
+func itemEnded(s aiv1.AutopilotItemState) bool {
+	return s == aiv1.AutopilotItemMerged || s == aiv1.AutopilotItemSkipped
 }
 
 // acted returns a pilot.acted event per issue of each new status.pilot.acted

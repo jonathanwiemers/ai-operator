@@ -135,6 +135,111 @@ func TestDifferHoldRestarts(t *testing.T) {
 	}
 }
 
+// A hold set and lifted writes one hold.set and one hold.cleared, each with
+// the issue, the milestone, the reason and the hold's start; replaying the
+// change gives the same keys, and an update that keeps the hold none.
+func TestDifferHoldSetAndLifted(t *testing.T) {
+	since := now.Add(-time.Hour).Truncate(time.Second)
+	free := milestoneTask("1", func(t *aiv1.AgentTask) {
+		t.Status.Autopilot.Items = []aiv1.AutopilotItem{{IID: 5, State: aiv1.AutopilotItemActive}}
+	})
+	stuck := milestoneTask("2", func(t *aiv1.AgentTask) { t.Status.Autopilot.Items = []aiv1.AutopilotItem{held(5, since, "red")} })
+	lifted := free.DeepCopy()
+	lifted.ResourceVersion = "3"
+
+	set := only(NewDiffer().Update(free, stuck, now), KindHoldSet, KindHoldCleared)
+	cleared := only(NewDiffer().Update(stuck, lifted, now), KindHoldSet, KindHoldCleared)
+	if len(set) != 1 || set[0].Kind != KindHoldSet || len(cleared) != 1 || cleared[0].Kind != KindHoldCleared {
+		t.Fatalf("set %v, cleared %v", kinds(set), kinds(cleared))
+	}
+	for _, e := range []store.Event{set[0], cleared[0]} {
+		if e.IssueIID != 5 || e.MilestoneIID != 20 || e.Data["reason"] != "red" ||
+			e.Data["since"] != since.UTC().Format(time.RFC3339) {
+			t.Errorf("%s %+v", e.Kind, e)
+		}
+	}
+	if !set[0].At.Equal(since) || !cleared[0].At.Equal(now) {
+		t.Errorf("at: set %v, cleared %v", set[0].At, cleared[0].At)
+	}
+
+	// A replayed change writes the same keys (the store keeps one row each);
+	// an update that keeps the hold writes none.
+	if again := only(NewDiffer().Update(free, stuck, now.Add(time.Minute)), KindHoldSet); kinds(again)[0] != kinds(set)[0] {
+		t.Errorf("replayed set: %v, want %v", kinds(again), kinds(set))
+	}
+	if again := only(NewDiffer().Update(stuck, lifted, now.Add(time.Minute)), KindHoldCleared); kinds(again)[0] != kinds(cleared)[0] {
+		t.Errorf("replayed clear: %v, want %v", kinds(again), kinds(cleared))
+	}
+	kept := stuck.DeepCopy()
+	kept.ResourceVersion = "4"
+	if es := only(NewDiffer().Update(stuck, kept, now), KindHoldSet, KindHoldCleared); len(es) != 0 {
+		t.Errorf("kept hold: %v", kinds(es))
+	}
+}
+
+// A held item that leaves the items, or becomes skipped or merged, ends its
+// hold once; one that stays skipped with its hold writes nothing more.
+func TestDifferHoldEndsWithItem(t *testing.T) {
+	since := now.Add(-time.Hour).Truncate(time.Second)
+	key := "hold.cleared task/u1/hold/5/" + itoa(since.Unix()) + "/hold.cleared"
+	stuck := milestoneTask("1", func(t *aiv1.AgentTask) {
+		t.Status.Autopilot.Items = []aiv1.AutopilotItem{held(5, since, "red"), {IID: 6, State: aiv1.AutopilotItemActive}}
+	})
+	ended := func(rv string, s aiv1.AutopilotItemState) *aiv1.AgentTask {
+		return milestoneTask(rv, func(t *aiv1.AgentTask) {
+			it := held(5, since, "red")
+			it.State = s
+			t.Status.Autopilot.Items = []aiv1.AutopilotItem{it}
+		})
+	}
+	dropped := milestoneTask("2", func(t *aiv1.AgentTask) {
+		t.Status.Autopilot.Items = []aiv1.AutopilotItem{{IID: 6, State: aiv1.AutopilotItemActive}}
+	})
+	noAutopilot := milestoneTask("2", func(t *aiv1.AgentTask) { t.Status.Autopilot = nil })
+	for name, cur := range map[string]*aiv1.AgentTask{
+		"dropped": dropped, "no autopilot": noAutopilot,
+		"skipped": ended("2", aiv1.AutopilotItemSkipped), "merged": ended("2", aiv1.AutopilotItemMerged),
+	} {
+		es := only(NewDiffer().Update(stuck, cur, now), KindHoldSet, KindHoldCleared)
+		if got := kinds(es); !slices.Equal(got, []string{key}) {
+			t.Errorf("%s: %v", name, got)
+		} else if es[0].IssueIID != 5 || es[0].Data["since"] != since.UTC().Format(time.RFC3339) {
+			t.Errorf("%s: %+v", name, es[0])
+		}
+	}
+	skipped := ended("2", aiv1.AutopilotItemSkipped)
+	if es := only(NewDiffer().Update(skipped, ended("3", aiv1.AutopilotItemSkipped), now), KindHoldSet, KindHoldCleared); len(es) != 0 {
+		t.Errorf("still skipped: %v", kinds(es))
+	}
+	if es := only(NewDiffer().Update(milestoneTask("0", nil), skipped, now), KindHoldSet, KindHoldCleared); len(es) != 0 {
+		t.Errorf("skipped with a hold: %v", kinds(es))
+	}
+}
+
+// An item that becomes skipped writes one item.skipped; a replay writes the
+// same key and an item that stays skipped nothing.
+func TestDifferItemSkipped(t *testing.T) {
+	items := func(rv string, s aiv1.AutopilotItemState) *aiv1.AgentTask {
+		return milestoneTask(rv, func(t *aiv1.AgentTask) {
+			t.Status.Autopilot.Items = []aiv1.AutopilotItem{{IID: 5, State: s}, {IID: 6, State: aiv1.AutopilotItemActive}}
+		})
+	}
+	active, skipped := items("1", aiv1.AutopilotItemActive), items("2", aiv1.AutopilotItemSkipped)
+	es := only(NewDiffer().Update(active, skipped, now), KindItemSkipped)
+	if got := kinds(es); !slices.Equal(got, []string{"item.skipped task/u1/skipped/5"}) {
+		t.Fatalf("skipped: %v", got)
+	}
+	if e := es[0]; e.IssueIID != 5 || e.MilestoneIID != 20 || !e.At.Equal(now) || e.Summary != "Skipped #5" {
+		t.Errorf("skipped %+v", e)
+	}
+	if again := only(NewDiffer().Update(active, skipped, now.Add(time.Minute)), KindItemSkipped); !slices.Equal(kinds(again), kinds(es)) {
+		t.Errorf("replay: %v", kinds(again))
+	}
+	if es := only(NewDiffer().Update(skipped, items("3", aiv1.AutopilotItemSkipped), now), KindItemSkipped); len(es) != 0 {
+		t.Errorf("still skipped: %v", kinds(es))
+	}
+}
+
 // Each new pilot act is one event per issue it names (0 when none); acts
 // already in the old status are not repeated.
 func TestDifferPilotActed(t *testing.T) {
