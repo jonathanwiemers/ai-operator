@@ -1,7 +1,8 @@
 // Package milestoneorder ranks the open autopilot milestones of a project in
 // the order they run: milestones with a run-next mark first (earliest mark
 // first), then the unmarked ones by age (lowest iid first). The controller
-// (queuedAhead) and the web UI use it, so they cannot disagree.
+// (queuedAhead) and the web UI use it, so they cannot disagree. RunOrder is
+// the queue position the plan agent and the Desk show.
 package milestoneorder
 
 import (
@@ -17,6 +18,9 @@ type Entry struct {
 	IID      int64
 	MarkedAt *time.Time // the run-next mark; nil: unmarked
 	Done     bool
+	// Started: the autopilot has items and is not done, so the milestone
+	// is planned or running.
+	Started bool
 }
 
 // EntryOf builds the entry of milestone iid from its spec task (nil: none
@@ -30,6 +34,7 @@ func EntryOf(iid int64, st *aiv1.AgentTask) Entry {
 	}
 	ap := st.Status.Autopilot
 	e.Done = ap.Phase == aiv1.AutopilotDone
+	e.Started = len(ap.Items) > 0 && !e.Done
 	if ap.StartRequestedBy != "" && ap.StartRequestedAt != nil {
 		e.MarkedAt = &ap.StartRequestedAt.Time
 	}
@@ -82,4 +87,23 @@ func Ahead(entries []Entry) map[int64][]int64 {
 		}
 	}
 	return ahead
+}
+
+// RunOrder returns the iids of the entries that are not done in the order
+// they will run, the queue position: started milestones first (lowest iid
+// first), then the marked ones (earliest mark first), then the rest by
+// lowest iid. Unlike Rank, a started milestone stays ahead of a newer mark:
+// its issues are already under way.
+func RunOrder(entries []Entry) []int64 {
+	var started, rest []int64
+	for _, e := range sorted(entries) {
+		switch {
+		case e.Started && !e.Done:
+			started = append(started, e.IID)
+		case !e.Done:
+			rest = append(rest, e.IID) // marks first, then by iid
+		}
+	}
+	slices.Sort(started)
+	return append(started, rest...)
 }

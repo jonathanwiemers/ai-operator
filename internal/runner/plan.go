@@ -250,6 +250,8 @@ func (p *PlanRun) ask(ctx context.Context, st *state, plan *aiv1.AgentPlan, spec
 		return out, "", nil, "fetching the default branch: " + textutil.Truncate(err.Error(), 200)
 	}
 	sha, _ = p.Mirror.resolve(ctx, "refs/remotes/origin/"+proj.DefaultBranch)
+	milestones := p.writePlanFiles(ctx, plan.Spec.ProjectRef, spec.GitLab.Project)
+	_ = milestones // the prompt's index of the milestone files comes next
 	gl, err := planContext(ctx, p.GitLab, spec.GitLab.Project)
 	if err != nil {
 		p.Log.Info("plan turn without the GitLab context", "error", err.Error())

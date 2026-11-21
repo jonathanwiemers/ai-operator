@@ -102,6 +102,16 @@ func TestEntryOf(t *testing.T) {
 	}{
 		{name: "no status: unmarked, not done", want: Entry{IID: 7}},
 		{name: "running", ap: &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning}, want: Entry{IID: 7}},
+		{
+			name: "planned: items, not done",
+			ap:   &aiv1.AutopilotStatus{Phase: aiv1.AutopilotPaused, Items: []aiv1.AutopilotItem{{IID: 1}}},
+			want: Entry{IID: 7, Started: true},
+		},
+		{
+			name: "done with items is not started",
+			ap:   &aiv1.AutopilotStatus{Phase: aiv1.AutopilotDone, Items: []aiv1.AutopilotItem{{IID: 1}}},
+			want: Entry{IID: 7, Done: true},
+		},
 		{name: "done", ap: &aiv1.AutopilotStatus{Phase: aiv1.AutopilotDone}, want: Entry{IID: 7, Done: true}},
 		{
 			name: "marked",
@@ -119,5 +129,40 @@ func TestEntryOf(t *testing.T) {
 	}
 	if got := EntryOf(7, nil); !reflect.DeepEqual(got, Entry{IID: 7}) {
 		t.Fatalf("no spec task: got %+v", got)
+	}
+}
+
+func TestRunOrder(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		entries []Entry
+		want    []int64
+	}{
+		{
+			name:    "started, then marked, then lowest iid; done left out",
+			entries: []Entry{{IID: 7}, {IID: 5, Done: true}, {IID: 12, MarkedAt: at(0)}, {IID: 9, Started: true}, {IID: 8}},
+			want:    []int64{9, 12, 7, 8},
+		},
+		{
+			name:    "a started milestone stays ahead of an older mark",
+			entries: []Entry{{IID: 10, MarkedAt: at(0)}, {IID: 11, Started: true, MarkedAt: at(5)}},
+			want:    []int64{11, 10},
+		},
+		{
+			name:    "several started by lowest iid, marks in mark order",
+			entries: []Entry{{IID: 14, Started: true, MarkedAt: at(0)}, {IID: 6, Started: true}, {IID: 9, MarkedAt: at(3)}, {IID: 8, MarkedAt: at(1)}},
+			want:    []int64{6, 14, 8, 9},
+		},
+		{name: "no entries", want: []int64{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			before := slices.Clone(tc.entries)
+			if got := RunOrder(tc.entries); !slices.Equal(got, tc.want) {
+				t.Fatalf("got %v, want %v", got, tc.want)
+			}
+			if !reflect.DeepEqual(tc.entries, before) {
+				t.Fatalf("the input changed: %v", tc.entries)
+			}
+		})
 	}
 }

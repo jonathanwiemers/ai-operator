@@ -58,6 +58,9 @@ type Agent interface {
 	FinishMerge(ctx context.Context, req FinishMerge) (MergeResult, error)
 	// Checkpoint commits the home work tree of a run that was cut off.
 	Checkpoint(ctx context.Context, req CheckpointRequest) (CheckpointResult, error)
+	// PlanContext replaces the home checkout's .plan-context folder with a
+	// copy of src, a directory inside the exchange directory.
+	PlanContext(ctx context.Context, src string) error
 }
 
 // LocalAgent implements Agent in-process. The agent server wraps it; the
@@ -445,6 +448,22 @@ func (a *LocalAgent) Checkpoint(ctx context.Context, req CheckpointRequest) (Che
 	return a.Workspace.Checkpoint(ctx, req)
 }
 
+// PlanContext copies the folder the runner wrote: the exchange is another
+// volume, so a rename would fail. git status does not show it (planExclude).
+func (a *LocalAgent) PlanContext(_ context.Context, src string) error {
+	if err := a.checkPath(src); err != nil {
+		return err
+	}
+	dst := filepath.Join(a.Workspace.Dir, planContextDir)
+	if err := os.RemoveAll(dst); err != nil {
+		return err
+	}
+	if err := os.CopyFS(dst, os.DirFS(src)); err != nil {
+		return err
+	}
+	return planExclude(a.Workspace.Dir)
+}
+
 func (a *LocalAgent) checkPath(path string) error {
 	rel, err := filepath.Rel(a.Exchange, filepath.Clean(path))
 	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
@@ -741,6 +760,14 @@ func (s *AgentServer) Handler() http.Handler {
 		return reply{checkpointResponse{Result: res, Error: errString(err)}, err,
 			[]any{"branch", req.Branch, "reason", req.Reason, "sha", res.SHA, "files", res.Files,
 				"skipped", len(res.Skipped), "aborted", res.Aborted, "refused", res.Refused}}
+	})
+	handle("plan-context", func(ctx context.Context, body []byte) reply {
+		var req planContextRequest
+		if err := json.Unmarshal(body, &req); err != nil {
+			return reply{errorResponse{Error: err.Error()}, err, nil}
+		}
+		err := s.Agent.PlanContext(ctx, req.Src)
+		return reply{errorResponse{Error: errString(err)}, err, []any{"src", req.Src}}
 	})
 	handle("session/open", func(ctx context.Context, body []byte) reply {
 		var req openSessionRequest
@@ -1095,4 +1122,17 @@ func (c *AgentClient) Checkpoint(ctx context.Context, req CheckpointRequest) (Ch
 		return CheckpointResult{}, err
 	}
 	return resp.Result, remoteErr(resp.Error)
+}
+
+// planContextRequest names the folder PlanContext copies.
+type planContextRequest struct {
+	Src string `json:"src"`
+}
+
+func (c *AgentClient) PlanContext(ctx context.Context, src string) error {
+	var resp errorResponse
+	if err := c.call(ctx, "plan-context", planContextRequest{Src: src}, &resp); err != nil {
+		return err
+	}
+	return remoteErr(resp.Error)
 }
