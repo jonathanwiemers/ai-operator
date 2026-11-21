@@ -39,6 +39,7 @@ func TestQueuedAhead(t *testing.T) {
 		name       string
 		milestones []gitlab.Milestone
 		tasks      map[int64]*aiv1.AgentTask
+		order      []int64
 		want       map[int64][]int64
 	}{
 		{
@@ -57,7 +58,10 @@ func TestQueuedAhead(t *testing.T) {
 			name:       "a done older milestone holds back nothing",
 			milestones: []gitlab.Milestone{turnMilestone(7, ap), turnMilestone(9, ap), turnMilestone(10, ap)},
 			tasks:      map[int64]*aiv1.AgentTask{7: phaseTask(aiv1.AutopilotDone)},
-			want:       map[int64][]int64{7: nil, 9: nil, 10: {9}},
+			want: map[int64][]int64{
+				7: {9, 10}, // not in the seed: ranks at the bottom
+				9: nil, 10: {9},
+			},
 		},
 		{
 			name:       "an older milestone off autopilot or not selected holds back nothing",
@@ -95,9 +99,22 @@ func TestQueuedAhead(t *testing.T) {
 			tasks:      map[int64]*aiv1.AgentTask{9: {Status: aiv1.AgentTaskStatus{Autopilot: &aiv1.AutopilotStatus{StartRequestedBy: "@alice"}}}},
 			want:       map[int64][]int64{7: nil, 9: {7}},
 		},
+		{
+			name:       "a stored order ranks, marks or not",
+			milestones: []gitlab.Milestone{turnMilestone(7, ap), turnMilestone(9, ap), turnMilestone(10, ap)},
+			tasks:      map[int64]*aiv1.AgentTask{7: phaseTask(aiv1.AutopilotRunning), 9: markedTask(0)},
+			order:      []int64{10, 7, 9},
+			want:       map[int64][]int64{10: nil, 7: {10}, 9: {10, 7}},
+		},
+		{
+			name:       "unlisted milestones rank after the stored ones by iid",
+			milestones: []gitlab.Milestone{turnMilestone(7, ap), turnMilestone(9, ap), turnMilestone(10, ap), turnMilestone(11, ap)},
+			order:      []int64{10, 4},
+			want:       map[int64][]int64{10: nil, 7: {10}, 9: {10, 7}, 11: {10, 7, 9}},
+		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := queuedAhead(testProject().Spec, nil, tc.milestones, tc.tasks)
+			got := queuedAhead(testProject().Spec, nil, tc.milestones, tc.tasks, tc.order)
 			if len(got) != len(tc.want) {
 				t.Fatalf("got %v, want %v", got, tc.want)
 			}

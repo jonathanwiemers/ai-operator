@@ -52,19 +52,14 @@ func TestDeskStartAndUnstart(t *testing.T) {
 	if got := e.deskSay("ada@x", `{"cmd":"start"}`); !slices.Equal(got, []string{"The milestone runs next."}) {
 		t.Fatalf("answers = %q", got)
 	}
-	ap := e.specFor(3).Status.Autopilot
-	if ap.StartRequestedBy != "Ada via the Desk" || ap.StartRequestedAt == nil {
-		t.Fatalf("start from the Desk marks the milestone: %q, %v", ap.StartRequestedBy, ap.StartRequestedAt)
-	}
+	e.wantOrder(3, 2)
 	if !strings.Contains(e.notesOf(tracking), "⏭️ This milestone runs next (by Ada via the Desk)") {
 		t.Fatalf("the mark is said on the tracking issue:\n%s", e.notesOf(tracking))
 	}
-	if got := e.deskSay("ada@x", `{"cmd":"unstart"}`, `{"cmd":"unstart"}`); !slices.Equal(got, []string{"Run-next mark cleared.", "No run-next mark to clear."}) {
+	if got := e.deskSay("ada@x", `{"cmd":"unstart"}`); !slices.Equal(got, []string{"There are no run-next marks any more; use `move`."}) {
 		t.Fatalf("answers = %q", got)
 	}
-	if ap := e.specFor(3).Status.Autopilot; ap.StartRequestedBy != "" || ap.StartRequestedAt != nil {
-		t.Fatalf("unstart clears the mark: %q, %v", ap.StartRequestedBy, ap.StartRequestedAt)
-	}
+	e.wantOrder(3, 2)
 }
 
 func TestDeskEndMilestone(t *testing.T) {
@@ -90,7 +85,7 @@ func TestDeskStartCommandsByANonOwnerAreRefused(t *testing.T) {
 		t.Fatalf("answers = %q", got)
 	}
 	ap := e.specFor(3).Status.Autopilot
-	if ap.StartRequestedBy != "" || ap.StartRequestedAt != nil || ap.Items[1].State != aiv1.AutopilotItemPending {
+	if ap.Items[1].State != aiv1.AutopilotItemPending {
 		t.Fatalf("a non-owner changes nothing: %+v", ap)
 	}
 	e.wantHolding()

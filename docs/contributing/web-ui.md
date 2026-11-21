@@ -2141,13 +2141,13 @@ release that is *Waiting* or *Running* adds *Update to X rolling out*; a
 
 The project detail (`GET /api/v1/projects/{namespace}/{name}`) carries
 `project.queue` and `project.finishing`, from the same ranking and close-out
-fields the operator uses (`internal/milestoneorder`, autopilot status), so
+fields the operator uses (`internal/milestoneorder` over the project's
+`status.milestoneOrder`, autopilot status), so
 the Desk and `pick` cannot disagree. Queue states: `running`, `holding`
 (*Holding for %N*), `waiting`, `paused`, `budget`. With Desk chat and the
 `chat` grant (`project.queueCommands`) the rows post `kind: "command"` to
-the milestone's Spec task: *Run next* `{"cmd":"start"}`, *Clear mark*
-`{"cmd":"unstart"}` (both owner subjects only, like `/agent start` and
-`/agent start off`), *Pause* / *Resume* `{"cmd":"pause"}` /
+the milestone's Spec task: *Run next* `{"cmd":"start"}` (owner subjects
+only, like `/agent start`: to the top of the run order), *Pause* / *Resume* `{"cmd":"pause"}` /
 `{"cmd":"resume"}`.
 
 Finishing lists done autopilot milestones whose Spec task still exists,

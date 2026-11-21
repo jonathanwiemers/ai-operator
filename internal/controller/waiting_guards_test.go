@@ -49,8 +49,8 @@ func TestSpecTurnHonoursAnOwnerPause(t *testing.T) {
 		{"no status, nothing ahead", &aiv1.AgentTask{}, nil, true},
 		{"no status, older open", &aiv1.AgentTask{}, []int64{7}, false},
 		{"owner pause, nothing ahead", paused(aiv1.PauseOwner, ""), nil, false},
-		{"owner pause, start", paused(aiv1.PauseOwner, "@alice"), nil, true},
-		{"owner pause, start, older open", paused(aiv1.PauseOwner, "@alice"), []int64{7}, true},
+		{"owner pause, an old start mark waits for resume", paused(aiv1.PauseOwner, "@alice"), nil, false},
+		{"an old start mark does not jump the queue", paused(aiv1.PauseBudget, "@alice"), []int64{7}, false},
 		{"budget pause, nothing ahead", paused(aiv1.PauseBudget, ""), nil, true},
 		{"running, nothing ahead", phaseTask(aiv1.AutopilotRunning), nil, true},
 	} {
@@ -139,16 +139,25 @@ func TestResumeOfAWaitingMilestoneKeepsItsTurn(t *testing.T) {
 	e.wantWaiting(9, 7)
 }
 
-func TestStartPlansAnOwnerPausedWaitingMilestoneAndKeepsThePause(t *testing.T) {
+func TestStartMovesAnOwnerPausedWaitingMilestoneThatWaitsForResume(t *testing.T) {
 	e := waitingBehindSeven(t)
 	tracking := pauseWaiting(t, e)
 	e.gl.AddNote(tracking, alice, "/agent start")
 	e.reconcile()
 	e.reconcile()
-	e.wantPlanning(9, rules.Spec("/agent owners @alice\n/agent autopilot\nSecond.", "/agent"))
-	if ap := e.specFor(9).Status.Autopilot; ap.Phase != aiv1.AutopilotPaused || ap.PauseKind != aiv1.PauseOwner || ap.StartRequestedBy != "@alice" {
-		t.Fatalf("start plans, the pause stays until resume: %+v", ap)
+	e.wantOrder(9, 7)
+	if !strings.Contains(e.notesOf(tracking), "⏭️ This milestone runs next (by @alice); it plans once an owner resumes it.") {
+		t.Fatalf("the move is said on the tracking issue:\n%s", e.notesOf(tracking))
 	}
+	e.wantWaiting(9)
+	if ap := e.specFor(9).Status.Autopilot; ap.Phase != aiv1.AutopilotPaused || ap.PauseKind != aiv1.PauseOwner {
+		t.Fatalf("the pause stays until resume: %+v", ap)
+	}
+
+	e.gl.AddNote(tracking, alice, "/agent resume")
+	e.reconcile()
+	e.reconcile()
+	e.wantPlanning(9, rules.Spec("/agent owners @alice\n/agent autopilot\nSecond.", "/agent"))
 }
 
 // pilotOf is the Coordinate task of milestone iid, if there is one.

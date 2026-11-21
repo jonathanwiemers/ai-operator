@@ -2147,21 +2147,26 @@ type AutopilotStatus struct {
 	// +optional
 	MergeOverride *MergeOverride `json:"mergeOverride,omitempty"`
 
-	// StartRequestedBy is the owner who asked, with the `start` command,
-	// to plan the milestone ahead of its turn. The spec task's turn check
-	// reads it on the next poll.
+	// StartRequestedBy is the owner who set a run-next mark with the
+	// `start` command.
+	//
+	// Deprecated: the project's status.milestoneOrder ranks milestones. The
+	// operator no longer writes this field and reads it only to seed that
+	// order.
 	// +optional
 	StartRequestedBy string `json:"startRequestedBy,omitempty"`
 
 	// StartRequestedAt is the time of the run-next mark (set with
-	// StartRequestedBy). Queue order ranks marked milestones by it, before
-	// the unmarked ones (internal/milestoneorder).
+	// StartRequestedBy).
+	//
+	// Deprecated: read only to seed the project's status.milestoneOrder.
 	// +optional
 	StartRequestedAt *metav1.Time `json:"startRequestedAt,omitempty"`
 
-	// PassedBy are the younger milestones ranked ahead of this one by a
-	// run-next mark whose "goes first" note the tracking issue already has.
-	// An iid no longer ahead is dropped, so a later mark announces again.
+	// PassedBy are the younger milestones a run-next mark ranked ahead of
+	// this one, whose "goes first" note the tracking issue already has.
+	//
+	// Deprecated: no longer read or written.
 	// +optional
 	PassedBy []int64 `json:"passedBy,omitempty"`
 

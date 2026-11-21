@@ -3234,6 +3234,17 @@ spec:
                 required:
                 - state
                 type: object
+              milestoneOrder:
+                description: |-
+                  MilestoneOrder is the open autopilot milestones' iids in run order;
+                  the first may start new issues. Each sync seeds it once from the
+                  run-next marks, drops milestones that are done, closed or off
+                  autopilot and appends new ones by iid (internal/milestoneorder).
+                items:
+                  format: int64
+                  type: integer
+                type: array
+                x-kubernetes-list-type: atomic
               releases:
                 description: |-
                   Releases are release decisions outside milestones (sweep, companion),

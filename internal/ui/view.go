@@ -383,7 +383,7 @@ func detail(p *aiv1.AgentProject, tasks []aiv1.AgentTask, now time.Time) Project
 	}
 	sort.Slice(d.Milestones, func(i, j int) bool { return d.Milestones[i].IID > d.Milestones[j].IID })
 	sortTasks(d.Unplanned)
-	d.Queue = queue(tasks, costs)
+	d.Queue = queue(p.Status.MilestoneOrder, tasks, costs)
 	d.Finishing = finishing(tasks, gl.WebURL, now)
 	return d
 }

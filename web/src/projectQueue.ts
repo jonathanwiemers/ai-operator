@@ -32,18 +32,17 @@ export function queueTone(e: Pick<QueueEntry, 'state'>): Tone {
 }
 
 export interface QueueAction {
-  id: 'runNext' | 'clearMark' | 'pause' | 'resume'
+  id: 'runNext' | 'pause' | 'resume'
   label: string
   cmd: ChatCommand
 }
 
-// i: rank index; unmarked at 0 is first by age (Run next pins it, D412-P1).
-export function queueActions(e: Pick<QueueEntry, 'state' | 'markedBy'>, i: number): QueueAction[] {
-  const mark: QueueAction = e.markedBy
-    ? { id: 'clearMark', label: 'Clear mark', cmd: { cmd: 'unstart' } }
-    : { id: 'runNext', label: 'Run next', cmd: { cmd: 'start' } }
+// i: rank index. Every row offers Run next (`start`: to the front of the
+// stored run order) and Pause or Resume.
+export function queueActions(e: Pick<QueueEntry, 'state'>, i: number): QueueAction[] {
+  const next: QueueAction = { id: 'runNext', label: 'Run next', cmd: { cmd: 'start' } }
   const ctrl: QueueAction = e.state === 'paused' || e.state === 'budget'
     ? { id: 'resume', label: 'Resume', cmd: { cmd: 'resume' } }
     : { id: 'pause', label: 'Pause', cmd: { cmd: 'pause' } }
-  return i < 0 ? [] : [mark, ctrl]
+  return i < 0 ? [] : [next, ctrl]
 }

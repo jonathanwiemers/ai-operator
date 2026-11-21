@@ -18,7 +18,7 @@ func waitingSpec() aiv1.AgentTask {
 }
 
 // A milestone waiting for its turn shows the older milestones, sorted; once
-// its planning is asked for (by its turn or an owner's start), it does not.
+// its planning is asked for (its turn came), it does not.
 func TestMilestoneViewQueuedBehind(t *testing.T) {
 	p := &aiv1.AgentProject{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "shop"}}
 	st := waitingSpec()
@@ -28,7 +28,6 @@ func TestMilestoneViewQueuedBehind(t *testing.T) {
 	}
 	for name, change := range map[string]func(*aiv1.AgentTask){
 		"planning": func(t *aiv1.AgentTask) { t.Spec.RunRequest = 1 },
-		"started":  func(t *aiv1.AgentTask) { t.Status.Autopilot.StartRequestedBy = "@alice" },
 		"planned":  func(t *aiv1.AgentTask) { t.Status.Plan = []aiv1.PlannedIssue{{IID: 1, Title: "One"}} },
 	} {
 		st := waitingSpec()
@@ -36,6 +35,11 @@ func TestMilestoneViewQueuedBehind(t *testing.T) {
 		if v := milestoneView(p, []aiv1.AgentTask{st}, &st, nil, time.Now()); v.Autopilot.QueuedBehind != nil {
 			t.Errorf("%s: queuedBehind = %v", name, v.Autopilot.QueuedBehind)
 		}
+	}
+	// An old run-next mark no longer lets it plan ahead.
+	st.Status.Autopilot.StartRequestedBy = "@alice"
+	if v := milestoneView(p, []aiv1.AgentTask{st}, &st, nil, time.Now()); !slices.Equal(v.Autopilot.QueuedBehind, []int64{7, 8}) {
+		t.Errorf("an old mark: queuedBehind = %v", v.Autopilot.QueuedBehind)
 	}
 }
 

@@ -13,7 +13,7 @@ import Markdown from './Markdown.vue'
 import Truncated from '../ui/Truncated.vue'
 
 // ProjectQueue: a project's open autopilot milestones in run order with
-// Run next / Clear mark and Pause / Resume (docs/contributing/web-ui.md, "Queue and Finishing"). Titles are text.
+// Run next and Pause / Resume (docs/contributing/web-ui.md, "Queue and Finishing"). Titles are text.
 // Stream reloads the project on live updates; the answer loads here.
 const props = defineProps<{ namespace: string; name: string; queue: QueueEntry[]; commands: boolean }>()
 
@@ -64,7 +64,6 @@ watch(() => live.version, () => void loadAnswer())
         <Badge :tone="queueTone(e)">{{ queueStateLabel(e) }}</Badge>
         <span class="text-xs text-(--text-3) tabular-nums">{{ e.done }}/{{ e.total }} issues</span>
         <CostChip :cost="e" small />
-        <span v-if="e.markedBy" class="min-w-0 text-xs [overflow-wrap:anywhere] text-(--text-3)">marked by {{ e.markedBy }}</span>
         <span v-if="commands" class="ml-auto flex flex-wrap gap-1">
           <UButton v-for="a in queueActions(e, i)" :key="a.id" color="neutral" variant="outline" size="xs" :disabled="!!sending" :label="sending === `${e.iid}${a.id}` ? '…' : a.label" @click="send(e, a)" />
         </span>

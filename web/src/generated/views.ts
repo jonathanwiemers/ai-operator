@@ -1657,7 +1657,7 @@ export interface PromptAnswerView {
 /**
  * QueueEntry is an open autopilot milestone; task: its spec task. holding
  * (planned) and waiting (to plan) wait for holdingFor, the first in rank.
- * markedBy: the run-next mark. done of total: issues merged or skipped.
+ * done of total: issues merged or skipped.
  */
 export interface QueueEntry extends Cost {
   iid: number /* int64 */;
@@ -1666,7 +1666,6 @@ export interface QueueEntry extends Cost {
   state: 'running' | 'holding' | 'waiting' | 'paused' | 'budget';
   holdingFor?: number /* int64 */;
   pausedReason?: string;
-  markedBy?: string;
   done: number /* int */;
   total: number /* int */;
 }

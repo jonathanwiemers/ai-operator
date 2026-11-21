@@ -113,17 +113,16 @@ comes, the milestone is planned from its description of that moment.
 A milestone with `/agent spec` but no `/agent autopilot` is planned at once,
 as before. A milestone that was planned already keeps going.
 
-**Let a younger milestone go first.** An owner comments `/agent start` on
-its tracking issue, or clicks *Run next* on the project's queue in the
-Desk. A waiting milestone is
-planned now; a planned one starts its issues before the older ones. The
-older ones finish their running issues and then wait. Each older milestone
-it passes notes "⏭️ %9 goes first (by @alice)." once. `/agent start off`,
-or *Clear mark*, clears it. A running issue is never stopped for it.
+**Let a younger milestone go first.** Milestones run in the project's run
+order. New milestones join at the bottom. An owner comments `/agent start`
+on its tracking issue, or clicks *Run next* on the project's queue in the
+Desk. That moves the milestone to the top of the run order. A waiting
+milestone is planned on the next poll; a planned one starts its issues
+before the others. The others finish their running issues and then wait.
+A running issue is never stopped for it.
 
 **A paused waiting milestone** stays paused when its turn comes, and is not
-planned until `/agent resume`. `/agent start` plans it but keeps the pause:
-the issues are written and nothing starts until you resume.
+planned until `/agent resume`. This also holds after `/agent start`.
 
 **Run slots.** All runs of a project share
 [`maxConcurrentRuns`](../reference/agentproject.md#other-spec-fields). When

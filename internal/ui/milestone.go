@@ -566,7 +566,7 @@ func trackingIssueIID(st, coord *aiv1.AgentTask) int64 {
 // for, ascending, while it waits for its turn to be planned; nil otherwise.
 func queuedBehind(st *aiv1.AgentTask) []int64 {
 	ap := st.Status.Autopilot
-	if ap == nil || st.Spec.RunRequest != 0 || len(st.Status.Plan) != 0 || ap.StartRequestedBy != "" || len(st.Spec.QueuedBehind) == 0 {
+	if ap == nil || st.Spec.RunRequest != 0 || len(st.Status.Plan) != 0 || len(st.Spec.QueuedBehind) == 0 {
 		return nil
 	}
 	return slices.Sorted(slices.Values(st.Spec.QueuedBehind))

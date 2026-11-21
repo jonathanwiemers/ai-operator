@@ -64,6 +64,7 @@ git history does; otherwise "no milestone".
 19. [One thread per problem, every conversation like a chat](desk-problem-thread.spec.md) — A `problems` table, one thread per stuck issue with one bar to act and an answer that shows at once, and `UChatMessages`/`UChatPrompt` for the Pilot tab, chats and streams. Milestone: no milestone (single MR).
 20. [Desk: works by keyboard and screen reader](desk-accessible.spec.md) — WCAG 2.2 AA: an axe-core check on every route with a known list, landmarks and a skip link, focus return, one announcer, charts and status not by colour alone, reduced motion and a VoiceOver pass. Milestone: Desk: works by keyboard and screen reader, with an accessibility check on every page.
 21. [Desk plans: draft a series of milestones that build on the queue](plan-milestone-series.spec.md) — Milestone files for the plan agent with queue position and `%N` references, a "Builds on" part, up to 5 drafts per plan created in strict order with `%draft-N` replaced, and a `%` menu in the plan chat. Milestone: Desk plans: draft a series of milestones that build on the queue.
+22. [Desk: a timeline of which issue runs when, and milestones you drag into order](desk-timeline-and-milestone-order.spec.md) — A Timeline of issue runs per milestone and across projects, a run order stored on the AgentProject (`status.milestoneOrder`) that replaces run-next marks, and a draggable queue with `/agent move`. Milestone: Desk: a timeline of which issues run when, per milestone and across projects.
 
 ## Research
 

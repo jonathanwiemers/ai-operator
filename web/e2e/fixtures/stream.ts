@@ -137,7 +137,6 @@ export const shopDetail: ProjectDetail = {
       title: longTitle,
       task: 'shop-m15-spec',
       state: 'waiting',
-      markedBy: 'jo',
       done: 0,
       total: 4,
     },

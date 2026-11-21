@@ -71,7 +71,7 @@ func TestPlanMilestoneStatesAndQueue(t *testing.T) {
 		planSpecTask(9, &aiv1.AutopilotStatus{Phase: aiv1.AutopilotOff}),
 	}
 	dir := t.TempDir()
-	infos, err := writePlanMilestones(context.Background(), dir, gl, "group/app", tasks, nil)
+	infos, err := writePlanMilestones(context.Background(), dir, gl, "group/app", tasks, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,9 +99,25 @@ func TestPlanMilestoneStatesAndQueue(t *testing.T) {
 		}
 	}
 
+	// A stored run order ranks, the old mark of %4 not: started ones first,
+	// in stored order, then the rest in stored order.
+	infos, err = writePlanMilestones(context.Background(), dir, gl, "group/app", tasks, []int64{6, 5, 4, 3}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	queue := map[int64]string{}
+	for _, info := range infos {
+		queue[info.IID] = info.Queue
+	}
+	for iid, w := range map[int64]string{5: "1st of 4", 3: "2nd of 4", 6: "3rd of 4", 4: "4th of 4"} {
+		if !strings.HasPrefix(queue[iid], w) {
+			t.Errorf("stored order: %%%d is %q, want %q", iid, queue[iid], w)
+		}
+	}
+
 	// The only autopilot milestone without items is being planned.
 	gl.Milestones = []gitlab.Milestone{{IID: 10, Title: "M10", State: "active"}}
-	infos, err = writePlanMilestones(context.Background(), dir, gl, "group/app", []aiv1.AgentTask{planSpecTask(10, nil), planSpecTask(10, &aiv1.AutopilotStatus{})}, nil)
+	infos, err = writePlanMilestones(context.Background(), dir, gl, "group/app", []aiv1.AgentTask{planSpecTask(10, nil), planSpecTask(10, &aiv1.AutopilotStatus{})}, nil, nil)
 	if err != nil || len(infos) != 1 || infos[0].State != "planning" || infos[0].Queue != "1st of 1 in the autopilot queue" {
 		t.Fatalf("planning: %+v %v", infos, err)
 	}
@@ -130,7 +146,7 @@ func TestPlanMilestoneFileContent(t *testing.T) {
 	dir := t.TempDir()
 	infos, err := writePlanMilestones(context.Background(), dir, gl, "group/app", []aiv1.AgentTask{
 		planSpecTask(3, &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning, Items: planItems(1, 1)}),
-	}, nil)
+	}, nil, nil)
 	if err != nil || len(infos) != 1 || infos[0].Goal != "Pay with PayPal." {
 		t.Fatalf("%+v %v", infos, err)
 	}
@@ -163,7 +179,7 @@ func TestPlanMilestoneFileCutAtAnIssue(t *testing.T) {
 		is.Milestone, is.Description = &m, strings.Repeat("x", 5000)
 	}
 	dir := t.TempDir()
-	if _, err := writePlanMilestones(context.Background(), dir, gl, "group/app", nil, nil); err != nil {
+	if _, err := writePlanMilestones(context.Background(), dir, gl, "group/app", nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	f := milestoneFile(t, dir, 3)
@@ -183,7 +199,7 @@ func TestPlanMilestonesRewritten(t *testing.T) {
 	}
 	gl.Milestones = append(gl.Milestones, gitlab.Milestone{IID: 20, Title: "Open", State: "active"})
 	dir := t.TempDir()
-	if _, err := writePlanMilestones(context.Background(), dir, gl, "group/app", nil, nil); err != nil {
+	if _, err := writePlanMilestones(context.Background(), dir, gl, "group/app", nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	list := func() string {
@@ -198,14 +214,14 @@ func TestPlanMilestonesRewritten(t *testing.T) {
 		t.Fatalf("open and the 5 newest closed: %s", got)
 	}
 	gl.Milestones = gl.Milestones[:7] // %8 and %20 are gone
-	if _, err := writePlanMilestones(context.Background(), dir, gl, "group/app", nil, nil); err != nil {
+	if _, err := writePlanMilestones(context.Background(), dir, gl, "group/app", nil, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if got := list(); got != "3.md 4.md 5.md 6.md 7.md" {
 		t.Fatalf("second turn: %s", got)
 	}
 	gl.ListMilestonesError = errors.New("boom")
-	if _, err := writePlanMilestones(context.Background(), dir, gl, "group/app", nil, nil); err == nil || list() != "" {
+	if _, err := writePlanMilestones(context.Background(), dir, gl, "group/app", nil, nil, nil); err == nil || list() != "" {
 		t.Fatalf("a failed list: %v, files %q", err, list())
 	}
 }

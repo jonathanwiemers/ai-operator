@@ -1460,6 +1460,14 @@ type AgentProjectStatus struct {
 	// +optional
 	SettlingMilestones int32 `json:"settlingMilestones,omitempty"`
 
+	// MilestoneOrder is the open autopilot milestones' iids in run order;
+	// the first may start new issues. Each sync seeds it once from the
+	// run-next marks, drops milestones that are done, closed or off
+	// autopilot and appends new ones by iid (internal/milestoneorder).
+	// +optional
+	// +listType=atomic
+	MilestoneOrder []int64 `json:"milestoneOrder,omitempty"`
+
 	// ActiveTasks is the number of AgentTasks belonging to this project.
 	// +optional
 	ActiveTasks int32 `json:"activeTasks,omitempty"`

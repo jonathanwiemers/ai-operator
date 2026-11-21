@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
@@ -57,7 +58,13 @@ func (p *PlanRun) writePlanFiles(ctx context.Context, projectRef, project string
 		tasks := slices.DeleteFunc(list.Items, func(t aiv1.AgentTask) bool {
 			return t.Spec.Type != aiv1.TaskTypeSpec || t.Spec.ProjectRef != projectRef || t.Spec.Milestone == nil
 		})
-		infos, err = writePlanMilestones(ctx, dir, p.GitLab, project, tasks, refs)
+		// The stored run order; without it (not readable, or not seeded
+		// yet) RunOrder ranks like the seed.
+		var proj aiv1.AgentProject
+		if err := p.K8s.Get(ctx, types.NamespacedName{Namespace: p.Namespace, Name: projectRef}, &proj); err != nil {
+			p.Log.Info("plan turn ranks milestones without the stored run order", "error", err.Error())
+		}
+		infos, err = writePlanMilestones(ctx, dir, p.GitLab, project, tasks, proj.Status.MilestoneOrder, refs)
 	} else {
 		// Without the autopilot state every file would say "no autopilot":
 		// none is better than a wrong one.
@@ -79,10 +86,11 @@ func (p *PlanRun) writePlanFiles(ctx context.Context, projectRef, project string
 // writePlanMilestones writes <dir>/.plan-context anew: one file per open
 // milestone, per one of the planContextClosed newest closed ones and per
 // milestone of refs, the IIDs the owner names. tasks are the project's spec
-// tasks, the source of the autopilot state. A milestone whose issues cannot
+// tasks, the source of the autopilot state; order is the project's stored
+// run order (status.milestoneOrder; empty: the seed). A milestone whose issues cannot
 // be listed still gets its file; the error is returned with the infos of
 // every file written.
-func writePlanMilestones(ctx context.Context, dir string, gl planGitLab, project string, tasks []aiv1.AgentTask, refs []int64) ([]planMilestoneInfo, error) {
+func writePlanMilestones(ctx context.Context, dir string, gl planGitLab, project string, tasks []aiv1.AgentTask, runOrder, refs []int64) ([]planMilestoneInfo, error) {
 	root := filepath.Join(dir, planContextDir)
 	if err := os.RemoveAll(root); err != nil {
 		return nil, err
@@ -112,7 +120,7 @@ func writePlanMilestones(ctx context.Context, dir string, gl planGitLab, project
 			entries = append(entries, milestoneorder.EntryOf(m.IID, t))
 		}
 	}
-	order := milestoneorder.RunOrder(entries)
+	order := milestoneorder.RunOrder(runOrder, entries)
 	var infos []planMilestoneInfo
 	var errs []error
 	write := func(m gitlab.Milestone, named bool) {

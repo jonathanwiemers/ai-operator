@@ -174,8 +174,8 @@ parallel stepper, and the pause card's buttons. In GitLab:
 | `/agent rebase #12` | An active issue with a pushed merge request: GitLab rebases it onto the default branch, and the new head goes through CI. The review carries over if the change is the same. If GitLab cannot rebase, the agent merges the default branch instead. Refused while a run of the issue is pending or someone else pushed. |
 | `/agent mergeBase #12` | An active issue: the agent merges the default branch into the merge request and resolves conflicts. Its push is reviewed and checked like any other. Once per head, and not with `workflow.resolveConflicts: false`. |
 | `/agent merge #12 <sha>` | **Owners only.** Merge the issue's head `sha` (at least 7 characters) without a full review. CI, the merge request state and approvals still apply. A new push voids it. Without a sha the answer names the current head. |
-| `/agent start` | **Owners only.** Plan a milestone that waits for its turn now. On a planned milestone it marks it to run next, ahead of older milestones. |
-| `/agent start off` | **Owners only.** Clear the run-next mark. The milestone waits for its turn again. |
+| `/agent start` | **Owners only.** Move the milestone to the top of the project's run order. A waiting milestone plans on the next poll, unless an owner paused it. A planned one starts its issues before the others. |
+| `/agent start off` | Run-next marks are gone. The answer is "There are no run-next marks any more; use `move`." |
 | `/agent parallel 2` | **Owners only.** Up to 2 issues run at the same time (1 to 10). It writes the `/agent parallel` line of the milestone description. Running issues go on when you lower it. |
 | `/agent release [reason]` | **Owners only.** Release after the current state of the default branch, once its pipeline is green. Example: `/agent release the new checkout is ready for users`. The reason is one line, at most 200 characters. |
 | `/agent no-release #12 [reason]` | **Owners only.** Drop the planned release after #12. Example: `/agent no-release #12 nothing users notice yet`. A release that runs already, and the final release, stay. `norelease` works too. |

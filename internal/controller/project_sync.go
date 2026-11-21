@@ -11,6 +11,7 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/milestoneorder"
 	"github.com/jonathanwiemers/ai-operator/internal/notify"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 	"github.com/jonathanwiemers/ai-operator/internal/rules"
@@ -137,8 +138,12 @@ func (p *projectPoll) syncMilestones(ctx context.Context) error {
 	for _, m := range milestones {
 		p.descriptions[m.ID] = m.Description
 	}
-	// Before any spec task changes: the older milestones still open.
-	p.ahead = queuedAhead(spec, p.titleRE, milestones, p.byMilestone)
+	// Before any spec task changes: the stored run order, seeded once from
+	// the run-next marks and kept to the open autopilot milestones, and the
+	// milestones ranked before each one that are still open.
+	entries := autopilotEntries(spec, p.titleRE, milestones, p.byMilestone)
+	project.Status.MilestoneOrder = milestoneorder.Normalize(project.Status.MilestoneOrder, entries)
+	p.ahead = milestoneorder.Ahead(project.Status.MilestoneOrder, entries)
 	// Only milestones planned before have a Desk row to count in.
 	requirements := map[int64]int{}
 	for _, m := range milestones {
@@ -387,17 +392,11 @@ func (ph autopilotPhase) run(ctx context.Context) {
 	if err := r.syncCompanions(ctx, gl, project, spec, tasks.Items, homeMRs, autopilots, byMilestone, keep); err != nil {
 		ph.errs = append(ph.errs, fmt.Errorf("companions: %w", err))
 	}
-	markedBy := map[int64]string{}
-	for iid, t := range byMilestone {
-		if t != nil && t.Status.Autopilot != nil {
-			markedBy[iid] = t.Status.Autopilot.StartRequestedBy
-		}
-	}
 	for _, st := range autopilots {
 		if skip[st.Spec.Milestone.IID] {
 			continue
 		}
-		if err := r.syncAutopilot(ctx, gl, gate, project, spec, st, implTasks, pilots[st.Spec.Milestone.IID], st == lane, ahead[st.Spec.Milestone.IID], markedBy); err != nil {
+		if err := r.syncAutopilot(ctx, gl, gate, project, spec, st, implTasks, pilots[st.Spec.Milestone.IID], st == lane, ahead[st.Spec.Milestone.IID]); err != nil {
 			ph.errs = append(ph.errs, fmt.Errorf("autopilot of milestone %q: %w", st.Spec.Milestone.Title, err))
 		}
 	}
@@ -474,7 +473,7 @@ func (ph cleanupPhase) run(ctx context.Context) error {
 			// The milestone is no longer planned (closed, or every marker
 			// removed): switch its autopilot off before the state is gone.
 			t.Spec.Autopilot = false
-			if err := r.syncAutopilot(ctx, gl, gate, project, spec, t, nil, nil, false, nil, nil); err != nil {
+			if err := r.syncAutopilot(ctx, gl, gate, project, spec, t, nil, nil, false, nil); err != nil {
 				ph.errs = append(ph.errs, fmt.Errorf("switching off the autopilot of task %s: %w", t.Name, err))
 				continue // tried again on the next poll
 			}

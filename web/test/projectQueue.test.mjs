@@ -37,16 +37,9 @@ test('queueTone: one tone per state', () => {
   assert.equal(queueTone(entry({ state: 'budget' })), 'danger')
 })
 
-test('queueActions: first unmarked gets Run next and Pause', () => {
+test('queueActions: the first gets Run next and Pause', () => {
   assert.deepEqual(queueActions(entry({ state: 'running' }), 0), [
     { id: 'runNext', label: 'Run next', cmd: { cmd: 'start' } },
-    { id: 'pause', label: 'Pause', cmd: { cmd: 'pause' } },
-  ])
-})
-
-test('queueActions: marked gets Clear mark instead of Run next', () => {
-  assert.deepEqual(queueActions(entry({ state: 'running', markedBy: '@ada' }), 0), [
-    { id: 'clearMark', label: 'Clear mark', cmd: { cmd: 'unstart' } },
     { id: 'pause', label: 'Pause', cmd: { cmd: 'pause' } },
   ])
 })

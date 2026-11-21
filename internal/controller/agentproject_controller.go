@@ -352,7 +352,7 @@ func (r *AgentProjectReconciler) milestonesChanged(ctx context.Context, project 
 		return false, fmt.Errorf("listing milestones: %w", err)
 	}
 	selected := map[int64]bool{}
-	ahead := queuedAhead(spec, titleRE, milestones, planned)
+	ahead := queuedAhead(spec, titleRE, milestones, planned, project.Status.MilestoneOrder)
 	for _, m := range milestones {
 		ok, autopilot := milestoneSelection(spec, titleRE, m)
 		if !ok {
@@ -726,30 +726,36 @@ func specTaskCurrent(spec aiv1.AgentProjectSpec, m gitlab.Milestone, task *aiv1.
 }
 
 // specTurn reports whether a spec task that has never asked for a run (or a
-// new one) may ask for its first: nothing is ahead of it and no owner paused
-// it (their `resume` lets it plan), or an owner asked to start it now
-// (`start`, AutopilotStatus.StartRequestedBy), which leaves a pause as it is.
+// new one) may ask for its first: nothing is ahead of it in the stored run
+// order and no owner paused it (their `resume` lets it plan).
 func specTurn(task *aiv1.AgentTask, ahead []int64) bool {
 	ap := task.Status.Autopilot
 	if ap == nil {
 		return len(ahead) == 0
 	}
-	return ap.StartRequestedBy != "" || len(ahead) == 0 && (ap.Phase != aiv1.AutopilotPaused || ap.PauseKind != aiv1.PauseOwner)
+	return len(ahead) == 0 && (ap.Phase != aiv1.AutopilotPaused || ap.PauseKind != aiv1.PauseOwner)
 }
 
-// queuedAhead returns, for every selected autopilot milestone, the iids of
-// the selected autopilot milestones ranked before it that are still open, in
-// run order (milestoneorder: run-next marks first, then age): their spec task
-// is missing or not done (a paused one counts). A milestone off autopilot or
-// closed (not listed) holds back nothing.
-func queuedAhead(spec aiv1.AgentProjectSpec, titleRE *regexp.Regexp, milestones []gitlab.Milestone, byMilestone map[int64]*aiv1.AgentTask) map[int64][]int64 {
+// autopilotEntries returns the milestoneorder entries of the selected
+// autopilot milestones. A milestone off autopilot or closed (not listed) has
+// none.
+func autopilotEntries(spec aiv1.AgentProjectSpec, titleRE *regexp.Regexp, milestones []gitlab.Milestone, byMilestone map[int64]*aiv1.AgentTask) []milestoneorder.Entry {
 	var entries []milestoneorder.Entry
 	for _, m := range milestones {
 		if _, autopilot := milestoneSelection(spec, titleRE, m); autopilot {
 			entries = append(entries, milestoneorder.EntryOf(m.IID, byMilestone[m.IID]))
 		}
 	}
-	return milestoneorder.Ahead(entries)
+	return entries
+}
+
+// queuedAhead returns, for every selected autopilot milestone, the iids of
+// the selected autopilot milestones ranked before it that are still open, in
+// run order (the project's stored order, status.milestoneOrder): their spec
+// task is missing or not done (a paused one counts). A milestone off
+// autopilot or closed (not listed) holds back nothing.
+func queuedAhead(spec aiv1.AgentProjectSpec, titleRE *regexp.Regexp, milestones []gitlab.Milestone, byMilestone map[int64]*aiv1.AgentTask, order []int64) map[int64][]int64 {
+	return milestoneorder.Ahead(order, autopilotEntries(spec, titleRE, milestones, byMilestone))
 }
 
 // specRetryDue reports whether a planning run that failed for an outside

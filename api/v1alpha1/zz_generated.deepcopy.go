@@ -449,6 +449,11 @@ func (in *AgentProjectStatus) DeepCopyInto(out *AgentProjectStatus) {
 		in, out := &in.LastSyncTime, &out.LastSyncTime
 		*out = (*in).DeepCopy()
 	}
+	if in.MilestoneOrder != nil {
+		in, out := &in.MilestoneOrder, &out.MilestoneOrder
+		*out = make([]int64, len(*in))
+		copy(*out, *in)
+	}
 	if in.UsageLimits != nil {
 		in, out := &in.UsageLimits, &out.UsageLimits
 		*out = make([]UsageLimit, len(*in))

@@ -126,7 +126,7 @@ func TestPlanContext(t *testing.T) {
 		planSpecTask(3, &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning, Items: planItems(7, 3)}),
 		planSpecTask(5, &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning}),
 	}
-	infos, err := writePlanMilestones(context.Background(), t.TempDir(), gl, "group/app", tasks, []int64{90})
+	infos, err := writePlanMilestones(context.Background(), t.TempDir(), gl, "group/app", tasks, nil, []int64{90})
 	if err != nil || len(infos) != 10 {
 		t.Fatalf("%d infos, %v", len(infos), err)
 	}

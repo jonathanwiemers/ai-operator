@@ -2,7 +2,6 @@ package controller
 
 import (
 	"slices"
-	"time"
 
 	"strings"
 	"testing"
@@ -55,9 +54,7 @@ func TestOwnerStartsAWaitingMilestone(t *testing.T) {
 
 	e.gl.AddNote(tracking, alice, "/agent start")
 	e.reconcile()
-	if ap := e.specFor(9).Status.Autopilot; ap.StartRequestedBy != "@alice" || ap.StartRequestedAt == nil {
-		t.Fatalf("the start is recorded as a run-next mark: %q, %v", ap.StartRequestedBy, ap.StartRequestedAt)
-	}
+	e.wantOrder(9, 7)
 	if !strings.Contains(e.notesOf(tracking), "▶️ Planning starts now, ahead of its turn (by @alice).") {
 		t.Fatalf("the start is said on the tracking issue:\n%s", e.notesOf(tracking))
 	}
@@ -83,15 +80,13 @@ func TestStartByANonOwnerIsRefused(t *testing.T) {
 	e.reconcile()
 	e.reconcile()
 	e.wantWaiting(9, 7)
-	if got := e.specFor(9).Status.Autopilot.StartRequestedBy; got != "" {
-		t.Fatalf("a non-owner starts nothing: %q", got)
-	}
+	e.wantOrder(7, 9)
 	if notes := e.notesOf(tracking); !strings.Contains(notes, notOwnerStart) || strings.Contains(notes, "Planning starts now") {
 		t.Fatalf("the refusal is answered:\n%s", notes)
 	}
 }
 
-func TestUnknownCommandOffersStartAndStartOff(t *testing.T) {
+func TestUnknownCommandOffersStart(t *testing.T) {
 	e := waitingBehindSeven(t)
 	tracking := e.trackingOf(9)
 	e.gl.AddNote(tracking, alice, "/agent frobnicate")
@@ -100,15 +95,6 @@ func TestUnknownCommandOffersStartAndStartOff(t *testing.T) {
 		t.Fatalf("a waiting milestone lists start:\n%s", notes)
 	}
 
-	p := ownedAutopilotEnv(t)
-	tracking = p.trackingOf(3)
-	p.gl.AddNote(tracking, alice, "/agent start")
-	p.reconcile()
-	p.gl.AddNote(tracking, alice, "/agent frobnicate")
-	p.reconcile()
-	if notes := p.notesOf(tracking); !strings.Contains(notes, "understands `/agent start off`, `/agent pause`") {
-		t.Fatalf("a marked milestone lists start off:\n%s", notes)
-	}
 }
 
 // ownedAutopilotEnv is newAutopilotEnv (%3 planned, owned by alice) with an
@@ -120,6 +106,7 @@ func ownedAutopilotEnv(t *testing.T) *projectEnv {
 	e.gl.Milestones[0].Description = "/agent owners @alice\n" + e.gl.Milestones[0].Description
 	e.reconcile() // #1 of %3 starts
 	e.gl.Milestones = append(e.gl.Milestones, turnMilestone(2, "/agent autopilot\nOlder."))
+	e.setOrder(2, 3) // ranked ahead, as if it had been seeded
 	e.reconcile()
 	e.finishRun(1, "sha-api", nil)
 	e.gl.MRs[1].Draft, e.gl.MRs[1].DetailedMergeStatus = false, "mergeable"
@@ -141,7 +128,7 @@ func (e *projectEnv) wantHolding() {
 	}
 }
 
-func TestStartMarksAPlannedMilestoneToRunNext(t *testing.T) {
+func TestStartMovesAPlannedMilestoneToTheFront(t *testing.T) {
 	e := ownedAutopilotEnv(t)
 	tracking := e.trackingOf(3)
 	if d := e.gl.Issues[tracking].Description; !strings.Contains(d, "`/agent start` (owners: run it next") {
@@ -149,64 +136,45 @@ func TestStartMarksAPlannedMilestoneToRunNext(t *testing.T) {
 	}
 	e.gl.AddNote(tracking, alice, "/agent start")
 	e.reconcile()
-	ap := e.specFor(3).Status.Autopilot
-	if ap.StartRequestedBy != "@alice" || ap.StartRequestedAt == nil {
-		t.Fatalf("start marks the planned milestone: %q, %v", ap.StartRequestedBy, ap.StartRequestedAt)
+	e.wantOrder(3, 2)
+	if ap := e.specFor(3).Status.Autopilot; ap.StartRequestedBy != "" || ap.StartRequestedAt != nil {
+		t.Fatalf("start writes no run-next mark: %q, %v", ap.StartRequestedBy, ap.StartRequestedAt)
 	}
 	if !strings.Contains(e.notesOf(tracking), "⏭️ This milestone runs next (by @alice): it plans and starts issues before the others; their active issues finish.") {
-		t.Fatalf("the mark is said on the tracking issue:\n%s", e.notesOf(tracking))
+		t.Fatalf("the move is said on the tracking issue:\n%s", e.notesOf(tracking))
 	}
 	// The next poll ranks %3 first: it starts #2 while the older %2 is open.
 	e.reconcile()
 	if ap := e.specFor(3).Status.Autopilot; ap.Items[1].State != aiv1.AutopilotItemActive {
-		t.Fatalf("the marked %%3 starts #2 with the older %%2 open: %+v", ap)
+		t.Fatalf("%%3 starts #2 with the older %%2 open: %+v", ap)
 	}
-	if d := e.gl.Issues[tracking].Description; !strings.Contains(d, "⏭️ runs next (marked by @alice).") || !strings.Contains(d, "`/agent start off` (owners: clear the run-next mark)") {
-		t.Fatalf("the tracking issue shows the mark and how to clear it:\n%s", d)
+	if d := e.gl.Issues[tracking].Description; strings.Contains(d, "/agent start") || strings.Contains(d, "marked by") {
+		t.Fatalf("the first milestone offers no start and shows no mark:\n%s", d)
 	}
-}
+	if d := e.gl.Issues[e.trackingOf(2)].Description; !strings.Contains(d, "`/agent start` (owners: run it next") {
+		t.Fatalf("%%2, now second, offers start:\n%s", d)
+	}
 
-func TestStartTwiceKeepsTheFirstMark(t *testing.T) {
-	e := ownedAutopilotEnv(t)
-	tracking := e.trackingOf(3)
 	e.gl.AddNote(tracking, alice, "/agent start")
 	e.reconcile()
-	first := e.specFor(3).Status.Autopilot.StartRequestedAt.DeepCopy()
-	e.r.Now = func() time.Time { return first.Add(time.Hour) }
-	e.gl.AddNote(tracking, alice, "/agent start")
-	e.reconcile()
-	if got := e.specFor(3).Status.Autopilot.StartRequestedAt; !got.Equal(first) {
-		t.Fatalf("a repeated start keeps the mark's time: %v, was %v", got, first)
-	}
+	e.wantOrder(3, 2)
 	notes := e.notesOf(tracking)
-	if !strings.Contains(notes, "The milestone is already marked to run next (by @alice).") || strings.Count(notes, "⏭️ This milestone runs next") != 1 {
+	if !strings.Contains(notes, "The milestone is already first in the run order.") || strings.Count(notes, "⏭️ This milestone runs next") != 1 {
 		t.Fatalf("the repeated start is answered:\n%s", notes)
 	}
 }
 
-func TestStartOffClearsTheMark(t *testing.T) {
+func TestStartOffSaysMarksAreGone(t *testing.T) {
 	e := ownedAutopilotEnv(t)
 	tracking := e.trackingOf(3)
 	e.gl.AddNote(tracking, alice, "/agent start off")
 	e.reconcile()
-	if !strings.Contains(e.notesOf(tracking), "No run-next mark to clear.") {
-		t.Fatalf("start off without a mark is answered:\n%s", e.notesOf(tracking))
+	notes := e.notesOf(tracking)
+	if !strings.Contains(notes, "There are no run-next marks any more; use `move`.") || strings.Contains(notes, "⏹️") {
+		t.Fatalf("start off is answered and changes nothing:\n%s", notes)
 	}
-	e.gl.AddNote(tracking, alice, "/agent start")
-	e.reconcile()
-	e.gl.AddNote(tracking, alice, "/agent start off")
-	e.reconcile()
-	if ap := e.specFor(3).Status.Autopilot; ap.StartRequestedBy != "" || ap.StartRequestedAt != nil {
-		t.Fatalf("start off clears the mark: %q, %v", ap.StartRequestedBy, ap.StartRequestedAt)
-	}
-	if !strings.Contains(e.notesOf(tracking), "⏹️ Run-next mark cleared (by @alice); the milestone waits for its turn again.") {
-		t.Fatalf("the cleared mark is said on the tracking issue:\n%s", e.notesOf(tracking))
-	}
-	// Age order again (run_next_test.go); the active #2 finishes, and start
-	// is offered again.
-	if d := e.gl.Issues[tracking].Description; !strings.Contains(d, "`/agent start` (owners: run it next") || strings.Contains(d, "runs next (marked") {
-		t.Fatalf("the tracking issue offers start and shows no mark:\n%s", d)
-	}
+	e.wantOrder(2, 3)
+	e.wantHolding()
 }
 
 func TestStartOnADoneMilestoneDoesNothing(t *testing.T) {
@@ -215,9 +183,7 @@ func TestStartOnADoneMilestoneDoesNothing(t *testing.T) {
 	e.patchStatus(e.specFor(3).Name, func(s *aiv1.AgentTaskStatus) { s.Autopilot.Phase = aiv1.AutopilotDone })
 	e.gl.AddNote(tracking, alice, "/agent start")
 	e.reconcile()
-	if ap := e.specFor(3).Status.Autopilot; ap.StartRequestedBy != "" || ap.StartRequestedAt != nil {
-		t.Fatalf("start marks no done milestone: %+v", ap)
-	}
+	e.wantOrder(2) // done: left the list
 	if notes := e.notesOf(tracking); !strings.Contains(notes, "The milestone is done; `start` does nothing.") {
 		t.Fatalf("the command is answered:\n%s", notes)
 	}
@@ -230,9 +196,7 @@ func TestStartOnAPlannedMilestoneByANonOwnerIsRefused(t *testing.T) {
 	e.reconcile()
 	e.gl.AddNote(tracking, mallory, "/agent start off")
 	e.reconcile()
-	if ap := e.specFor(3).Status.Autopilot; ap.StartRequestedBy != "" || ap.StartRequestedAt != nil {
-		t.Fatalf("a non-owner marks nothing: %+v", ap)
-	}
+	e.wantOrder(2, 3)
 	if notes := e.notesOf(tracking); strings.Count(notes, notOwnerStart) != 2 || strings.Contains(notes, "runs next") {
 		t.Fatalf("both forms are refused:\n%s", notes)
 	}

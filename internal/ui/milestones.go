@@ -225,7 +225,8 @@ func liveMilestoneRows(projects map[string]*aiv1.AgentProject, tasks []aiv1.Agen
 	}
 	var rows []MilestoneRow
 	for k, pt := range byProject {
-		ap, positions := projects[k], queuePositions(pt)
+		ap := projects[k]
+		positions := queuePositions(ap.Status.MilestoneOrder, pt)
 		for i := range pt {
 			st := &pt[i]
 			if st.Spec.Type != aiv1.TaskTypeSpec || st.Spec.Milestone == nil || st.Spec.Milestone.IID == 0 {
@@ -241,10 +242,10 @@ func liveMilestoneRows(projects map[string]*aiv1.AgentProject, tasks []aiv1.Agen
 }
 
 // queuePositions is the queue position, from 1, of every open autopilot
-// milestone of one project's tasks, in milestoneorder.RunOrder: the order
-// the plan agent's milestone index shows. Done milestones and those without
+// milestone of one project's tasks, in milestoneorder.RunOrder over the
+// project's stored order: the order the plan agent's milestone index shows. Done milestones and those without
 // autopilot (or with it turned off) have none.
-func queuePositions(tasks []aiv1.AgentTask) map[int64]int {
+func queuePositions(order []int64, tasks []aiv1.AgentTask) map[int64]int {
 	seen := map[int64]bool{}
 	var entries []milestoneorder.Entry
 	for i := range tasks {
@@ -257,7 +258,7 @@ func queuePositions(tasks []aiv1.AgentTask) map[int64]int {
 		entries = append(entries, milestoneorder.EntryOf(ms.IID, t))
 	}
 	positions := map[int64]int{}
-	for i, iid := range milestoneorder.RunOrder(entries) {
+	for i, iid := range milestoneorder.RunOrder(order, entries) {
 		positions[iid] = i + 1
 	}
 	return positions

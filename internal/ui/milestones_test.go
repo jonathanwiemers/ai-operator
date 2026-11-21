@@ -314,15 +314,17 @@ func TestMilestoneRowsQueuePosition(t *testing.T) {
 	}
 	marked := metav1.NewTime(t0)
 	tasks := []aiv1.AgentTask{
-		// Waiting %5, the lowest waiting iid, comes after the marked %6.
-		autopilot(5, &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning}),
-		autopilot(6, &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning, StartRequestedBy: "ada", StartRequestedAt: &marked}),
+		// The started %8 first, then %6 and %5 in stored order; the old mark
+		// of %5 ranks nothing.
+		autopilot(5, &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning, StartRequestedBy: "ada", StartRequestedAt: &marked}),
+		autopilot(6, &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning}),
 		autopilot(7, &aiv1.AutopilotStatus{Phase: aiv1.AutopilotDone, Items: []aiv1.AutopilotItem{{IID: 11}}}),
 		autopilot(8, &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning, Items: []aiv1.AutopilotItem{{IID: 12}}}),
 		autopilot(9, &aiv1.AutopilotStatus{Phase: aiv1.AutopilotOff}),
 		*specTask("team-a", "shop", 3, 0, nil), // no autopilot
 	}
-	projects := map[string]*aiv1.AgentProject{"team-a/shop": {ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "shop"}}}
+	projects := map[string]*aiv1.AgentProject{"team-a/shop": {ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "shop"},
+		Status: aiv1.AgentProjectStatus{MilestoneOrder: []int64{6, 5, 8}}}}
 	rows := liveMilestoneRows(projects, tasks, t0)
 	want := map[int64]int{8: 1, 6: 2, 5: 3, 7: 0, 9: 0, 3: 0}
 	for iid, pos := range want {

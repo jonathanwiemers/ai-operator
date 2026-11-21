@@ -51,39 +51,46 @@ func TestQueue(t *testing.T) {
 	}
 	for _, tc := range []struct {
 		name  string
+		order []int64
 		tasks []aiv1.AgentTask
 		want  []row
 	}{
-		{"age order without marks", []aiv1.AgentTask{
+		{"age order without a stored order or marks", nil, []aiv1.AgentTask{
 			queueSpec(5, planned(aiv1.AutopilotRunning, aiv1.AutopilotItemPending)),
 			queueSpec(3, planned(aiv1.AutopilotRunning, aiv1.AutopilotItemMerged, aiv1.AutopilotItemActive)),
 		}, []row{{3, "running", 0}, {5, "holding", 3}}},
-		{"a mark passes an older milestone", []aiv1.AgentTask{
+		{"without a stored order a mark passes an older milestone", nil, []aiv1.AgentTask{
 			queueSpec(3, planned(aiv1.AutopilotRunning, aiv1.AutopilotItemActive)), queueSpec(5, mark),
 		}, []row{{5, "running", 0}, {3, "holding", 5}}},
-		{"a start without a time is no mark", []aiv1.AgentTask{
+		{"a start without a time is no mark", nil, []aiv1.AgentTask{
 			queueSpec(3, planned(aiv1.AutopilotRunning, aiv1.AutopilotItemActive)), queueSpec(5, legacyStart),
 		}, []row{{3, "running", 0}, {5, "waiting", 3}}},
-		{"unplanned milestones wait to plan", []aiv1.AgentTask{
+		{"stored order, marks or not", []int64{6, 3, 5}, []aiv1.AgentTask{
+			queueSpec(3, planned(aiv1.AutopilotRunning, aiv1.AutopilotItemActive)), queueSpec(5, mark), queueSpec(6, nil),
+		}, []row{{6, "running", 0}, {3, "holding", 6}, {5, "waiting", 6}}},
+		{"unlisted milestones at the bottom by iid", []int64{5}, []aiv1.AgentTask{
+			queueSpec(6, nil), queueSpec(3, planned(aiv1.AutopilotRunning, aiv1.AutopilotItemActive)), queueSpec(5, nil),
+		}, []row{{5, "running", 0}, {3, "holding", 5}, {6, "waiting", 5}}},
+		{"unplanned milestones wait to plan", nil, []aiv1.AgentTask{
 			queueSpec(3, paused), queueSpec(5, nil), queueSpec(6, planned(aiv1.AutopilotRunning)),
 		}, []row{{3, "paused", 0}, {5, "waiting", 3}, {6, "waiting", 3}}},
-		{"budget pauses", []aiv1.AgentTask{
+		{"budget pauses", nil, []aiv1.AgentTask{
 			queueSpec(3, issueBudget), stopped, queueSpec(5, budget),
 		}, []row{{3, "budget", 0}, {5, "budget", 0}}},
-		{"done milestones and specs without autopilot are left out", []aiv1.AgentTask{
+		{"done milestones and specs without autopilot are left out", []int64{2, 5}, []aiv1.AgentTask{
 			queueSpec(2, planned(aiv1.AutopilotDone, aiv1.AutopilotItemMerged)),
 			{Spec: aiv1.AgentTaskSpec{Type: aiv1.TaskTypeSpec, Milestone: &aiv1.MilestoneRef{IID: 1}}},
 			queueSpec(5, planned(aiv1.AutopilotRunning, aiv1.AutopilotItemActive)),
 		}, []row{{5, "running", 0}}},
-		{"a second spec task of a milestone is one row", []aiv1.AgentTask{
+		{"a second spec task of a milestone is one row", nil, []aiv1.AgentTask{
 			queueSpec(3, planned(aiv1.AutopilotRunning, aiv1.AutopilotItemActive)),
 			queueSpec(3, planned(aiv1.AutopilotRunning, aiv1.AutopilotItemActive)),
 			queueSpec(5, nil),
 		}, []row{{3, "running", 0}, {5, "waiting", 3}}},
-		{"no autopilot milestones", nil, nil},
+		{"no autopilot milestones", nil, nil, nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			q := queue(tc.tasks, map[int64]float64{})
+			q := queue(tc.order, tc.tasks, map[int64]float64{})
 			if q == nil {
 				t.Fatal("queue is nil, want an array")
 			}
@@ -103,14 +110,14 @@ func TestQueue(t *testing.T) {
 	}
 
 	// The fields of one entry.
-	q := queue([]aiv1.AgentTask{queueSpec(3, paused), queueSpec(5, mark), other}, map[int64]float64{3: 1.25})
-	if e := q[0]; e.IID != 5 || e.MarkedBy != "@ada" || e.Task != "shop-spec-m5" || e.Title != "M5" {
-		t.Errorf("marked entry = %+v", e)
+	q := queue([]int64{5, 3}, []aiv1.AgentTask{queueSpec(3, paused), queueSpec(5, mark), other}, map[int64]float64{3: 1.25})
+	if e := q[0]; e.IID != 5 || e.Task != "shop-spec-m5" || e.Title != "M5" {
+		t.Errorf("first entry = %+v", e)
 	}
-	if e := q[1]; e.MarkedBy != "" || e.PausedReason != "CI is red" || e.Done != 0 || e.Total != 1 || e.CostUSD != "1.25" {
+	if e := q[1]; e.PausedReason != "CI is red" || e.Done != 0 || e.Total != 1 || e.CostUSD != "1.25" {
 		t.Errorf("paused entry = %+v", e)
 	}
-	done := queue([]aiv1.AgentTask{queueSpec(3, planned(aiv1.AutopilotRunning,
+	done := queue(nil, []aiv1.AgentTask{queueSpec(3, planned(aiv1.AutopilotRunning,
 		aiv1.AutopilotItemMerged, aiv1.AutopilotItemSkipped, aiv1.AutopilotItemActive))}, nil)
 	if e := done[0]; e.Done != 2 || e.Total != 3 {
 		t.Errorf("done of total = %d of %d, want 2 of 3", e.Done, e.Total)

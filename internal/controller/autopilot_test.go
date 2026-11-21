@@ -765,6 +765,7 @@ func TestOlderMilestoneHoldsTheNextIssue(t *testing.T) {
 	e := newAutopilotEnv(t)
 	e.reconcile() // #1 starts before the older milestone is selected
 	e.gl.Milestones = append(e.gl.Milestones, turnMilestone(2, "/agent autopilot\nOlder."))
+	e.setOrder(2, 3) // ranked ahead, as if it had been seeded
 	e.reconcile()
 	e.finishRun(1, "sha-api", nil)
 	e.gl.MRs[1].Draft, e.gl.MRs[1].DetailedMergeStatus = false, "mergeable"

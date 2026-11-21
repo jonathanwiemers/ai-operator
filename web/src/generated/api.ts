@@ -2048,6 +2048,15 @@ export interface AgentProjectStatus {
    */
   settlingMilestones?: number /* int32 */;
   /**
+   * MilestoneOrder is the open autopilot milestones' iids in run order;
+   * the first may start new issues. Each sync seeds it once from the
+   * run-next marks, drops milestones that are done, closed or off
+   * autopilot and appends new ones by iid (internal/milestoneorder).
+   * +optional
+   * +listType=atomic
+   */
+  milestoneOrder?: number /* int64 */[];
+  /**
    * ActiveTasks is the number of AgentTasks belonging to this project.
    * +optional
    */
@@ -5652,23 +5661,25 @@ export interface AutopilotStatus {
    */
   mergeOverride?: MergeOverride;
   /**
-   * StartRequestedBy is the owner who asked, with the `start` command,
-   * to plan the milestone ahead of its turn. The spec task's turn check
-   * reads it on the next poll.
+   * StartRequestedBy is the owner who set a run-next mark with the
+   * `start` command.
+   * Deprecated: the project's status.milestoneOrder ranks milestones. The
+   * operator no longer writes this field and reads it only to seed that
+   * order.
    * +optional
    */
   startRequestedBy?: string;
   /**
    * StartRequestedAt is the time of the run-next mark (set with
-   * StartRequestedBy). Queue order ranks marked milestones by it, before
-   * the unmarked ones (internal/milestoneorder).
+   * StartRequestedBy).
+   * Deprecated: read only to seed the project's status.milestoneOrder.
    * +optional
    */
   startRequestedAt?: string;
   /**
-   * PassedBy are the younger milestones ranked ahead of this one by a
-   * run-next mark whose "goes first" note the tracking issue already has.
-   * An iid no longer ahead is dropped, so a later mark announces again.
+   * PassedBy are the younger milestones a run-next mark ranked ahead of
+   * this one, whose "goes first" note the tracking issue already has.
+   * Deprecated: no longer read or written.
    * +optional
    */
   passedBy?: number /* int64 */[];

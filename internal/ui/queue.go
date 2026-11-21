@@ -9,7 +9,7 @@ import (
 
 // QueueEntry is an open autopilot milestone; task: its spec task. holding
 // (planned) and waiting (to plan) wait for holdingFor, the first in rank.
-// markedBy: the run-next mark. done of total: issues merged or skipped.
+// done of total: issues merged or skipped.
 type QueueEntry struct {
 	IID          int64  `json:"iid"`
 	Title        string `json:"title"`
@@ -17,15 +17,15 @@ type QueueEntry struct {
 	State        string `json:"state" tstype:"'running' | 'holding' | 'waiting' | 'paused' | 'budget'"`
 	HoldingFor   int64  `json:"holdingFor,omitempty"`
 	PausedReason string `json:"pausedReason,omitempty"`
-	MarkedBy     string `json:"markedBy,omitempty"`
 	Done         int    `json:"done"`
 	Total        int    `json:"total"`
 	Cost         `tstype:",extends"`
 }
 
-// queue lists the open autopilot milestones in run order, ranked like the
-// controller ranks them (milestoneorder); costs by milestone iid.
-func queue(tasks []aiv1.AgentTask, costs map[int64]float64) []QueueEntry {
+// queue lists the open autopilot milestones in run order, ranked by the
+// project's stored order like the controller ranks them (milestoneorder);
+// costs by milestone iid.
+func queue(order []int64, tasks []aiv1.AgentTask, costs map[int64]float64) []QueueEntry {
 	specs, budgetStop := map[int64]*aiv1.AgentTask{}, map[int64]bool{}
 	var entries []milestoneorder.Entry
 	for i := range tasks {
@@ -37,15 +37,12 @@ func queue(tasks []aiv1.AgentTask, costs map[int64]float64) []QueueEntry {
 			budgetStop[ms.IID] = true
 		}
 	}
-	q, rank := []QueueEntry{}, milestoneorder.Rank(entries)
+	q, rank := []QueueEntry{}, milestoneorder.Rank(order, entries)
 	for _, iid := range rank {
 		t := specs[iid]
 		ap := cmp.Or(t.Status.Autopilot, &aiv1.AutopilotStatus{})
 		e := QueueEntry{IID: iid, Title: t.Spec.Milestone.Title, Task: t.Name, State: "running", PausedReason: ap.PausedReason,
 			Done: itemsDone(ap), Total: len(ap.Items), Cost: tasksCost(costs[iid])}
-		if milestoneorder.EntryOf(iid, t).MarkedAt != nil {
-			e.MarkedBy = ap.StartRequestedBy
-		}
 		switch paused := ap.Phase == aiv1.AutopilotPaused; {
 		case paused && (ap.PauseKind == aiv1.PauseBudget || budgetStop[iid]):
 			e.State = "budget"

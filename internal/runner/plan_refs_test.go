@@ -34,7 +34,7 @@ func TestPlanRefsFetched(t *testing.T) {
 	}
 	refs := planRefs("build on %38, and %20 %21 %404 %22 %23 %24 %25")
 	dir := t.TempDir()
-	infos, err := writePlanMilestones(context.Background(), dir, gl, "group/app", nil, refs)
+	infos, err := writePlanMilestones(context.Background(), dir, gl, "group/app", nil, nil, refs)
 	if err != nil {
 		t.Fatal(err)
 	}

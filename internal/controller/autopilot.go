@@ -39,7 +39,7 @@ import (
 // The operator only calls the GitLab API here; no model decides whether to
 // merge. State lives in the spec task's status.autopilot, the tracking issue
 // shows it.
-func (r *AgentProjectReconciler) syncAutopilot(ctx context.Context, gl gitlab.API, gate *commandGate, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, pilot *aiv1.AgentTask, lane bool, ahead []int64, markedBy map[int64]string) error {
+func (r *AgentProjectReconciler) syncAutopilot(ctx context.Context, gl gitlab.API, gate *commandGate, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, pilot *aiv1.AgentTask, lane bool, ahead []int64) error {
 	switch {
 	case st.Spec.Milestone == nil:
 		return nil
@@ -51,7 +51,7 @@ func (r *AgentProjectReconciler) syncAutopilot(ctx context.Context, gl gitlab.AP
 	if st.Status.Autopilot != nil {
 		ap = st.Status.Autopilot.DeepCopy()
 	}
-	a := &autopilot{r: r, gl: gl, gate: gate, project: project, spec: spec, st: st, ap: ap, tasks: tasks, pilotTask: pilot, lane: lane, ahead: ahead, markedBy: markedBy,
+	a := &autopilot{r: r, gl: gl, gate: gate, project: project, spec: spec, st: st, ap: ap, tasks: tasks, pilotTask: pilot, lane: lane, ahead: ahead,
 		log: log.FromContext(ctx).WithValues("milestone", st.Spec.Milestone.Title)}
 	err := a.sync(ctx)
 	// Save what was done even if a later step failed: its GitLab side
@@ -165,9 +165,6 @@ func (a *autopilot) sync(ctx context.Context) error {
 	if err := a.budget(ctx); err != nil {
 		return err
 	}
-	if err := a.announcePassed(ctx); err != nil {
-		return err
-	}
 	if err := a.emptyPlan(ctx); err != nil {
 		return err
 	}
@@ -236,28 +233,6 @@ func (a *autopilot) loadIssues(ctx context.Context) error {
 	a.issues = map[int64]gitlab.Issue{}
 	for _, is := range issues {
 		a.issues[is.IID] = is
-	}
-	return nil
-}
-
-// announcePassed says once on the tracking issue that a younger milestone
-// ranked ahead by a run-next mark goes first (decision 2), and forgets the
-// ones no longer ahead so a later mark is announced again. A failed comment
-// is not recorded and is tried again on the next poll.
-func (a *autopilot) announcePassed(ctx context.Context) error {
-	a.ap.PassedBy = slices.DeleteFunc(a.ap.PassedBy, func(iid int64) bool { return !slices.Contains(a.ahead, iid) })
-	if a.ap.Phase == aiv1.AutopilotDone || a.ap.TrackingIssueIID == 0 {
-		return nil
-	}
-	for _, iid := range a.ahead {
-		by := a.markedBy[iid]
-		if iid <= a.st.Spec.Milestone.IID || by == "" || slices.Contains(a.ap.PassedBy, iid) {
-			continue
-		}
-		if err := a.comment(ctx, fmt.Sprintf("⏭️ %%%d goes first (by %s).", iid, by)); err != nil {
-			return err
-		}
-		a.ap.PassedBy = append(a.ap.PassedBy, iid)
 	}
 	return nil
 }
@@ -339,9 +314,7 @@ type autopilot struct {
 	// (queuedAhead); holding: pick has an issue to start but waits for them.
 	ahead   []int64
 	holding bool
-	// markedBy is the run-next mark owner (StartRequestedBy) by milestone.
-	markedBy map[int64]string
-	mainRed  int64
+	mainRed int64
 	// New Desk command answers to write after the autopilot status is
 	// saved (a status patch must not wipe them from the Spec).
 	chatMark    int64
@@ -2533,62 +2506,54 @@ func (a *autopilot) startAnyway(ctx context.Context, arg, by string) (string, bo
 	return fmt.Sprintf("#%d may start although %s.", iid, which), true, nil
 }
 
-// startNow plans a milestone that waits for its turn now (`start`, owners
-// only, decision 10): StartRequestedBy makes syncSpecTask ask for the first
-// planning run on the next poll, and with StartRequestedAt it is a run-next
-// mark that ranks the milestone first in the queue (milestoneorder). On a
-// planned or planning milestone it only sets the mark; an existing mark keeps
-// its time. `start off` clears the mark.
+// startNow moves the milestone to the front of the project's run order
+// (`start`, owners only, decision 10): on the next poll nothing is ahead of
+// it, so it plans when its turn rule allows (an owner pause waits for
+// `resume`) and the milestones behind it start no new issues. Run-next marks
+// are gone: `start off` says so and changes nothing.
 func (a *autopilot) startNow(ctx context.Context, arg, by string) (string, bool, error) {
-	marked, off := a.marked(), strings.EqualFold(arg, "off")
+	iid, order := a.st.Spec.Milestone.IID, a.project.Status.MilestoneOrder
 	note, reply := "▶️ Planning starts now, ahead of its turn (by %s).", "Planning starts now."
 	switch {
-	case off && !marked:
-		return "No run-next mark to clear.", false, nil
-	case off:
-		note, reply = "⏹️ Run-next mark cleared (by %s); the milestone waits for its turn again.", "Run-next mark cleared."
+	case strings.EqualFold(arg, "off"):
+		return "There are no run-next marks any more; use `move`.", false, nil
 	case a.ap.Phase == aiv1.AutopilotDone:
 		return "The milestone is done; `start` does nothing.", false, nil
-	case marked:
-		return fmt.Sprintf("The milestone is already marked to run next (by %s).", a.ap.StartRequestedBy), false, nil
+	case a.first():
+		return "The milestone is already first in the run order.", false, nil
 	case !a.waitingForTurn():
 		note, reply = "⏭️ This milestone runs next (by %s): it plans and starts issues before the others; their active issues finish.", "The milestone runs next."
+	case a.ap.Phase == aiv1.AutopilotPaused && a.ap.PauseKind == aiv1.PauseOwner:
+		note, reply = "⏭️ This milestone runs next (by %s); it plans once an owner resumes it.", "The milestone runs next; it plans once resumed."
 	}
 	// Comment first: if it fails, the command is applied again on the next
 	// poll.
 	if err := a.comment(ctx, fmt.Sprintf(note, by)); err != nil {
 		return "", false, err
 	}
-	a.log.Info("autopilot run-next mark", "arg", arg, "by", by)
-	a.ap.StartRequestedBy, a.ap.StartRequestedAt = by, &metav1.Time{Time: a.r.now()}
-	if off {
-		a.ap.StartRequestedBy, a.ap.StartRequestedAt = "", nil
-	}
+	a.log.Info("autopilot milestone moved to the front of the run order", "by", by)
+	a.project.Status.MilestoneOrder = append([]int64{iid}, slices.DeleteFunc(slices.Clone(order), func(o int64) bool { return o == iid })...)
 	return reply, true, nil
 }
 
 // startHint is the `start` command the tracking issue offers: none on a done
-// milestone, `start off` on a marked one; and what it does.
+// milestone or on the first one in the run order; and what it does.
 func (a *autopilot) startHint() (string, string) {
-	switch {
-	case a.ap.Phase == aiv1.AutopilotDone:
+	if a.ap.Phase == aiv1.AutopilotDone || a.first() {
 		return "", ""
-	case a.marked():
-		return a.spec.Workflow.CommandPrefix + " start off", "clear the run-next mark"
 	}
 	return a.spec.Workflow.CommandPrefix + " start", "run it next, ahead of its turn"
 }
 
-// marked reports whether the milestone has a run-next mark (milestoneorder).
-func (a *autopilot) marked() bool {
-	return a.ap.StartRequestedBy != "" && a.ap.StartRequestedAt != nil
+// first reports whether the milestone is first in the project's run order.
+func (a *autopilot) first() bool {
+	return a.project != nil && len(a.project.Status.MilestoneOrder) > 0 && a.project.Status.MilestoneOrder[0] == a.st.Spec.Milestone.IID
 }
 
 // waitingForTurn reports whether the milestone waits for its turn to be
-// planned: its spec task has never asked for a run, it has no plan and no
-// owner asked to start it yet.
+// planned: its spec task has never asked for a run and it has no plan.
 func (a *autopilot) waitingForTurn() bool {
-	return a.st.Spec.RunRequest == 0 && len(a.st.Status.Plan) == 0 && a.ap.StartRequestedBy == ""
+	return a.st.Spec.RunRequest == 0 && len(a.st.Status.Plan) == 0
 }
 
 // skippedDeps are the dependencies of iid in the plan that are skipped.
@@ -2777,7 +2742,7 @@ func (a *autopilot) renderTracking() string {
 				break
 			}
 			fmt.Fprintf(&b, "⏳ waiting for its turn: %s go first. Comment `%s start` to plan it now (owners).\n", milestoneList(ahead), prefix)
-		case a.st.RunPending() || a.st.Spec.RunRequest == 0 && a.ap.StartRequestedBy != "":
+		case a.st.RunPending():
 			b.WriteString("📝 planning, the planning agent is writing the issues.\n")
 		default:
 			b.WriteString("⚠️ not planned, planning has not succeeded yet. Nothing starts until the milestone is planned.\n")
@@ -2795,9 +2760,6 @@ func (a *autopilot) renderTracking() string {
 	}
 	if len(held) > 0 {
 		b.WriteString("\nHeld:\n" + strings.Join(held, ""))
-	}
-	if a.marked() && a.ap.Phase != aiv1.AutopilotDone {
-		fmt.Fprintf(&b, "⏭️ runs next (marked by %s).\n", a.ap.StartRequestedBy)
 	}
 	limit := a.ap.MaxParallel // the effective limit, as of this poll
 	parallel := limit > 1
