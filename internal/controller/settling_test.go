@@ -186,7 +186,7 @@ func TestSettlingMilestoneReadsOnlyItsTrackingIssueNotes(t *testing.T) {
 	strict := &notesOnlyGitLab{fake: e.gl}
 	st := e.task(specTaskName)
 	before := st.Status.Autopilot.DeepCopy()
-	if err := e.r.syncAutopilot(e.ctx, strict, nil, &project, project.Spec.WithDefaults(), st, nil, nil, false, nil); err != nil {
+	if err := e.r.syncAutopilot(e.ctx, strict, nil, &project, project.Spec.WithDefaults(), st, nil, nil, false, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if strict.notes != 1 {

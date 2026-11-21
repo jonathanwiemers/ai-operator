@@ -18,6 +18,9 @@ const notOwnerMerge = "Only the milestone's owners may merge without a full revi
 // notOwnerStart answers a `start` by someone who is not an owner.
 const notOwnerStart = "Only the milestone's owners may start planning ahead of the milestone's turn."
 
+// notOwnerMove answers a `move` by someone who is not an owner.
+const notOwnerMove = "Only the milestone's owners may change the run order."
+
 // notOwnerEnd answers an `endMilestone` by someone who is not an owner.
 const notOwnerEnd = "Only the milestone's owners may end the milestone."
 

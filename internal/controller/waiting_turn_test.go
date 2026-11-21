@@ -10,7 +10,7 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 )
 
-const waitingLine = "⏳ waiting for its turn: %7, %8 go first. Comment `/agent start` to plan it now (owners)."
+const waitingLine = "⏳ waiting for its turn: %7, %8 go first. Comment `/agent move top` to plan it now (owners)."
 
 func TestRenderTrackingStates(t *testing.T) {
 	for _, tc := range []struct {

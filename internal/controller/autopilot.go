@@ -39,7 +39,7 @@ import (
 // The operator only calls the GitLab API here; no model decides whether to
 // merge. State lives in the spec task's status.autopilot, the tracking issue
 // shows it.
-func (r *AgentProjectReconciler) syncAutopilot(ctx context.Context, gl gitlab.API, gate *commandGate, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, pilot *aiv1.AgentTask, lane bool, ahead []int64) error {
+func (r *AgentProjectReconciler) syncAutopilot(ctx context.Context, gl gitlab.API, gate *commandGate, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, pilot *aiv1.AgentTask, lane bool, ahead []int64, peers map[int64]*aiv1.AgentTask) error {
 	switch {
 	case st.Spec.Milestone == nil:
 		return nil
@@ -51,7 +51,7 @@ func (r *AgentProjectReconciler) syncAutopilot(ctx context.Context, gl gitlab.AP
 	if st.Status.Autopilot != nil {
 		ap = st.Status.Autopilot.DeepCopy()
 	}
-	a := &autopilot{r: r, gl: gl, gate: gate, project: project, spec: spec, st: st, ap: ap, tasks: tasks, pilotTask: pilot, lane: lane, ahead: ahead,
+	a := &autopilot{r: r, gl: gl, gate: gate, project: project, spec: spec, st: st, ap: ap, tasks: tasks, pilotTask: pilot, lane: lane, ahead: ahead, peers: peers,
 		log: log.FromContext(ctx).WithValues("milestone", st.Spec.Milestone.Title)}
 	err := a.sync(ctx)
 	// Save what was done even if a later step failed: its GitLab side
@@ -312,7 +312,10 @@ type autopilot struct {
 	lane bool
 	// ahead are the older autopilot milestones of the project still open
 	// (queuedAhead); holding: pick has an issue to start but waits for them.
-	ahead   []int64
+	ahead []int64
+	// peers are the project's spec tasks by milestone iid (nil when
+	// switching off), for the move command's running milestone and refusals.
+	peers   map[int64]*aiv1.AgentTask
 	holding bool
 	mainRed int64
 	// New Desk command answers to write after the autopilot status is
@@ -2245,12 +2248,12 @@ func (a *autopilot) commands(ctx context.Context) error {
 			body := strings.TrimLeft(rest, ": \t")
 			arg = strings.TrimSpace(strings.TrimPrefix(body, fields[0]))
 		}
-		if word == "merge" || word == "start" || word == "endmilestone" || word == "release" || word == "no-release" || word == "parallel" {
+		if word == "merge" || word == "start" || word == "move" || word == "endmilestone" || word == "release" || word == "no-release" || word == "parallel" {
 			// Owners only, also where anyone may give commands.
 			if ok, err := a.gate.byOwner(ctx, n, a.st.Spec.Owners); err != nil {
 				return err
 			} else if !ok {
-				reply := map[string]string{"merge": notOwnerMerge, "start": notOwnerStart, "endmilestone": notOwnerEnd,
+				reply := map[string]string{"merge": notOwnerMerge, "start": notOwnerStart, "move": notOwnerMove, "endmilestone": notOwnerEnd,
 					"release": notOwnerRelease, "no-release": notOwnerRelease, "parallel": notOwnerParallel}[word]
 				a.r.rejectNote(ctx, a.gl, a.project, a.spec, tn, "🤖 "+reply)
 				a.ap.LastCommandNoteID = n.ID
@@ -2268,8 +2271,17 @@ func (a *autopilot) commands(ctx context.Context) error {
 		if word == "merge" {
 			arg += " " + fields[2]
 		}
-		// Tried again on the next poll when it fails.
-		reply, applied, err := a.command(ctx, word, arg, "@"+n.Author.Username)
+		// Tried again on the next poll when it fails. A move is keyed by its
+		// note, so a replay posts nothing twice.
+		by := "@" + n.Author.Username
+		var reply string
+		var applied bool
+		var err error
+		if isMoveWord(word, arg) {
+			reply, applied, err = a.moveWords(ctx, word, fields[1:], by, fmt.Sprintf("note/%d", n.ID))
+		} else {
+			reply, applied, err = a.command(ctx, word, arg, by)
+		}
 		if err != nil {
 			return err
 		}
@@ -2354,7 +2366,7 @@ func (a *autopilot) chatCommands(ctx context.Context) error {
 		}
 		by := who + " via the Desk"
 		// Owners only, like the tracking issue's words.
-		if refusal := map[string]string{"merge": notOwnerMerge, "start": notOwnerStart, "unstart": notOwnerStart,
+		if refusal := map[string]string{"merge": notOwnerMerge, "start": notOwnerStart, "unstart": notOwnerStart, "move": notOwnerMove,
 			"endmilestone": notOwnerEnd, "restart": notOwnerRestart, "parallel": notOwnerParallel}[cmd.Cmd]; refusal != "" && !slices.Contains(a.st.Spec.OwnerSubjects, m.Author) {
 			answer(m.ID, refusal)
 			a.log.Info("chat command refused", "id", m.ID, "cmd", cmd.Cmd, "author", m.Author, "reason", "not an owner subject")
@@ -2366,6 +2378,19 @@ func (a *autopilot) chatCommands(ctx context.Context) error {
 			// finds its note and restarts nothing twice.
 			key := fmt.Sprintf("chat/%s/%d", a.st.Name, m.ID)
 			reply, err := a.r.restartRun(ctx, a.gl, a.spec, a.st, a.ap.TrackingIssueIID, by, key, a.project.Status.BotUserID)
+			if err != nil {
+				return err
+			}
+			answer(m.ID, reply)
+			continue
+		}
+		if mv, ok := cmd.Move(); ok || cmd.Cmd == "start" {
+			// start is move top. Keyed like a restart: a replay posts
+			// nothing twice.
+			if !ok {
+				mv = chatcmd.Move{To: "top"}
+			}
+			reply, _, err := a.move(ctx, mv, by, fmt.Sprintf("chat/%s/%d", a.st.Name, m.ID))
 			if err != nil {
 				return err
 			}
@@ -2461,7 +2486,11 @@ func (a *autopilot) command(ctx context.Context, word, arg, by string) (answer s
 	case "merge":
 		return a.mergeAnyway(ctx, arg, by)
 	case "start":
-		return a.startNow(ctx, arg, by)
+		// start is move top (decision 14); the callers key it.
+		if strings.EqualFold(arg, "off") {
+			return noMarks, false, nil
+		}
+		return a.move(ctx, chatcmd.Move{To: "top"}, by, "")
 	case "parallel":
 		return a.setParallel(ctx, arg, by)
 	case "release":
@@ -2506,43 +2535,13 @@ func (a *autopilot) startAnyway(ctx context.Context, arg, by string) (string, bo
 	return fmt.Sprintf("#%d may start although %s.", iid, which), true, nil
 }
 
-// startNow moves the milestone to the front of the project's run order
-// (`start`, owners only, decision 10): on the next poll nothing is ahead of
-// it, so it plans when its turn rule allows (an owner pause waits for
-// `resume`) and the milestones behind it start no new issues. Run-next marks
-// are gone: `start off` says so and changes nothing.
-func (a *autopilot) startNow(ctx context.Context, arg, by string) (string, bool, error) {
-	iid, order := a.st.Spec.Milestone.IID, a.project.Status.MilestoneOrder
-	note, reply := "▶️ Planning starts now, ahead of its turn (by %s).", "Planning starts now."
-	switch {
-	case strings.EqualFold(arg, "off"):
-		return "There are no run-next marks any more; use `move`.", false, nil
-	case a.ap.Phase == aiv1.AutopilotDone:
-		return "The milestone is done; `start` does nothing.", false, nil
-	case a.first():
-		return "The milestone is already first in the run order.", false, nil
-	case !a.waitingForTurn():
-		note, reply = "⏭️ This milestone runs next (by %s): it plans and starts issues before the others; their active issues finish.", "The milestone runs next."
-	case a.ap.Phase == aiv1.AutopilotPaused && a.ap.PauseKind == aiv1.PauseOwner:
-		note, reply = "⏭️ This milestone runs next (by %s); it plans once an owner resumes it.", "The milestone runs next; it plans once resumed."
-	}
-	// Comment first: if it fails, the command is applied again on the next
-	// poll.
-	if err := a.comment(ctx, fmt.Sprintf(note, by)); err != nil {
-		return "", false, err
-	}
-	a.log.Info("autopilot milestone moved to the front of the run order", "by", by)
-	a.project.Status.MilestoneOrder = append([]int64{iid}, slices.DeleteFunc(slices.Clone(order), func(o int64) bool { return o == iid })...)
-	return reply, true, nil
-}
-
-// startHint is the `start` command the tracking issue offers: none on a done
-// milestone or on the first one in the run order; and what it does.
+// startHint is the `move top` command the tracking issue offers: none on a
+// done milestone or on the first one in the run order; and what it does.
 func (a *autopilot) startHint() (string, string) {
 	if a.ap.Phase == aiv1.AutopilotDone || a.first() {
 		return "", ""
 	}
-	return a.spec.Workflow.CommandPrefix + " start", "run it next, ahead of its turn"
+	return a.spec.Workflow.CommandPrefix + " move top", "run it next"
 }
 
 // first reports whether the milestone is first in the project's run order.
@@ -2582,7 +2581,7 @@ func (a *autopilot) unknownCommand() string {
 	if h, _ := a.startHint(); h != "" {
 		start = "`" + h + "`, "
 	}
-	return fmt.Sprintf("This tracking issue only understands %[4]s`%[1]s pause`, `%[1]s resume [#N]`, `%[1]s skip #N`, `%[1]s unskip #N`, `%[1]s startAnyway #N`, `%[1]s rebase #N`, `%[1]s mergeBase #N`, `%[1]s merge #N`, `%[1]s release [reason]`, `%[1]s no-release #N [reason]`, `%[1]s parallel N` (owners), `%[1]s endMilestone` and `%[1]s revisit <id> …`. "+
+	return fmt.Sprintf("This tracking issue only understands %[4]s`%[1]s pause`, `%[1]s resume [#N]`, `%[1]s skip #N`, `%[1]s unskip #N`, `%[1]s startAnyway #N`, `%[1]s rebase #N`, `%[1]s mergeBase #N`, `%[1]s merge #N`, `%[1]s release [reason]`, `%[1]s no-release #N [reason]`, `%[1]s parallel N` (owners), `%[1]s move top|bottom|before %%N|after %%N` (owners), `%[1]s endMilestone` and `%[1]s revisit <id> …`. "+
 		"Did you mean `%[3]s …`? The milestone's pilot answers here. To instruct the agent, comment `%[1]s …` on %[2]s.", prefix, where, a.spec.Workflow.PilotPrefix, start)
 }
 
@@ -2741,7 +2740,7 @@ func (a *autopilot) renderTracking() string {
 				b.WriteString("⏳ waiting for its turn, planning starts on the next poll.\n")
 				break
 			}
-			fmt.Fprintf(&b, "⏳ waiting for its turn: %s go first. Comment `%s start` to plan it now (owners).\n", milestoneList(ahead), prefix)
+			fmt.Fprintf(&b, "⏳ waiting for its turn: %s go first. Comment `%s move top` to plan it now (owners).\n", milestoneList(ahead), prefix)
 		case a.st.RunPending():
 			b.WriteString("📝 planning, the planning agent is writing the issues.\n")
 		default:

@@ -146,7 +146,7 @@ func TestStartMovesAnOwnerPausedWaitingMilestoneThatWaitsForResume(t *testing.T)
 	e.reconcile()
 	e.reconcile()
 	e.wantOrder(9, 7)
-	if !strings.Contains(e.notesOf(tracking), "⏭️ This milestone runs next (by @alice); it plans once an owner resumes it.") {
+	if !strings.Contains(e.notesOf(tracking), "⏫ Moved to the top (by @alice).") {
 		t.Fatalf("the move is said on the tracking issue:\n%s", e.notesOf(tracking))
 	}
 	e.wantWaiting(9)

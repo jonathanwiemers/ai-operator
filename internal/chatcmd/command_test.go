@@ -31,6 +31,20 @@ func TestParse(t *testing.T) {
 		{`{"cmd":"parallel","parallel":2,"usd":"40"}`, Command{}, "parallel takes no usd"},
 		{`{"cmd":"resume","parallel":2}`, Command{}, "resume takes no parallel"},
 		{`{"cmd":"start"}`, Command{Cmd: "start"}, ""},
+		{`{"cmd":"move","to":" Top "}`, Command{Cmd: "move", To: "top"}, ""},
+		{`{"cmd":"move","to":"bottom"}`, Command{Cmd: "move", To: "bottom"}, ""},
+		{`{"cmd":"move","before":6}`, Command{Cmd: "move", Before: 6}, ""},
+		{`{"cmd":"move","after":6}`, Command{Cmd: "move", After: 6}, ""},
+		{`{"cmd":"move"}`, Command{}, "move needs exactly one of"},
+		{`{"cmd":"move","to":"top","before":6}`, Command{}, "move needs exactly one of"},
+		{`{"cmd":"move","before":6,"after":5}`, Command{}, "move needs exactly one of"},
+		{`{"cmd":"move","to":"middle"}`, Command{}, `move to "middle" is not top or bottom`},
+		{`{"cmd":"move","before":-6}`, Command{}, "needs a milestone > 0"},
+		{`{"cmd":"move","after":6,"issue":3}`, Command{}, "move takes only to, before or after"},
+		{`{"cmd":"move","to":"top","sha":"5a0e000"}`, Command{}, "move takes no sha"},
+		{`{"cmd":"start","to":"top"}`, Command{}, "start takes no to, before or after"},
+		{`{"cmd":"skip","issue":3,"before":6}`, Command{}, "skip takes no to, before or after"},
+		{`{"cmd":"pause","after":6}`, Command{}, "pause takes no to, before or after"},
 		{`{"cmd":" Unstart "}`, Command{Cmd: "unstart"}, ""},
 		{`{"cmd":"endMilestone"}`, Command{Cmd: "endmilestone"}, ""},
 		{`{"cmd":"restart"}`, Command{Cmd: "restart"}, ""},
@@ -168,7 +182,7 @@ func TestImplementOnlyAndRouting(t *testing.T) {
 			t.Errorf("%s should not be Autopilot or ProposalOnly", cmd)
 		}
 	}
-	for _, cmd := range []string{"pause", "resume", "skip", "merge", "start", "unstart", "endmilestone", "parallel"} {
+	for _, cmd := range []string{"pause", "resume", "skip", "merge", "start", "unstart", "endmilestone", "parallel", "move"} {
 		c := Command{Cmd: cmd}
 		if !c.Autopilot() || c.ImplementOnly() || c.ProposalOnly() {
 			t.Errorf("%s should be Autopilot only", cmd)

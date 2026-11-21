@@ -396,7 +396,7 @@ func (ph autopilotPhase) run(ctx context.Context) {
 		if skip[st.Spec.Milestone.IID] {
 			continue
 		}
-		if err := r.syncAutopilot(ctx, gl, gate, project, spec, st, implTasks, pilots[st.Spec.Milestone.IID], st == lane, ahead[st.Spec.Milestone.IID]); err != nil {
+		if err := r.syncAutopilot(ctx, gl, gate, project, spec, st, implTasks, pilots[st.Spec.Milestone.IID], st == lane, ahead[st.Spec.Milestone.IID], byMilestone); err != nil {
 			ph.errs = append(ph.errs, fmt.Errorf("autopilot of milestone %q: %w", st.Spec.Milestone.Title, err))
 		}
 	}
@@ -473,7 +473,7 @@ func (ph cleanupPhase) run(ctx context.Context) error {
 			// The milestone is no longer planned (closed, or every marker
 			// removed): switch its autopilot off before the state is gone.
 			t.Spec.Autopilot = false
-			if err := r.syncAutopilot(ctx, gl, gate, project, spec, t, nil, nil, false, nil); err != nil {
+			if err := r.syncAutopilot(ctx, gl, gate, project, spec, t, nil, nil, false, nil, nil); err != nil {
 				ph.errs = append(ph.errs, fmt.Errorf("switching off the autopilot of task %s: %w", t.Name, err))
 				continue // tried again on the next poll
 			}

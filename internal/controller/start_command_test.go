@@ -48,14 +48,14 @@ func (e *projectEnv) notesOf(issue int64) string {
 func TestOwnerStartsAWaitingMilestone(t *testing.T) {
 	e := waitingBehindSeven(t)
 	tracking := e.trackingOf(9)
-	if body := e.gl.Issues[tracking].Description; !strings.Contains(body, "`/agent start`") {
+	if body := e.gl.Issues[tracking].Description; !strings.Contains(body, "`/agent move top`") {
 		t.Fatalf("the waiting milestone's tracking issue offers start:\n%s", body)
 	}
 
 	e.gl.AddNote(tracking, alice, "/agent start")
 	e.reconcile()
 	e.wantOrder(9, 7)
-	if !strings.Contains(e.notesOf(tracking), "▶️ Planning starts now, ahead of its turn (by @alice).") {
+	if !strings.Contains(e.notesOf(tracking), "⏫ Moved to the top (by @alice).") {
 		t.Fatalf("the start is said on the tracking issue:\n%s", e.notesOf(tracking))
 	}
 
@@ -68,7 +68,7 @@ func TestOwnerStartsAWaitingMilestone(t *testing.T) {
 	if got := e.specFor(9).Spec.RunRequest; got != 1 {
 		t.Fatalf("the first run is asked for once: run request %d", got)
 	}
-	if body := e.gl.Issues[tracking].Description; strings.Contains(body, "`/agent start`") {
+	if body := e.gl.Issues[tracking].Description; strings.Contains(body, "`/agent move top`") {
 		t.Fatalf("a planning milestone no longer offers start:\n%s", body)
 	}
 }
@@ -81,7 +81,7 @@ func TestStartByANonOwnerIsRefused(t *testing.T) {
 	e.reconcile()
 	e.wantWaiting(9, 7)
 	e.wantOrder(7, 9)
-	if notes := e.notesOf(tracking); !strings.Contains(notes, notOwnerStart) || strings.Contains(notes, "Planning starts now") {
+	if notes := e.notesOf(tracking); !strings.Contains(notes, notOwnerStart) || strings.Contains(notes, "Moved") {
 		t.Fatalf("the refusal is answered:\n%s", notes)
 	}
 }
@@ -91,7 +91,7 @@ func TestUnknownCommandOffersStart(t *testing.T) {
 	tracking := e.trackingOf(9)
 	e.gl.AddNote(tracking, alice, "/agent frobnicate")
 	e.reconcile()
-	if notes := e.notesOf(tracking); !strings.Contains(notes, "understands `/agent start`, `/agent pause`") {
+	if notes := e.notesOf(tracking); !strings.Contains(notes, "understands `/agent move top`, `/agent pause`") {
 		t.Fatalf("a waiting milestone lists start:\n%s", notes)
 	}
 
@@ -131,7 +131,7 @@ func (e *projectEnv) wantHolding() {
 func TestStartMovesAPlannedMilestoneToTheFront(t *testing.T) {
 	e := ownedAutopilotEnv(t)
 	tracking := e.trackingOf(3)
-	if d := e.gl.Issues[tracking].Description; !strings.Contains(d, "`/agent start` (owners: run it next") {
+	if d := e.gl.Issues[tracking].Description; !strings.Contains(d, "`/agent move top` (owners: run it next)") {
 		t.Fatalf("a planned milestone offers start:\n%s", d)
 	}
 	e.gl.AddNote(tracking, alice, "/agent start")
@@ -140,7 +140,7 @@ func TestStartMovesAPlannedMilestoneToTheFront(t *testing.T) {
 	if ap := e.specFor(3).Status.Autopilot; ap.StartRequestedBy != "" || ap.StartRequestedAt != nil {
 		t.Fatalf("start writes no run-next mark: %q, %v", ap.StartRequestedBy, ap.StartRequestedAt)
 	}
-	if !strings.Contains(e.notesOf(tracking), "⏭️ This milestone runs next (by @alice): it plans and starts issues before the others; their active issues finish.") {
+	if !strings.Contains(e.notesOf(tracking), "⏫ Moved to the top (by @alice).") {
 		t.Fatalf("the move is said on the tracking issue:\n%s", e.notesOf(tracking))
 	}
 	// The next poll ranks %3 first: it starts #2 while the older %2 is open.
@@ -148,10 +148,10 @@ func TestStartMovesAPlannedMilestoneToTheFront(t *testing.T) {
 	if ap := e.specFor(3).Status.Autopilot; ap.Items[1].State != aiv1.AutopilotItemActive {
 		t.Fatalf("%%3 starts #2 with the older %%2 open: %+v", ap)
 	}
-	if d := e.gl.Issues[tracking].Description; strings.Contains(d, "/agent start") || strings.Contains(d, "marked by") {
+	if d := e.gl.Issues[tracking].Description; strings.Contains(d, "/agent move top") || strings.Contains(d, "marked by") {
 		t.Fatalf("the first milestone offers no start and shows no mark:\n%s", d)
 	}
-	if d := e.gl.Issues[e.trackingOf(2)].Description; !strings.Contains(d, "`/agent start` (owners: run it next") {
+	if d := e.gl.Issues[e.trackingOf(2)].Description; !strings.Contains(d, "`/agent move top` (owners: run it next)") {
 		t.Fatalf("%%2, now second, offers start:\n%s", d)
 	}
 
@@ -159,7 +159,7 @@ func TestStartMovesAPlannedMilestoneToTheFront(t *testing.T) {
 	e.reconcile()
 	e.wantOrder(3, 2)
 	notes := e.notesOf(tracking)
-	if !strings.Contains(notes, "The milestone is already first in the run order.") || strings.Count(notes, "⏭️ This milestone runs next") != 1 {
+	if !strings.Contains(notes, "Already at the top of the run order; nothing changed.") || strings.Count(notes, "⏫ Moved to the top") != 1 {
 		t.Fatalf("the repeated start is answered:\n%s", notes)
 	}
 }
@@ -184,7 +184,7 @@ func TestStartOnADoneMilestoneDoesNothing(t *testing.T) {
 	e.gl.AddNote(tracking, alice, "/agent start")
 	e.reconcile()
 	e.wantOrder(2) // done: left the list
-	if notes := e.notesOf(tracking); !strings.Contains(notes, "The milestone is done; `start` does nothing.") {
+	if notes := e.notesOf(tracking); !strings.Contains(notes, "This milestone is done; it has no place in the run order.") {
 		t.Fatalf("the command is answered:\n%s", notes)
 	}
 }
@@ -197,7 +197,7 @@ func TestStartOnAPlannedMilestoneByANonOwnerIsRefused(t *testing.T) {
 	e.gl.AddNote(tracking, mallory, "/agent start off")
 	e.reconcile()
 	e.wantOrder(2, 3)
-	if notes := e.notesOf(tracking); strings.Count(notes, notOwnerStart) != 2 || strings.Contains(notes, "runs next") {
+	if notes := e.notesOf(tracking); strings.Count(notes, notOwnerStart) != 2 || strings.Contains(notes, "Moved") {
 		t.Fatalf("both forms are refused:\n%s", notes)
 	}
 	e.wantHolding()

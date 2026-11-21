@@ -27,7 +27,14 @@ func deskOwnedEnv(t *testing.T) *projectEnv {
 // deskSay sends Desk commands to %3's spec task and returns the answers.
 func (e *projectEnv) deskSay(author string, bodies ...string) []string {
 	e.t.Helper()
-	st := e.specFor(3)
+	return e.deskSayAt(3, author, bodies...)
+}
+
+// deskSayAt sends Desk commands to milestone iid's spec task and returns the
+// answers.
+func (e *projectEnv) deskSayAt(iid int64, author string, bodies ...string) []string {
+	e.t.Helper()
+	st := e.specFor(iid)
 	id := st.Spec.Source.LastChatCommandID
 	for _, b := range bodies {
 		id++
@@ -40,7 +47,7 @@ func (e *projectEnv) deskSay(author string, bodies ...string) []string {
 	}
 	e.reconcile()
 	var got []string
-	for _, a := range e.specFor(3).Spec.Source.ChatAnswers[before:] {
+	for _, a := range e.specFor(iid).Spec.Source.ChatAnswers[before:] {
 		got = append(got, a.Text)
 	}
 	return got
@@ -49,11 +56,11 @@ func (e *projectEnv) deskSay(author string, bodies ...string) []string {
 func TestDeskStartAndUnstart(t *testing.T) {
 	e := deskOwnedEnv(t)
 	tracking := e.trackingOf(3)
-	if got := e.deskSay("ada@x", `{"cmd":"start"}`); !slices.Equal(got, []string{"The milestone runs next."}) {
+	if got := e.deskSay("ada@x", `{"cmd":"start"}`); !slices.Equal(got, []string{"Moved to the top."}) {
 		t.Fatalf("answers = %q", got)
 	}
 	e.wantOrder(3, 2)
-	if !strings.Contains(e.notesOf(tracking), "⏭️ This milestone runs next (by Ada via the Desk)") {
+	if !strings.Contains(e.notesOf(tracking), "⏫ Moved to the top (by Ada via the Desk).") {
 		t.Fatalf("the mark is said on the tracking issue:\n%s", e.notesOf(tracking))
 	}
 	if got := e.deskSay("ada@x", `{"cmd":"unstart"}`); !slices.Equal(got, []string{"There are no run-next marks any more; use `move`."}) {

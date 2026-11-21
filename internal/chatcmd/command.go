@@ -44,6 +44,11 @@ type Command struct {
 	// Parallel is the milestone's parallel-issue limit (1..maxParallel),
 	// for parallel.
 	Parallel int32 `json:"parallel,omitempty"`
+	// To ("top", "bottom"), Before and After (a milestone iid) are where
+	// move puts the milestone in the project's run order; exactly one is set.
+	To     string `json:"to,omitempty"`
+	Before int64  `json:"before,omitempty"`
+	After  int64  `json:"after,omitempty"`
 }
 
 // maxParallel is the highest limit parallel sets (rules.MaxParallelLine).
@@ -104,6 +109,10 @@ func Parse(body string) (Command, error) {
 	if c.Parallel != 0 && c.Cmd != "parallel" {
 		return Command{}, fmt.Errorf("%s takes no parallel", c.Cmd)
 	}
+	c.To = strings.ToLower(strings.TrimSpace(c.To))
+	if (c.To != "" || c.Before != 0 || c.After != 0) && c.Cmd != "move" {
+		return Command{}, fmt.Errorf("%s takes no to, before or after", c.Cmd)
+	}
 	switch c.Cmd {
 	case "retry", "review", "pause", "start", "unstart", "endmilestone", "restart":
 		if err := c.noArgs(); err != nil {
@@ -121,6 +130,10 @@ func Parse(body string) (Command, error) {
 		rest.Parallel = 0
 		if c.Parallel < 1 || c.Parallel > maxParallel || rest.noArgs() != nil {
 			return Command{}, fmt.Errorf("parallel needs only parallel, from 1 to %d", maxParallel)
+		}
+	case "move":
+		if err := c.parseMove(); err != nil {
+			return Command{}, err
 		}
 	case "use":
 		if err := c.parseUse(); err != nil {
@@ -281,11 +294,11 @@ func (c Command) ImplementOnly() bool {
 }
 
 // Autopilot reports whether the command is an autopilot verb (pause, resume,
-// skip, merge, start, unstart, endmilestone, parallel) for the Spec task of
-// an autopilot milestone.
+// skip, merge, start, unstart, endmilestone, parallel, move) for the Spec
+// task of an autopilot milestone.
 func (c Command) Autopilot() bool {
 	switch c.Cmd {
-	case "pause", "resume", "skip", "merge", "start", "unstart", "endmilestone", "parallel":
+	case "pause", "resume", "skip", "merge", "start", "unstart", "endmilestone", "parallel", "move":
 		return true
 	default:
 		return false
