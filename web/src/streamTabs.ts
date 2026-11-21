@@ -8,15 +8,16 @@
 // you | Decisions (R11, D546-P1) | Pilot | Retrospective | Activity | Board |
 // Metrics (decision 7, R12). The dashboard at /: Overview | Activity. The
 // task page (and the issue page with a live task): Overview | Chat | Live |
-// Logs | Calls | Details (R10; Logs for the task's owners, run watchdog R8).
-// Renamed tabs keep their old ids as aliases (tabAlias): Metrics was named
-// Spend (?tab=spend), Activity was named Stream (?tab=stream).
+// Logs | Calls (R10; Logs for the task's owners, run watchdog R8).
+// Renamed and merged tabs keep their old ids as aliases (tabAlias): Metrics
+// was named Spend (?tab=spend), Activity was named Stream (?tab=stream), and
+// a task's Details went into its Overview (?tab=details).
 // BaseTab: the tabs project and milestone pages share.
 export type BaseTab = 'activity' | 'board' | 'metrics'
 export type StreamTab = 'milestones' | BaseTab | 'decisions' | 'plans'
 export type MilestoneTab = 'issues' | 'needs' | 'decisions' | 'pilot' | 'retrospective' | BaseTab
 export type DashboardTab = 'overview' | 'activity'
-export type TaskTab = 'overview' | 'chat' | 'live' | 'logs' | 'calls' | 'details'
+export type TaskTab = 'overview' | 'chat' | 'live' | 'logs' | 'calls'
 // A plan's tabs on phones: Chat, Decisions, Draft. Tablet and wider keep
 // the chat left and show planPaneTabs (Draft, Decisions) on the right; one
 // ?tab= serves both layouts (D617-P1).
@@ -99,16 +100,16 @@ export const taskTabs: Tab<TaskTab>[] = [
   { id: 'live', label: 'Live' },
   { id: 'logs', label: 'Logs' },
   { id: 'calls', label: 'Calls' },
-  { id: 'details', label: 'Details' },
 ]
 
 type QueryValue = string | null | (string | null)[] | undefined
 
-// tabAliases are the old ids of renamed tabs, so old links keep working:
-// the Spend tab became Metrics (R17 of the milestone "Desk: one Metrics
-// page"), and the Stream tab became Activity (R4 of "Desk: one header and
-// one row of tabs on every page").
-const tabAliases: Readonly<Record<string, string>> = { spend: 'metrics', stream: 'activity' }
+// tabAliases are the old ids of renamed or merged tabs, so old links keep
+// working: the Spend tab became Metrics (R17 of the milestone "Desk: one
+// Metrics page"), the Stream tab became Activity (R4 of "Desk: one header
+// and one row of tabs on every page"), and a task's Details tab went into
+// its Overview (R6 of the same milestone).
+const tabAliases: Readonly<Record<string, string>> = { spend: 'metrics', stream: 'activity', details: 'overview' }
 
 // tabAlias is the current id of a ?tab= value: the renamed tab's id for an
 // old one, the value itself otherwise.

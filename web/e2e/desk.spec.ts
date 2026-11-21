@@ -10,7 +10,7 @@ import { features } from './fixtures/session'
 import { overview } from './fixtures/overview'
 import { paymentsMilestone } from './fixtures/stream'
 import { shopDecisions } from './fixtures/decisions'
-import { refundsPrompt, refundsResponse } from './fixtures/task'
+import { refundsPrompt, refundsResponse, shopURL } from './fixtures/task'
 import { taskTabs, type TaskTab } from '../src/streamTabs'
 import type { Feature } from '../src/types'
 import { knownOverflow } from './known-overflow'
@@ -82,7 +82,6 @@ const taskReady: Record<TaskTab, string> = {
   live: 'The pod is not available',
   logs: 'step started',
   calls: 'Agent calls',
-  details: 'shop-281-implement-ws',
 }
 
 // The Costs page has its figures and the Spend over time and This month canvases.
@@ -1114,6 +1113,14 @@ for (const { width, height, phone } of [
     // heatmap in the header block.
     expect(tabs.y, 'the tabs sit below the title').toBeGreaterThanOrEqual(title.y + title.height)
     await expect(head.locator('[role="search"], .heat, [data-tab-toolbar]')).toHaveCount(0)
+    // The header pattern (Decision 4): one <h1> in UPageHeader, the cost as
+    // its meta line, ⋯ for the links out and no Metrics button; the page's
+    // alerts are in the tab panels, below the tabs.
+    await expect(head.locator('h1')).toHaveCount(1)
+    await expect(head.locator('[data-slot=root] h1[data-slot=title]')).toHaveText('shop')
+    await expect(head.locator('[data-slot=description] [data-header-cost]')).toBeVisible()
+    await expect(head.locator('[data-slot=links] [data-more-actions]')).toBeVisible()
+    await expect(head.locator('[data-project-metrics]')).toHaveCount(0)
 
     const bar = page.locator('main [data-tab-toolbar]')
     await expect(bar).toHaveCount(1)
@@ -1332,12 +1339,12 @@ for (const { width, height, phone } of [
 }
 
 // Truncated (src/ui/Truncated.vue): on a phone the long branch name of the
-// task page's Details tab is clamped, a tap opens it in place and a second tap closes it.
+// task page's Overview is clamped, a tap opens it in place and a second tap closes it.
 test.describe('touch', () => {
   test.use({ hasTouch: true })
 
   test('task Truncated branch fact opens on tap@375', async ({ page, baseURL }) => {
-    const route = routes.find((r) => r.name === 'task-details')!
+    const route = routes.find((r) => r.name === 'task')!
     const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
     await page.setViewportSize({ width: 375, height: 812 })
     await page.clock.setFixedTime(now)
@@ -1371,7 +1378,7 @@ test.describe('touch', () => {
 // these pages is at least 44 px high at 375 px. Not counted: what cannot be
 // tapped (hidden from assistive technology, transparent, or a disabled
 // checkbox of a markdown task list). Exceptions are listed in hitAllowlist.
-const hitRoutes = ['overview', 'overview-dark', 'inbox', 'metrics', 'metrics-filtered', 'researches', 'research-new', 'task', 'task-chat', 'task-logs', 'task-calls', 'task-details', 'stream-milestone-retrospective', 'stream-milestone-metrics', 'research', 'research-report', 'research-run']
+const hitRoutes = ['overview', 'overview-dark', 'inbox', 'metrics', 'metrics-filtered', 'researches', 'research-new', 'task', 'task-chat', 'task-logs', 'task-calls', 'stream-milestone-retrospective', 'stream-milestone-metrics', 'research', 'research-report', 'research-run']
 
 // "<route> <element as reported>" → why it may stay under 44 px.
 const hitAllowlist: Record<string, string> = {
@@ -1563,7 +1570,11 @@ test('costs redirects to metrics with the same filters@1280', async ({ page, bas
   expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
 })
 
-test('project stream links to its metrics@1280', async ({ page, baseURL }) => {
+// The project header (Decision 4, 5): no Metrics button (the tab is one
+// click away), the project in GitLab under ⋯, and one cost on every tab:
+// the Metrics tab's totals and the header show the same number, before and
+// after the tab switch.
+test('project header: one cost on Activity and Metrics, GitLab in ⋯@1280', async ({ page, baseURL }) => {
   const route = routes.find((r) => r.name === 'stream-project-activity')!
   const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
   await page.setViewportSize(widths[2]!)
@@ -1572,7 +1583,50 @@ test('project stream links to its metrics@1280', async ({ page, baseURL }) => {
   await mockAPI(page, route, problems)
   await page.goto(route.path)
   await route.ready(page)
-  await expect(page.locator('[data-project-metrics]')).toHaveAttribute('href', /^\/metrics\?project=team-a(%2F|\/)shop$/)
+  const head = page.locator('main [data-stream-head]')
+  await expect(head.locator('h1')).toHaveCount(1)
+  await expect(page.locator('[data-project-metrics]')).toHaveCount(0)
+  await expect(head.locator('[data-slot=links]').getByRole('link', { name: 'Metrics' })).toHaveCount(0)
+  const cost = head.locator('[data-header-cost]')
+  await expect(cost).toHaveText(/^\$48\.20/)
+  const onActivity = await cost.textContent()
+
+  await head.getByRole('navigation', { name: 'View' }).getByRole('link', { name: 'Metrics' }).click()
+  await expect(page).toHaveURL(/[?&]tab=metrics$/)
+  await expect(page.locator('main [data-spend-totals] strong').first()).toHaveText('$48.20')
+  await expect(cost).toHaveText(onActivity!)
+  await head.getByRole('navigation', { name: 'View' }).getByRole('link', { name: 'Activity' }).click()
+  await expect(cost).toHaveText(onActivity!)
+
+  await head.locator('[data-more-actions]').click()
+  await expect(page.getByRole('menuitem', { name: 'Project in GitLab' })).toHaveAttribute('href', shopURL)
+  expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+})
+
+// While the milestone loads, its <h1> is the title from the project's list,
+// never the project's name or "Loading…" (R3).
+test('milestone header title while the milestone loads@1280', async ({ page, baseURL }) => {
+  const route = routes.find((r) => r.name === 'stream-milestone-issues')!
+  const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+  await page.setViewportSize(widths[2]!)
+  await page.clock.setFixedTime(now)
+  await watch(page, new URL(baseURL ?? '').origin, problems)
+  await mockAPI(page, route, problems)
+  let release!: () => void
+  const held = new Promise<void>((resolve) => (release = resolve))
+  await page.route('**/api/v1/projects/team-a/shop/milestones/14', async (r) => {
+    await held
+    await r.fallback()
+  })
+  await page.goto(route.path)
+  const h1 = page.locator('main [data-stream-head] h1')
+  await expect(h1).toHaveText(paymentsMilestone.title)
+  await expect(page.locator('main [data-stream-status]')).toHaveCount(0)
+  release()
+  await route.ready(page)
+  await expect(h1).toHaveText(paymentsMilestone.title)
+  await page.locator('main [data-stream-head]').locator('[data-more-actions]').click()
+  await expect(page.getByRole('menuitem', { name: 'Milestone in GitLab' })).toHaveAttribute('href', paymentsMilestone.webURL)
   expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
 })
 
@@ -2862,7 +2916,18 @@ test.describe('task tabs', () => {
         // The count is the item's badge, a separate element after the label.
         await expect(overview).toHaveText(new RegExp(`^Overview\\s*${openQuestions}$`))
         await expect(overview.locator('[data-slot="linkTrailing"]')).toHaveText(String(openQuestions))
-        await expect(page.locator(`main nav[aria-label="Task"] + section > ${pageName === 'task' ? 'h2' : 'h3'}`)).toHaveText('Summary of the last run')
+        // The stat tiles open Overview (R6), then the summary; the task's
+        // banners sit below the tabs, never between header and tabs.
+        const order = await page.locator('main').evaluate((main) => {
+          const nav = main.querySelector('nav[aria-label="Task"]')!
+          const after = (sel: string) => [...main.querySelectorAll(sel)].every((e) => !!(nav.compareDocumentPosition(e) & Node.DOCUMENT_POSITION_FOLLOWING))
+          const figures = main.querySelector('[data-task-figures]')
+          let next = nav.nextElementSibling
+          while (next?.matches('[data-task-alert]')) next = next.nextElementSibling
+          return { first: next === figures, alerts: after('[data-task-alert]') }
+        })
+        expect(order, 'tiles first on Overview, alerts below the tabs').toEqual({ first: true, alerts: true })
+        await expect(page.locator(`main [data-task-figures] ~ section > ${pageName === 'task' ? 'h2' : 'h3'}`).first()).toHaveText('Summary of the last run')
 
         for (const t of taskTabs.slice(1)) {
           await strip.getByRole('link', { name: t.label, exact: true }).click()
@@ -2893,6 +2958,25 @@ test.describe('task tabs', () => {
       const strip = page.locator('main').getByRole('navigation', { name: 'Task' })
       await expect(strip.getByRole('link', { name: 'Live', exact: true })).toHaveAttribute('aria-current', 'page')
       await expect(page.locator('#live-transcript')).toContainText(taskReady.live)
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+
+    // The Details tab went into Overview (R6): an old ?tab=details link
+    // opens Overview, its stat tiles first, and no tab is named Details.
+    test(`${pageName} ?tab=details opens Overview@375`, async ({ page, baseURL }) => {
+      const route = routes.find((r) => r.name === pageName)!
+      const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+      await page.setViewportSize({ width: 375, height: 812 })
+      await page.clock.setFixedTime(now)
+      await watch(page, new URL(baseURL ?? '').origin, problems)
+      await mockAPI(page, route, problems)
+      await page.goto(`${route.path}?tab=details`)
+      const strip = page.locator('main').getByRole('navigation', { name: 'Task' })
+      await expect(strip.getByRole('link', { name: /^Overview/ })).toHaveAttribute('aria-current', 'page')
+      await expect(strip.getByRole('link', { name: /^Details/ })).toHaveCount(0)
+      await expect(page.locator('main [data-task-figures]')).toBeVisible()
+      await expect(page.locator('main').getByText(taskReady.overview).first()).toBeVisible()
+      await expect(page.locator('main').getByText('shop-281-implement-ws')).toBeVisible()
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })
   }

@@ -17,6 +17,7 @@ import Board from '../components/Board.vue'
 import ContextLayout from '../components/ContextLayout.vue'
 import ContextPanel from '../components/ContextPanel.vue'
 import CostChip from '../components/CostChip.vue'
+import HeaderActions from '../components/HeaderActions.vue'
 import PauseCardCompact from '../components/PauseCardCompact.vue'
 import ProjectBoards from '../components/ProjectBoards.vue'
 import SpendPanel from '../components/SpendPanel.vue'
@@ -60,6 +61,7 @@ import type {
 import { milestoneStatus } from '../milestoneRows'
 import { alertColor, toneText } from '../badgeTone'
 import { pageHeaderUi, searchToolbarUi } from '../pageHeader'
+import { headerCost, keepCost, totalsCost } from '../headerCost'
 import { useStreamNote } from '../streamNote'
 import { decisionsQuery, milestoneFromQuery } from '../decisions'
 import { milestoneTabFromRoute, milestoneTabs, milestoneTabsFor, projectTabsFor, tabFromQuery, tabQuery } from '../streamTabs'
@@ -403,9 +405,20 @@ function setFilter(id: StreamFilter) {
   void loadInitial()
 }
 
+// pageProject: the loaded project, once it is the route's (the old one stays
+// in project while the next loads).
+const pageProject = computed(() => {
+  const p = project.value
+  return p && p.namespace === props.namespace && p.name === props.name ? p : null
+})
+const pageMilestone = computed(() => (milestone.value?.iid === milestoneIID.value ? milestone.value : null))
+
+// title: the milestone's title from the loaded milestone, else from the
+// project's list while it loads, else %<iid>; never the project's name.
 const title = computed(() => {
-  if (milestoneIID.value && milestone.value) return milestone.value.title
-  return props.name ?? 'Stream'
+  const iid = milestoneIID.value
+  if (!iid) return props.name ?? 'Stream'
+  return (pageMilestone.value ?? pageProject.value?.milestones.find((m) => m.iid === iid))?.title || `%${iid}`
 })
 
 // status: a milestone's one status, the header's eyebrow (decision 4); a
@@ -420,21 +433,30 @@ announceChange(() =>
   status.value ? { key: `${props.namespace}/${props.name}#${milestoneIID.value}`, text: `Milestone now ${status.value.label}` } : null,
 )
 
-// metricsLink: a project's Metrics, filtered to it, with the history database.
-const metricsLink = computed(() =>
-  !everything.value && !milestoneIID.value && props.namespace && props.name && hasFeature('history')
-    ? { path: '/metrics', query: { project: `${props.namespace}/${props.name}` } }
-    : undefined,
-)
-
-// headerCost is the cost chip of the stream's project or milestone.
-const headerCost = computed((): Cost | null => {
-  if (everything.value) return null
+// links: the header's ⋯ (D673-P2), the project or milestone in GitLab.
+const links = computed(() => {
   const iid = milestoneIID.value
-  if (!iid) return project.value
-  if (milestone.value?.iid === iid) return milestone.value
-  return project.value?.milestones.find((m) => m.iid === iid) ?? null
+  if (!iid) return [{ label: 'Project in GitLab', href: pageProject.value?.gitlab.webURL }]
+  const m = pageMilestone.value ?? pageProject.value?.milestones.find((x) => x.iid === iid)
+  return [{ label: 'Milestone in GitLab', href: m?.webURL }]
 })
+
+// The header's cost (headerCost.ts): one number per page, on every tab. The
+// views' cost of the page's scope or the Metrics tab's totals of the same
+// scope, the larger of the two sums from calls (a lagging copy never wins);
+// a tasks-based fallback never replaces a cost from calls.
+const costKey = computed(() => `${props.namespace}/${props.name}#${milestoneIID.value ?? ''}`)
+const shownCost = ref<{ key: string; cost: Cost | null }>({ key: '', cost: null })
+function showCost(next: Cost | null) {
+  const prev = shownCost.value.key === costKey.value ? shownCost.value.cost : null
+  shownCost.value = { key: costKey.value, cost: keepCost(prev, next) }
+}
+watch(
+  () => (everything.value || !pageProject.value ? null : headerCost(pageProject.value, pageMilestone.value, milestoneIID.value)),
+  showCost,
+  { immediate: true },
+)
+const pageCost = computed(() => (!everything.value && shownCost.value.key === costKey.value ? shownCost.value.cost : null))
 
 // The breadcrumbs name the milestone by the project's list, or the
 // milestone once loaded (R19).
@@ -487,42 +509,37 @@ watch(
     <template #default="{ sheet }">
     <div class="stream">
       <!-- The page header (decision 4): the milestone's status as eyebrow,
-           the title, the cost as meta line, Metrics (a project) and Context
-           (below 1180 px) on the right, then the tab row. Filters, search
-           and the heatmap are in the Activity tab's toolbar (decision 3).
-           On the dashboard's Activity tab (everything) the dashboard has
-           the header. -->
+           the title, the cost as meta line (one number on every tab,
+           headerCost.ts), Context (below 1180 px) and ⋯ with the links to
+           GitLab on the right, then the tab row; the page's alerts are in
+           the tabs. Filters, search and the heatmap are in the Activity
+           tab's toolbar (decision 3). On the dashboard's Activity tab
+           (everything) the dashboard has the header. -->
       <div data-stream-head class="bg-(--bg) px-4 pt-3.5 tablet:px-7">
         <UPageHeader v-if="!everything" :title="title" :ui="pageHeaderUi">
           <template v-if="status" #headline>
             <span :class="toneText[status.tone]" data-stream-status>{{ status.label }}</span>
           </template>
-          <template v-if="headerCost" #description><CostChip :cost="headerCost" /></template>
-          <template v-if="metricsLink || sheet" #links>
-            <UButton
-              v-if="metricsLink"
-              color="neutral"
-              variant="outline"
-              icon="i-lucide-receipt"
-              label="Metrics"
-              :to="metricsLink"
-              data-project-metrics
-            />
-            <UButton
-              v-if="sheet"
-              color="neutral"
-              variant="outline"
-              icon="i-lucide-panel-right"
-              label="Context"
-              aria-haspopup="dialog"
-              :aria-expanded="contextOpen"
-              :aria-label="projectInbox.length ? `Context, ${projectInbox.length} need you` : 'Context'"
-              @click="contextOpen = true"
-            >
-              <template v-if="projectInbox.length" #trailing>
-                <Badge tone="warning">{{ projectInbox.length }}</Badge>
-              </template>
-            </UButton>
+          <template v-if="pageCost" #description><CostChip :cost="pageCost" data-header-cost /></template>
+          <template #links>
+            <!-- The milestone's primary action (Ask pilot) goes first. -->
+            <HeaderActions :actions="links" :shown="0">
+              <UButton
+                v-if="sheet"
+                color="neutral"
+                variant="outline"
+                icon="i-lucide-panel-right"
+                label="Context"
+                aria-haspopup="dialog"
+                :aria-expanded="contextOpen"
+                :aria-label="projectInbox.length ? `Context, ${projectInbox.length} need you` : 'Context'"
+                @click="contextOpen = true"
+              >
+                <template v-if="projectInbox.length" #trailing>
+                  <Badge tone="warning">{{ projectInbox.length }}</Badge>
+                </template>
+              </UButton>
+            </HeaderActions>
           </template>
         </UPageHeader>
         <RouteTabs v-if="!everything" :tabs="tabs" :active="tab" :to="tabTo" />
@@ -739,6 +756,7 @@ watch(
           :name="name"
           :milestone-iid="milestoneIID"
           :milestones="project?.milestones ?? []"
+          @totals="(t) => showCost(totalsCost(t))"
         />
       </div>
       <div v-else class="scroll board">

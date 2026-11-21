@@ -35,10 +35,12 @@ import RestartRun from './RestartRun.vue'
 import type { ProposalView, TaskResponse } from '../types'
 import { announceChange } from '../ui/useAnnounce'
 
-// What the Task page holds below its title: stage and links and banners,
-// then tabs by ?tab= (R10, decision 11): Overview (the last run's summary,
-// prompts, review, CI, plan, autopilot), Chat (chat, conversation), Live,
-// Logs (owners), Calls and Details (facts, pod, conditions). Only the active tab is
+// What the Task page holds below its title: stage and links, then tabs by
+// ?tab= (R10, decision 11) and the task's banners below them (Decision 4 of
+// "Desk: one header and one row of tabs"): Overview (the stat tiles, the
+// last run's summary, prompts, review, CI, plan, autopilot, then pod and
+// conditions; ?tab=details, the old Details tab, opens it), Chat (chat,
+// conversation), Live, Logs (owners) and Calls. Only the active tab is
 // mounted, so the live transcript and the chat poll only while shown
 // (D318-P1). The Task page and the issue page (with a live task) both
 // render it from the task they loaded.
@@ -57,10 +59,11 @@ const proposals = computed((): ProposalView[] =>
   (t.value.status.pilot?.proposals ?? []).flatMap((p) => (p.id ? [{ id: p.id, summary: p.summary, postedAt: p.postedAt }] : [])),
 )
 
-// Conditions whose True state is the bad one.
+// Conditions whose True state is the bad one. An Unknown one is neutral:
+// the muted badge's text misses the 4.5:1 contrast of WCAG AA.
 const negativeConditions = new Set(['Blocked'])
 const conditionTone = (type: string, status: string) => {
-  if (status !== 'True' && status !== 'False') return 'muted'
+  if (status !== 'True' && status !== 'False') return 'neutral'
   return (status === 'True') !== negativeConditions.has(type) ? 'success' : 'danger'
 }
 
@@ -98,7 +101,7 @@ const resultTone = (r: string | undefined) =>
 const prompts = computed(() => taskPrompts(props.data.prompts))
 const showChat = computed(() => !!props.data.permissions?.chat || hasFeature('chat'))
 
-// The tabs this task has content for: Overview and Details always, Chat
+// The tabs this task has content for: Overview always, Chat
 // with the chat or the conversation, Live with transcript access, Calls
 // with the history database (the calls endpoint answers 404 without it),
 // Logs for the task's owners.
@@ -110,7 +113,6 @@ const tabs = computed(() => {
     live: !!props.data.permissions?.transcript,
     logs: !!props.data.permissions?.logs,
     calls: hasFeature('history'),
-    details: true,
   }
   return taskTabs.filter((x) => has[x.id])
 })
@@ -118,8 +120,11 @@ const tab = computed(() => taskTabFromRoute(route.query.tab, route.hash, tabs.va
 const tabTo = (id: TaskTab) => ({ query: tabQuery(route.query, id, taskTabs) })
 // Questions waiting for an answer put their count on Overview.
 const badges = computed(() => ({ overview: prompts.value.filter(promptOpen).length }))
-const overviewEmpty = computed(
-  () => !run.value.summary && !prompts.value.length && t.value.type !== 'Implement' && !t.value.status.plan?.length && !t.value.status.autopilot,
+// The stat tiles keep Overview from being empty; the summary's empty state
+// shows only where no other run content (questions, review, plan,
+// autopilot) follows it.
+const noSummary = computed(
+  () => !prompts.value.length && t.value.type !== 'Implement' && !t.value.status.plan?.length && !t.value.status.autopilot,
 )
 // Where the chat's "Live transcript" link goes: the Live tab, on this page.
 const transcriptTo = computed(() => (tabs.value.some((x) => x.id === 'live') ? tabTo('live') : undefined))
@@ -198,19 +203,22 @@ const actions = computed(() => [
     </template>
   </UPageHeader>
 
-  <UAlert v-if="t.runPending && run.deferredUntil" :color="alertColor('warning')" variant="subtle" class="mt-3" title="Waiting for a usage limit">
+  <RouteTabs class="mt-2 w-fit" :tabs="tabs" :active="tab" :to="tabTo" :badges="badges" label="Task" />
+
+  <!-- The task's banners, below the tabs (Decision 4). -->
+  <UAlert v-if="t.runPending && run.deferredUntil" :color="alertColor('warning')" variant="subtle" class="mt-3" data-task-alert title="Waiting for a usage limit">
     <template #description>
       {{ deferringEngine(run) ?? 'The engine' }} hit its limit; the run starts again
       <RelTime :time="run.deferredUntil" /> (deferred {{ run.deferrals ?? 1 }}×).
     </template>
   </UAlert>
-  <UAlert v-if="t.status.phase === 'Blocked'" :color="alertColor('danger')" variant="subtle" class="mt-3" title="Blocked">
+  <UAlert v-if="t.status.phase === 'Blocked'" :color="alertColor('danger')" variant="subtle" class="mt-3" data-task-alert title="Blocked">
     <template #description><Markdown mode="inline" :text="t.status.message || 'The task hit a safety limit and needs a human.'" /></template>
   </UAlert>
-  <UAlert v-else-if="t.status.message" :color="alertColor('info')" variant="subtle" class="mt-3">
+  <UAlert v-else-if="t.status.message" :color="alertColor('info')" variant="subtle" class="mt-3" data-task-alert>
     <template #description><Markdown mode="inline" :text="t.status.message" /></template>
   </UAlert>
-  <UAlert v-if="t.status.agentTermination?.reason === 'OOMKilled'" :color="alertColor('warning')" variant="subtle" class="mt-3" title="Out of memory">
+  <UAlert v-if="t.status.agentTermination?.reason === 'OOMKilled'" :color="alertColor('warning')" variant="subtle" class="mt-3" data-task-alert title="Out of memory">
     <template #description>
       The agent container was killed <RelTime :time="t.status.agentTermination.finishedAt" /> at a memory limit of
       {{ t.status.agentTermination.memoryLimit || 'unknown' }}<template v-if="t.status.agentMemoryLimit">;
@@ -219,13 +227,27 @@ const actions = computed(() => [
     </template>
   </UAlert>
 
-  <RouteTabs class="mt-2 w-fit" :tabs="tabs" :active="tab" :to="tabTo" :badges="badges" label="Task" />
-
   <template v-if="tab === 'overview'">
+    <!-- Phase, current step, last result and last activity are the
+         header's status line; the other facts are here. -->
+    <div class="stat-tiles section" data-task-figures>
+      <StatTile label="Runs" :value="run.runCount ?? 0" :sub="t.runPending ? '+ 1 requested' : undefined" />
+      <StatTile label="Model spend" :value="cost(run.costUSD)" />
+      <!-- A long branch is clamped to one line and opens on tap. -->
+      <StatTile v-if="t.type === 'Implement'" label="Branch">
+        <Truncated class="mono text-base" :text="run.branch || '—'" />
+      </StatTile>
+      <StatTile v-if="t.type === 'Implement'" label="Last push">
+        <span class="mono">{{ shortSHA(run.pushedSHA) }}</span>
+        <template v-if="run.pushedAt" #sub><RelTime :time="run.pushedAt" /></template>
+      </StatTile>
+    </div>
+
     <section v-if="run.summary" class="section">
       <component :is="sec" :class="h3">Summary of the last run</component>
       <Markdown class="card px-4 py-3.5" :text="run.summary" />
     </section>
+    <UEmpty v-else-if="noSummary" icon="i-lucide-file-text" title="No run has left a summary yet." size="sm" class="section" />
 
     <section v-if="prompts.length" class="section">
       <component :is="sec" :class="h3">Questions from the agent</component>
@@ -320,7 +342,45 @@ const actions = computed(() => [
       </UAlert>
     </section>
 
-    <UEmpty v-if="overviewEmpty" icon="i-lucide-file-text" title="No run has left a summary yet." size="sm" class="section" />
+    <!-- The pod and its conditions close Overview (D673-P1). -->
+    <div :class="['section', cols]">
+      <section class="min-w-0">
+        <component :is="sec" :class="h3">Pod</component>
+        <dl :class="['card px-4 py-3.5', dl]">
+          <dt :class="dt">Pod</dt>
+          <dd :class="[dd, 'mono']">{{ t.status.podName || 'not running' }}</dd>
+          <dt :class="dt">Workspace</dt>
+          <dd :class="[dd, 'mono']">{{ t.status.workspaceClaimName || '—' }}</dd>
+          <template v-if="t.status.agentTermination">
+            <dt :class="dt">Agent container</dt>
+            <dd :class="dd">
+              last stopped {{ t.status.agentTermination.reason }} (exit {{ t.status.agentTermination.exitCode ?? '?' }}),
+              {{ t.status.agentTermination.restarts ?? 0 }} restarts
+            </dd>
+          </template>
+          <template v-if="t.status.podName">
+            <dt :class="dt">Logs</dt>
+            <dd :class="dd">
+              <!-- Scrolls inside its own box; the page never does. -->
+              <code class="block overflow-x-auto rounded bg-(--surface-2) px-2 py-1.5 whitespace-nowrap"
+                >kubectl -n {{ t.namespace }} logs -f {{ t.status.podName }} -c runner</code
+              >
+            </dd>
+          </template>
+        </dl>
+      </section>
+      <section v-if="t.status.conditions?.length" class="min-w-0">
+        <component :is="sec" :class="h3">Conditions</component>
+        <div class="card">
+          <DataList :columns="conditionColumns" :rows="t.status.conditions" :row-key="(c) => c.type">
+            <template #cell-status="{ row: c }">
+              <Badge :tone="conditionTone(c.type, c.status)">{{ c.reason || c.status }}</Badge>
+              <div v-if="c.message" class="faint">{{ c.message }}</div>
+            </template>
+          </DataList>
+        </div>
+      </section>
+    </div>
   </template>
 
   <template v-else-if="tab === 'chat'">
@@ -369,59 +429,4 @@ const actions = computed(() => [
 
   <TaskCalls v-else-if="tab === 'calls'" :namespace="namespace" :name="name" :task="task" :level="page ? 2 : 3" />
 
-  <template v-else>
-    <!-- Phase, current step, last result and last activity are the
-         header's status line; the other facts are here. -->
-    <div class="stat-tiles section" data-task-figures>
-      <StatTile label="Runs" :value="run.runCount ?? 0" :sub="t.runPending ? '+ 1 requested' : undefined" />
-      <StatTile label="Model spend" :value="cost(run.costUSD)" />
-      <!-- A long branch is clamped to one line and opens on tap. -->
-      <StatTile v-if="t.type === 'Implement'" label="Branch">
-        <Truncated class="mono text-base" :text="run.branch || '—'" />
-      </StatTile>
-      <StatTile v-if="t.type === 'Implement'" label="Last push">
-        <span class="mono">{{ shortSHA(run.pushedSHA) }}</span>
-        <template v-if="run.pushedAt" #sub><RelTime :time="run.pushedAt" /></template>
-      </StatTile>
-    </div>
-
-    <div :class="['section', cols]">
-      <section class="min-w-0">
-        <component :is="sec" :class="h3">Pod</component>
-        <dl :class="['card px-4 py-3.5', dl]">
-          <dt :class="dt">Pod</dt>
-          <dd :class="[dd, 'mono']">{{ t.status.podName || 'not running' }}</dd>
-          <dt :class="dt">Workspace</dt>
-          <dd :class="[dd, 'mono']">{{ t.status.workspaceClaimName || '—' }}</dd>
-          <template v-if="t.status.agentTermination">
-            <dt :class="dt">Agent container</dt>
-            <dd :class="dd">
-              last stopped {{ t.status.agentTermination.reason }} (exit {{ t.status.agentTermination.exitCode ?? '?' }}),
-              {{ t.status.agentTermination.restarts ?? 0 }} restarts
-            </dd>
-          </template>
-          <template v-if="t.status.podName">
-            <dt :class="dt">Logs</dt>
-            <dd :class="dd">
-              <!-- Scrolls inside its own box; the page never does. -->
-              <code class="block overflow-x-auto rounded bg-(--surface-2) px-2 py-1.5 whitespace-nowrap"
-                >kubectl -n {{ t.namespace }} logs -f {{ t.status.podName }} -c runner</code
-              >
-            </dd>
-          </template>
-        </dl>
-      </section>
-      <section v-if="t.status.conditions?.length" class="min-w-0">
-        <component :is="sec" :class="h3">Conditions</component>
-        <div class="card">
-          <DataList :columns="conditionColumns" :rows="t.status.conditions" :row-key="(c) => c.type">
-            <template #cell-status="{ row: c }">
-              <Badge :tone="conditionTone(c.type, c.status)">{{ c.reason || c.status }}</Badge>
-              <div v-if="c.message" class="faint">{{ c.message }}</div>
-            </template>
-          </DataList>
-        </div>
-      </section>
-    </div>
-  </template>
 </template>

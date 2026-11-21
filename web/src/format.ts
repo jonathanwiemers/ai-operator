@@ -149,7 +149,8 @@ export function costChip(c: Pick<Cost, 'costUSD' | 'costKnown' | 'tokens'> | und
 export function costTooltip(c: Cost | undefined | null): string {
   if (!c) return ''
   const s = c.spend
-  if (c.costFrom !== 'calls' || !s) return 'Summed over the current tasks: the history database is not connected.'
+  if (c.costFrom !== 'calls') return 'Summed over the current tasks, without tokens: the history database is off or could not be read.'
+  if (!s) return 'Summed from the agent calls.'
   const n = (v: number) => v.toLocaleString('en-US')
   const lines = [
     `Input ${n(s.inputTokens)} · output ${n(s.outputTokens)} tokens`,

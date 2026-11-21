@@ -64,7 +64,7 @@ import {
   type SpendScope,
   type SpendUnit,
 } from '../spend'
-import type { Spend, SpendBreakdown, SpendChild, SubagentBreakdown } from '../types'
+import type { Spend, SpendBreakdown, SpendChild, SpendTotals, SubagentBreakdown } from '../types'
 
 // SpendPanel is the Metrics tab (once named Spend) of a project or
 // milestone stream: the scope's totals with its written and merged lines
@@ -82,6 +82,9 @@ const props = defineProps<{
   milestoneIid?: number
   milestones: { iid: number; title: string }[]
 }>()
+// totals: the scope's own totals (no drill-down), the header's cost on
+// every tab (headerCost.ts).
+const emit = defineEmits<{ totals: [totals: SpendTotals] }>()
 
 const route = useRoute()
 const now = useNow()
@@ -105,9 +108,11 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const sp = await getSpend(props.namespace, props.name, scope.value)
+    const sc = scope.value
+    const sp = await getSpend(props.namespace, props.name, sc)
     if (mine !== seq) return
     data.value = sp
+    if (!sc.issue && !sc.task) emit('totals', sp.totals)
   } catch (e) {
     if (mine !== seq || e instanceof LoginRequiredError) return
     data.value = null

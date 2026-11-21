@@ -137,7 +137,9 @@ test('costTooltip breaks down what is known', () => {
   assert.match(partial, /1 call without a known cost/)
   assert.match(partial, /\$2\.00 from runs before calls were recorded/)
 
-  assert.match(costTooltip({ costUSD: '1.75', costKnown: true, tokens: 0, costFrom: 'tasks' }), /current tasks/)
+  assert.match(costTooltip({ costUSD: '1.75', costKnown: true, tokens: 0, costFrom: 'tasks' }), /current tasks.*could not be read/)
+  // The project list's copy is from calls, without the breakdown.
+  assert.equal(costTooltip({ costUSD: '1.75', costKnown: true, tokens: 9, costFrom: 'calls' }), 'Summed from the agent calls.')
 })
 
 test('deferringEngine reads the usage limit marked deferred', () => {

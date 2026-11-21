@@ -127,14 +127,14 @@ test('milestoneTabFromRoute: ?tab= wins over the hash, other hashes keep the def
 })
 
 test('task tabs: Overview is the default and drops the parameter', () => {
-  assert.deepEqual(taskTabs.map((t) => t.id), ['overview', 'chat', 'live', 'logs', 'calls', 'details'])
+  assert.deepEqual(taskTabs.map((t) => t.id), ['overview', 'chat', 'live', 'logs', 'calls'])
   assert.equal(taskTabFromRoute(undefined, ''), 'overview')
   assert.equal(taskTabFromRoute('', ''), 'overview')
-  assert.equal(taskTabFromRoute('details', ''), 'details')
+  assert.equal(taskTabFromRoute('details', ''), 'overview', 'the old Details tab opens Overview')
   assert.equal(taskTabFromRoute(['x', 'calls'], ''), 'calls')
   assert.equal(taskTabFromRoute('logs', '', taskTabs.filter((t) => t.id !== 'logs')), 'overview')
   assert.deepEqual(tabQuery({ tab: 'chat', q: 'x' }, 'overview', taskTabs), { q: 'x' })
-  assert.deepEqual(tabQuery({}, 'details', taskTabs), { tab: 'details' })
+  assert.deepEqual(tabQuery({}, 'calls', taskTabs), { tab: 'calls' })
 })
 
 test('taskTabFromRoute: unknown and unavailable tabs open Overview', () => {
@@ -142,7 +142,7 @@ test('taskTabFromRoute: unknown and unavailable tabs open Overview', () => {
   assert.equal(taskTabFromRoute('board', ''), 'overview')
   assert.equal(taskTabFromRoute('Live', ''), 'overview')
   assert.equal(taskTabFromRoute('live', '', noLive), 'overview')
-  assert.equal(taskTabFromRoute('details', '', noLive), 'details')
+  assert.equal(taskTabFromRoute('calls', '', noLive), 'calls')
 })
 
 test('taskTabFromRoute: #live-transcript without ?tab= opens Live where there is one', () => {
@@ -150,7 +150,8 @@ test('taskTabFromRoute: #live-transcript without ?tab= opens Live where there is
   assert.equal(taskTabFromRoute(undefined, '#live-transcript'), 'live')
   assert.equal(taskTabFromRoute('', '#live-transcript'), 'live')
   assert.equal(taskTabFromRoute(undefined, '#live-transcript', noLive), 'overview')
-  assert.equal(taskTabFromRoute('details', '#live-transcript'), 'details')
+  assert.equal(taskTabFromRoute('calls', '#live-transcript'), 'calls')
+  assert.equal(taskTabFromRoute('details', '#live-transcript'), 'overview')
   assert.equal(taskTabFromRoute(undefined, '#prompt-Q4'), 'overview')
 })
 
