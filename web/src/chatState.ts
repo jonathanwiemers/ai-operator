@@ -76,6 +76,9 @@ export type ChatCommand =
   | { cmd: 'resume'; issue?: number }
   | { cmd: 'start' }
   | { cmd: 'unstart' }
+  | { cmd: 'move'; to: 'top' | 'bottom' }
+  | { cmd: 'move'; before: number }
+  | { cmd: 'move'; after: number }
   | { cmd: 'restart' }
   | { cmd: 'endmilestone' }
   | { cmd: 'skip'; issue: number }
@@ -112,9 +115,16 @@ export function commandLabel(body: string | undefined): string {
     case 'resume':
       return typeof o.issue === 'number' && o.issue > 0 ? `resume #${o.issue}` : 'resume'
     case 'start':
-      return 'run next'
+      return 'move to top'
     case 'unstart':
       return 'clear mark'
+    case 'move':
+      if (o.to === 'top' || o.to === 'bottom') return `move to ${o.to}`
+      for (const k of ['before', 'after'] as const) {
+        const n = o[k]
+        if (typeof n === 'number' && n > 0) return `move ${k} %${n}`
+      }
+      return body
     case 'endmilestone':
       return 'end milestone'
     case 'restart':

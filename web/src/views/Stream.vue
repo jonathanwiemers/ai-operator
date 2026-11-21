@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import UAlert from '@nuxt/ui/components/Alert.vue'
-import { computed, ref, watch, watchEffect } from 'vue'
+import { computed, defineAsyncComponent, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
@@ -29,7 +29,6 @@ import MilestoneRetro from '../components/MilestoneRetro.vue'
 import MilestoneSections from '../components/MilestoneSections.vue'
 import PlanList from '../components/PlanList.vue'
 import ProjectFinishing from '../components/ProjectFinishing.vue'
-import ProjectQueue from '../components/ProjectQueue.vue'
 import DeskChat from '../ui/DeskChat.vue'
 import RouteTabs from '../ui/RouteTabs.vue'
 import { streamMessages } from '../chatView'
@@ -65,6 +64,10 @@ import { decisionsQuery, milestoneFromQuery } from '../decisions'
 import { milestoneTabFromRoute, milestoneTabs, milestoneTabsFor, projectTabsFor, tabFromQuery, tabQuery } from '../streamTabs'
 import NotFound from './NotFound.vue'
 import { announceChange } from '../ui/useAnnounce'
+
+// The queue and its drag library (vue-draggable-plus) load with the project
+// page, not with the initial bundle (D662-P4).
+const ProjectQueue = defineAsyncComponent(() => import('../components/ProjectQueue.vue'))
 
 const props = defineProps<{
   namespace?: string
