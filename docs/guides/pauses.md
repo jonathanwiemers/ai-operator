@@ -51,7 +51,7 @@ and buttons for the ways out: *Retry*, *Review again*, *Resume*, *Skip*,
 links to the issue's chat, the pipeline, the merge request or the plan, and
 for an owner *Merge anyway*. A hold shows the same way in its issue's
 thread, with *Resume*. The *Issues* and
-*Stream* tabs, the Board and the Inbox show a short card that links there.
+*Activity* tabs, the Board and the Inbox show a short card that links there.
 
 The buttons send the same commands as the comments below, and the card shows
 the operator's answer. A `mainRed` or `budget` pause shows its

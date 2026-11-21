@@ -95,8 +95,8 @@ you ([Steer from the Desk](docs/guides/steer-from-the-desk.md)).
 
 ## Steer it
 
-**In the Desk.** On a milestone's *Pilot* tab you ask the pilot where things
-stand and answer its prompts. On a task you chat with its agent, or restart
+**In the Desk.** With *Ask pilot* on a milestone you ask the pilot where things
+stand; its prompts wait on the *Needs you* tab. On a task you chat with its agent, or restart
 a run that hangs. **Revisit** next to a decision asks whether it should
 stay, and pause cards offer the ways out of a pause. Your *Inbox* collects
 everything that waits for you, across projects
@@ -276,7 +276,7 @@ happens, CI and cost.
 **7. Answer the first prompt**
 
 When the pilot needs a decision, a prompt with two to four options lands in
-your *Inbox* and on the milestone's *Pilot* tab. To try it right away, wait
+your *Inbox* and on the milestone's *Needs you* tab. To try it right away, wait
 until the first issue is done and click **Revisit** next to one of its
 decisions: the prompt asks whether the decision stays. Pick an option, and
 the card says who answered

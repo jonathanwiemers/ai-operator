@@ -117,14 +117,14 @@ tracking issue. The Desk logs who posted where, never the text.
 
 ## Ask the pilot
 
-Open the milestone's *Pilot* tab and write into *Message the pilot*. The answer
-comes in the same thread. Ask where things stand, why the milestone is
+Click *Ask pilot* in the milestone's header, on any tab, and write into
+*Message the pilot* in the drawer. The answer comes in the same thread. Ask where things stand, why the milestone is
 paused, or what an issue waits for. See [The pilot](pilot.md).
 
 Without the `chat` grant but with `steer`, the box posts your message as a
 `/pilot` comment on the tracking issue, in your name.
 Anyone with the `chat` grant can message the pilot, owner or not. With
-neither grant you see the tab but cannot write in it.
+neither grant you see the drawer but cannot write in it.
 
 ## Answer prompts
 
@@ -140,7 +140,7 @@ You find prompts:
 - on the milestone's *Needs you* tab, at the bottom of their issue's
   [problem thread](pilot.md#the-problem-thread); closed ones stay in the
   thread's history;
-- in the stream, as a short card with the recommended option;
+- in the *Activity* feed, as a short card with the recommended option;
 - on a task page, above the chat, for an agent's questions;
 - on the pause card of a red default branch or a spent budget.
 
@@ -187,12 +187,12 @@ card has a text box and *Comment*, or write
 ## Pause and hold cards
 
 When autopilot [pauses](../concepts/glossary.md#pause), the milestone's
-*Pilot* tab shows the pause card: why it paused, the paused issue with its
+*Needs you* tab shows the pause card: why it paused, the paused issue with its
 merge request and pushed head, and *Way out*: first what ends the pause by
 itself, with its state, then what you can do. Each
 [hold](../concepts/glossary.md#hold) of a single issue has a card of its own
-with *Resume*. The Inbox, the stream and the *Issues* tab show a short card
-with *Open*, which leads to *Pilot*.
+with *Resume*. The Inbox, the *Activity* feed and the *Issues* tab show a short card
+with *Open*, which leads to *Needs you*.
 
 The buttons depend on the kind of pause:
 
@@ -213,7 +213,7 @@ Each kind and its ways out are in [When autopilot pauses](pauses.md).
 
 ## The queue and finishing
 
-A project's *Stream* tab lists its open autopilot milestones in the order
+A project's *Milestones* tab lists its open autopilot milestones in the order
 they run: *Running*, *Holding for %N* (planned, waits for the first),
 *Waiting to plan*, *Paused* or *Budget*, each with its issues done and its
 spend. With the `chat` grant each row has:

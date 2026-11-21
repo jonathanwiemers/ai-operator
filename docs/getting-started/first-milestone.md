@@ -115,7 +115,7 @@ A prompt is a question to the owners with two to four options, one of them
 recommended. The [pilot](../concepts/glossary.md#pilot), which watches the
 milestone for you, asks one when it needs a decision: for example when CI
 stays red, or a budget runs out. Every open prompt is in your *Inbox* and
-on the milestone's *Pilot* tab.
+on the milestone's *Needs you* tab.
 
 You do not have to wait for a problem to try it. In the *Queue*, each
 issue lists the decisions the planner made for it, as IDs such as
@@ -126,7 +126,7 @@ until the first issue is *Done*:
 
 1. Click **Revisit** next to one of the done issue's decisions. The Desk
    says *Revisit of D12-P1 opened.*, and a link *Go to Q1* appears.
-2. Follow the link. The *Pilot* tab shows the prompt *Revisit D12-P1: …?*
+2. Follow the link. The *Needs you* tab shows the prompt *Revisit D12-P1: …?*
    with its options: keep the decision (recommended), or switch to one of
    the alternatives the planner rejected.
 3. Click the option to keep the decision. The card then says

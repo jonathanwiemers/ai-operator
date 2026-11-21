@@ -7,7 +7,7 @@ spec and the docs disagree, the docs win: the UI kit, page skeleton,
 building blocks, filters and theme are in
 [web-ui.md](../contributing/web-ui.md#ui-kit), the colour tokens and
 contrast targets in [design.md](../contributing/design.md#desk-styles), and
-the theme switch for users in [The Desk](../guides/desk.md#light-dark-or-auto).
+the theme switch for users in [The Desk](../guides/desk.md#the-account-menu).
 
 ## Goal
 

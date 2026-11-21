@@ -11,8 +11,8 @@ how you get in, who sees what, and what each view shows. What you do in them is 
 ## Log in
 
 Open the Desk's address and sign in at your identity provider. The Desk
-opens on *Overview*. Your user name is at the bottom of the rail on the
-left; hover over it to see the roles the Desk got from your provider.
+opens on *Overview*. Your user name is on the [account menu](#the-account-menu)'s
+button at the bottom of the rail; open it to see the roles the Desk got from your provider.
 
 Your login renews itself while you use it, and your roles are read again
 each time. A role you lose at the provider is gone in the Desk within
@@ -120,22 +120,30 @@ their own. Scheduled researches are managed with `kubectl`.
   old `/costs` links open it), *Plans* (with Desk chat), your projects with a status dot
   (running, needs you, idle), a count of what needs you, the counts of active and
   [settling](../concepts/glossary.md#settling) milestones, the researches, and how much
-  of each [engine's](../concepts/glossary.md#engine) usage window is used. Its footer has
-  the [theme switch](#light-dark-or-auto) and the operator's version, with a note when an update is rolling out or out.
+  of each [engine's](../concepts/glossary.md#engine) usage window is used, with
+  when it resets (*resets 14:05*, *resets Tue 09:00*, or *reset* once past). It ends in the
+  [account menu](#the-account-menu).
 - **Breadcrumbs** lead back up from pages below the top level: *Overview* ›
   project › milestone › issue, or *Overview* › project › *Plans* › plan.
 - **Search**: ⌘K (macOS) or Ctrl+K opens the search from anywhere. It finds
   projects, milestones, issues and merge requests, and pages such as the
   Inbox, *Plans* or *Plan milestone*, which opens the project's *Plans* tab.
 - **Live**: every page updates by itself.
+- **Pages** share one header: status, title, one main button and a ⋯ menu,
+  and a line with cost and counts. One row of tabs sits below. A tab's
+  switches and filters, with search on the right, sit in a bar on top of it.
 
-### Light, dark or auto
+### The account menu
 
-The switch in the rail's footer picks the Desk's colours: *Light*, *Dark*
-or *Auto*. On a phone, tap *Projects* in the bottom bar to open the rail;
-the switch is at its bottom. *Auto* follows your system and changes with
-it. *Light* and *Dark* stay as you set them. This browser remembers your
-choice; another browser or device starts on *Auto*.
+The button with your name and the live dot at the bottom of the rail opens
+it, also with the rail collapsed (then it shows your initials). On a phone,
+tap *Projects* in the bottom bar first. It has your login, roles and how long
+the login lasts; **Appearance** (*Light*, *Dark* or *Auto*, which follows your
+system; this browser remembers it); the operator's version, with a note when
+an update is rolling out or out; and **Sign out**. On a test cluster you can
+run the Desk [without login](../getting-started/turn-on-the-desk.md#without-login):
+everyone who can port-forward to it sees every project, and the menu says
+*No login (auth off)*, without *Sign out*.
 
 ## Inbox
 
@@ -162,11 +170,10 @@ owner accepted them. A row opens the issue's problem on the milestone's
 ### Browser notifications
 
 Click *Notify me* in the Inbox header and allow notifications in your
-browser. While they are on, each new pause, prompt, pilot proposal,
-question from an agent, ready companion and budget warning raises one
-notification; failed and blocked tasks only count in the Inbox. A click
-opens the Inbox row's place. They only come while a Desk tab is open (no
-e-mail or push). Click *Notifications on* to turn them off.
+browser. Each new pause, prompt, pilot proposal, agent question, ready
+companion and budget warning then raises one notification (failed and blocked
+tasks only count in the Inbox); a click opens the row's place. They only come
+while a Desk tab is open. *Notifications on* turns them off.
 
 ## Overview
 
@@ -174,49 +181,51 @@ e-mail or push). Click *Notifications on* to turn them off.
 
 - **the summary**: milestones running, paused and waiting, what needs you,
   and the spend of today and the last 7 days;
-- **Working now**: one card per project with the issue that runs now and
-  for how long, what is next, usage limits, and *N finishing* when done
-  milestones still wait to be closed;
+- **Working now**: per project the issue that runs now and for how long, what
+  is next, usage limits, and *N finishing* for done milestones not yet closed;
 - **In progress**: every milestone in work, those that need you first;
 - **Recently done**: the newest done milestones, *Show all* for more;
 - **Timeline**: which issue of which project ran when, in the last 6 h,
   24 h or 7 d ([the Overview timeline](milestone-order-and-timeline.md#the-overview-timeline)).
 
-A milestone row shows its progress (merged of all issues), open issues, cost
-and tokens, and the retrospective's open leftovers; an unknown cost is a dash,
-never $0. The *Stream* tab shows every event of all your projects.
+A milestone row shows its progress (merged of all issues), open issues, cost,
+tokens and open leftovers; an unknown cost is a dash, never $0. The *Activity*
+tab (`/?tab=activity`, old `?tab=stream` links too) shows every event of all your projects.
 
 ## A project
 
-![Project page with its milestones, the pilot message box and a run that asks a question, beside the needs-you panel and the queue](../assets/screenshots/project-stream.webp)
+A project page has the tabs *Milestones | Activity | Decisions | Board | Metrics*,
+and *Plans* with Desk chat. It opens on *Milestones*:
 
-A project page has the tabs *Stream | Decisions | Board | Metrics*, and *Plans*
-with Desk chat:
-
-- **Stream**: the project's [run-order queue](milestone-order-and-timeline.md#the-queue),
+- **Milestones**: the project's [run-order queue](milestone-order-and-timeline.md#the-queue),
   which owners drag into order, the [milestones that are finishing](steer-from-the-desk.md#the-queue-and-finishing),
-  its milestones in progress and done, then the stream: what happened,
-  newest first. A message box sits above the stream; a paused milestone
-  pins its short pause card over it.
+  and its milestones in progress and recently done.
+- **Activity**: what happened, newest first, with a message box; a paused
+  milestone pins its short pause card over it. Old `?tab=stream` links open it.
 - **Decisions**: the decisions of all its milestones, or of the one you pick.
 - **Board**: one board per milestone, plus the issues without one.
 - **Metrics**: what the project's agent calls cost, with its lines of code.
 - **Plans**: the project's [plans](write-a-milestone.md#draft-it-in-the-desk)
   and, for an owner, *Plan milestone*; a [plan's decisions](write-a-milestone.md#answer-the-agents-decisions) have a wizard.
 
-A switch narrows the stream: *All*, *Chat*, *Needs you*, *Runs*, *CI & review* and *Merged*.
-Comments on the same issue or merge request are one card. A strip shows the
-last 30 days; click a day to jump there. *Load older* goes further back.
+![A project page with its event feed and a run that asks a question, beside the needs-you panel](../assets/screenshots/project-stream.webp)
 
-On a wide screen a panel beside the stream shows what needs you in the
+On *Activity*, the bar on top filters the feed (*All*, *Chat*, *Needs you*,
+*Runs*, *CI & review*, *Merged*) and has search on the right. Below it, a strip of
+the last 30 days jumps to a day; *Load older* goes further back. Comments on the
+same issue or merge request are one card.
+
+On a wide screen a panel beside the feed shows what needs you in the
 project, the active milestone's queue and the last 30 days. On a phone or
 tablet the *Context* button opens it.
 
 ## A milestone
 
-A milestone page has the tabs *Issues*, *Needs you*, *Decisions*, *Pilot*,
-*Retrospective* (once written), *Stream*, *Board* and *Metrics*. The tab
-is part of the address, so you can send a link to it.
+A milestone page has the tabs *Issues | Activity | Decisions | Board | Metrics*.
+*Needs you* joins them, with a count, while the milestone is paused or a
+problem is open, and *Retrospective* once it is written. The tab is part of
+the address, so you can send a link to it. *Ask pilot* in the header opens
+the [pilot drawer](#ask-pilot) over any tab.
 
 ### Issues
 
@@ -245,8 +254,8 @@ works on the issue, and the issue's own stream.
 
 ![Needs you tab with the pause card, its ways out and an open question](../assets/screenshots/milestone-pilot.webp)
 
-What waits for the milestone's owners; the tab reads *Needs you · n* while
-n problems and proposals are open. On the left are the
+What waits for the milestone's owners; the tab's count is the number of open
+problems and proposals. A `?tab=needs` link opens *Issues* when nothing waits. On the left are the
 [problems](../concepts/glossary.md#problem-thread), one per stuck issue and
 one for the milestone (a budget pause), open first, each with its status
 (*Waiting for you*, *Operator acting*, *Pilot looking*, *Resolved*), time and
@@ -271,11 +280,13 @@ revisit does. Owners get *Revisit* (opens the prompt in *Needs you*),
 *Comment* (on an open issue, in your GitLab name) or a command to copy.
 See [Read and revisit decisions](decisions.md).
 
-### Pilot
+### Ask pilot
 
-The pilot's autonomy and cost, *Message the pilot*, and the pilot's events
-(questions as one line each, answers, pauses, releases, comments and chat):
-[Steer from the Desk](steer-from-the-desk.md#ask-the-pilot).
+*Ask pilot* opens a drawer on the right (full width on a phone): the pilot's
+autonomy and cost, *Message the pilot* and its events (questions, answers,
+pauses, releases, comments, chat), see [Steer from the Desk](steer-from-the-desk.md#ask-the-pilot).
+`?pilot=1` keeps it open across reloads and links; old `?tab=pilot` links open
+it over *Issues*. On a done milestone the button says *Pilot*.
 
 ### Retrospective
 
@@ -286,50 +297,48 @@ the cost drivers (the issues and roles that cost most), and the leftovers
 with their state. Owners turn leftovers into a follow-up milestone here, see
 [The retrospective](pilot.md#the-retrospective).
 
-### Stream, Board and Metrics
+### Activity, Board and Metrics
 
-*Stream* is the runtime: runs, pushes, CI, reviews and merges, with the
-switch *All*, *Runs*, *CI & review* and *Merged*. The pilot's events are on
-*Pilot*, so the two tabs share nothing. *Board* is the milestone's board,
-*Metrics* its cost and [lines](budgets-and-spend.md#lines-of-code); `?tab=spend` still opens it.
+*Activity* is the runtime (runs, pushes, CI, reviews, merges), filtered by
+*All*, *Runs*, *CI & review* and *Merged*; the pilot's events are in the
+drawer. *Board* is the milestone's board, *Metrics* its cost and
+[lines](budgets-and-spend.md#lines-of-code); `?tab=spend` still opens it.
 
 ### Done milestones
 
-With the research database, a done milestone stays on the Desk after its
-tasks are deleted, read from history: the *Issues* tab says *From history*,
-and there is no board and no message box. Without the database the Desk
-shows only milestones with live tasks, and no spend or per-issue figures.
+With the research database, a done milestone stays after its tasks are
+deleted, read from history: *Issues* says *From history*, with no board and no
+message box. Without the database the Desk shows only milestones with live
+tasks, and no spend or per-issue figures.
 
 ## A task
 
 ![Task chat between a user and the implementing agent](../assets/screenshots/task-chat.webp)
 
-A task page states the task's status once, above the title (its phase, such
-as *Running*). The line below has the step and how long it runs, the last
-result and activity, restarts if any, *Stalled* when the
-[watchdog](../concepts/glossary.md#watchdog) sees no progress, and the cost.
-On the right are the merge request and *Restart run* (owners with the `chat`
-grant); other links are in the ⋯ menu. Banners show a block, a usage limit or
-an out-of-memory restart.
+A task page's header has its status (such as *Running*), the title, and a
+line with the step and how long it runs, the last result and activity,
+restarts, *Stalled* when the [watchdog](../concepts/glossary.md#watchdog)
+sees no progress, and the cost. On the right are the merge request and
+*Restart run* (owners with `chat`), the rest in ⋯. Banners below the tabs
+show a block, a usage limit or an out-of-memory restart.
 
 Its tabs, each shown when there is something in it:
 
-- **Overview**: the last run's summary, the agent's questions, review
-  findings, and the pipeline with its fix rounds and failed jobs. A Spec
-  task adds the plan and the autopilot's state.
+- **Overview**: runs, spend, branch and last push on top, then the last
+  run's summary, the agent's questions, review findings, and the pipeline
+  with its fix rounds and failed jobs. A Spec task adds the plan and the
+  autopilot's state. The pod, how to follow its logs, and the conditions
+  close the tab. Old `?tab=details` links open it.
 - **Chat**: *Chat with the agent* and the GitLab conversation, see
   [Steer from the Desk](steer-from-the-desk.md#chat-with-an-agent).
 - **Live**: the [live transcript](#live-transcript), with the `transcript`
   grant.
 - **Logs**: for owners with the `steer` grant, the last 500 lines of the
-  runner's or the agent's container, *Download*, and *Follow* for new
-  lines.
+  runner's or agent's container, *Download*, and *Follow* for new lines.
 - **Calls**: every agent call, with the database: per run its written lines
   and its calls with model, tokens, duration and cost; for the implementer
   the lines each call changed; a 💾 badge where a call saved a checkpoint;
   and a chart of how the session's context grew.
-- **Details**: runs, spend, branch and last push, the pod and how to follow
-  its logs, and the conditions.
 
 A task's stage follows its status the same way the operator sets the GitLab
 labels; hover a badge to see why. After a push the task stays in *CI* until
@@ -355,41 +364,30 @@ merge request. A project in a namespace the chart does not list in
 
 ## Research
 
-With the research database and a research rule, the rail lists the
-researches under *Research*, and on a phone the bottom bar has
-*Research*. The research list has one card per research: its view (news
-flash or report), schedule or *one-off*, the last and next run, and the
-agent. A research's page shows its prompt, feeds and the latest result: a news flash groups items by topic, important and new
-ones first; a report shows its blocks in order. *Run history* lists the
-stored runs with their cost. With `research: write`, *New research* starts a
-one-off research. More in [Research](research.md).
+With the research database and a research rule, the rail (and on a phone the
+bottom bar) has *Research*: one card per research with its view (news flash
+or report), schedule or *one-off*, last and next run, and agent. A research's
+page shows its prompt, feeds and latest result: a news flash groups items by
+topic, important and new ones first; a report shows its blocks in order. *Run
+history* lists the stored runs with their cost. With `research: write`, *New
+research* starts a one-off research. More in [Research](research.md).
 
 ## Watch progress in GitLab
 
-GitLab shows the same work in its own views. The operator assigns its bot
-user to an issue it picks up, so GitLab lists it as **Ongoing** (turn it off
-with [`workflow.assignBot`](../reference/agentproject.md#specworkflow)), and
-the agent's merge requests carry the issue's milestone.
-
-## Run without login
-
-On a test cluster you can run the Desk
-[without login](../getting-started/turn-on-the-desk.md#without-login).
-Everyone who can port-forward to it then sees every project.
+The operator assigns its bot user to an issue it picks up, so GitLab lists it
+as **Ongoing** (see [`workflow.assignBot`](../reference/agentproject.md#specworkflow)),
+and the agent's merge requests carry the issue's milestone.
 
 ## What the login protects
 
-- The Desk runs apart from the operator, with its own account. It can read
-  projects and tasks and the logs of agent pods. It never holds the
-  operator's GitLab token, the agent credentials or any Secret.
-- It changes no task itself: it steers by comments and chat messages the
-  operator reads and checks.
-- It writes to GitLab only in your name, with your token and the `steer` grant.
-- Agent text (summaries, comments, research results) is shown as text with
-  a safe subset of markdown: no HTML, no images, links only to `http(s)`.
-- The Desk only runs over https; your session lives in encrypted cookies.
-
-More in [Security](../concepts/security.md#what-the-desk-login-protects).
+The Desk runs apart from the operator, with its own account: it reads
+projects, tasks and agent pod logs, and never holds the operator's GitLab
+token, the agent credentials or any Secret. It changes no task itself; it
+steers by comments and chat messages the operator checks, and writes to
+GitLab only in your name, with your token and the `steer` grant. Agent text
+is shown as text with safe markdown (no HTML, no images, `http(s)` links
+only). The Desk runs over https only; your session lives in encrypted
+cookies. More in [Security](../concepts/security.md#what-the-desk-login-protects).
 
 ## Next
 

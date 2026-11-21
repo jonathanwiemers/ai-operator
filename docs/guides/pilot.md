@@ -38,8 +38,10 @@ inert: no mentions besides the owners', no quick actions.
 
 ## Talk to it in the Desk
 
-Open the milestone's *Pilot* tab. From top to bottom it shows the pilot's
-prompts with its autonomy and cost, and *Message the pilot*, the message box.
+Click *Ask pilot* in the milestone's header, on any tab. A drawer opens on the
+right (the full width on a phone) with the pilot's autonomy and cost, its
+events, and *Message the pilot*, the message box. Escape closes it; a link
+with `?pilot=1` opens it, and so do old `?tab=pilot` links.
 Stuck issues have their [problem thread](#the-problem-thread) on *Needs you*. Type your question there; the answer comes in the
 same thread.
 
@@ -54,7 +56,7 @@ follow-up question. The operator checks that option like the pilot's own.
 Only the milestone's `owner-subjects` answer prompts in the Desk. Anyone
 with the `chat` grant may message the pilot. With only the `steer` grant
 your message goes out as a `/pilot` comment in your name; with neither you
-see the tab but cannot write in it. See
+see the drawer but cannot write in it. See
 [Owners and pings](owners-and-pings.md).
 
 ## The problem thread
@@ -86,7 +88,7 @@ in the thread at once, marked *sending* and then *sent*. If the operator does
 not react within a minute, a note says so and links the task's logs.
 
 Under it is the text box. What you write goes to the pilot as
-`problem: #558`, in the same thread as the *Pilot* tab. If you clearly ask
+`problem: #558`, in the same thread as the pilot drawer. If you clearly ask
 for an action ("rerun it with a hint to answer in JSON"), the pilot runs it
 and logs it in the thread. Otherwise it asks back.
 
@@ -361,7 +363,7 @@ outside the queue of runs. Its spend has a cap per milestone,
 [`pilot.maxBudgetUSD`](../reference/agentproject.md#specpilot). Once that is
 spent, it answers that the budget is used up, without a model call, and an
 assessment only says what happened. Comments of people who are not owners
-never reach the model. The Desk shows the pilot's cost on the *Pilot* tab.
+never reach the model. The Desk shows the pilot's cost in the pilot drawer.
 
 ## Next
 

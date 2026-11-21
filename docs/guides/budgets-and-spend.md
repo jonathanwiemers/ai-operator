@@ -309,7 +309,7 @@ your autopilot milestones that started in the range:
   ended;
 - without a project filter, the same per project;
 - the 10 longest pauses (project, milestone, kind, reason, length). Each
-  opens the milestone's *Pilot* tab.
+  opens the milestone with its pilot drawer.
 
 A pause counts in the bucket where it started, with its full length; an
 open one counts up to now. A pause that started before the range is left

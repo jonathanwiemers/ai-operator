@@ -219,8 +219,8 @@ How it works:
   found and on an empty research list, and the inputs of the task's Chat
   tab (the chat composer's among them) and the stream search compute to at
   least 16 px, while the composer and the search stay under 16 px at
-  1280 px. On the overview, the Inbox and the task page's Overview, Chat and
-  Details tabs no visible
+  1280 px. On the overview, the Inbox and the task page's Overview and Chat
+  tabs no visible
   `button`, `[role=button]` or `input` is under 44 px high
   (exceptions in the check's `hitAllowlist`, with a reason), and at
   1280 px a plain `button` stays under 44 px. The `bottom bar …` cases check the
@@ -464,17 +464,22 @@ Every page has the same frame, from the outside in (decisions 3 to 6 of
      "Running" line repeats it.
    - `title`; then one meta line as `description` (cost chip, dates,
      step).
-   - `links`: at most one primary and one secondary action;
+   - `links`: one primary action (a milestone's *Ask pilot*, a task's merge
+     request) and the rest in ⋯;
      `components/HeaderActions.vue` shows the first `shown` (2) of its
      `actions` as buttons and puts the rest in a ⋯ `UDropdownMenu`.
      A top-level page with only its own controls (Metrics' range, Inbox's
      *Notify me*) puts them there directly. Metrics' *Download CSV* stays a
      `<details>` menu there: `UDropdownMenu` would add 16 kB to its route
      (steering log of the spec).
-4. **Tabs.** [RouteTabs](#routetabs) directly under the header, also
-   Overview's *Overview | Stream*. A tab whose content is empty by
-   definition is hidden (the milestone's *Retrospective* until one exists),
-   and its `?tab=` falls back to the default.
+4. **Tabs.** One row of [RouteTabs](#routetabs) directly under the header,
+   also the dashboard's *Overview | Activity*; never a second row: a tab's
+   switches and filters sit in its [toolbar](#filters). A tab whose content
+   is empty by definition is hidden (the milestone's *Retrospective* until
+   one exists, *Needs you* while nothing waits), and its `?tab=` falls back
+   to the default ([Routes and tabs](#routes-and-tabs)). The page's alerts
+   (paused, failed, usage limit) sit below the tabs, not between header and
+   tabs.
 5. **Content**, and on a page with a context panel the shared
    `components/ContextLayout.vue` around it (see
    [Context panel](#context-panel-and-pause-history)).
@@ -807,9 +812,9 @@ menu's list (`[data-slot=list]`) scrolls sideways inside it
 the page, so the active tab (`a[aria-current="page"]`) is fully in view.
 Below 760 px each tab is at least 44 px high. The focus outline sits on the
 link's inset `::before`, inside the list's clip. A parent that is a flex row lets the strip wrap
-to a line of its own (`flex-wrap`), as the stream page's title row does, so
-it gets the full width before it scrolls. The stream page is the first user;
-the task page (`TaskBody.vue`) shows its tabs with `label="Task"` and the
+to a line of its own (`flex-wrap`), so it gets the full width before it
+scrolls. Users: the project and milestone page (`Stream.vue`, the milestone's
+*Needs you* count as its badge), the dashboard, and the task page (`TaskBody.vue`) shows its tabs with `label="Task"` and the
 open questions' count as Overview's badge.
 
 ### Truncated
@@ -832,7 +837,7 @@ Space toggles the clamp in place, with no overlay to dismiss. Text that fits
 stays plain. It sets no `title`: use `title` only for what is readable
 elsewhere. It sets no colour or weight, the parent's classes do; do not give
 it a parent with `nowrap`. The task page's branch tile
-on its *Details* tab and the current step in its status line use it.
+at the top of its Overview tab and the current step in its status line use it.
 
 ### Search palette
 
@@ -938,8 +943,8 @@ first, and the text box at the bottom. `web/src/ui/DeskChat.vue` wraps
 - **Cards.** `streamMessages` turns the stream's items (`groupThreads`,
   newest first) into full-width `card` messages oldest first, with
   `metadata.day` on a day's first card; the caller renders the
-  `EventCard` in the `content` slot. The Stream tab, the issue stream
-  (`IssueStream.vue`) and the Pilot tab's events read this way.
+  `EventCard` in the `content` slot. The Activity tab, the issue stream
+  (`IssueStream.vue`) and the pilot drawer's events read this way.
 - **Scrolling.** New messages scroll into view only when the reader is at
   the bottom (`atBottom`, 48 px slack) or the last message is the owner's
   own, still sending. *Load older* (`older` prop, `older` event) adds
@@ -961,7 +966,7 @@ first, and the text box at the bottom. `web/src/ui/DeskChat.vue` wraps
   and commands). `noPrompt` leaves it out.
 - **Where.** The problem thread, the task's *Chat with the agent*
   (`TaskChat.vue`, its command buttons in the composer under `prompt`),
-  the plan chat (`PlanChat.vue`), the Stream tab and the issue stream.
+  the plan chat (`PlanChat.vue`), the Activity tab and the issue stream.
   Each sits in a box of bounded height (`min(72dvh, …)`) so the text box
   stays at its bottom.
 
@@ -1006,7 +1011,7 @@ links, packing, the windows, the no-history case and the axe check.
 `web/src/components/Composer.vue` is the one text box of the Desk: the
 task's *Chat with the agent* (`mode="chat"`, `TaskChat.vue`) and the
 stream's notes (`mode="note"`, the project stream in `Stream.vue` and a
-milestone's *Pilot* tab in `MilestonePilot.vue`).
+milestone's pilot drawer in `MilestonePilot.vue`).
 
 ```vue
 <Composer v-model="body" mode="chat" placeholder="Message the agent…" hint="Enter+Ctrl/Cmd to send"
@@ -1046,7 +1051,7 @@ milestone's *Pilot* tab in `MilestonePilot.vue`).
   into the `controls` slot.
 
 Where it sits: at the bottom of its `DeskChat`, below the history, the note
-composer of the Stream tab too. On a phone `DeskChat` keeps its text box
+composer of the Activity tab too. On a phone `DeskChat` keeps its text box
 sticky at the bottom of the screen, inside the chat: above the bottom bar,
 and while typing above the keyboard. Not while the bar shows something (a
 question's or a pause's card can be taller than the screen, and the text
@@ -1075,7 +1080,7 @@ the bottom bar and above a 300 px `--keyboard-inset`
 
 `web/src/components/PromptCard.vue` is the one prompt card (see *Prompt
 card* above for what it shows and sends): full on the Task page, the
-milestone's *Pilot* tab and the full pause card, `compact` in the compact
+milestone's *Needs you* tab and the full pause card, `compact` in the compact
 pause card. Stream rows never show it (below).
 
 ```vue
@@ -1116,17 +1121,17 @@ buttons: "Q12 asked:" linked to the card (`#prompt-Q12` without `?tab=`,
 so `milestoneTabFromRoute` picks the tab that holds it), the question
 (from the prompt in status, else the event summary) and, while the view
 has the prompt, its state badge. `IssueStream` takes the view's `prompts`
-for that badge (the *Pilot* tab and the issue page pass them).
+for that badge (the pilot drawer and the issue page pass them).
 
 The e2e cases `prompt card …` answer at 375 and 1280 px through the route
 mock and check the POST body to the target task's chat: an option on the
-Task page and free text on the *Pilot* tab, check the milestone stream's
+Task page and free text on the *Needs you* tab, check the milestone stream's
 one-line `prompt.posted` row, with the touch sizes and no sideways scroll
 (`prompt-card-task@<width>.png`, `prompt-card-pilot@<width>.png`,
 `prompt-row-stream@<width>.png`). `e2e/prompt-card.spec.ts` checks the
 card after a click (no button left, "sending…"), after a refused post (the
 buttons and the error), closed cards with their folds and labels, and that
-the *Pilot* tab draws an open prompt once.
+the *Needs you* tab draws an open prompt once.
 
 ### Note thread
 
@@ -1184,18 +1189,25 @@ overview and the project page that each row's cells start where the heads
 do, and that on a phone a row stacks inside its width
 (`milestone-rows-<page>@<width>.png`).
 
-### Stream header
+### Activity header
 
-The header of the project and milestone pages (`web/src/views/Stream.vue`)
-is Tailwind utilities and Nuxt UI; only the activity heatmap strip keeps scoped CSS (`.heat`, `.cells`).
+The header of the project and milestone pages and their Activity tab
+(`web/src/views/Stream.vue`) are Tailwind utilities and Nuxt UI; only the
+activity heatmap strip keeps scoped CSS (`.heat`, `.cells`).
 
 - The `UPageHeader` comes first: the milestone's status as eyebrow
   (`milestoneStatus` of `src/milestoneRows.ts`: *Autopilot paused*, or the
-  state), the title, the cost chip as meta line, and *Metrics* (a project)
-  and *Context* (below 1180 px) on the right. On the dashboard's *Stream*
-  tab the dashboard has the header, and Stream.vue shows none.
+  state), the title, the [header cost](#cost-chips) as meta line, and on
+  the right `HeaderActions` with `shown` 0: a milestone's *Ask pilot*
+  ([Milestone Pilot](#milestone-pilot)), *Context* (below 1180 px), and ⋯
+  with the project or milestone in GitLab. A project has no *Metrics*
+  button; the Metrics tab is one click away. While a milestone loads, the
+  title comes from the project's milestone list (`%<iid>` without it),
+  never *Loading…*. On the dashboard's *Activity* tab the dashboard has the
+  header, and Stream.vue shows none.
 - The [RouteTabs](#routetabs) row follows; the header block holds nothing
-  else.
+  else. A project's default tab, *Milestones*, holds `ProjectQueue`,
+  `ProjectFinishing` and `MilestoneSections`; the feed is on *Activity*.
 - The Activity tab opens with its [toolbar](#filters): the event filter on
   the left, the search (`UInput`, 16 px on phones, 14 px from 760 px) on
   the right, on a full-width row of its own on phones. The heatmap follows
@@ -1242,8 +1254,8 @@ The dashboard (`web/src/views/Dashboard.vue`) and its Overview tab
 (`components/DashboardOverview.vue`, with `MilestoneSections.vue` and
 `EngineUsage.vue`) are Tailwind utilities and Nuxt UI, without scoped CSS.
 
-- *Overview* and *Stream* are a [RouteTabs](#routetabs) strip beside the
-  heading; on a phone the strip's links are 44 px high.
+- *Overview* and *Activity* (`?tab=activity`, old `?tab=stream` too) are a
+  [RouteTabs](#routetabs) strip under the heading; on a phone the strip's links are 44 px high.
 - The summary strip's chips wrap. The needs-you chip links to the Inbox,
   the *today* and *last 7 days* chips to the [Metrics page](#metrics-page)'s
   last 7 days; these links are at least 44 px high on phones.
@@ -1268,7 +1280,7 @@ and 1280 px check the columns and the Inbox chip's height
 
 ### Project Queue and Finishing
 
-On a project's *Stream* tab (`web/src/views/Stream.vue`), above
+On a project's *Milestones* tab (`web/src/views/Stream.vue`), above
 `MilestoneSections`, `ProjectQueue.vue` and `ProjectFinishing.vue` read
 `project.queue` / `queueCommands` and `project.finishing` (see
 [Queue and Finishing](#queue-and-finishing)). Labels and button commands
@@ -1385,8 +1397,8 @@ the link heights on a phone (`milestone-issues@<width>.png`); the route checks c
 ### Milestone Decisions
 
 The Decisions tab of a milestone (`?tab=decisions` on `stream-milestone`,
-also on stored milestones) and of a project (on `stream-project`, right
-after *Stream*) is Tailwind utilities and Nuxt UI (a card keeps a little scoped CSS, `DecisionCard.vue`). It
+also on stored milestones) and of a project (on `stream-project-decisions`, right
+after *Activity*) is Tailwind utilities and Nuxt UI (a card keeps a little scoped CSS, `DecisionCard.vue`). It
 reads `GET …/decisions` from the history database only, never GitLab.
 
 - `MilestoneDecisions.vue` is the tab: `milestone` is the IID, 0 for the
@@ -1439,12 +1451,24 @@ route checks cover `stream-milestone-decisions` and
 
 ### Milestone Pilot
 
-The milestone's Pilot tab (`web/src/components/MilestonePilot.vue`) and
+The milestone's pilot drawer (`web/src/components/MilestonePilot.vue`) and
 the autopilot queue (`web/src/components/QueueList.vue`, on the Issues tab
 and in the context sheet) are Tailwind utilities and Nuxt UI tokens,
 without scoped CSS.
 
-- The Pilot tab keeps its order: the pilot line (autonomy, cost, *Pilot
+- **Drawer** (decision 8 of the header and tabs milestone). The pilot is
+  no tab: *Ask pilot* (`data-ask-pilot`, `aria-haspopup="dialog"`,
+  `aria-expanded`) in the milestone header opens `MilestonePilot` in a
+  `USlideover` from the right (`data-pilot-drawer`, full width below
+  768 px, at most 560 px from there), over any tab. Its open state is
+  `?pilot=1` (`pilotFromQuery`, `pilotQuery` in `src/streamTabs.ts`), so a
+  reload or a link keeps it open; opening replaces the query, closing
+  (Escape, the close button, the overlay, Back through `useBackClose`)
+  drops it, and focus returns to the button (`onCloseAutoFocus`). An old
+  `?tab=pilot` link becomes Issues plus `?pilot=1`. The sheet loads with
+  its first opening (`defineAsyncComponent`). A stored milestone's button
+  says *Pilot*: its drawer has the pilot's events only (D674-P4).
+- The drawer keeps the old tab's order: the pilot line (autonomy, cost, *Pilot
   task*), the message box (*Ask the pilot* is `TaskChat` in a
   `DeskChat` with the merged `Composer`, so its input is 16 px on phones)
   and pilot events (`IssueStream`, cards in a `DeskChat`; a question is
@@ -1482,7 +1506,7 @@ without scoped CSS.
   `/agent resume #N`: it lifts that issue's hold only. The list shows
   *Resuming #N…*, then the operator's answer.
 
-The e2e cases `milestone pilot › pilot tab and prompt link@<width>` and
+The e2e cases `milestone pilot › pilot drawer and prompt link@<width>` and
 `milestone pilot › queue lanes, order and numbers@<width>` at 375, 768 and
 1280 px check the sideways scroll, the touch heights on a phone, the
 prompt link to a closed card, the queue's lanes, order, positions,
@@ -1490,13 +1514,18 @@ one-line numbers, waiting and hold lines, wave chips and count, the Resume
 payload and the stepper's payload and pending limit
 (`milestone-pilot@<width>.png`,
 `milestone-queue@<width>.png`, `milestone-queue-dark@<width>.png`); the route checks cover
-`stream-milestone-pilot` at the three widths.
+`stream-milestone-pilot` (`?pilot=1`, the page under the drawer) at the three
+widths. `e2e/pilot-drawer.spec.ts` checks that *Ask pilot* opens the drawer on
+every tab, traps focus, closes on Escape and returns focus, `?pilot=1` across
+a reload, an old `?tab=pilot` link, the stored milestone's button, and axe
+with the drawer open.
 
 ### Needs you tab
 
 The milestone's Needs you tab (`web/src/components/MilestoneNeeds.vue`,
-utilities only) sits between Issues and Pilot (spec
-`desk-problem-thread`, Decision 11). Its route is
+utilities only) is listed after Metrics, and only while something needs
+you (decision 7 of the header and tabs milestone; spec
+`desk-problem-thread`, Decision 11 for its content). Its route is
 `/projects/:namespace/:name/milestones/:iid/problems/:problem` (name
 `problem`, `:problem` a row id or `issue-<iid>`, `problemParam` in
 `web/src/problemThread.ts`); the tab without one selects the first open
@@ -1508,7 +1537,10 @@ problem.
   *Pilot looking*, *Resolved*), its time and the cause. Under the list are
   the pilot's open proposals (P-n) with *Accept* and *Reject*, which post
   the same chat command to the pilot task as before, and the pause totals.
-  The tab's label is *Needs you · n* (`needsOpen`).
+  The tab is listed while `needsOpen` counts open items, or a problem
+  thread or a `#prompt-`/`#problem-` link is open (`milestoneTabsFor`); the
+  count is its [RouteTabs](#routetabs) badge, the label stays *Needs you*
+  (D674-P2). Otherwise `?tab=needs` opens Issues.
 - **Thread.** `web/src/components/ProblemThread.vue` beside the list from
   1024 px, below it on smaller screens: the heading (a link to the issue)
   with the status, the cause, `ProblemFacts`, then a
@@ -1568,7 +1600,8 @@ tokens, without scoped CSS.
 - A card's title wraps, its badges (`Badge` on `UBadge`) wrap onto further
   lines and the whole card is the link, at least 44 px high.
 - On the project's board a milestone's heading wraps; on phones its links
-  (the milestone, *Stream*) and the *Plan* card are 44 px high.
+  (the milestone, and the link to the milestone page, which
+  `ProjectBoards.vue` still labels *Stream*; it opens the milestone's Issues tab) and the *Plan* card are 44 px high.
 
 The e2e cases `board › stream-project-board columns and cards@<width>` and
 `board › stream-milestone-board columns and cards@<width>` at 375, 768 and
@@ -1930,8 +1963,8 @@ bucket stacked by kind and the paused hours per bucket, tiles for the
 pauses, paused time, mean time to resume and open now, tables by kind,
 resolver and via with the labels of the milestone's pause card
 (`pauseCard.ts`, `pauses.ts`), a per-project table without a project filter, and the ten
-longest pauses, each row linking to the milestone's Pilot tab (`deskURL` of the
-API). `pausesTruncatedNote` shows when the answer says `truncated`, and
+longest pauses, each row linking to the milestone with its pilot drawer (`deskURL` of the
+API, `?tab=pilot`, which the Desk opens as Issues plus `?pilot=1`). `pausesTruncatedNote` shows when the answer says `truncated`, and
 `metricsFilterNote` while Kind or Engine is set. The figures come from the
 `autopilot.paused` and `autopilot.resumed` events
 ([History](design.md#history)).
@@ -2067,31 +2100,51 @@ describe in plain words. The endpoints are in [design.md](design.md#desk-api).
 
 ### Routes and tabs
 
-- **Dashboard** (`/`): *Overview* (default) and *Stream* (`/?tab=stream`).
+The tab lists, defaults and aliases are in `web/src/streamTabs.ts`
+(unit-tested in `test/streamTabs.test.mjs`); a tab is always `?tab=`, never
+a path (decision 13 of the header and tabs milestone).
+
+- **Dashboard** (`/`): *Overview* (default) and *Activity* (`/?tab=activity`).
   The summary strip's spend is the UTC day and the last 7 days. *Recently
   done* shows the newest 10, *Show all* loads up to 200. A milestone row's
   cost is a dash when unknown, never $0. A user with research alone starts
   at `/research`.
-- **Project** (`/projects/<namespace>/<name>`) and **milestone**
-  (`…/milestones/<iid>`): the view tab is kept in `?tab=`; the default
-  (*Stream* on a project, *Issues* on a milestone) is left out. A project
-  has *Stream | Decisions | Board | Metrics*, plus *Plans* with the feature `plans`
-  (`?tab=plans` without it opens *Stream*); a milestone has no *Plans*. Old
-  `…/milestones/3?tab=stream` links still open the stream; a milestone link
-  with a `#prompt-Q<n>` or `#problem-<iid>` hash and no `?tab=` opens *Needs you*. The view tabs are
-  a [RouteTabs](#routetabs) strip. Scope tabs keep a chosen view tab where
-  the target has it and open its default otherwise.
+- **Project** (`/projects/<namespace>/<name>`, `projectTabsFor`):
+  *Milestones* (default) *| Activity | Decisions | Board | Metrics*, plus
+  *Plans* with the feature `plans` (`?tab=plans` without it opens
+  *Milestones*).
+- **Milestone** (`…/milestones/<iid>`, `milestoneTabsFor`): *Issues*
+  (default) *| Activity | Decisions | Board | Metrics*, then *Needs you*
+  while something needs you (see [Needs you tab](#needs-you-tab)) and
+  *Retrospective* once one exists; no *Board* once stored, no *Plans*. While
+  the milestone loads, `?tab=` is read against all its tabs, so a
+  `?tab=needs` or `?tab=retrospective` link waits; once loaded, a hidden tab
+  falls back to *Issues*. A link with a `#prompt-Q<n>` or `#problem-<iid>`
+  hash and no `?tab=` opens *Needs you* (`milestoneTabFromRoute`). The pilot
+  is a drawer, `?pilot=1` ([Milestone Pilot](#milestone-pilot)).
+- **Aliases** (`tabAlias`), so old links keep working: `stream` →
+  `activity` (project, milestone, dashboard), `spend` → `metrics`,
+  `details` → `overview` (task), `pilot` → `issues`, where Stream.vue also
+  sets `?pilot=1` (`pilotQuery`). Unknown, empty or repeated values fall
+  back to the first known one, else the default (`tabFromQuery`).
+- The view tabs are one [RouteTabs](#routetabs) strip; the default tab
+  drops `?tab=` (`tabQuery`). Scope tabs keep a chosen view tab where the
+  target has it and open its default otherwise.
 - **Issue page** (`…/milestones/<iid>/issues/<issue>`): the *Task* section
   holds the task page's tabs by `?tab=`; its stream is `GET /api/v1/stream`
   with `issue=`. It reads the snapshot and history, so a closed milestone's
   issue opens after its tasks are gone.
-- **Task page**: an old `#live-transcript` link without `?tab=` opens
-  *Live*. Only the open tab is loaded.
+- **Task page** (`taskTabs`): *Overview | Chat | Live | Logs | Calls*, each
+  shown when it has content, Overview always. Overview starts with the stat
+  tiles (runs, spend, branch, last push) and ends with the pod and its
+  conditions (D673-P1); there is no *Details* tab. An old `#live-transcript`
+  link without `?tab=` opens *Live* (`taskTabFromRoute`). Only the open tab
+  is loaded.
 - The Desk has no projects list or separate board and milestone pages; the
   old paths show Not found. Task and research pages keep their URLs.
 - **Stored milestones.** With the research database a closed milestone whose
   tasks are gone answers from the snapshot (`stored`): no *Board* tab, no
-  message box, the *Pilot* tab shows only events and pauses. Milestones
+  message box, the pilot drawer (behind a *Pilot* button) shows only events. Milestones
   closed before the snapshot existed are filled in once by the operator's
   backfill (see [Research internals](research.md#database)): issues with states
   and merge requests and the retrospective's text, but no leftovers and only
@@ -2099,23 +2152,24 @@ describe in plain words. The endpoints are in [design.md](design.md#desk-api).
 
 ### Which events show where
 
-Every event kind belongs to one of a milestone's two event tabs, never both
+Every event kind belongs to one of a milestone's two event lists, the pilot
+drawer or the Activity tab, never both
 (`pilotKinds` and `runtimeKinds` in `internal/ui/stream.go`, mirrored in
 `web/src/stream.ts`):
 
-- *Pilot*: `prompt.posted`, `prompt.answered`, `prompt.closed`, `needs`,
+- *Pilot* (the drawer): `prompt.posted`, `prompt.answered`, `prompt.closed`, `needs`,
   `autopilot`, `autopilot.paused`, `autopilot.resumed`, `proposal`,
   `pilot.writeFailed`, `note`, `chat.user`, `chat.agent`,
   `release.decided`, `release.started`, `release.ended` and
   `retrospective`.
-- *Stream*: `run.started`, `run.finished`, `push`, `checkpoint` (a budget
+- *Activity*: `run.started`, `run.finished`, `push`, `checkpoint` (a budget
   stop, a lost pod or an OOM kill; under the *Runs* chip), `ci`, `review`,
   `merged` and `closed`.
 
 `companion.merged` is in neither list: it only feeds the merged lines
 ([Merged lines](design.md#merged-lines)) and is not shown in any stream.
 
-A project's *Stream* tab and the dashboard's show all kinds, and every kind
+A project's *Activity* tab and the dashboard's show all kinds, and every kind
 can be asked for with `kinds=`. A `prompt.posted` event is one line,
 "Q12 asked: …", with the prompt's state badge while the milestone view
 still has it, and a link to its card; no stream row has answer buttons. The bot's mirror comments
@@ -2154,13 +2208,26 @@ It is absent without the history database.
 
 ### Cost chips
 
-`$12.34 · 1.2M tok` on the stream header, each milestone scope tab and the
-Task page header. The tooltip splits input, output and cache tokens, calls,
+`$12.34 · 1.2M tok` on the project and milestone header, each milestone
+scope tab and the Task page header. The tooltip splits input, output and cache tokens, calls,
 calls without a known cost and the part from runs recorded before agent
 calls. With the research database they sum the recorded agent calls and
 older runs, so deleted tasks still count; a cost no call reports (cursor
 without pricing) shows *n/a*. Without the database they sum the cost of the
 current tasks, without tokens.
+
+The project and milestone header shows one cost per page, the same on
+every tab (decision 5 of the header and tabs milestone, `src/headerCost.ts`,
+`test/headerCost.test.mjs`). Two requests carry it: the project or
+milestone view, reloaded on live events, and the Metrics tab's totals of the
+same scope. Both are summed from `agent_calls`, but the server records calls
+up to a second after the task event that reloads the project, and plan
+calls send no event, so the view's copy lagged behind the Metrics tile: the
+header showed two numbers on two tabs. `keepCost` keeps the larger of two
+sums from calls (by tokens, then cost) and never lets a tasks-based sum
+replace one from calls; on a milestone page the project list's copy serves
+while the milestone loads. The e2e case checks the same header cost on
+Activity and Metrics.
 
 ### Navigation
 
@@ -2235,7 +2302,8 @@ Nuxt UI's `lg` switch to `tablet:`); its header holds the brand, the
 search button and the collapse button. Collapsed it is 64 px wide and the
 rail shows Inbox, Overview, Metrics and Plans as icons, their names as
 tooltips and the Inbox count as a chip on its icon; projects, research and
-the footer return when it is expanded. The collapsed state
+the engine meters return when it is expanded; the account button stays
+(avatar initials and live dot) and opens the same menu. The collapsed state
 is kept in `localStorage` under `desk-sidebar-rail`, never in a cookie: the e2e
 cases `rail sheet collapse survives a reload@…` collapse it, reload and check
 that no cookie holds it.

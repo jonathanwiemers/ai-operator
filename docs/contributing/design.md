@@ -2256,7 +2256,7 @@ failed final release ended without a release) ends again. The milestone's
 snapshot in the research database keeps the decisions, so a closed
 milestone still has them, and the Desk's milestone view (`releases`, and the
 `version` of each issue) reads them from there once its tasks are gone; the
-Pilot tab shows the three events. Decisions outside milestones (AgentProject
+pilot drawer shows the three events. Decisions outside milestones (AgentProject
 `status.releases`) get no history events.
 
 **The planner decides first.** The planning run decides per issue whether to

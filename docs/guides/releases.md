@@ -46,7 +46,7 @@ the end of milestone Checkout v2.".
 The milestone's *Issues* tab shows each release between the issues, at the
 point it was decided: *Release after #N* while it waits, *Releasing…* with
 its pipeline while it runs, and then the version with a link to the GitLab
-release. Every issue that shipped shows its version. The *Pilot* tab lists
+release. Every issue that shipped shows its version. The pilot drawer (*Ask pilot*) lists
 the release events: decided (who, why, after which issue), started and
 ended. A done milestone keeps them, also after its tasks are gone.
 

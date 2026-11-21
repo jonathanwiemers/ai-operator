@@ -145,15 +145,19 @@ kubectl apply -f shop.yaml
 Open `https://ai.example.com` and sign in at your provider. The Desk opens
 on *Overview*, with your project's milestones. The rail on the left has
 *Inbox* (everything that needs you, across projects), *Overview*, *Metrics*
-and your projects.
+and your projects. A project opens on its *Milestones* tab; its events are on
+*Activity*. On a milestone, *Ask pilot* in the header opens the pilot.
 
-Your user name is at the bottom of the rail. Note it: on your first
+Your user name is on the button at the bottom of the rail. It opens the
+[account menu](../guides/desk.md#the-account-menu): your login, roles, how long
+the login lasts, *Appearance* (light, dark or auto), the version and *Sign out*.
+Note the user name: on your first
 milestone you name it as an [owner](../concepts/glossary.md#owner), so you
 may answer that milestone's prompts. By default the user name is your email
 address, or the token's subject when the provider sends no email.
 
-If you see no project, your roles match no rule. Hover over your user name
-to see the roles the Desk got from your provider.
+If you see no project, your roles match no rule. Open the account menu to see
+the roles the Desk got from your provider.
 
 ## Staying logged in
 
@@ -162,7 +166,7 @@ with a refresh token, and reads your roles again each time, so a role you
 lose at the provider is soon gone in the Desk too. That needs the scope
 `offline_access`, which is in the default scopes; without it, a login ends
 after a fixed time. When your provider is briefly down, you stay logged in.
-*Sign out* ends the login at the provider too.
+*Sign out* in the account menu ends the login at the provider too.
 
 How long a login lasts is set by the `ui.auth` values in the
 [chart README](../../charts/ai-operator/README.md#web-ui). Keep the Desk at
@@ -187,7 +191,8 @@ kubectl -n ai-operator-system port-forward deploy/ai-operator-ui 9080
 The Desk then listens inside its pod only, so only `kubectl port-forward`
 reaches it, and everyone who can port-forward to it sees every project. The
 chart creates no Service in this mode and refuses to combine it with
-`ui.httpRoute`. Your user name is `anonymous`. With the chat writer login
+`ui.httpRoute`. Your user name is `anonymous`, and the account menu says
+*No login (auth off)*, with no *Sign out*. With the chat writer login
 and `chat: true` in your project you can still answer prompts, if the
 milestone names `anonymous` as its owner.
 

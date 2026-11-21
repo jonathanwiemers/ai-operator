@@ -40,7 +40,7 @@ between.
   the milestone's issues, from the [planner](../concepts/glossary.md#planner)
   and from the implementers, open issues included. It is there on a done
   milestone too, as long as its record is kept.
-- **A project's *Decisions* tab**, after *Stream*: the decisions of all its
+- **A project's *Decisions* tab**, after *Activity*: the decisions of all its
   milestones, newest milestone first. Each issue's header names its
   milestone. Pick one in the *Milestone* select to narrow the list; *All
   milestones* shows them all again.

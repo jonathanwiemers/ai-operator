@@ -111,7 +111,7 @@ the milestone that changes it.
 decision's card, or its *Issues* tab, where each issue lists its decision
 IDs. Each has a **Revisit** button:
 
-1. Click **Revisit**. A prompt opens on the milestone's *Pilot* tab and in
+1. Click **Revisit**. A prompt opens on the milestone's *Needs you* tab and in
    your *Inbox*, with the decision's question, choice and why.
 2. Pick an option: *Keep …* (recommended, changes nothing), or one
    *Switch to …* per alternative the decision recorded. Or write what you
