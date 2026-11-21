@@ -7,7 +7,8 @@ comment, who asks you something and where a cost comes from.
 Every role runs on an [engine](glossary.md#engine) (Claude Code or Cursor)
 with a model and an effort you choose per role under `spec.agents` in your
 `AgentProject`. The operator itself is no agent: it follows fixed rules for
-the queue, the merges and the releases, and no model ever decides to merge.
+the queue, the merges and the releases, and no model ever decides to merge. Every role writes in the language the
+operator sets; see [Language](../reference/agents-and-models.md#language).
 
 ## At a glance
 

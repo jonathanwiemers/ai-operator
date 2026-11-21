@@ -376,6 +376,23 @@ waits.
 Sessions are kept per role and engine. Switching an issue to a profile on
 another engine starts a new session with the full context.
 
+## Language
+```yaml
+agent:
+  language: de
+```
+
+`agent.language` is a language tag such as `en`, `de` or `pt-BR`. Every
+agent writes all it produces (comments, titles, commit messages, decisions,
+research results) in it, even when the owner or the sources use another
+language. Quotes, code, identifiers and error messages stay as they are.
+
+It applies to every project and role, the [pilot](../concepts/glossary.md#pilot)
+and Desk chats included. There is no per-project setting. The default is
+`en`. `""` turns the rule off: the agents copy the language they read. An
+invalid tag fails `helm install` and `helm upgrade`. Running pods keep their
+language until they restart.
+
 ## Next
 
 - [AgentProject](agentproject.md): the other field groups.
