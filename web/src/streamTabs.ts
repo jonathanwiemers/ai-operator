@@ -2,19 +2,20 @@
 // so it can be linked to and reloaded; the first tab of a list is the
 // default and is left out.
 //
-// Project pages: Stream | Decisions (R14) | Board | Metrics, and Plans with
-// the plans feature (R13). Milestone pages: Issues | Needs you | Decisions (R11, D546-P1) |
-// Pilot | Retrospective | Stream | Board | Metrics (decision 7, R12), so an old
-// milestone link with ?tab=stream still opens the stream. The dashboard
-// at /: Overview | Stream (decision 3). The task page (and the issue page
-// with a live task): Overview | Chat | Live | Logs | Calls | Details (R10;
-// Logs for the task's owners, run watchdog R8). Metrics was named Spend:
-// ?tab=spend still opens it (tabAlias).
+// Project pages: Milestones (the default: queue, Finishing, the milestone
+// sections) | Activity (the event feed) | Decisions (R14) | Board | Metrics,
+// and Plans with the plans feature (R13). Milestone pages: Issues | Needs
+// you | Decisions (R11, D546-P1) | Pilot | Retrospective | Activity | Board |
+// Metrics (decision 7, R12). The dashboard at /: Overview | Activity. The
+// task page (and the issue page with a live task): Overview | Chat | Live |
+// Logs | Calls | Details (R10; Logs for the task's owners, run watchdog R8).
+// Renamed tabs keep their old ids as aliases (tabAlias): Metrics was named
+// Spend (?tab=spend), Activity was named Stream (?tab=stream).
 // BaseTab: the tabs project and milestone pages share.
-export type BaseTab = 'stream' | 'board' | 'metrics'
-export type StreamTab = BaseTab | 'decisions' | 'plans'
+export type BaseTab = 'activity' | 'board' | 'metrics'
+export type StreamTab = 'milestones' | BaseTab | 'decisions' | 'plans'
 export type MilestoneTab = 'issues' | 'needs' | 'decisions' | 'pilot' | 'retrospective' | BaseTab
-export type DashboardTab = 'overview' | 'stream'
+export type DashboardTab = 'overview' | 'activity'
 export type TaskTab = 'overview' | 'chat' | 'live' | 'logs' | 'calls' | 'details'
 // A plan's tabs on phones: Chat, Decisions, Draft. Tablet and wider keep
 // the chat left and show planPaneTabs (Draft, Decisions) on the right; one
@@ -43,17 +44,22 @@ export interface Tab<T extends string> {
 }
 
 export const streamBaseTabs: Tab<BaseTab>[] = [
-  { id: 'stream', label: 'Stream' },
+  { id: 'activity', label: 'Activity' },
   { id: 'board', label: 'Board' },
   { id: 'metrics', label: 'Metrics' },
 ]
 
-// projectTabsFor are a project page's tabs: Decisions right after Stream
-// (R14), Plans only with the plans feature, so ?tab=plans without it opens
-// Stream.
+// projectTabsFor are a project page's tabs: Milestones first and the
+// default, Decisions right after Activity (R14), Plans only with the plans
+// feature, so ?tab=plans without it opens Milestones.
 export function projectTabsFor(plans: boolean): Tab<StreamTab>[] {
-  const [stream, ...rest] = streamBaseTabs
-  const tabs: Tab<StreamTab>[] = [stream!, { id: 'decisions', label: 'Decisions' }, ...rest]
+  const [activity, ...rest] = streamBaseTabs
+  const tabs: Tab<StreamTab>[] = [
+    { id: 'milestones', label: 'Milestones' },
+    activity!,
+    { id: 'decisions', label: 'Decisions' },
+    ...rest,
+  ]
   return plans ? [...tabs, { id: 'plans', label: 'Plans' }] : tabs
 }
 
@@ -82,7 +88,7 @@ export function milestoneTabsFor(m: { stored?: boolean; retrospective?: unknown 
 
 export const dashboardTabs: Tab<DashboardTab>[] = [
   { id: 'overview', label: 'Overview' },
-  { id: 'stream', label: 'Stream' },
+  { id: 'activity', label: 'Activity' },
 ]
 
 // taskTabs are all of a task's tabs; a task shows those it has content
@@ -100,8 +106,9 @@ type QueryValue = string | null | (string | null)[] | undefined
 
 // tabAliases are the old ids of renamed tabs, so old links keep working:
 // the Spend tab became Metrics (R17 of the milestone "Desk: one Metrics
-// page").
-const tabAliases: Readonly<Record<string, string>> = { spend: 'metrics' }
+// page"), and the Stream tab became Activity (R4 of "Desk: one header and
+// one row of tabs on every page").
+const tabAliases: Readonly<Record<string, string>> = { spend: 'metrics', stream: 'activity' }
 
 // tabAlias is the current id of a ?tab= value: the renamed tab's id for an
 // old one, the value itself otherwise.
@@ -109,7 +116,7 @@ export function tabAlias(v: string | null | undefined): string | null | undefine
   return v != null && Object.hasOwn(tabAliases, v) ? tabAliases[v] : v
 }
 
-// tabFromQuery reads ?tab= against tabs (Stream, Board, Metrics by
+// tabFromQuery reads ?tab= against tabs (Activity, Board, Metrics by
 // default), old ids through tabAlias: unknown, empty or repeated values
 // fall back to the first known one, else to the list's first tab.
 export function tabFromQuery(v: QueryValue): BaseTab
@@ -144,8 +151,8 @@ export function taskTabFromRoute(v: QueryValue, hash: string, available: readonl
 }
 
 // tabQuery is the query for a tab, keeping the other parameters; the
-// list's first tab (Stream on the project tabs, the default list) drops
-// the parameter.
+// list's first tab (Milestones on the project tabs, Activity on the
+// default list) drops the parameter.
 export function tabQuery<Q extends Record<string, unknown>>(
   query: Q,
   tab: string,

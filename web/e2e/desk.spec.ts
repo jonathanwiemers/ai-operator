@@ -53,18 +53,20 @@ interface Route {
 
 // What the project and milestone tabs show once loaded (e2e/fixtures/stream.ts).
 const projectReady = {
-  stream: 'Run 2 needs input',
+  activity: 'Run 2 needs input',
   decisions: 'Refund in the order currency',
   board: 'Guest checkout: confirmation mail',
   metrics: 'Cache-read share',
 }
+// projectMilestonesReady: the project's default tab, Milestones, has loaded.
+const projectMilestonesReady = (page: Page) => expect(page.locator('main [data-finishing-entry]').first()).toBeVisible()
 const milestoneReady = {
   issues: 'Document the refund flow for support',
   needs: 'Split across captures',
   decisions: 'Refund in the order currency',
   pilot: 'Message the pilot',
   retrospective: 'Retry the registry push in the release job',
-  stream: 'Run 2 needs input',
+  activity: 'Run 2 needs input',
   board: 'Partial captures for split shipments',
   metrics: 'Cache-read share',
 }
@@ -112,8 +114,8 @@ const routes: Route[] = [
     ready: (page) => expect(page.getByText('Checkout without account').first()).toBeVisible(),
   },
   {
-    name: 'overview-stream',
-    path: '/?tab=stream',
+    name: 'overview-activity',
+    path: '/?tab=activity',
     ready: (page) => expect(page.getByText('Review round 2').first()).toBeVisible(),
   },
   {
@@ -136,21 +138,21 @@ const routes: Route[] = [
     path: '/metrics?range=90d&group=model&kind=implement',
     ready: costsReady,
   },
-  ...(['stream', 'decisions', 'board', 'metrics'] as const).map(
+  ...(['activity', 'decisions', 'board', 'metrics'] as const).map(
     (tab): Route => ({
       name: `stream-project-${tab}`,
       path: `/projects/team-a/shop?tab=${tab}`,
       ready: (page) => expect(page.locator('main').getByText(projectReady[tab]).first()).toBeVisible(),
     }),
   ),
-  // The project page's Queue and Finishing in the dark tokens.
+  // The project page's default tab, Milestones (Queue and Finishing), in the dark tokens.
   {
     name: 'stream-project-dark',
     path: '/projects/team-a/shop',
     colorScheme: 'dark',
-    ready: (page) => expect(page.locator('[data-finishing-entry]').first()).toBeVisible(),
+    ready: projectMilestonesReady,
   },
-  ...(['issues', 'needs', 'decisions', 'pilot', 'retrospective', 'stream', 'board', 'metrics'] as const).map(
+  ...(['issues', 'needs', 'decisions', 'pilot', 'retrospective', 'activity', 'board', 'metrics'] as const).map(
     (tab): Route => ({
       name: `stream-milestone-${tab}`,
       path: `/projects/team-a/shop/milestones/14?tab=${tab}`,
@@ -587,7 +589,7 @@ test.describe('sign in again', () => {
   // provider's stand-in sends the browser straight back to the route.
   for (const c of [
     { route: 'task-chat', composer: '.composer.chat', text: 'Half a thought for the agent' },
-    { route: 'stream-project-stream', composer: '.composer.note', text: 'A note not sent yet' },
+    { route: 'stream-project-activity', composer: '.composer.note', text: 'A note not sent yet' },
   ]) {
     test(`unsent text in ${c.composer} survives the sign-in@1280`, async ({ page, baseURL }) => {
       const route = routes.find((r) => r.name === c.route)!
@@ -1003,7 +1005,7 @@ test('stream-milestone RouteTabs scroll inside the strip@375', async ({ page, ba
 // active tab alone has aria-current="page", and a tab row never sits inside
 // another one.
 for (const { name, label, current } of [
-  { name: 'stream-project-stream', label: 'View', current: 'Stream' },
+  { name: 'stream-project-activity', label: 'View', current: 'Activity' },
   { name: 'task', label: 'Task', current: 'Overview' },
 ]) {
   test(`${name} RouteTabs mark one tab current@1280`, async ({ page, baseURL }) => {
@@ -1034,6 +1036,58 @@ for (const { name, label, current } of [
   })
 }
 
+// Project tabs (R4 of "Desk: one header and one row of tabs"): a project
+// opens on Milestones with the queue, the feed is on Activity, and an old
+// ?tab=stream link opens Activity on a project and on the dashboard.
+test.describe('Milestones and Activity tabs', () => {
+  async function open(page: Page, baseURL: string | undefined, path: string): Promise<Problems> {
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.clock.setFixedTime(now)
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, { name: 'tabs', path, ready: async () => {} }, problems)
+    await page.goto(path)
+    return problems
+  }
+
+  test('a project opens on Milestones with the queue@1280', async ({ page, baseURL }) => {
+    const problems = await open(page, baseURL, '/projects/team-a/shop')
+    await projectMilestonesReady(page)
+    const tabs = page.locator('main').getByRole('navigation', { name: 'View' }).getByRole('link')
+    await expect(tabs).toHaveText(['Milestones', 'Activity', 'Decisions', 'Board', 'Metrics'])
+    await expect(tabs.nth(0)).toHaveAttribute('aria-current', 'page')
+    await expect(page.locator('main [data-queue-entry]').first()).toBeVisible()
+    await expect(page.locator('main ul[aria-label="In progress"]')).toBeVisible()
+    // The feed and its search are on Activity.
+    await expect(page.locator('main [data-stream-filter]')).toHaveCount(0)
+    await expect(page.getByRole('searchbox', { name: 'Search activity' })).toHaveCount(0)
+    await tabs.nth(1).click()
+    await expect(page).toHaveURL(/\/projects\/team-a\/shop\?tab=activity$/)
+    await expect(page.locator('main').getByText(projectReady.activity).first()).toBeVisible()
+    await expect(page.locator('main [data-queue-entry]')).toHaveCount(0)
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+
+  for (const path of ['/projects/team-a/shop?tab=stream', '/?tab=stream']) {
+    test(`${path} opens Activity@1280`, async ({ page, baseURL }) => {
+      const problems = await open(page, baseURL, path)
+      const strip = page.locator('main').getByRole('navigation', { name: 'View' })
+      await expect(strip.locator('a[aria-current="page"]')).toHaveText(/^Activity/)
+      await expect(page.locator('main [data-stream-filter]')).toBeVisible()
+      await expect(page.getByRole('searchbox', { name: 'Search activity' })).toBeVisible()
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
+  }
+
+  test('the dashboard tabs read Overview · Activity@1280', async ({ page, baseURL }) => {
+    const problems = await open(page, baseURL, '/')
+    const tabs = page.locator('main').getByRole('navigation', { name: 'View' }).getByRole('link')
+    await expect(tabs).toHaveText(['Overview', 'Activity'])
+    await expect(tabs.nth(0)).toHaveAttribute('aria-current', 'page')
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+})
+
 // The stream header (Stream.vue, docs/contributing/web-ui.md "Stream header"): on a phone the
 // title, the tab strip and the search each take a full-width row, in that
 // order, and the search is 16 px; from 760 px the search sits beside the
@@ -1043,7 +1097,7 @@ for (const { width, height, phone } of [
   { width: 1280, height: 900, phone: false },
 ]) {
   test(`stream-project header rows@${width}`, async ({ page, baseURL }) => {
-    const route = routes.find((r) => r.name === 'stream-project-stream')!
+    const route = routes.find((r) => r.name === 'stream-project-activity')!
     const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
     await page.setViewportSize({ width, height })
     await page.clock.setFixedTime(now)
@@ -1216,10 +1270,10 @@ for (const { width, height, phone } of [
       expect(await fontSize(composer), 'task composer on a desktop').toBeLessThan(16)
     }
 
-    const stream = routes.find((r) => r.name === 'stream-project-stream')!
+    const stream = routes.find((r) => r.name === 'stream-project-activity')!
     await page.goto(stream.path)
     await stream.ready(page)
-    const search = page.getByRole('searchbox', { name: 'Search stream' })
+    const search = page.getByRole('searchbox', { name: 'Search activity' })
     await expect(search).toBeVisible()
     if (phone) expect(await fontSize(search), 'stream search').toBeGreaterThanOrEqual(16)
     else expect(await fontSize(search), 'stream search on a desktop').toBeLessThan(16)
@@ -1462,7 +1516,7 @@ test('costs redirects to metrics with the same filters@1280', async ({ page, bas
 })
 
 test('project stream links to its metrics@1280', async ({ page, baseURL }) => {
-  const route = routes.find((r) => r.name === 'stream-project-stream')!
+  const route = routes.find((r) => r.name === 'stream-project-activity')!
   const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
   await page.setViewportSize(widths[2]!)
   await page.clock.setFixedTime(now)
@@ -1967,7 +2021,7 @@ test('overview buttons keep their desktop height@1280', async ({ page, baseURL }
 // they were and no history entry behind, and the page does not load its data
 // again: the API requests stay at their count.
 test.describe('rail sheet', () => {
-  const start = routes.find((r) => r.name === 'stream-project-stream')!
+  const start = routes.find((r) => r.name === 'stream-project-activity')!
 
   // apiCount counts the API requests of the page but the event stream.
   function apiCount(page: Page): () => number {
@@ -2052,7 +2106,7 @@ test.describe('rail sheet', () => {
       expect(await sameRoute(page), 'the router did not navigate').toBe(true)
       // The focus is back on the button that opened the sheet (Decision 6).
       await expect(page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Projects' })).toBeFocused()
-      await expect(page.locator('main').getByText(projectReady.stream).first()).toBeVisible()
+      await expect(page.locator('main').getByText(projectReady.activity).first()).toBeVisible()
       // A reload of the page's data would come within this time.
       await page.waitForTimeout(500)
       await page.waitForLoadState('networkidle')
@@ -2087,7 +2141,7 @@ test.describe('rail sheet', () => {
     await sheet.getByRole('link', { name: /^shop/ }).click()
     await expect(page).toHaveURL(/\/projects\/team-a\/shop$/)
     await expect(sheet).toBeHidden()
-    await start.ready(page)
+    await projectMilestonesReady(page)
     expect(await page.evaluate(() => (history.state as Record<string, unknown> | null)?.__sheet)).toBeUndefined()
     // The new page's h1 has the focus, not the button that opened the sheet.
     await expect(page.locator('main h1')).toBeFocused()
@@ -2173,7 +2227,7 @@ test.describe('rail sheet', () => {
     await page.goBack()
     await expect(sheet).toBeHidden()
     expect(page.url()).toBe(url)
-    await expect(page.locator('main').getByText(projectReady.stream).first()).toBeVisible()
+    await expect(page.locator('main').getByText(projectReady.activity).first()).toBeVisible()
     await expect(page.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Projects' })).toHaveAttribute('aria-expanded', 'false')
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
   })
@@ -2191,7 +2245,7 @@ test.describe('rail sheet', () => {
 // and neither page has the button.
 test.describe('context sheet', () => {
   const pages = [
-    { page: 'project', route: routes.find((r) => r.name === 'stream-project-stream')!, milestone: /^Checkout without account/ },
+    { page: 'project', route: routes.find((r) => r.name === 'stream-project-activity')!, milestone: /^Checkout without account/ },
     { page: 'milestone', route: routes.find((r) => r.name === 'stream-milestone-issues')!, milestone: /^Payment providers/ },
   ]
   const sections = (m: RegExp) => [/^Needs you/, m, /^Companions/, /^Last 30 days/]
@@ -2322,12 +2376,12 @@ test.describe('context sheet', () => {
   // The project's stream and board beside the open panel: neither the
   // content column nor a scroller in it scrolls sideways, and the panel
   // itself does not either.
-  for (const tab of ['stream', 'board'] as const) {
+  for (const tab of ['milestones', 'activity', 'board'] as const) {
     test(`project ${tab} beside the panel does not scroll sideways@1180`, async ({ page, baseURL }, testInfo) => {
-      const problems = await load(page, baseURL, routes.find((r) => r.name === `stream-project-${tab}`)!, edgeWidths[2]!)
+      const problems = await load(page, baseURL, routes.find((r) => r.name === (tab === 'milestones' ? 'stream-project-dark' : `stream-project-${tab}`))!, edgeWidths[2]!)
       const panel = page.locator('aside.ctxp')
       await expect(panel).toBeVisible()
-      if (tab === 'stream') {
+      if (tab === 'milestones') {
         // The paused queue entry: a short badge, the reason on a line of its own.
         const paused = page.locator('[data-queue-entry]').filter({ hasText: 'Payment providers' })
         await expect(paused.getByText('Paused', { exact: true })).toBeVisible()
@@ -2510,7 +2564,7 @@ test.describe('bottom bar', () => {
 test.describe('landmarks and route focus', () => {
   const overview = routes.find((r) => r.name === 'overview')!
   const metrics = routes.find((r) => r.name === 'metrics')!
-  const project = routes.find((r) => r.name === 'stream-project-stream')!
+  const project = routes.find((r) => r.name === 'stream-project-activity')!
   const milestone = routes.find((r) => r.name === 'stream-milestone-issues')!
   const sizes = [
     { width: 375, height: 812 },
@@ -2573,7 +2627,7 @@ test.describe('landmarks and route focus', () => {
     await expect(page).toHaveTitle(/^\(\d+\) .+ · Desk$/)
     await page.locator('.rail').getByRole('link', { name: /^shop/ }).click()
     await expect(page).toHaveURL(/\/projects\/team-a\/shop$/)
-    await project.ready(page)
+    await projectMilestonesReady(page)
     await landedOn(page)
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
   })
@@ -2682,7 +2736,7 @@ test.describe('reduced motion', () => {
   test.use({ reducedMotion: 'reduce' })
 
   test('the context sheet opens without motion and still unmounts@375', async ({ page, baseURL }) => {
-    const route = routes.find((r) => r.name === 'stream-project-stream')!
+    const route = routes.find((r) => r.name === 'stream-project-activity')!
     const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
     await page.setViewportSize({ width: 375, height: 812 })
     await page.clock.setFixedTime(now)
@@ -2837,7 +2891,7 @@ test.describe('block markdown', () => {
 // strong and code, shows no literal asterisks, and nests no link in a link.
 test.describe('inline markdown', () => {
   for (const { width, height } of [widths[0]!, widths[2]!]) {
-    for (const name of ['inbox', 'stream-milestone-stream', 'stream-milestone-pilot']) {
+    for (const name of ['inbox', 'stream-milestone-activity', 'stream-milestone-pilot']) {
       test(`${name} shows no literal ** and no nested links@${width}`, async ({ page, baseURL }, testInfo) => {
         const route = routes.find((r) => r.name === name)!
         const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
@@ -2967,7 +3021,7 @@ test.describe('composer', () => {
     })
 
     test(`project stream posts a note@${size.width}`, async ({ page, baseURL }, testInfo) => {
-      const { route, problems } = await open(page, baseURL, 'stream-project-stream', size)
+      const { route, problems } = await open(page, baseURL, 'stream-project-activity', size)
       const posts = await capture(page, /\/api\/v1\/projects\/team-a\/shop\/(milestones\/\d+|tasks\/[^/]+)\/notes$/, {})
       await page.goto(route.path)
       await route.ready(page)
@@ -3130,7 +3184,7 @@ test.describe('prompt card', () => {
     })
 
     test(`stream shows a prompt as one line without buttons@${size.width}`, async ({ page, baseURL }, testInfo) => {
-      const { problems, posts } = await open(page, baseURL, 'stream-milestone-stream', size)
+      const { problems, posts } = await open(page, baseURL, 'stream-milestone-activity', size)
       // The prompt.posted row of the stream (e2e/fixtures/overview.ts): the
       // question from status, its state and a link to the card (R9).
       await expect(page.locator(`[data-prompt="${refundsPrompt.id}"]`)).toHaveCount(0)
@@ -3216,7 +3270,7 @@ test.describe('note thread', () => {
     })
 
     test(`stream thread folds earlier notes@${size.width}`, async ({ page, baseURL }, testInfo) => {
-      const route = routes.find((r) => r.name === 'stream-milestone-stream')!
+      const route = routes.find((r) => r.name === 'stream-milestone-activity')!
       const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
       await page.setViewportSize(size)
       await page.clock.setFixedTime(now)
@@ -3254,7 +3308,7 @@ test.describe('note thread', () => {
 test.describe('milestone rows', () => {
   const pages = [
     { name: 'overview', project: true },
-    { name: 'stream-project-stream', project: false },
+    { name: 'stream-project-dark', project: false },
   ]
   for (const { name, project } of pages) {
     for (const size of edgeWidths) {
@@ -3834,9 +3888,10 @@ test.describe('milestone decisions', () => {
 
     const main = page.locator('main')
     const tabs = page.getByRole('navigation', { name: 'View' }).getByRole('link')
-    await expect(tabs.nth(0)).toHaveText('Stream')
-    await expect(tabs.nth(1)).toHaveText('Decisions')
-    await expect(tabs.nth(1)).toHaveAttribute('aria-current', 'page')
+    await expect(tabs.nth(0)).toHaveText('Milestones')
+    await expect(tabs.nth(1)).toHaveText('Activity')
+    await expect(tabs.nth(2)).toHaveText('Decisions')
+    await expect(tabs.nth(2)).toHaveAttribute('aria-current', 'page')
     await expect(main.locator('[data-decision]')).toHaveCount(4)
     await expect(main.locator('[data-decision-milestone]').first()).toHaveText(paymentsMilestone.title)
     expect(asked.at(-1)).toBe('')
@@ -4738,7 +4793,7 @@ test.describe('research list and form', () => {
 // (the menu opened from the rail sheet) the line wraps on the screen, in
 // both color schemes.
 test.describe('login lifetime line', () => {
-  const start = routes.find((r) => r.name === 'stream-project-stream')!
+  const start = routes.find((r) => r.name === 'stream-project-activity')!
   const variants = [
     { name: 'renewing', me: { renewing: true, idleUntil: '2030-01-08T09:00:00Z' }, text: /^Signed in until .*\d.* unless you are away longer$/ },
     { name: 'fixed', me: { renewing: false, idleUntil: '2030-01-08T09:00:00Z' }, text: /^Signed in until .*\d/ },
@@ -4780,7 +4835,7 @@ test.describe('login lifetime line', () => {
 // The account menu says which release runs and whether a newer one is on its
 // way (RailNav.vue, aboutLine). At 375 px it opens from the rail sheet.
 test.describe('about line', () => {
-  const start = routes.find((r) => r.name === 'stream-project-stream')!
+  const start = routes.find((r) => r.name === 'stream-project-activity')!
   for (const colorScheme of ['light', 'dark'] as const) {
     test(`version and update note in ${colorScheme}@375`, async ({ page, baseURL }) => {
       const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
@@ -4811,7 +4866,7 @@ test.describe('about line', () => {
 // close it. Projects and milestones are filtered here, issues and merge
 // requests come from GET /search.
 test.describe('search palette', () => {
-  const start = routes.find((r) => r.name === 'stream-project-stream')!
+  const start = routes.find((r) => r.name === 'stream-project-activity')!
   const placeholder = 'Search projects, milestones, issues, !MR'
 
   // No fixed clock: Vue skips a handler attached at the event's own
@@ -5065,7 +5120,7 @@ test('metrics: canvases are labelled images and Show as table is one Tab away', 
 // Heatmap cells (views/Stream.vue, R7): a label with the date and the count,
 // and a text summary.
 test('heatmap cells carry a date and count label@1280', async ({ page, baseURL }) => {
-  const route = routes.find((r) => r.name === 'stream-project-stream')!
+  const route = routes.find((r) => r.name === 'stream-project-activity')!
   const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
   await page.setViewportSize({ width: 1280, height: 900 })
   await page.clock.setFixedTime(now)
@@ -5255,7 +5310,7 @@ test.describe('screen reader flows', () => {
             - listitem:
               - link "Retrospective"
             - listitem:
-              - link "Stream"
+              - link "Activity"
             - listitem:
               - link "Board"
             - listitem:

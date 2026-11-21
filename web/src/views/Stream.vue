@@ -80,8 +80,8 @@ const props = defineProps<{
 const everything = computed(() => !props.namespace || !props.name)
 const milestoneIID = computed(() => (props.iid ? Number(props.iid) : undefined))
 
-// tab: Stream, Decisions, Board, Spend or Plans (feature plans) on project streams, Issues (the default),
-// Needs you, Decisions, Pilot, Retrospective, Stream, Board or Spend on milestones, kept in ?tab= so it can be
+// tab: Milestones (the default), Activity, Decisions, Board, Metrics or Plans (feature plans) on projects, Issues (the default),
+// Needs you, Decisions, Pilot, Retrospective, Activity, Board or Metrics on milestones, kept in ?tab= so it can be
 // linked to (a #prompt-Q<n> link without it opens Needs you); Everything has no
 // tabs. A stored milestone has no tasks, so no Board, and a milestone shows
 // Retrospective only once it has one (milestoneTabsFor). The Needs you tab's
@@ -99,7 +99,7 @@ const tabs = computed(() => {
 // ?tab=retrospective link waits for it; once loaded, a hidden tab falls
 // back to the first one (Decision 12).
 const tab = computed((): string => {
-  if (everything.value) return 'stream'
+  if (everything.value) return 'activity'
   if (props.problem) return 'needs'
   if (milestoneIID.value) {
     const loaded = milestone.value?.iid === milestoneIID.value || milestoneFailed.value
@@ -130,7 +130,7 @@ const decisionsMilestoneItems = computed(() => {
 function setDecisionsMilestone(iid: number) {
   void router.replace({ query: decisionsQuery(route.query, { milestone: iid }) })
 }
-// A milestone's Stream tab has the runtime kinds only; the Pilot tab the rest.
+// A milestone's Activity tab has the runtime kinds only; the Pilot tab the rest.
 const filters = computed(() => (milestoneIID.value ? runtimeStreamFilters : streamFilters))
 const q = ref('')
 const qDraft = ref('')
@@ -179,7 +179,7 @@ const note = useStreamNote(
     name: props.name ?? '',
     project: project.value,
     steer: milestone.value?.permissions?.steer,
-    shown: tab.value === 'stream' && !everything.value && !milestoneIID.value,
+    shown: tab.value === 'activity' && !everything.value && !milestoneIID.value,
   }),
   () => void loadInitial(),
 )
@@ -224,7 +224,7 @@ const pauseProps = computed(() => {
   }
 })
 
-// holdProps: one compact card per held issue (stream tab; the Issues tab has
+// holdProps: one compact card per held issue (Activity tab; the Issues tab has
 // the Held lane, the Needs you tab the full cards), also while the milestone runs.
 const holdProps = computed(() => {
   const m = milestone.value
@@ -490,7 +490,7 @@ watch(
            (below 1180 px) on the right. The tab strip follows; on phones it
            and the search take a full row each, from 760 px they share one
            row, the search on the right, shrinking from 180 px to 64 px
-           before it would wrap. On the dashboard's Stream tab (everything)
+           before it would wrap. On the dashboard's Activity tab (everything)
            the dashboard has the header. -->
       <div data-stream-head class="bg-(--bg) px-4 pt-3.5 tablet:px-7">
         <UPageHeader v-if="!everything" :title="title" :ui="pageHeaderUi">
@@ -535,7 +535,7 @@ watch(
           />
           <span class="hidden flex-1 tablet:block" />
           <form
-            v-if="tab === 'stream'"
+            v-if="tab === 'activity'"
             role="search"
             class="basis-full tablet:max-w-45 tablet:grow tablet:basis-16"
             @submit.prevent="applySearch"
@@ -544,14 +544,14 @@ watch(
               v-model="qDraft"
               type="search"
               placeholder="Search…"
-              aria-label="Search stream"
+              aria-label="Search activity"
               icon="i-lucide-search"
               class="w-full"
               :ui="{ base: 'tablet:text-sm/5' }"
             />
           </form>
         </div>
-        <div v-if="tab === 'stream' && heatDays.length" class="heat" title="Activity per day; click to jump">
+        <div v-if="tab === 'activity' && heatDays.length" class="heat" title="Activity per day; click to jump">
           <span>{{ heatRange.start }}</span>
           <span class="sr-only" data-heat-summary>{{ heatDescription }}</span>
           <div class="cells" @pointerover="showHeatHint" @focusin="showHeatHint" @pointerleave="heatHint = null" @focusout="heatHint = null">
@@ -574,9 +574,10 @@ watch(
         </div>
       </div>
 
-      <div v-if="tab === 'stream'" class="scroll stream">
-        <!-- A project's milestones (R9), in the dashboard's lists. -->
-        <div v-if="!everything && !milestoneIID && namespace && name" class="milestones">
+      <!-- A project's milestones (R9), in the dashboard's lists: the
+           project's default tab. -->
+      <div v-if="tab === 'milestones'" class="scroll board">
+        <div v-if="namespace && name" class="milestones">
           <ProjectQueue
             v-if="project"
             class="mb-3"
@@ -588,7 +589,8 @@ watch(
           <ProjectFinishing v-if="project" class="mb-3" :namespace="namespace" :name="name" :finishing="project.finishing ?? []" :gitlab="project.gitlab.url" />
           <MilestoneSections :namespace="namespace" :name="name" />
         </div>
-
+      </div>
+      <div v-else-if="tab === 'activity'" class="scroll stream">
         <!-- The event kind is a local switch (decision 8): UTabs pills. -->
         <UTabs
           :model-value="filter"
@@ -609,7 +611,7 @@ watch(
         <DeskChat
           v-else
           class="min-h-[60dvh]"
-          label="Stream"
+          label="Activity"
           :messages="streamChat"
           :older="!!older"
           :loading-older="loadingOlder"
@@ -824,7 +826,7 @@ watch(
 .scroll.board {
   padding-top: 18px;
 }
-/* The stream tab is a chat: the feed scrolls, the composer stays below. */
+/* The Activity tab is a chat: the feed scrolls, the composer stays below. */
 .scroll.stream {
   display: flex;
   flex-direction: column;

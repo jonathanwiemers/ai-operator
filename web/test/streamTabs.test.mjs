@@ -19,11 +19,11 @@ import {
   taskTabs,
 } from '../src/streamTabs.ts'
 
-test('tabFromQuery: stream is the default', () => {
-  assert.equal(tabFromQuery(undefined), 'stream')
-  assert.equal(tabFromQuery(null), 'stream')
-  assert.equal(tabFromQuery(''), 'stream')
-  assert.equal(tabFromQuery('stream'), 'stream')
+test('tabFromQuery: activity is the default', () => {
+  assert.equal(tabFromQuery(undefined), 'activity')
+  assert.equal(tabFromQuery(null), 'activity')
+  assert.equal(tabFromQuery(''), 'activity')
+  assert.equal(tabFromQuery('activity'), 'activity')
 })
 
 test('tabFromQuery: known tabs are kept', () => {
@@ -31,49 +31,51 @@ test('tabFromQuery: known tabs are kept', () => {
   assert.equal(tabFromQuery('metrics'), 'metrics')
 })
 
-test('tabFromQuery: unknown tabs fall back to stream', () => {
-  assert.equal(tabFromQuery('cost'), 'stream')
-  assert.equal(tabFromQuery('Board'), 'stream')
+test('tabFromQuery: unknown tabs fall back to activity', () => {
+  assert.equal(tabFromQuery('cost'), 'activity')
+  assert.equal(tabFromQuery('Board'), 'activity')
 })
 
 test('tabFromQuery: repeated values take the first known one', () => {
   assert.equal(tabFromQuery(['x', 'board']), 'board')
-  assert.equal(tabFromQuery([null, 'x']), 'stream')
+  assert.equal(tabFromQuery([null, 'x']), 'activity')
 })
 
-test('tabQuery: stream drops the parameter, other tabs set it', () => {
-  assert.deepEqual(tabQuery({ tab: 'board', q: 'x' }, 'stream'), { q: 'x' })
+test('tabQuery: activity drops the parameter, other tabs set it', () => {
+  assert.deepEqual(tabQuery({ tab: 'board', q: 'x' }, 'activity'), { q: 'x' })
   assert.deepEqual(tabQuery({ q: 'x' }, 'board'), { q: 'x', tab: 'board' })
-  assert.deepEqual(tabQuery({}, 'stream'), {})
+  assert.deepEqual(tabQuery({}, 'activity'), {})
 })
 
-test('streamBaseTabs: Stream comes first', () => {
-  assert.equal(streamBaseTabs[0].id, 'stream')
+test('streamBaseTabs: Activity comes first', () => {
+  assert.equal(streamBaseTabs[0].id, 'activity')
 })
 
-test('dashboard tabs: Overview is the default, Stream by ?tab=stream', () => {
+test('dashboard tabs: Overview · Activity, Overview is the default, ?tab=stream opens Activity', () => {
+  assert.deepEqual(dashboardTabs.map((t) => t.label), ['Overview', 'Activity'])
   assert.equal(dashboardTabs[0].id, 'overview')
   assert.equal(tabFromQuery(undefined, dashboardTabs), 'overview')
   assert.equal(tabFromQuery('', dashboardTabs), 'overview')
-  assert.equal(tabFromQuery('stream', dashboardTabs), 'stream')
+  assert.equal(tabFromQuery('stream', dashboardTabs), 'activity')
   assert.equal(tabFromQuery('board', dashboardTabs), 'overview')
-  assert.equal(tabFromQuery(['x', 'stream'], dashboardTabs), 'stream')
+  assert.equal(tabFromQuery(['x', 'stream'], dashboardTabs), 'activity')
 })
 
-test('dashboard tabQuery: overview drops the parameter, stream sets it', () => {
-  assert.deepEqual(tabQuery({ tab: 'stream', q: 'x' }, 'overview', dashboardTabs), { q: 'x' })
-  assert.deepEqual(tabQuery({}, 'stream', dashboardTabs), { tab: 'stream' })
+test('dashboard tabQuery: overview drops the parameter, activity sets it', () => {
+  assert.deepEqual(tabQuery({ tab: 'activity', q: 'x' }, 'overview', dashboardTabs), { q: 'x' })
+  assert.deepEqual(tabQuery({}, 'activity', dashboardTabs), { tab: 'activity' })
 })
 
 test('milestone tabs: Issues is the default', () => {
-  assert.deepEqual(milestoneTabs.map((t) => t.id), ['issues', 'needs', 'decisions', 'pilot', 'retrospective', 'stream', 'board', 'metrics'])
+  assert.deepEqual(milestoneTabs.map((t) => t.id), ['issues', 'needs', 'decisions', 'pilot', 'retrospective', 'activity', 'board', 'metrics'])
   assert.equal(tabFromQuery(undefined, milestoneTabs), 'issues')
   assert.equal(tabFromQuery('', milestoneTabs), 'issues')
   assert.equal(tabFromQuery('issues', milestoneTabs), 'issues')
 })
 
-test('milestone tabs: old ?tab=stream links open the stream', () => {
-  assert.equal(tabFromQuery('stream', milestoneTabs), 'stream')
+test('milestone tabs: old ?tab=stream links open Activity', () => {
+  assert.ok(milestoneTabs.some((t) => t.id === 'activity' && t.label === 'Activity'))
+  assert.equal(tabFromQuery('stream', milestoneTabs), 'activity')
   assert.equal(tabFromQuery('board', milestoneTabs), 'board')
   assert.equal(tabFromQuery('metrics', milestoneTabs), 'metrics')
 })
@@ -85,16 +87,16 @@ test('milestone tabs: unknown values fall back to Issues', () => {
 })
 
 test('project tabs: issues is unknown there', () => {
-  assert.equal(tabFromQuery('issues', projectTabsFor(true)), 'stream')
+  assert.equal(tabFromQuery('issues', projectTabsFor(true)), 'milestones')
 })
 
-test('milestone tabQuery: Issues drops the parameter, Stream sets it', () => {
+test('milestone tabQuery: Issues drops the parameter, Activity sets it', () => {
   assert.deepEqual(tabQuery({ tab: 'board', q: 'x' }, 'issues', milestoneTabs), { q: 'x' })
-  assert.deepEqual(tabQuery({}, 'stream', milestoneTabs), { tab: 'stream' })
+  assert.deepEqual(tabQuery({}, 'activity', milestoneTabs), { tab: 'activity' })
 })
 
 test('stored milestone tabs: no Board, a board link falls back to Issues', () => {
-  assert.deepEqual(storedMilestoneTabs.map((t) => t.id), ['issues', 'needs', 'decisions', 'pilot', 'retrospective', 'stream', 'metrics'])
+  assert.deepEqual(storedMilestoneTabs.map((t) => t.id), ['issues', 'needs', 'decisions', 'pilot', 'retrospective', 'activity', 'metrics'])
   assert.equal(tabFromQuery('board', storedMilestoneTabs), 'issues')
 })
 
@@ -118,7 +120,7 @@ test('milestoneTabFromRoute: a #prompt-Q<n> hash without ?tab= opens Needs you',
 })
 
 test('milestoneTabFromRoute: ?tab= wins over the hash, other hashes keep the default', () => {
-  assert.equal(milestoneTabFromRoute('stream', '#prompt-Q4'), 'stream')
+  assert.equal(milestoneTabFromRoute('stream', '#prompt-Q4'), 'activity')
   assert.equal(milestoneTabFromRoute(undefined, ''), 'issues')
   assert.equal(milestoneTabFromRoute(undefined, '#live-transcript'), 'issues')
   assert.equal(milestoneTabFromRoute('board', ''), 'board')
@@ -182,14 +184,31 @@ test('milestone tabs: Needs you, then Decisions, sit between Issues and Pilot, a
   assert.deepEqual(storedMilestoneTabs.slice(0, 4).map((t) => t.label), ['Issues', 'Needs you', 'Decisions', 'Pilot'])
 })
 
-test('project tabs: Decisions after Stream, Plans only with the plans feature', () => {
-  assert.deepEqual(projectTabsFor(false).map((t) => t.label), ['Stream', 'Decisions', 'Board', 'Metrics'])
-  assert.deepEqual(projectTabsFor(true).map((t) => t.label), ['Stream', 'Decisions', 'Board', 'Metrics', 'Plans'])
+test('project tabs: Milestones · Activity · Decisions · Board · Metrics, Plans only with the plans feature', () => {
+  assert.deepEqual(projectTabsFor(false).map((t) => t.label), ['Milestones', 'Activity', 'Decisions', 'Board', 'Metrics'])
+  assert.deepEqual(projectTabsFor(true).map((t) => t.label), ['Milestones', 'Activity', 'Decisions', 'Board', 'Metrics', 'Plans'])
+  assert.deepEqual(projectTabsFor(true).map((t) => t.id), ['milestones', 'activity', 'decisions', 'board', 'metrics', 'plans'])
   assert.equal(tabFromQuery('decisions', projectTabsFor(false)), 'decisions')
   assert.deepEqual(tabQuery({ q: 'x' }, 'decisions', projectTabsFor(false)), { q: 'x', tab: 'decisions' })
-  assert.deepEqual(tabQuery({ tab: 'decisions', q: 'x' }, 'stream', projectTabsFor(true)), { q: 'x' })
+  assert.deepEqual(tabQuery({ tab: 'decisions', q: 'x' }, 'milestones', projectTabsFor(true)), { q: 'x' })
   assert.equal(tabFromQuery('plans', projectTabsFor(true)), 'plans')
   assert.deepEqual(tabQuery({}, 'plans', projectTabsFor(true)), { tab: 'plans' })
+})
+
+test('project tabs: Milestones is the default and drops ?tab=, Activity sets it, ?tab=stream opens Activity', () => {
+  for (const plans of [false, true]) {
+    const tabs = projectTabsFor(plans)
+    assert.equal(tabFromQuery(undefined, tabs), 'milestones')
+    assert.equal(tabFromQuery('', tabs), 'milestones')
+    assert.equal(tabFromQuery('milestones', tabs), 'milestones')
+    assert.equal(tabFromQuery('activity', tabs), 'activity')
+    assert.equal(tabFromQuery('stream', tabs), 'activity')
+    assert.equal(tabFromQuery('spend', tabs), 'metrics')
+    assert.deepEqual(tabQuery({ tab: 'activity', q: 'x' }, 'milestones', tabs), { q: 'x' })
+    assert.deepEqual(tabQuery({}, 'activity', tabs), { tab: 'activity' })
+  }
+  assert.equal(tabAlias('stream'), 'activity')
+  assert.equal(tabFromQuery('stream'), 'activity')
 })
 
 test('milestone tabs have no Plans', () => {
@@ -198,9 +217,9 @@ test('milestone tabs have no Plans', () => {
   assert.equal(tabFromQuery('plans', milestoneTabs), 'issues')
 })
 
-test('tabFromQuery: ?tab=plans without the feature falls back to Stream', () => {
-  assert.equal(tabFromQuery('plans', projectTabsFor(false)), 'stream')
-  assert.equal(tabFromQuery('plans'), 'stream')
+test('tabFromQuery: ?tab=plans without the feature falls back to the first tab', () => {
+  assert.equal(tabFromQuery('plans', projectTabsFor(false)), 'milestones')
+  assert.equal(tabFromQuery('plans'), 'activity')
 })
 
 test('Metrics tab: the Spend tab renamed, ?tab=spend still opens it', () => {
@@ -225,11 +244,11 @@ test('Metrics tab: the Spend tab renamed, ?tab=spend still opens it', () => {
 
 test('milestoneTabsFor: Retrospective only once one exists, no Board once stored', () => {
   const ids = (m) => milestoneTabsFor(m).map((t) => t.id)
-  assert.deepEqual(ids({ retrospective: { text: 'done' } }), ['issues', 'needs', 'decisions', 'pilot', 'retrospective', 'stream', 'board', 'metrics'])
-  assert.deepEqual(ids({}), ['issues', 'needs', 'decisions', 'pilot', 'stream', 'board', 'metrics'])
-  assert.deepEqual(ids({ stored: true, retrospective: { text: 'done' } }), ['issues', 'needs', 'decisions', 'pilot', 'retrospective', 'stream', 'metrics'])
-  assert.deepEqual(ids({ stored: true }), ['issues', 'needs', 'decisions', 'pilot', 'stream', 'metrics'])
-  assert.deepEqual(ids(null), ['issues', 'needs', 'decisions', 'pilot', 'stream', 'board', 'metrics'], 'hidden while the milestone loads')
+  assert.deepEqual(ids({ retrospective: { text: 'done' } }), ['issues', 'needs', 'decisions', 'pilot', 'retrospective', 'activity', 'board', 'metrics'])
+  assert.deepEqual(ids({}), ['issues', 'needs', 'decisions', 'pilot', 'activity', 'board', 'metrics'])
+  assert.deepEqual(ids({ stored: true, retrospective: { text: 'done' } }), ['issues', 'needs', 'decisions', 'pilot', 'retrospective', 'activity', 'metrics'])
+  assert.deepEqual(ids({ stored: true }), ['issues', 'needs', 'decisions', 'pilot', 'activity', 'metrics'])
+  assert.deepEqual(ids(null), ['issues', 'needs', 'decisions', 'pilot', 'activity', 'board', 'metrics'], 'hidden while the milestone loads')
 })
 
 test('milestoneTabsFor: ?tab=retrospective without one opens the default tab', () => {

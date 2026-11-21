@@ -35,7 +35,7 @@ const text = (s: string) => (page: Page) => expect(page.locator('main').getByTex
 const shots: Shot[] = [
   { name: 'dashboard', path: '/', ready: text('Checkout without account') },
   { name: 'dashboard-dark', path: '/', colorScheme: 'dark', ready: text('Checkout without account') },
-  { name: 'project-stream', path: shop, ready: text('Run 2 needs input') },
+  { name: 'project-stream', path: `${shop}?tab=activity`, ready: text('Run 2 needs input') },
   { name: 'milestone-issues', path: `${shop}/milestones/14`, ready: text('Document the refund flow for support') },
   { name: 'milestone-pilot', path: `${shop}/milestones/14?tab=needs`, ready: text('Split across captures') },
   {
