@@ -225,7 +225,13 @@ type state struct {
 	// InFlight is the implementer call running (or last cut off with the
 	// agent or the pod lost), so the next pod can save its work.
 	InFlight *inFlight `json:"inFlight,omitempty"`
-	// PlanSeenRevision is the plan's newest owner draft revision a plan turn sent.
+	// PlanSeen is the newest revision of each plan draft a plan turn sent,
+	// by draft key.
+	PlanSeen map[int64]int64 `json:"planSeen,omitempty"`
+	// PlanSeenRevision is draft 1's PlanSeen of a state from before several
+	// drafts.
+	//
+	// Deprecated: read by planSeen; a turn clears it.
 	PlanSeenRevision int64 `json:"planSeenRevision,omitempty"`
 }
 

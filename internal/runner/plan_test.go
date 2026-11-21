@@ -35,8 +35,13 @@ func (e *planTurnEngine) Run(ctx context.Context, inv Invocation) (*Result, erro
 }
 
 func planAnswer(session, reply, draft string) func(Invocation) (*Result, error) {
+	return planKeyed(session, reply, 0, draft)
+}
+
+// planKeyed answers with draft as the draft of key, none for "".
+func planKeyed(session, reply string, key int64, draft string) func(Invocation) (*Result, error) {
 	return func(Invocation) (*Result, error) {
-		b, _ := json.Marshal(PlanTurn{Reply: reply, Draft: draft})
+		b, _ := json.Marshal(PlanTurn{Reply: reply, Drafts: planTurnDrafts(key, draft)})
 		return &Result{SessionID: session, CostUSD: 0.1, Structured: b}, nil
 	}
 }
@@ -147,7 +152,7 @@ func TestPlanTurnWritesReplyAndDraft(t *testing.T) {
 
 func TestPlanTurnResumesStoredSession(t *testing.T) {
 	draft := "## Goal\n\nShow the version."
-	e := newPlanEnv(t, planAnswer("sess-plan-1", "Which page?", draft), planAnswer("sess-plan-1", "Noted.", draft))
+	e := newPlanEnv(t, planAnswer("sess-plan-1", "Which page?", draft), planKeyed("sess-plan-1", "Noted.", 1, draft))
 	e.turn(t, 10, "show the version")
 	p := e.turn(t, 11, "the footer")
 
@@ -169,11 +174,11 @@ func TestPlanTurnRelaysOwnerEditOnce(t *testing.T) {
 	e.turn(t, 10, "look at my edit")
 	p := e.turn(t, 11, "and now?")
 
-	const relay = "The owner edited the draft; it is now:\n\n## Goal\n\nOwner's words."
+	relay := planEditedRelay(1)
 	if !strings.Contains(e.engine.calls[0].Prompt, relay) {
 		t.Fatalf("first turn does not relay the edit:\n%s", e.engine.calls[0].Prompt)
 	}
-	if strings.Contains(e.engine.calls[1].Prompt, "The owner edited the draft") {
+	if strings.Contains(e.engine.calls[1].Prompt, "The owner edited") {
 		t.Fatalf("second turn relays the edit again:\n%s", e.engine.calls[1].Prompt)
 	}
 	if d := firstPlanDraft(p); d.Draft != "## Goal\n\nOwner's words." || d.By != "owner" || d.Revision != 1 {
@@ -185,19 +190,19 @@ func TestPlanTurnOwnerSaveDuringTurnWins(t *testing.T) {
 	e := newPlanEnv(t, nil, planAnswer("s", "Ok.", ""))
 	e.engine.answers[0] = func(inv Invocation) (*Result, error) {
 		e.ownerSave(t, "## Goal\n\nOwner's words.") // while the turn runs
-		return planAnswer("s", "Here is a draft.", "## Goal\n\nAgent's words.")(inv)
+		return planKeyed("s", "Here is a draft.", 1, "## Goal\n\nAgent's words.")(inv)
 	}
 	p := e.turn(t, 10, "draft it")
 
 	if d := firstPlanDraft(p); d.Draft != "## Goal\n\nOwner's words." || d.By != "owner" || d.Revision != 1 {
 		t.Fatalf("the owner's save was overwritten: %+v", p.Status)
 	}
-	if rep := lastReply(t, p, 10); rep.Text != "Here is a draft.\n\n"+planDraftKept {
+	if rep := lastReply(t, p, 10); rep.Text != "Here is a draft.\n\n"+fmt.Sprintf(planDraftKept, 1) {
 		t.Fatalf("reply: %q", rep.Text)
 	}
 	// The next turn gets the owner's draft.
 	e.turn(t, 11, "go on")
-	if !strings.Contains(e.engine.calls[1].Prompt, "The owner edited the draft; it is now:\n\n## Goal\n\nOwner's words.") {
+	if !strings.Contains(e.engine.calls[1].Prompt, planEditedRelay(1)) {
 		t.Fatalf("next turn lacks the owner's draft:\n%s", e.engine.calls[1].Prompt)
 	}
 }
@@ -205,14 +210,14 @@ func TestPlanTurnOwnerSaveDuringTurnWins(t *testing.T) {
 // A plan from before status.drafts: its single draft is the agent's draft
 // 1, relayed as the owner's edit, and the turn moves it to key 1.
 func TestPlanTurnMovesOldDraft(t *testing.T) {
-	e := newPlanEnv(t, planAnswer("s", "Saw it.", ""), planAnswer("s", "Updated.", "## Goal\n\nAgent's words."))
+	e := newPlanEnv(t, planAnswer("s", "Saw it.", ""), planKeyed("s", "Updated.", 1, "## Goal\n\nAgent's words."))
 	p := e.plan(t)
 	p.Status.Draft, p.Status.DraftRevision, p.Status.DraftBy, p.Status.DraftSHA = "## Goal\n\nOld words.", 3, "owner", "abc"
 	if err := e.k8s.Status().Update(context.Background(), p); err != nil {
 		t.Fatal(err)
 	}
 	p = e.turn(t, 10, "look at it")
-	if !strings.Contains(e.engine.calls[0].Prompt, "The owner edited the draft; it is now:\n\n## Goal\n\nOld words.") {
+	if !strings.Contains(e.engine.calls[0].Prompt, planEditedRelay(1)) {
 		t.Fatalf("the old draft is not relayed:\n%s", e.engine.calls[0].Prompt)
 	}
 	s := p.Status
@@ -373,8 +378,13 @@ func TestPlanInterruptedTurnWritesNoTitle(t *testing.T) {
 
 // planDecided answers a plan turn with a decisions list in JSON.
 func planDecided(reply, draft, decisions string) func(Invocation) (*Result, error) {
+	return planDecidedKey(reply, 0, draft, decisions)
+}
+
+// planDecidedKey answers with draft as the draft of key and a decisions list.
+func planDecidedKey(reply string, key int64, draft, decisions string) func(Invocation) (*Result, error) {
 	return func(Invocation) (*Result, error) {
-		b, _ := json.Marshal(PlanTurn{Reply: reply, Draft: draft})
+		b, _ := json.Marshal(PlanTurn{Reply: reply, Drafts: planTurnDrafts(key, draft)})
 		b = []byte(strings.Replace(string(b), `"decisions":null`, `"decisions":`+decisions, 1))
 		return &Result{SessionID: "s", CostUSD: 0.1, Structured: b}, nil
 	}
@@ -478,17 +488,17 @@ func TestPlanTurnInvalidDecisionsKeepList(t *testing.T) {
 // A list whose draft is refused is not applied either (D612-P2).
 func TestPlanTurnDecisionsFollowTheDraft(t *testing.T) {
 	d1 := decisionsJSON(decisionJSON("D1", "Placement", "locked", 0, "Rail", "Footer"))
-	e := newPlanEnv(t, nil, planDecided("Big.", strings.Repeat("x", maxPlanDraft+1), d1))
+	e := newPlanEnv(t, nil, planDecidedKey("Big.", 1, strings.Repeat("x", maxPlanDraft+1), d1))
 	e.engine.answers[0] = func(inv Invocation) (*Result, error) {
 		e.ownerSave(t, "## Goal\n\nOwner's words.") // while the turn runs
-		return planDecided("Here is a draft.", "## Goal\n\nAgent's words.", d1)(inv)
+		return planDecidedKey("Here is a draft.", 1, "## Goal\n\nAgent's words.", d1)(inv)
 	}
 	p := e.turn(t, 10, "draft it")
-	if len(p.Status.Decisions) != 0 || p.Status.DecisionSeq != 0 || lastReply(t, p, 10).Text != "Here is a draft.\n\n"+planDraftKept {
+	if len(p.Status.Decisions) != 0 || p.Status.DecisionSeq != 0 || lastReply(t, p, 10).Text != "Here is a draft.\n\n"+fmt.Sprintf(planDraftKept, 1) {
 		t.Fatalf("draft kept: reply %q, decisions %+v", lastReply(t, p, 10).Text, p.Status.Decisions)
 	}
 	p = e.turn(t, 11, "more")
-	if len(p.Status.Decisions) != 0 || lastReply(t, p, 11).Text != "Big.\n\n"+planDraftLarge {
+	if len(p.Status.Decisions) != 0 || lastReply(t, p, 11).Text != "Big.\n\n"+fmt.Sprintf(planDraftLarge, "draft 1") {
 		t.Fatalf("draft too large: reply %q, decisions %+v", lastReply(t, p, 11).Text, p.Status.Decisions)
 	}
 }
@@ -609,4 +619,12 @@ func TestPlanInterruptedTurnSignsOffNothing(t *testing.T) {
 	if rep, _ := replyFor(p, 11); rep.Error != "interrupted" || p.Status.Decisions[0].SignedOffBy != "" {
 		t.Fatalf("reply %+v, decisions %+v", rep, p.Status.Decisions)
 	}
+}
+
+// planTurnDrafts is the agent's drafts list with draft as key's, none for "".
+func planTurnDrafts(key int64, draft string) []planTurnDraft {
+	if draft == "" {
+		return nil
+	}
+	return []planTurnDraft{{Key: key, Draft: draft}}
 }

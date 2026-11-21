@@ -44,10 +44,10 @@ type planMilestoneInfo struct {
 }
 
 // writePlanFiles writes the milestone files of this turn into the agent's
-// checkout: the runner writes them to the exchange directory, the agent
-// copies them over. refs are the IIDs the owner names. A failure is logged;
-// the turn runs without them.
-func (p *PlanRun) writePlanFiles(ctx context.Context, projectRef, project string, refs []int64) []planMilestoneInfo {
+// checkout, and the plan's drafts: the runner writes them to the exchange
+// directory, the agent copies them over. refs are the IIDs the owner names.
+// A failure is logged; the turn runs without them.
+func (p *PlanRun) writePlanFiles(ctx context.Context, projectRef, project string, refs []int64, drafts []aiv1.PlanDraft) []planMilestoneInfo {
 	dir := filepath.Join(p.Exchange, "plan")
 	defer os.RemoveAll(dir)
 	var infos []planMilestoneInfo
@@ -65,6 +65,9 @@ func (p *PlanRun) writePlanFiles(ctx context.Context, projectRef, project string
 	}
 	if err != nil {
 		p.Log.Info("plan turn with incomplete milestone files", "error", err.Error())
+	}
+	if err := writePlanDrafts(filepath.Join(dir, planContextDir), drafts); err != nil {
+		p.Log.Info("plan turn with incomplete draft files", "error", err.Error())
 	}
 	if err := p.Agent.PlanContext(ctx, filepath.Join(dir, planContextDir)); err != nil {
 		p.Log.Info("plan turn without the milestone files", "error", err.Error())
