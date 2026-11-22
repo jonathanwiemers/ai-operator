@@ -1,4 +1,4 @@
-import { cost, durationShort, tokenCount, type Tone } from './format.ts'
+import { cost, durationShort, plural, tokenCount, type Tone } from './format.ts'
 import type { MilestoneIssueRow, MilestoneProgress, MilestoneRow, MilestoneState } from './types'
 
 // The dashboard's and the project page's milestone rows (decision 5).
@@ -46,7 +46,7 @@ export function rowTokens(row: Pick<MilestoneRow, 'tokens'>): string {
 export function leftoversLabel(row: Pick<MilestoneRow, 'followUpsOpen'>): string {
   const n = row.followUpsOpen
   if (!(n > 0)) return ''
-  return n === 1 ? '1 leftover' : `${n} leftovers`
+  return `${n} ${plural(n, 'leftover')}`
 }
 
 // milestoneStatus is a milestone's one status, the eyebrow of its page

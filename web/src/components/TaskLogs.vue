@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorMessage } from '../format'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UDashboardToolbar from '@nuxt/ui/components/DashboardToolbar.vue'
 import UTabs from '@nuxt/ui/components/Tabs.vue'
@@ -22,7 +23,7 @@ let seq = 0
 let reading: AbortController | undefined
 
 function errorText(e: unknown): string {
-  return e instanceof ApiError && e.status === 403 ? 'Only the task’s owners may read its logs.' : e instanceof Error ? e.message : String(e)
+  return e instanceof ApiError && e.status === 403 ? 'Only the task’s owners may read its logs.' : errorMessage(e)
 }
 
 function stop() {

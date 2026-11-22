@@ -29,7 +29,7 @@ import {
   type CostFilters,
 } from '../costs'
 import { chartSummary, cumulativeMonth, monthSummary, stackedChart, thisMonth, tokensChart, tokensSummary } from '../chartData'
-import { cost, tokenCount } from '../format'
+import { cost, dateLabel, errorMessage, plural, tokenCount } from '../format'
 import { activeFilters, filtersLabel } from '../metrics'
 import { pageHeaderUi } from '../pageHeader'
 import { basisNote, basisTitle, shareLabel, spendTokens, spendUSD, tokenBreakdown, unmeteredNote } from '../spend'
@@ -110,7 +110,7 @@ async function load() {
     } else if (e instanceof ApiError && e.status === 503) {
       error.value = 'The history database is not connected yet.'
     } else {
-      error.value = e instanceof Error ? e.message : String(e)
+      error.value = errorMessage(e)
     }
   } finally {
     if (mine === seq) loading.value = false
@@ -191,12 +191,6 @@ const totals = computed(() => data.value?.totals)
 const change = computed(() => (data.value ? changeLabel(costChange(data.value.totals, data.value.previous)) : ''))
 const month = computed(() => (data.value ? monthToDate(data.value.month) : null))
 const monthChange = computed(() => changeLabel(month.value?.change ?? null))
-
-function dateLabel(iso: string | undefined): string {
-  if (!iso) return ''
-  const t = new Date(iso)
-  return Number.isNaN(t.getTime()) ? '' : t.toLocaleDateString()
-}
 
 // Spend over time (R9): known cost per bucket, stacked by the chosen group,
 // top six plus Other.
@@ -399,7 +393,7 @@ const menuProps = {
         />
         <StatTile
           label="Unknown cost"
-          :value="`${totals.unknownCalls} ${totals.unknownCalls === 1 ? 'call' : 'calls'}`"
+          :value="`${totals.unknownCalls} ${plural(totals.unknownCalls, 'call')}`"
           title="Calls without a reported or estimated cost are not in the sum"
           data-kpi="unknown"
         >

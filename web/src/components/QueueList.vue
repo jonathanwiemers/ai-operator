@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { milestoneIssueURL } from '../format'
 import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -109,7 +110,7 @@ const decisionsTab = computed(() => decisionsTabHref(milestonePath.value, hasFea
 // decisionsShown: a row lists its decisions and revisit (not compact).
 const decisionsShown = (q: { decisions: unknown[]; revisitOf?: string }) => !props.compact && (q.decisions.length > 0 || !!q.revisitOf)
 
-const issueURL = (iid: number) => props.milestone.webURL.replace(/\/-\/milestones\/\d+$/, `/-/issues/${iid}`)
+const issueURL = (iid: number) => milestoneIssueURL(props.milestone.webURL, iid)
 
 // tap: a link in a row, at least 44 px high on phones.
 const tap = 'inline-flex min-h-11 items-center tablet:min-h-0'

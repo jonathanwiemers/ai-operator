@@ -1,4 +1,4 @@
-import { relTime, shortSHA } from './format.ts'
+import { plural, relTime, shortSHA } from './format.ts'
 import type { Facts } from './generated/problem'
 
 // FactPart is a piece of a facts row: text, a GitLab link (href) or a Desk
@@ -13,7 +13,7 @@ export interface FactRow {
   parts: FactPart[]
 }
 
-const n = (k: number, one: string) => `${k} ${one}${k === 1 ? '' : 's'}`
+const n = (k: number, one: string) => `${k} ${plural(k, one)}`
 
 // factRows turns a problem's facts (R8, Decision 3) into the strip's rows;
 // a fact the operator did not collect leaves no row. Error text is the

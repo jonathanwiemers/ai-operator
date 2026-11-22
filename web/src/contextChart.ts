@@ -1,4 +1,4 @@
-import { tokenCount } from './format.ts'
+import { plural, tokenCount } from './format.ts'
 import type { SpendChild } from './types'
 
 // The context-growth chart of a run on the Task page: one line per
@@ -141,8 +141,8 @@ export function contextChart(calls: SpendChild[]): ContextChartData | null {
   const yTicks = ticks(maxTokens, 4).map((t) => ({ pos: yOf(t), label: tokenCount(t) }))
   const subagents = series.reduce((s, x) => s + x.markers.length, 0)
   const label =
-    `Context tokens per turn, ${series.length} step${series.length === 1 ? '' : 's'}` +
-    (subagents ? `, ${subagents} turn${subagents === 1 ? '' : 's'} with a subagent` : '')
+    `Context tokens per turn, ${series.length} ${plural(series.length, 'step')}` +
+    (subagents ? `, ${subagents} ${plural(subagents, 'turn')} with a subagent` : '')
   return { series, xTicks, yTicks, label }
 }
 

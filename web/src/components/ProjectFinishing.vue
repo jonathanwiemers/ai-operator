@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorMessage } from '../format'
 import UButton from '@nuxt/ui/components/Button.vue'
 import { reactive, ref } from 'vue'
 import { ApiError } from '../client'
@@ -25,7 +26,7 @@ async function close(m: number, i: number) {
     done[id] = true
     confirm.value = ''
   } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e)
+    const msg = errorMessage(e)
     err[id] = e instanceof ApiError && e.data.login ? `${msg} Connect GitLab again.` : msg
   } finally {
     busy.value = ''

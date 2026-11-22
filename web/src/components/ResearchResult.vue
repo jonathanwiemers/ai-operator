@@ -4,7 +4,7 @@ import UTooltip from '@nuxt/ui/components/Tooltip.vue'
 import { alertColor } from '../badgeTone'
 import Markdown from './Markdown.vue'
 import { computed } from 'vue'
-import { runLine } from '../format'
+import { researchRoute, runLine } from '../format'
 import { newsflash } from '../newsflash'
 import BlockList from './blocks/BlockList.vue'
 import ItemsBlock from './blocks/ItemsBlock.vue'
@@ -46,7 +46,7 @@ const flash = computed(() =>
       <div v-if="line" class="text-[13px] text-(--text-3)" data-run-line>
         <UTooltip v-if="runLink && run" :text="run.choiceReason" :disabled="!run.choiceReason">
           <RouterLink
-            :to="`/research/${encodeURIComponent(research.namespace)}/${encodeURIComponent(research.name)}/runs/${encodeURIComponent(run.id)}`"
+            :to="`${researchRoute(research.namespace, research.name)}/runs/${encodeURIComponent(run.id)}`"
             class="inline-flex min-h-11 items-center text-inherit tablet:min-h-0"
           >
             {{ line }}

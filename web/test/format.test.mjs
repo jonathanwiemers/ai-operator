@@ -1,7 +1,7 @@
 // Tests of src/format.ts: npm test (node --test, no extra dependencies).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { cost, costChip, costTooltip, deferringEngine, deskTitle, durationShort, fullTime, loginLasts, resetLabel, tokenCount } from '../src/format.ts'
+import { cost, costChip, dateLabel, costTooltip, deferringEngine, deskTitle, durationShort, errorMessage, plural, fullTime, loginLasts, milestoneIssueURL, researchRoute, resetLabel, tokenCount } from '../src/format.ts'
 import { cronText } from '../src/cron.ts'
 
 test('fullTime shows the date, time and time zone', () => {
@@ -190,4 +190,30 @@ test('resetLabel: the reset time while ahead, "reset" once past, null without a 
   assert.deepEqual(resetLabel('2026-11-12T09:59:00', now), { text: 'reset', past: true })
   assert.deepEqual(resetLabel('2026-11-12T10:00:00', now), { text: 'reset', past: true })
   for (const none of [undefined, null, '', 'not a time']) assert.equal(resetLabel(none, now), null)
+})
+
+test('errorMessage is the message of an Error and the string of anything else', () => {
+  assert.equal(errorMessage(new Error('boom')), 'boom')
+  assert.equal(errorMessage('plain'), 'plain')
+  assert.equal(errorMessage(404), '404')
+})
+
+test('plural takes the one form for 1 and the many form otherwise', () => {
+  assert.equal(plural(1, 'call'), 'call')
+  assert.equal(plural(0, 'call'), 'calls')
+  assert.equal(plural(2, 'entry', 'entries'), 'entries')
+})
+
+test('researchRoute encodes the namespace and the name', () => {
+  assert.equal(researchRoute('team a', 'r/1'), '/research/team%20a/r%2F1')
+})
+
+test('milestoneIssueURL swaps the milestone for the issue', () => {
+  assert.equal(milestoneIssueURL('https://gitlab.example/g/p/-/milestones/4', 12), 'https://gitlab.example/g/p/-/issues/12')
+})
+
+test('dateLabel is the local date, empty for a missing or invalid time', () => {
+  assert.equal(dateLabel('2026-11-02T13:59:00Z'), new Date('2026-11-02T13:59:00Z').toLocaleDateString())
+  assert.equal(dateLabel(undefined), '')
+  assert.equal(dateLabel('not a time'), '')
 })

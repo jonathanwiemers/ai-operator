@@ -2,6 +2,7 @@
 // the project stream's and the milestone pilot drawer's. It loads the user's
 // GitLab status, offers the targets (stream.ts noteTargets) and posts the
 // note; the composer only shows it (docs/contributing/web-ui.md, "Composer").
+import { errorMessage } from './format'
 import { computed, reactive, ref, watch } from 'vue'
 import { getGitLabStatus, LoginRequiredError, postMilestoneNote, postTaskNote } from './client'
 import { keepThroughSignIn } from './signInDraft'
@@ -59,7 +60,7 @@ export function useStreamNote(source: () => StreamNoteSource, onPosted?: () => v
       body.value = ''
       onPosted?.()
     } catch (e) {
-      error.value = e instanceof Error ? e.message : String(e)
+      error.value = errorMessage(e)
     } finally {
       sending.value = false
     }
@@ -74,7 +75,7 @@ export function useStreamNote(source: () => StreamNoteSource, onPosted?: () => v
       try {
         status.value = await getGitLabStatus()
       } catch (e) {
-        if (!(e instanceof LoginRequiredError)) error.value = e instanceof Error ? e.message : String(e)
+        if (!(e instanceof LoginRequiredError)) error.value = errorMessage(e)
       } finally {
         loading = false
       }

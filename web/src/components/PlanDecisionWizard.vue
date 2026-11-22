@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorMessage } from '../format'
 import UAlert from '@nuxt/ui/components/Alert.vue'
 import { alertColor } from '../badgeTone'
 // The decision review wizard (R7): one step per decision with the
@@ -96,7 +97,7 @@ async function reload() {
     step.value = Math.max(0, decisions.value.findIndex((x) => marked.value.includes(x.id)))
     error.value = 'The decisions changed; check the marked steps'
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    error.value = errorMessage(e)
   }
 }
 </script>

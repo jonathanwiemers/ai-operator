@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { milestoneIssueURL } from '../format'
 import Markdown from './Markdown.vue'
 import { companionRef } from '../companion'
 import type { MilestoneView } from '../types'
@@ -13,7 +14,7 @@ const props = defineProps<{ namespace: string; name: string; milestone: Mileston
 
 const homeTask = (iid: number) =>
   props.milestone.tasks.find((t) => t.type === 'Implement' && t.issue?.iid === iid)?.name
-const issueURL = (iid: number) => props.milestone.webURL.replace(/\/-\/milestones\/\d+$/, `/-/issues/${iid}`)
+const issueURL = (iid: number) => milestoneIssueURL(props.milestone.webURL, iid)
 </script>
 
 <template>

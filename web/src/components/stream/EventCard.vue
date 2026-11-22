@@ -2,8 +2,8 @@
 import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, ref } from 'vue'
 import { session } from '../../api'
-import { ApiError, postMilestoneNote } from '../../client'
-import { ciLabel, ciTone, clockTime, cost, fullTime, duration, shortSHA, type Tone } from '../../format'
+import { postMilestoneNote } from '../../client'
+import { ciLabel, ciTone, clockTime, cost, duration, errorMessage, fullTime, plural, shortSHA, type Tone } from '../../format'
 import { useNow } from '../../live'
 import type { CIState, ProjectDetail, PromptView, StreamEvent } from '../../types'
 import { promptForEvent } from '../../stream'
@@ -93,7 +93,7 @@ async function decide(yes: boolean) {
     await postMilestoneNote(ev.namespace, ev.project, ev.milestoneIID, body)
     emit('posted')
   } catch (err) {
-    sendError.value = err instanceof ApiError || err instanceof Error ? err.message : String(err)
+    sendError.value = errorMessage(err)
   } finally {
     posting.value = false
   }
@@ -194,7 +194,7 @@ function taskLink(ev: StreamEvent) {
       <div v-else-if="e.kind === 'review'" class="card">
         <div class="line">
           <Badge :tone="(e.data.blocking ?? 0) > 0 ? 'danger' : 'success'">
-            {{ e.data.blocking ?? 0 }} blocker{{ (e.data.blocking ?? 0) === 1 ? '' : 's' }}
+            {{ e.data.blocking ?? 0 }} {{ plural(e.data.blocking ?? 0, 'blocker') }}
           </Badge>
           <Badge v-if="e.data.reviewErrors" tone="warning">{{ e.data.reviewErrors }} errors</Badge>
         </div>
@@ -256,7 +256,7 @@ function taskLink(ev: StreamEvent) {
         <Badge tone="info">retrospective</Badge>
         <RouterLink v-if="e.milestoneIID" :to="retroTo(e)">Open the retrospective</RouterLink>
         <span v-if="e.data.followUps" class="muted">
-          {{ e.data.followUps }} follow-up{{ e.data.followUps === 1 ? '' : 's' }}
+          {{ e.data.followUps }} {{ plural(e.data.followUps, 'follow-up') }}
         </span>
       </div>
 

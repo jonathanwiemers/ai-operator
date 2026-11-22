@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorMessage, plural } from '../format'
 // Create all (R8, Decision 11): one Spec / Autopilot choice for every
 // uncreated draft, listed read-only in order with its title and estimate;
 // Create all creates them one by one with their saved text and stops at the
@@ -43,7 +44,7 @@ watch(open, (o) => {
   }))
   for (const r of rows.value) {
     void getEstimate(props.namespace, props.name, { plan: props.plan, draft: r.key })
-      .then(estimateLabel, (e) => (e instanceof Error ? e.message : String(e))).then((s) => (r.estimate = s))
+      .then(estimateLabel, (e) => (errorMessage(e))).then((s) => (r.estimate = s))
   }
 }, { immediate: true })
 const ready = computed(() => rows.value.every((r) => r.title.trim() && r.draft.trim()))
@@ -61,7 +62,7 @@ async function run() {
       Object.assign(r, { state: 'created', iid: m.iid, url: m.webURL })
       return m
     } catch (e) {
-      Object.assign(r, { state: 'failed', error: e instanceof Error ? e.message : String(e) })
+      Object.assign(r, { state: 'failed', error: errorMessage(e) })
       throw e
     }
   })
@@ -94,7 +95,7 @@ const stateLabel = (r: Row) => ({ waiting: 'waiting', creating: 'creating…', c
         <pre class="m-0 text-xs text-(--text-2)" aria-label="Lines the operator appends to each">{{ planHeaderLines(spec, autopilot).join('\n') }}</pre>
         <UAlert v-if="!ready" role="status" :color="alertColor('warning')" variant="subtle" description="Every draft needs a title and a text: save them first." />
         <UAlert v-if="result?.failed" role="alert" data-create-all-failed :color="alertColor('danger')" variant="subtle" class="[overflow-wrap:anywhere]"
-          :title="`${failed?.label} failed`" :description="result.failed.message + (later.length ? ` ${later.join(', ')} stay${later.length === 1 ? 's' : ''} a draft.` : '')" />
+          :title="`${failed?.label} failed`" :description="result.failed.message + (later.length ? ` ${later.join(', ')} ${plural(later.length, 'stays', 'stay')} a draft.` : '')" />
       </div>
     </template>
     <template #footer>

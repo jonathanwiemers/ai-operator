@@ -2,6 +2,7 @@
 // by one, in list order, through the same endpoint as Create milestone. The
 // server creates only the first uncreated draft, so the loop stops at the
 // first error: the later drafts would get 409 anyway.
+import { errorMessage } from './format.ts'
 import type { FollowUpMilestoneView, PlanDraftView } from './generated/views'
 
 type Draft = Pick<PlanDraftView, 'key' | 'createdMilestoneIID'>
@@ -25,7 +26,7 @@ export async function createAll<T extends Draft>(drafts: T[], create: (d: T) => 
       const m = await create(d)
       r.created.push({ key: d.key, iid: m.iid, url: m.webURL })
     } catch (e) {
-      r.failed = { key: d.key, message: e instanceof Error ? e.message : String(e) }
+      r.failed = { key: d.key, message: errorMessage(e) }
       r.skipped = todo.slice(i + 1).map((d) => d.key)
       break
     }

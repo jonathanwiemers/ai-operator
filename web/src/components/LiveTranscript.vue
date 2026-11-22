@@ -5,7 +5,7 @@ import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { transcriptURL } from '../client'
 import Badge from './Badge.vue'
 import TranscriptLine from './TranscriptLine.vue'
-import { tokenCount } from '../format'
+import { plural, tokenCount } from '../format'
 import { foldName, foldTranscript } from '../transcriptFold'
 import { isRenewalEnd } from '../reconnect'
 import type { TranscriptEntry } from '../types'
@@ -117,7 +117,7 @@ const endText = computed(() => {
               <template v-if="r.model"> · <span class="mono">{{ r.model }}</span></template>
               · {{ tokenCount(r.tokens) }} tok
             </span>
-            <span class="faint">{{ r.count }} {{ r.count === 1 ? 'entry' : 'entries' }}</span>
+            <span class="faint">{{ r.count }} {{ plural(r.count, 'entry', 'entries') }}</span>
             <span v-if="r.tool.subagent && r.tool.input" class="faint input">{{ r.tool.input }}</span>
           </summary>
           <div class="children">

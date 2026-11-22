@@ -5,7 +5,7 @@ import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, ref, toRaw, watch } from 'vue'
 import { getSpend, LoginRequiredError } from '../client'
-import { clockTime, duration, fullTime, shortSHA, tokenCount } from '../format'
+import { clockTime, duration, errorMessage, fullTime, plural, shortSHA, tokenCount } from '../format'
 import { writtenLabel } from '../lines'
 import { useNow } from '../live'
 import {
@@ -81,7 +81,7 @@ async function load() {
   } catch (e) {
     if (mine !== seq || e instanceof LoginRequiredError) return
     if (spendHidden(e)) hidden.value = true
-    else error.value = e instanceof Error ? e.message : String(e)
+    else error.value = errorMessage(e)
   }
 }
 watch(() => [props.namespace, props.name, props.task], load, { immediate: true })
@@ -101,7 +101,7 @@ async function toggle(r: SpendChild) {
     const sp = await getSpend(props.namespace, props.name, { task: props.task, run: runNumber(r) })
     next = { ...next, calls: sp.children }
   } catch (e) {
-    next = { ...next, error: e instanceof Error ? e.message : String(e) }
+    next = { ...next, error: errorMessage(e) }
   }
   // Collapsed or reset by load() meanwhile: drop the answer.
   if (toRaw(open.value[r.key]) === pending) open.value[r.key] = next
@@ -177,7 +177,7 @@ async function toggle(r: SpendChild) {
                   {{ c.engine }}<template v-if="c.model">/{{ c.model }}</template>
                   <span v-if="c.fallbackFrom" class="faint"> · fallback from {{ c.fallbackFrom }}</span>
                   <span v-if="c.readGateBlocks" class="faint" title="Reads the read gate blocked">
-                    · {{ c.readGateBlocks }} gate {{ c.readGateBlocks === 1 ? 'block' : 'blocks' }}
+                    · {{ c.readGateBlocks }} gate {{ plural(c.readGateBlocks, 'block') }}
                   </span>
                 </template>
                 <template #cell-resumed="{ row: c }">{{ c.resumed ? 'resumed' : '—' }}</template>

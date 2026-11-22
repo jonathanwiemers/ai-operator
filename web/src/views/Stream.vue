@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorMessage } from '../format'
 import UAlert from '@nuxt/ui/components/Alert.vue'
 import { computed, defineAsyncComponent, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -168,7 +169,7 @@ async function loadProject() {
       notFound.value = true
       project.value = null
     } else if (!(e instanceof LoginRequiredError)) {
-      error.value = e instanceof Error ? e.message : String(e)
+      error.value = errorMessage(e)
     }
   }
 }
@@ -314,7 +315,7 @@ async function loadInitial() {
   } catch (e) {
     if (mine !== seq || e instanceof LoginRequiredError) return
     if (e instanceof NotFoundError) notFound.value = true
-    else error.value = e instanceof Error ? e.message : String(e)
+    else error.value = errorMessage(e)
   } finally {
     if (mine === seq) loading.value = false
   }
@@ -328,7 +329,7 @@ async function loadOlder() {
     events.value = [...events.value, ...page.events]
     older.value = page.older
   } catch (e) {
-    if (!(e instanceof LoginRequiredError)) error.value = e instanceof Error ? e.message : String(e)
+    if (!(e instanceof LoginRequiredError)) error.value = errorMessage(e)
   } finally {
     loadingOlder.value = false
   }

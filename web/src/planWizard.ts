@@ -2,6 +2,7 @@
 // plan's decisions step by step"): the button, the preselection, the answers
 // a set of picks produces, the summary and the picks in sessionStorage.
 // Pure, tested in node.
+import { plural } from './format.ts'
 import { markedOption } from './planDecisions.ts'
 import type { AgentPlanPhase, PlanDecision } from './generated/api'
 import type { DecisionAnswer } from './generated/store'
@@ -19,7 +20,7 @@ export interface WizardState { clientKey: string; picks: Picks; text: string }
 // wizardButton is the button's label, and whether it shows at all.
 export function wizardButton(decisions: Pick<PlanDecision, 'state'>[]): { label: string; show: boolean } {
   const open = decisions.filter((d) => d.state === 'open').length
-  return { label: open ? `Answer ${open} question${open === 1 ? '' : 's'}` : 'Review decisions', show: decisions.length > 0 }
+  return { label: open ? `Answer ${open} ${plural(open, 'question')}` : 'Review decisions', show: decisions.length > 0 }
 }
 
 // wizardBlocked is the hint of a disabled button and Send: a turn runs

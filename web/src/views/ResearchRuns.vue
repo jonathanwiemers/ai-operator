@@ -7,7 +7,7 @@ import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
 import { pageHeaderUi } from '../pageHeader'
 import { computed, onMounted, ref, watch } from 'vue'
 import { getResearchRuns, LoginRequiredError, NotFoundError } from '../client'
-import { cost, runLine, type Tone } from '../format'
+import { cost, errorMessage, researchRoute, runLine, type Tone } from '../format'
 import { live } from '../live'
 import Badge from '../components/Badge.vue'
 import DataList, { type DataListColumn } from '../ui/DataList.vue'
@@ -18,7 +18,7 @@ import type { ResearchRun } from '../types'
 
 const props = defineProps<{ namespace: string; name: string }>()
 const pageSize = 20
-const base = computed(() => `/research/${encodeURIComponent(props.namespace)}/${encodeURIComponent(props.name)}`)
+const base = computed(() => researchRoute(props.namespace, props.name))
 
 const runs = ref<ResearchRun[]>([])
 const error = ref<string | null>(null)
@@ -74,7 +74,7 @@ async function fetchPage(before: string | undefined, append: boolean): Promise<b
       notFound.value = true
       runs.value = []
     } else {
-      error.value = e instanceof Error ? e.message : String(e)
+      error.value = errorMessage(e)
     }
   }
   return mine === seq

@@ -2,6 +2,7 @@ import { onMounted, onUnmounted, reactive, ref, watch, type Ref } from 'vue'
 import { session } from './api'
 import { eventsURL, getMe, LoginRequiredError, NotFoundError } from './client'
 import { quietReconnectMs, reconnectAction } from './reconnect'
+import { errorMessage } from './format'
 
 // live tracks the server's event stream. Every burst of change events bumps
 // version; views reload what they show when it changes. kinds are the kinds
@@ -133,7 +134,7 @@ export function useResource<T>(source: () => (() => Promise<T>) | null, kinds?: 
         notFound.value = true
         data.value = null
       } else {
-        error.value = e instanceof Error ? e.message : String(e)
+        error.value = errorMessage(e)
       }
     } finally {
       if (mine === seq) loading.value = false

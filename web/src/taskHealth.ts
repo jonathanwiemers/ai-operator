@@ -1,4 +1,4 @@
-import { durationShort, phaseTone, type Tone } from './format.ts'
+import { durationShort, phaseTone, plural, type Tone } from './format.ts'
 import type { RunStatus, TaskPhase } from './generated/api.ts'
 import type { TaskHealth } from './generated/views.ts'
 
@@ -27,7 +27,7 @@ export function taskStep(run: RunStatus | undefined, h: TaskHealth | undefined |
 export function restartsText(h: TaskHealth | undefined | null): string {
   const n = h?.restarts ?? 0
   if (n <= 0) return ''
-  const base = `${n} restart${n === 1 ? '' : 's'}`
+  const base = `${n} ${plural(n, 'restart')}`
   return h?.lastTermination ? `${base} (${h.lastTermination})` : base
 }
 

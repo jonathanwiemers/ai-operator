@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorMessage } from '../format'
 import UAlert from '@nuxt/ui/components/Alert.vue'
 import { alertColor } from '../badgeTone'
 // One plan (R11): header with phase, spend / cap, budget raise and (in ⋯) delete;
@@ -44,7 +45,7 @@ async function load() {
     error.value = ''
   } catch (e) {
     if (e instanceof NotFoundError) notFound.value = true
-    else if (!(e instanceof LoginRequiredError)) error.value = e instanceof Error ? e.message : String(e)
+    else if (!(e instanceof LoginRequiredError)) error.value = errorMessage(e)
   }
 }
 async function onRaise() {
@@ -54,7 +55,7 @@ async function onRaise() {
     view.value = await raisePlanBudget(props.namespace, props.name, props.plan, raise.value.trim().replace(/^\$/, ''))
     raise.value = ''
   } catch (e) {
-    raiseError.value = e instanceof Error ? e.message : String(e)
+    raiseError.value = errorMessage(e)
   }
 }
 async function onDelete() {
@@ -63,7 +64,7 @@ async function onDelete() {
     await deletePlan(props.namespace, props.name, props.plan)
     await router.push({ name: 'stream-project', params: { namespace: props.namespace, name: props.name }, query: { tab: 'plans' } })
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    error.value = errorMessage(e)
   }
 }
 

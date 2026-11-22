@@ -35,6 +35,9 @@ export function problemSubject(p: Pick<ProblemView, 'issueIID'>): string {
   return p.issueIID ? `#${p.issueIID}` : 'Milestone'
 }
 
+// statusColors is the UBadge colour of a statusLine tone.
+export const statusColors = { warning: 'warning', progress: 'info', success: 'success', neutral: 'neutral' } as const
+
 // statusLine is the live status as a person reads it, with its tone.
 export function statusLine(s: ProblemStatus): { text: string; tone: 'warning' | 'progress' | 'success' | 'neutral' } {
   switch (s) {

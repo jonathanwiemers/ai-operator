@@ -1,6 +1,6 @@
 import type { CostPointView, CostsMonthView, SpendBreakdownView } from './generated/views.ts'
 import { breakdownLink, changeLabel, costKeyLabel, monthToDate, type CostFilters, type CostGroup, type MonthSum, type MonthToDate } from './costs.ts'
-import { cost, tokenCount } from './format.ts'
+import { cost, plural, tokenCount } from './format.ts'
 
 // The Costs page's chart data (docs/contributing/web-ui.md, "Metrics page"; decisions 7 and 8 of
 // docs/specs/costs-page.spec.md): buckets and points of GET /api/v1/costs
@@ -202,7 +202,7 @@ export function seriesLabel(key: string): string {
 
 // unknownNote marks a bucket with calls of unknown cost, "" without.
 export function unknownNote(calls: number): string {
-  return calls > 0 ? `+ ${calls} unknown ${calls === 1 ? 'call' : 'calls'}` : ''
+  return calls > 0 ? `+ ${calls} unknown ${plural(calls, 'call')}` : ''
 }
 
 // ChartView is what a legend and a table view read (ChartLegend.vue,
@@ -285,7 +285,7 @@ function summaryText(o: {
   return `${out}. ${o.tail}`
 }
 
-const callsNote = (n: number, what: string) => (n ? `${n} ${n === 1 ? 'call' : 'calls'} ${what}` : undefined)
+const callsNote = (n: number, what: string) => (n ? `${n} ${plural(n, 'call')} ${what}` : undefined)
 const rangeOf = (labels: string[]) => (labels.length ? `${labels[0]} to ${labels[labels.length - 1]}` : undefined)
 
 // chartSummary is a stacked cost chart's text for screen readers (the
@@ -582,7 +582,7 @@ export function tokenSeries(buckets: string[], points: CostPointView[]): TokenSe
 
 // unmeteredMark names a bucket's calls that report neither cost nor tokens.
 function unmeteredMark(calls: number): string {
-  return calls > 0 ? `+ ${calls} ${calls === 1 ? 'call' : 'calls'} not metered` : ''
+  return calls > 0 ? `+ ${calls} ${plural(calls, 'call')} not metered` : ''
 }
 
 // ShareLine is the cache-read share as a line over the bars (percent, 0 to

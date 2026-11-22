@@ -9,7 +9,7 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { deleteResearch, getResearch } from '../client'
 import { useNow, useResource } from '../live'
-import { clockTime, duration, safeURL } from '../format'
+import { clockTime, duration, errorMessage, researchRoute, safeURL } from '../format'
 import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
 import Badge from '../components/Badge.vue'
 import CronSchedule from '../components/CronSchedule.vue'
@@ -87,7 +87,7 @@ async function remove() {
     await deleteResearch(x.namespace, x.name)
     await router.push('/research')
   } catch (e) {
-    deleteError.value = e instanceof Error ? e.message : String(e)
+    deleteError.value = errorMessage(e)
   } finally {
     deleting.value = false
   }
@@ -119,7 +119,7 @@ async function remove() {
           </template>
           <template #links>
             <UButton
-              :to="`/research/${encodeURIComponent(r.namespace)}/${encodeURIComponent(r.name)}/runs`"
+              :to="`${researchRoute(r.namespace, r.name)}/runs`"
               color="neutral"
               variant="outline"
               size="sm"

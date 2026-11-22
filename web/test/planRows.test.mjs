@@ -9,10 +9,10 @@ import {
   planPhaseTone,
   planSections,
   planSpendLabel,
-  plansPath,
   planTitle,
   raiseBudgetError,
 } from '../src/planRows.ts'
+import { plansPath } from '../src/plansPath.ts'
 
 test('planMilestoneLink: the Desk page with a row, GitLab with Not planned, else null', () => {
   const base = { namespace: 'team', project: 'shop', createdMilestoneIID: 7, createdMilestoneURL: 'https://gitlab.example/m/7' }

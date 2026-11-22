@@ -2,7 +2,7 @@
 // milestone link, sections, request path).
 import type { AgentPlanPhase } from './generated/api'
 import type { PlanListItem } from './generated/views'
-import { cost, type Tone } from './format.ts'
+import { cost, dateLabel, type Tone } from './format.ts'
 import { milestoneName } from './milestoneName.ts'
 
 // planTitle is the plan's title, or "Untitled plan · <date>" when empty
@@ -10,8 +10,7 @@ import { milestoneName } from './milestoneName.ts'
 export function planTitle(title: string, createdAt: string): string {
   const t = title.trim()
   if (t) return t
-  const d = new Date(createdAt)
-  const when = Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString()
+  const when = dateLabel(createdAt)
   return when ? `Untitled plan · ${when}` : 'Untitled plan'
 }
 
@@ -83,10 +82,6 @@ export function planSections<T extends Pick<PlanListItem, 'phase' | 'lastActivit
   const sorted = [...items].sort((a, b) => at(b) - at(a))
   return { drafting: sorted.filter((p) => p.phase !== 'Created'), created: sorted.filter((p) => p.phase === 'Created') }
 }
-
-// plansPath lives in its own module: client.ts is in the initial chunk and
-// would pull in this whole file.
-export { plansPath } from './plansPath.ts'
 
 // planHeaderLines previews the lines the server appends (default markers).
 export function planHeaderLines(spec: boolean, autopilot: boolean): string[] {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorMessage } from '../format'
 import UAlert from '@nuxt/ui/components/Alert.vue'
 import UBadge from '@nuxt/ui/components/Badge.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
@@ -11,7 +12,7 @@ import { getProblems, postTaskChat } from '../client'
 import { live, useNow } from '../live'
 import { needsOpen } from '../needsOpen'
 import { pausesLine, pausesSummary } from '../pauses'
-import { problemFromHash, problemParam, problemSubject, sameProblem, statusLine } from '../problemThread'
+import { problemFromHash, problemParam, problemSubject, sameProblem, statusColors, statusLine } from '../problemThread'
 import type { MilestoneView, ProblemView } from '../types'
 import Markdown from './Markdown.vue'
 import ProblemThread from './ProblemThread.vue'
@@ -35,7 +36,7 @@ async function load() {
     listed.value = (await getProblems(props.namespace, props.name, props.milestone.iid)).problems
     failed.value = ''
   } catch (e) {
-    failed.value = e instanceof Error ? e.message : String(e)
+    failed.value = errorMessage(e)
   }
 }
 onMounted(load)
@@ -97,7 +98,6 @@ async function decide(cmd: 'accept' | 'reject', proposal: number) {
   }
 }
 
-const tones = { warning: 'warning', progress: 'info', success: 'success', neutral: 'neutral' } as const
 const sectionHead =
   'h3 m-0 mb-2 flex justify-between gap-2 text-[11.5px] font-semibold tracking-[0.06em] text-(--text-3) uppercase'
 const quiet = 'text-[13px] text-(--text-3)'
@@ -129,7 +129,7 @@ const chip = { color: 'neutral', variant: 'outline', size: 'sm' } as const
               <span class="min-w-0 truncate">{{ p.title }}</span>
             </span>
             <span class="flex min-w-0 flex-wrap items-center gap-2">
-              <UBadge size="sm" variant="subtle" :color="tones[statusLine(p.status).tone]" :label="statusLine(p.status).text" />
+              <UBadge size="sm" variant="subtle" :color="statusColors[statusLine(p.status).tone]" :label="statusLine(p.status).text" />
               <RelTime class="faint text-[12px]" :time="p.resolvedAt ?? p.reopenedAt ?? p.openedAt" />
             </span>
             <span v-if="p.cause" class="min-w-0 truncate text-[12.5px] text-(--text-3)">{{ p.cause }}</span>

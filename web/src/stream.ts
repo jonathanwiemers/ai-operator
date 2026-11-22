@@ -1,3 +1,4 @@
+import { plural } from './format.ts'
 import type { GitLabStatus, ProjectDetail, PromptView, Stage, StreamEvent, StreamKind } from './types'
 
 // Filter chips map to kinds sent as kinds= on GET /stream.
@@ -123,7 +124,7 @@ export function projectStateLine(
   if ((stages?.working ?? 0) > 0) {
     const waiting = autopilot?.find((a) => a.waitingFor)
     if (waiting?.waitingFor) return `running #${waiting.waitingFor}`
-    return `running · ${stages!.working} task${stages!.working === 1 ? '' : 's'}`
+    return `running · ${stages!.working} ${plural(stages!.working ?? 0, 'task')}`
   }
   const needs = projectNeedsYou(stages)
   if (needs > 0) {
@@ -257,7 +258,7 @@ export function heatLevel(events: number, max: number): 0 | 1 | 2 | 3 {
 // heatmap shows it (locale, short month) and the count, "12 Nov: 3 events" (the count is the stream events the cell colours by).
 export function heatCellLabel(day: string, events: number, locale?: string): string {
   const date = new Date(day + 'T12:00:00').toLocaleDateString(locale, { day: 'numeric', month: 'short' })
-  return `${date}: ${events} ${events === 1 ? 'event' : 'events'}`
+  return `${date}: ${events} ${plural(events, 'event')}`
 }
 
 // heatSummary is the heatmap's text: the total and the busiest day.
@@ -265,7 +266,7 @@ export function heatSummary(days: { day: string; events: number }[], locale?: st
   const total = days.reduce((a, d) => a + d.events, 0)
   if (!days.length || total === 0) return 'No activity in this range'
   const top = days.reduce((a, d) => (d.events > a.events ? d : a))
-  return `${total} ${total === 1 ? 'event' : 'events'} in ${days.length} days; busiest day ${heatCellLabel(top.day, top.events, locale)}`
+  return `${total} ${plural(total, 'event')} in ${days.length} days; busiest day ${heatCellLabel(top.day, top.events, locale)}`
 }
 
 // Stream notes (the Composer's note mode, docs/contributing/web-ui.md "Composer"): a comment

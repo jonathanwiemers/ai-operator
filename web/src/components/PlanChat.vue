@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorMessage } from '../format'
 import UAlert from '@nuxt/ui/components/Alert.vue'
 import { alertColor } from '../badgeTone'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
@@ -70,7 +71,7 @@ async function load() {
     messages.value = page.messages
     error.value = ''
   } catch (e) {
-    if (mine === seq && !(e instanceof LoginRequiredError)) error.value = e instanceof Error ? e.message : String(e)
+    if (mine === seq && !(e instanceof LoginRequiredError)) error.value = errorMessage(e)
   }
 }
 

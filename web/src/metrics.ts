@@ -3,6 +3,7 @@
 // arm, model, effort and step session, and what fills the context. Pure
 // helpers for MetricsBreakdown.vue and MetricsContext.vue; the figures
 // come from GET /costs/metrics.
+import { plural } from './format.ts'
 import { formatUSD } from './chartData.ts'
 import type { MetricsGroup, MetricsView, ProjectContext } from './generated/views.ts'
 
@@ -17,7 +18,7 @@ export function keyLabel(key: string): string {
 
 // issuesLabel counts merged issues: "1 issue", "5 issues".
 export function issuesLabel(n: number): string {
-  return `${n} ${n === 1 ? 'issue' : 'issues'}`
+  return `${n} ${plural(n, 'issue')}`
 }
 
 // per100Label is the cost per 100 written lines, "—" without lines.

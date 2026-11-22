@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorMessage } from '../format'
 import UAlert from '@nuxt/ui/components/Alert.vue'
 import { alertColor } from '../badgeTone'
 // Create the milestone of a plan's draft (R12, Decisions 8, 10; draftKey 0: a new draft): title, final draft, Spec / Autopilot, the appended lines and the estimate.
@@ -29,7 +30,7 @@ useBackClose(open)
 watch(open, async (o) => {
   if (!o) return
   [title.value, text.value, error.value, created.value, estimate.value] = [planMilestoneTitle(props.title, props.draft), props.draft, '', null, '…']
-  estimate.value = await getEstimate(props.namespace, props.name, { plan: props.plan, draft: props.draftKey }).then(estimateLabel, (e) => (e instanceof Error ? e.message : String(e)))
+  estimate.value = await getEstimate(props.namespace, props.name, { plan: props.plan, draft: props.draftKey }).then(estimateLabel, (e) => (errorMessage(e)))
 }, { immediate: true })
 async function create() {
   [busy.value, error.value] = [true, '']
@@ -38,7 +39,7 @@ async function create() {
       { key: props.draftKey, title: title.value.trim(), description: text.value.trim(), spec: spec.value, autopilot: autopilot.value })
     emit('created')
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    error.value = errorMessage(e)
   } finally {
     busy.value = false
   }

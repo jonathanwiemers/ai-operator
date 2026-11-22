@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorMessage } from '../format'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UTextarea from '@nuxt/ui/components/Textarea.vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
@@ -51,7 +52,7 @@ async function comment() {
     posted.value = `Commented on #${props.decision.issue.iid}.`
     text.value = ''
   } catch (e) {
-    postError.value = e instanceof Error ? e.message : String(e)
+    postError.value = errorMessage(e)
   } finally {
     posting.value = false
   }

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorMessage, researchRoute } from '../format'
 import UAlert from '@nuxt/ui/components/Alert.vue'
 import { alertColor } from '../badgeTone'
 import UButton from '@nuxt/ui/components/Button.vue'
@@ -108,10 +109,10 @@ async function submit() {
         ...(m.engine === 'claude' && effort.value !== defaultEffort ? { effort: effort.value } : {}),
       },
     })
-    await router.push(`/research/${encodeURIComponent(created.namespace)}/${encodeURIComponent(created.name)}`)
+    await router.push(researchRoute(created.namespace, created.name))
   } catch (e) {
     if (e instanceof ApiError && (fields as readonly string[]).includes(e.field ?? '')) errors[e.field as Field] = e.message
-    else formError.value = e instanceof Error ? e.message : String(e)
+    else formError.value = errorMessage(e)
   } finally {
     sending.value = false
   }

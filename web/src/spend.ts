@@ -1,4 +1,4 @@
-import { cost, tokenCount } from './format.ts'
+import { cost, plural, tokenCount } from './format.ts'
 import { issueLabel, milestoneLabel } from './crumbs.ts'
 import { writtenLabel } from './lines.ts'
 import type { SpendBreakdown, SpendChild, SpendTotals, StepLines, SubagentBreakdown } from './types'
@@ -209,14 +209,14 @@ export function costSourceLabel(src: SpendChild['costSource']): string {
 // unknownNote: "+3 calls without cost", empty when every call has one.
 export function unknownNote(t: SpendTotals): string {
   if (t.unknownCalls <= 0) return ''
-  return `+${t.unknownCalls} ${t.unknownCalls === 1 ? 'call' : 'calls'} without cost`
+  return `+${t.unknownCalls} ${plural(t.unknownCalls, 'call')} without cost`
 }
 
 // unmeteredNote: "2 calls not metered", the calls with neither a cost nor
 // tokens; empty when there is none.
 export function unmeteredNote(t: SpendTotals): string {
   if (!(t.unmeteredCalls > 0)) return ''
-  return `${t.unmeteredCalls} ${t.unmeteredCalls === 1 ? 'call' : 'calls'} not metered`
+  return `${t.unmeteredCalls} ${plural(t.unmeteredCalls, 'call')} not metered`
 }
 
 // mixedBasis: some, not all, calls of a total are on the old token basis.
@@ -546,7 +546,7 @@ export function per100Notes(t: SpendTotals): string {
 // the implementer to close its step during the call; "" without a nudge.
 export function callNudges(c: Pick<SpendChild, 'stepGateNudges'>): string {
   const n = c.stepGateNudges ?? 0
-  return n > 0 ? `${n} step-gate ${n === 1 ? 'nudge' : 'nudges'}` : ''
+  return n > 0 ? `${n} step-gate ${plural(n, 'nudge')}` : ''
 }
 
 // stepLinesLine sums the scope's step commits (implement calls that left
@@ -554,9 +554,9 @@ export function callNudges(c: Pick<SpendChild, 'stepGateNudges'>): string {
 // step-gate nudges"; "" without step data.
 export function stepLinesLine(s: StepLines | undefined): string {
   if (!s || (s.count === 0 && s.nudges === 0)) return ''
-  const nudges = `${s.nudges} step-gate ${s.nudges === 1 ? 'nudge' : 'nudges'}`
+  const nudges = `${s.nudges} step-gate ${plural(s.nudges, 'nudge')}`
   if (s.count === 0) return nudges
-  const commits = `${s.count} step ${s.count === 1 ? 'commit' : 'commits'}`
+  const commits = `${s.count} step ${plural(s.count, 'commit')}`
   return `${commits}: median ${s.median}, p90 ${s.p90}, max ${s.max} lines · ${nudges}`
 }
 
@@ -568,7 +568,7 @@ export function checkpointsLine(rows: SpendBreakdown[]): string {
   const n = rows.reduce((s, r) => s + r.count, 0)
   if (n === 0) return ''
   const reasons = rows.filter((r) => r.count > 0).map((r) => (r.count > 1 ? `${r.key} ×${r.count}` : r.key))
-  return `${n} ${n === 1 ? 'checkpoint' : 'checkpoints'}: ${reasons.join(', ')}`
+  return `${n} ${plural(n, 'checkpoint')}: ${reasons.join(', ')}`
 }
 
 // checkpointsNote is the title of a checkpoint count.

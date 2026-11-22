@@ -13,7 +13,7 @@ import ExtLink from '../components/ExtLink.vue'
 import Markdown from '../components/Markdown.vue'
 import PauseCardCompact from '../components/PauseCardCompact.vue'
 import RelTime from '../components/RelTime.vue'
-import { duration } from '../format'
+import { duration, plural } from '../format'
 import { handledLabel, handledRoute, handledSubject, handledView, type HandledView } from '../inboxHandled'
 import { inboxRoute } from '../inboxRoute'
 import { pausedStrip } from '../inboxStrip'
@@ -97,7 +97,7 @@ const reason = 'muted min-w-0 text-[13px] [&[role=button]]:relative [&[role=butt
     </UDashboardToolbar>
     <UAlert v-if="strip.count" :color="alertColor('warning')" variant="subtle" class="mt-3">
       <template #title>
-        {{ strip.count }} {{ strip.count === 1 ? 'autopilot' : 'autopilots' }} paused<template v-if="strip.longestMs"
+        {{ strip.count }} {{ plural(strip.count, 'autopilot') }} paused<template v-if="strip.longestMs"
           >, longest {{ duration(strip.longestMs) }}</template
         >
       </template>

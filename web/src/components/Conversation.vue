@@ -1,11 +1,12 @@
 <script setup lang="ts">
+import { errorMessage } from '../format'
 import UAlert from '@nuxt/ui/components/Alert.vue'
 import { alertColor } from '../badgeTone'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UTextarea from '@nuxt/ui/components/Textarea.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { ApiError, disconnectGitLab, getGitLabStatus, getMilestoneThread, getTaskThread, LoginRequiredError, postMilestoneNote, postTaskNote } from '../client'
+import { disconnectGitLab, getGitLabStatus, getMilestoneThread, getTaskThread, LoginRequiredError, postMilestoneNote, postTaskNote } from '../client'
 import { keepThroughSignIn } from '../signInDraft'
 import ExtLink from './ExtLink.vue'
 import NoteThread from './NoteThread.vue'
@@ -71,7 +72,7 @@ async function loadStatus() {
   try {
     status.value = await getGitLabStatus()
   } catch (e) {
-    if (!(e instanceof LoginRequiredError)) error.value = e instanceof Error ? e.message : String(e)
+    if (!(e instanceof LoginRequiredError)) error.value = errorMessage(e)
   }
 }
 
@@ -90,7 +91,7 @@ async function loadThread() {
     if (e instanceof LoginRequiredError) return
     // A revoked connection: show the connect button again.
     await loadStatus()
-    if (status.value?.connected) error.value = e instanceof Error ? e.message : String(e)
+    if (status.value?.connected) error.value = errorMessage(e)
   }
 }
 
@@ -120,7 +121,7 @@ async function send() {
     body.value = ''
     await loadThread()
   } catch (e) {
-    sendError.value = e instanceof ApiError || e instanceof Error ? e.message : String(e)
+    sendError.value = errorMessage(e)
   } finally {
     sending.value = false
   }

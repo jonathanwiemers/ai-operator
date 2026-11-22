@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorMessage } from '../format'
 import UAlert from '@nuxt/ui/components/Alert.vue'
 import UBadge from '@nuxt/ui/components/Badge.vue'
 import { computed, onMounted, ref, watch } from 'vue'
@@ -15,6 +16,7 @@ import {
   newestAt,
   promptMessage,
   problemSubject,
+  statusColors,
   statusLine,
   withAnswer,
   type AnswerEvent,
@@ -53,7 +55,7 @@ async function load() {
     failed.value = ''
     if (!older.value.length) olderCursor.value = t.older
   } catch (e) {
-    if (mine === seq) failed.value = e instanceof Error ? e.message : String(e)
+    if (mine === seq) failed.value = errorMessage(e)
   }
 }
 
@@ -66,7 +68,7 @@ async function loadOlder() {
     older.value = [...older.value, ...t.events]
     olderCursor.value = t.older
   } catch (e) {
-    failed.value = e instanceof Error ? e.message : String(e)
+    failed.value = errorMessage(e)
   } finally {
     loadingOlder.value = false
   }
@@ -176,7 +178,6 @@ async function submit(text: string) {
 }
 
 const waiting = computed(() => locals.value.some((a) => a.send === 'sending'))
-const tones = { warning: 'warning', progress: 'info', success: 'success', neutral: 'neutral' } as const
 </script>
 
 <template>
@@ -188,7 +189,7 @@ const tones = { warning: 'warning', progress: 'info', success: 'success', neutra
         <div class="flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <RouterLink v-if="iid" :to="issueTo" class="min-w-0 font-semibold wrap-anywhere">{{ heading }}</RouterLink>
           <b v-else>{{ heading }}</b>
-          <UBadge v-if="status" class="ms-auto" size="sm" variant="subtle" :color="tones[status.tone]" :label="status.text" data-problem-status />
+          <UBadge v-if="status" class="ms-auto" size="sm" variant="subtle" :color="statusColors[status.tone]" :label="status.text" data-problem-status />
         </div>
         <p v-if="cause" class="m-0 min-w-0 font-medium wrap-anywhere" data-problem-cause>{{ cause }}</p>
         <ProblemFacts v-if="facts" :namespace="namespace" :name="name" :facts="facts" />

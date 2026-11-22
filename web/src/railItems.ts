@@ -1,6 +1,7 @@
 import type { NavigationMenuItem } from '@nuxt/ui'
 import type { ProjectSetSummary, ProjectSummary, ResearchSummary } from './generated/views'
 import { cronRaw, cronText } from './cron.ts'
+import { researchRoute } from './format.ts'
 import { groupProjects, setCountsLine, setProblem } from './projectSets.ts'
 import { milestoneCounts, projectDot, projectNeedsYou, projectStateLine } from './stream.ts'
 
@@ -135,7 +136,7 @@ function research(input: RailInput): RailItem[] {
       link(input, {
         label: r.name,
         icon: 'i-lucide-flask-conical',
-        to: `/research/${seg(r.namespace)}/${seg(r.name)}`,
+        to: researchRoute(r.namespace, r.name),
         chip: r.phase === 'Running' ? { color: 'info' } : r.phase === 'Succeeded' ? { color: 'success' } : undefined,
         ...researchSub(r),
       }),

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorMessage } from '../format'
 import UAlert from '@nuxt/ui/components/Alert.vue'
 import UTooltip from '@nuxt/ui/components/Tooltip.vue'
 import { alertColor } from '../badgeTone'
@@ -105,7 +106,7 @@ async function loadInitial(quiet = false) {
       error.value = 'Desk chat is not available.'
       messages.value = []
     } else {
-      error.value = e instanceof Error ? e.message : String(e)
+      error.value = errorMessage(e)
     }
   } finally {
     if (mine === seq) loading.value = false
@@ -127,7 +128,7 @@ async function loadOlder() {
     hasOlder.value = page.messages.length >= 50
   } catch (e) {
     if (mine !== seq || e instanceof LoginRequiredError) return
-    error.value = e instanceof Error ? e.message : String(e)
+    error.value = errorMessage(e)
   } finally {
     if (mine === seq) loadingOlder.value = false
   }

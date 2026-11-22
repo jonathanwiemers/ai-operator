@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorMessage } from '../format'
 import UAlert from '@nuxt/ui/components/Alert.vue'
 import { alertColor } from '../badgeTone'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
@@ -50,7 +51,7 @@ async function load() {
     if (e instanceof NotFoundError) {
       overview.value = { plans: [], projects: [] }
       emit('notFound')
-    } else error.value = e instanceof Error ? e.message : String(e)
+    } else error.value = errorMessage(e)
   }
 }
 // The key, not the object: a host's inline {namespace, name} is new on
@@ -68,7 +69,7 @@ async function start(p: PlanProject) {
     const plan = await createPlan(p.namespace, p.name)
     await router.push({ name: 'plans', params: { namespace: p.namespace, name: p.name, plan: plan.name } })
   } catch (e) {
-    startError.value = e instanceof Error ? e.message : String(e)
+    startError.value = errorMessage(e)
     if (e instanceof ApiError && e.status === 403) forbidden.value = true
   } finally {
     ;[busy.value, picking.value] = [false, false]

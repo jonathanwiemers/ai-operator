@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { plural } from '../format'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UFormField from '@nuxt/ui/components/FormField.vue'
 import UTextarea from '@nuxt/ui/components/Textarea.vue'
@@ -115,7 +116,7 @@ function refSync() {
 watch(
   () => (refAt.value ? refOptions.value.length : -1),
   (n) => {
-    if (n >= 0) announce(n === 0 ? 'No references match' : `${n} reference${n === 1 ? '' : 's'}`)
+    if (n >= 0) announce(n === 0 ? 'No references match' : `${n} ${plural(n, 'reference')}`)
   },
 )
 watch(refActive, (i) => void nextTick(() => document.getElementById(`${refId}-${i}`)?.scrollIntoView({ block: 'nearest' })))

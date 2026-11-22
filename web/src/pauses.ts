@@ -1,3 +1,4 @@
+import { plural } from './format.ts'
 import type { PauseHistory, Pause } from './types'
 
 // The Pauses card of the milestone context panel: the autopilot's pause
@@ -166,7 +167,7 @@ export function pausesSummary(h: PauseHistory | undefined | null, now: number): 
 // pausesLine is the card's totals line: "paused 3h 10m in 4 pauses · mean
 // 47m to resume".
 export function pausesLine(s: PausesSummary): string {
-  const n = s.count === 1 ? '1 pause' : `${s.count} pauses`
+  const n = `${s.count} ${plural(s.count, 'pause')}`
   const mean = s.meanResumeSec !== undefined ? ` · mean ${pauseDuration(s.meanResumeSec)} to resume` : ''
   return `paused ${pauseDuration(s.pausedSec)} in ${n}${mean}`
 }

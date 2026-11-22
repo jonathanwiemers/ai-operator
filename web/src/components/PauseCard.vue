@@ -8,7 +8,7 @@ import { alertColor } from '../badgeTone'
 import { getTaskChat, postTaskChat } from '../client'
 import type { ChatCommand } from '../chatState'
 import { companionOf } from '../companion'
-import { safeURL } from '../format'
+import { milestoneIssueURL, safeURL } from '../format'
 import { live } from '../live'
 import {
   commandAnswer,
@@ -82,7 +82,7 @@ const implTask = computed(() => {
 const implTaskName = computed(() => item.value?.task || implTask.value?.name)
 const issueTitle = computed(() => item.value?.title || props.hold?.title || implTask.value?.issue?.title)
 const issueURL = computed(() =>
-  props.milestone.webURL.replace(/\/-\/milestones\/\d+$/, `/-/issues/${issue.value}`),
+  milestoneIssueURL(props.milestone.webURL, issue.value),
 )
 // release: the final release record of a release pause.
 const release = computed(() => pauseRelease(kind.value, props.milestone.releases))

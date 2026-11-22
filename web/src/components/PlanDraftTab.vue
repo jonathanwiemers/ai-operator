@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorMessage } from '../format'
 import UAlert from '@nuxt/ui/components/Alert.vue'
 import { alertColor } from '../badgeTone'
 // One draft of a plan (R8, Decision 10): Edit / Preview, explicit Save, the
@@ -53,7 +54,7 @@ async function change(run: () => Promise<PlanView>): Promise<boolean> {
     return true
   } catch (e) {
     if (e instanceof DraftConflict) emit('view', e.view)
-    else error.value = e instanceof Error ? e.message : String(e)
+    else error.value = errorMessage(e)
     return false
   }
 }

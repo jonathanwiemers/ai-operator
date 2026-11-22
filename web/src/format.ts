@@ -1,5 +1,33 @@
 import type { CIState, Cost, Me, RunStatus, Stage, TaskPhase } from './types'
 
+// errorMessage is the text of a caught error, for an alert or an inline note.
+// Not imported by api.ts, announce.ts or pauseCard.ts: from their chunk it
+// would split format.ts off, over the initial budget (npm run budget).
+export function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e)
+}
+
+// plural is the word for n things: one when n is 1, many otherwise.
+export function plural(n: number, one: string, many = one + 's'): string {
+  return n === 1 ? one : many
+}
+
+// researchRoute is the Desk page of a research.
+export function researchRoute(namespace: string, name: string): string {
+  return `/research/${encodeURIComponent(namespace)}/${encodeURIComponent(name)}`
+}
+
+// milestoneIssueURL is issue iid on GitLab, from the milestone's web URL.
+export function milestoneIssueURL(milestoneURL: string, iid: number): string {
+  return milestoneURL.replace(/\/-\/milestones\/\d+$/, `/-/issues/${iid}`)
+}
+
+// dateLabel is the local date of an ISO time, '' for a missing or invalid one.
+export function dateLabel(iso: string | undefined): string {
+  const t = new Date(iso ?? '')
+  return Number.isNaN(t.getTime()) ? '' : t.toLocaleDateString()
+}
+
 // safeURL only lets http(s) links through: URLs come from GitLab via the
 // cluster, and a javascript: URL must never become a link.
 export function safeURL(u: string | undefined | null): string | undefined {
@@ -155,10 +183,10 @@ export function costTooltip(c: Cost | undefined | null): string {
   const lines = [
     `Input ${n(s.inputTokens)} · output ${n(s.outputTokens)} tokens`,
     `Cache read ${n(s.cacheReadTokens)} · cache write ${n(s.cacheWriteTokens)} tokens`,
-    `${n(s.calls)} ${s.calls === 1 ? 'call' : 'calls'}`,
+    `${n(s.calls)} ${plural(s.calls, 'call')}`,
   ]
   if (s.unknownCalls > 0) {
-    lines.push(`${n(s.unknownCalls)} ${s.unknownCalls === 1 ? 'call' : 'calls'} without a known cost, not in the sum`)
+    lines.push(`${n(s.unknownCalls)} ${plural(s.unknownCalls, 'call')} without a known cost, not in the sum`)
   }
   if (s.legacyCostUSD) lines.push(`${cost(s.legacyCostUSD)} from runs before calls were recorded, without tokens`)
   return lines.join('\n')

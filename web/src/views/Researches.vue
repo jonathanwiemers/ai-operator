@@ -8,7 +8,7 @@ import { canStartResearch } from '../api'
 import { getResearches } from '../client'
 import { useNow, useResource } from '../live'
 import { pageHeaderUi } from '../pageHeader'
-import { clockTime, runLine, type Tone } from '../format'
+import { clockTime, researchRoute, runLine, type Tone } from '../format'
 import Badge from '../components/Badge.vue'
 import CronSchedule from '../components/CronSchedule.vue'
 import RelTime from '../components/RelTime.vue'
@@ -66,7 +66,7 @@ function lastRunLine(r: ResearchSummary): string {
         <div class="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
           <div class="flex min-w-0 flex-wrap items-baseline gap-x-2.5">
             <RouterLink
-              :to="`/research/${encodeURIComponent(r.namespace)}/${encodeURIComponent(r.name)}`"
+              :to="researchRoute(r.namespace, r.name)"
               class="text-base font-[650] text-(--text) [overflow-wrap:anywhere] after:absolute after:inset-0 after:rounded-(--radius) hover:no-underline"
             >
               {{ r.name }}

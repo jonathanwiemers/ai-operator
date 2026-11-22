@@ -7,7 +7,7 @@ import UTabs from '@nuxt/ui/components/Tabs.vue'
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getSpend, LoginRequiredError, NotFoundError } from '../client'
-import { clockTime, duration, fullTime, tokenCount } from '../format'
+import { clockTime, duration, errorMessage, fullTime, tokenCount } from '../format'
 import { useNow } from '../live'
 import { measuredLabel, totalsLabel, totalsTooltip, writtenLabel } from '../lines'
 import { per100Label } from '../metricsCode'
@@ -117,7 +117,7 @@ async function load() {
     if (mine !== seq || e instanceof LoginRequiredError) return
     data.value = null
     error.value =
-      e instanceof NotFoundError ? 'Metrics need the research database.' : e instanceof Error ? e.message : String(e)
+      e instanceof NotFoundError ? 'Metrics need the research database.' : errorMessage(e)
   } finally {
     if (mine === seq) loading.value = false
   }

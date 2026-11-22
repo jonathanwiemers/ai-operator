@@ -25,7 +25,7 @@ import Badge from './Badge.vue'
 import ExtLink from './ExtLink.vue'
 import RelTime from './RelTime.vue'
 import Markdown from './Markdown.vue'
-import { cost, tokenCount } from '../format'
+import { cost, errorMessage, tokenCount } from '../format'
 import { driverShares, followUpStateLabel, followUpStateTone } from '../retrospective'
 import type { CostDriverView, FollowUpMilestoneView, MilestoneView } from '../types'
 import DataList, { type DataListColumn } from '../ui/DataList.vue'
@@ -192,7 +192,7 @@ async function create() {
     if (Array.isArray(taken) && taken.length) {
       error.value = takenMessage(taken as number[], followUps.value)
     } else {
-      error.value = e instanceof Error ? e.message : String(e)
+      error.value = errorMessage(e)
     }
   } finally {
     busy.value = false
@@ -221,7 +221,7 @@ async function dismiss() {
     await dismissFollowUps(props.namespace, props.name, props.milestone.iid)
     dismissSent.value = true
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e)
+    error.value = errorMessage(e)
   } finally {
     busy.value = false
     confirming.value = false

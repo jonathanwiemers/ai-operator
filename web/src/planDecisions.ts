@@ -3,7 +3,7 @@
 // the option the card marks. Pure, tested in node.
 import type { PlanDecision } from './generated/api'
 import type { DecisionAnswer } from './generated/store'
-import type { Tone } from './format.ts'
+import { plural, type Tone } from './format.ts'
 
 export type PlanDecisionCardState = 'open' | 'unsigned' | 'signed'
 
@@ -51,8 +51,6 @@ export function markedOption(
   return { index: d.recommended, label: d.signedOffBy ? 'Signed off' : 'Recommended' }
 }
 
-// plural is "1 decision" or "N decisions".
-const plural = (n: number) => `${n} decision${n === 1 ? '' : 's'}`
 
 // answersSummary counts a message's answers: kept, changed (option or other)
 // and the label "Answered 7 decisions: 5 kept, 2 changed".
@@ -60,7 +58,7 @@ export function answersSummary(answers: readonly DecisionAnswer[]): { total: num
   const total = answers.length
   const kept = answers.filter((a) => a.keep).length
   const changed = total - kept
-  return { total, kept, changed, label: `Answered ${plural(total)}: ${kept} kept, ${changed} changed` }
+  return { total, kept, changed, label: `Answered ${total} ${plural(total, 'decision')}: ${kept} kept, ${changed} changed` }
 }
 
 // changedLines lists the changed answers: "D2 → option text" (or "option N"
@@ -90,5 +88,5 @@ export function changedLines(
 // createWarning is the Create milestone dialog's warning, '' when nothing is pending.
 export function createWarning(pending: number): string {
   if (!(pending > 0)) return ''
-  return `${pending} ${pending === 1 ? 'decision is' : 'decisions are'} open or not signed off`
+  return `${pending} ${plural(pending, 'decision is', 'decisions are')} open or not signed off`
 }
