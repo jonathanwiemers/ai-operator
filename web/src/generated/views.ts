@@ -1744,17 +1744,6 @@ export interface ResearchResult {
   warnings?: string[];
 }
 /**
- * SearchHit is a result that matches a search.
- */
-export interface SearchHit {
-  runID: string;
-  namespace: string;
-  research: string;
-  title: string;
-  summary: string;
-  createdAt: string;
-}
-/**
  * ResearchResponse is a research page (GET /researches/{ns}/{name}, run is
  * the latest result's) or a run page (…/runs/{id}). Run and Result are null
  * before there is one.
@@ -1769,12 +1758,6 @@ export interface ResearchResponse {
  */
 export interface ResearchRunsPage {
   runs: ResearchRun[];
-}
-/**
- * ResearchSearchPage is GET /api/v1/research/search?q=.
- */
-export interface ResearchSearchPage {
-  hits: SearchHit[];
 }
 
 //////////

@@ -17,6 +17,18 @@ import (
 
 const shopPlans = "/api/v1/projects/team-a/shop/plans"
 
+// shopPlanList is GET /api/v1/plans narrowed to shop, its plans by name.
+func shopPlanList(t *testing.T, env *testEnv) (int, map[string]PlanListItem) {
+	t.Helper()
+	var got PlanOverview
+	code := env.get(t, "/api/v1/plans?project=team-a/shop", &got)
+	byName := map[string]PlanListItem{}
+	for _, it := range got.Plans {
+		byName[it.Name] = it
+	}
+	return code, byName
+}
+
 // planEnv logs in ada@example.com with roles on a chat-enabled UI whose
 // shop project has two plans and billing one.
 func planEnv(t *testing.T, chat bool, roles ...string) *testEnv {
@@ -65,14 +77,11 @@ func addPlans(t *testing.T, env *testEnv) {
 
 func TestPlansListAndGet(t *testing.T) {
 	env := planEnv(t, true, "devs")
-	var list []PlanListItem
-	if code := env.get(t, shopPlans, &list); code != http.StatusOK || len(list) != 2 {
+	code, list := shopPlanList(t, env)
+	if code != http.StatusOK || len(list) != 2 {
 		t.Fatalf("list: %d %+v", code, list)
 	}
-	if list[0].Name != "shop-plan-new" || list[1].Name != "shop-plan-old" {
-		t.Errorf("not newest first: %s, %s", list[0].Name, list[1].Name)
-	}
-	if l := list[0]; l.BudgetUSD != DefaultPlanMaxBudgetUSD || l.BudgetLimitUSD != DefaultPlanMaxBudgetUSDLimit || l.Permissions.Steer {
+	if l := list["shop-plan-new"]; l.BudgetUSD != DefaultPlanMaxBudgetUSD || l.BudgetLimitUSD != DefaultPlanMaxBudgetUSDLimit || l.Permissions.Steer {
 		t.Errorf("default budget, viewer without steer: %+v", l)
 	}
 
@@ -88,8 +97,7 @@ func TestPlansListAndGet(t *testing.T) {
 		"drafts":[{"key":1,"title":"","draft":"# Refunds","revision":4,"by":"owner","createdMilestoneIID":5,"createdMilestoneURL":"https://gitlab.example.com/m/5"}],
 		"decisions":[],"decisionsPending":0}`)
 
-	for _, path := range []string{shopPlans + "/billing-plan", shopPlans + "/nope", "/api/v1/projects/team-b/billing/plans",
-		"/api/v1/projects/team-b/billing/plans/billing-plan"} {
+	for _, path := range []string{shopPlans + "/billing-plan", shopPlans + "/nope", "/api/v1/projects/team-b/billing/plans/billing-plan"} {
 		if code := env.get(t, path, nil); code != http.StatusNotFound {
 			t.Errorf("%s: %d, want 404", path, code)
 		}
@@ -98,7 +106,7 @@ func TestPlansListAndGet(t *testing.T) {
 
 func TestPlansNeedChat(t *testing.T) {
 	env := planEnv(t, false, "leads")
-	if code := env.get(t, shopPlans, nil); code != http.StatusNotFound {
+	if code := env.get(t, shopPlans+"/shop-plan-new", nil); code != http.StatusNotFound {
 		t.Errorf("without chat: %d, want 404", code)
 	}
 }

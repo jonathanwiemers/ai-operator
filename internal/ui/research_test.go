@@ -118,9 +118,6 @@ func TestResearchAccess(t *testing.T) {
 				if code != http.StatusNotFound {
 					t.Errorf("list: status %d, want 404", code)
 				}
-				if code := env.get(t, "/api/v1/research/search?q=news", nil); code != http.StatusNotFound {
-					t.Errorf("search: status %d, want 404", code)
-				}
 			} else if code != http.StatusOK || !slices.Equal(researchNames(list), tc.list) {
 				t.Errorf("list: status %d, researches %v, want %v", code, researchNames(list), tc.list)
 			}
@@ -167,7 +164,7 @@ func TestResearchSummaries(t *testing.T) {
 func TestResearchOff(t *testing.T) {
 	env := newTestEnv(t, &Config{Auth: AuthConfig{Mode: AuthNone}})
 	for _, path := range []string{"/api/v1/researches", "/api/v1/researches/agents/news",
-		"/api/v1/researches/agents/news/runs", "/api/v1/research/search?q=x"} {
+		"/api/v1/researches/agents/news/runs"} {
 		if code := env.get(t, path, nil); code != http.StatusNotFound {
 			t.Errorf("%s without research: status %d, want 404", path, code)
 		}
@@ -415,38 +412,6 @@ func TestResearchResults(t *testing.T) {
 	_, _ = bufio.NewReader(resp.Body).WriteTo(&body)
 	if strings.Contains(body.String(), "javascript:") || !strings.Contains(body.String(), "failed validation") {
 		t.Errorf("invalid stored result sent: %s", body.String())
-	}
-}
-
-func TestResearchSearch(t *testing.T) {
-	owner, reader := readerStore(t)
-	env := researchEnv(t, oidcConfig(researchRules...), reader)
-	at := time.Date(2026, 10, 28, 7, 0, 0, 0, time.UTC)
-	news := seedRun(t, owner, "agents", "news", at, "Zeppelin news", "https://example.com/a")
-	seedRun(t, owner, "team", "secret", at, "Zeppelin secrets", "https://example.com/b")
-	// Results of a research that no longer exists, even one the glob matches.
-	seedRun(t, owner, "agents", "news-deleted", at, "Zeppelin archive", "https://example.com/c")
-	// A title made invalid in the database: the hit is left out.
-	bad := seedRun(t, owner, "agents", "news", at.Add(time.Hour), "Zeppelin later", "https://example.com/d")
-	storetest.Exec(t, `UPDATE research_results SET title = 'Zeppelin '||repeat('x', 400) WHERE run_id = $1`, bad.ID)
-	loginWithRoles(t, env, "news-readers")
-
-	var out struct {
-		Hits []SearchHit `json:"hits"`
-	}
-	if code := env.get(t, "/api/v1/research/search?q=zeppelin", &out); code != http.StatusOK {
-		t.Fatalf("status %d", code)
-	}
-	if len(out.Hits) != 1 || out.Hits[0].RunID != news.ID || out.Hits[0].Research != "news" || out.Hits[0].Title != "Zeppelin news" {
-		t.Errorf("hits = %+v, want only agents/news", out.Hits)
-	}
-	for _, q := range []string{"", "%20%20", strings.Repeat("a", 201), "%FF"} {
-		if code := env.get(t, "/api/v1/research/search?q="+q, nil); code != http.StatusBadRequest {
-			t.Errorf("q=%.20s: status %d, want 400", q, code)
-		}
-	}
-	if code := env.get(t, "/api/v1/research/search?q="+url.QueryEscape(strings.Repeat("é", 200)), nil); code != http.StatusOK {
-		t.Errorf("200 characters: status %d", code)
 	}
 }
 

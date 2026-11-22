@@ -75,11 +75,18 @@ read it. *Leaves in* is the first release without it.
 |------|------|-----------|----------------|
 | `status.pilot.rejected` | AgentTask status field | the first release after 22 November 2026 | Nothing. The operator stopped writing it when each denied command got its own reply; a stored value is dropped. |
 | `status.autopilot.passedBy` | AgentTask status field | the first release after 22 November 2026 | Nothing. The operator stopped reading and writing it when milestones got a run order; a stored value is dropped. |
+| `GET /api/v1/projects/{namespace}/{name}/plans` | Desk API route | the first release after 22 November 2026 | Nothing in manifests. A client that calls it gets 404: call `GET /api/v1/plans?project=namespace/name` instead, which returns the same plans under `plans`, last active first. |
+| `GET /api/v1/research/search` | Desk API route | the first release after 22 November 2026 | Nothing in manifests. A client that calls it gets 404, and nothing replaces it: list a research's runs with `GET /api/v1/researches/{namespace}/{name}/runs`. |
 
 Both fields belong to the [task](../concepts/glossary.md#task) of a
 [milestone](../concepts/glossary.md#milestone): `pilot` is the
 [pilot](../concepts/glossary.md#pilot)'s bookkeeping, `autopilot` the
 [autopilot](../concepts/glossary.md#autopilot) queue.
+
+The two routes belong to the [Desk](../concepts/glossary.md#desk) API, and
+the Desk itself never called them. They matter only if you wrote a script
+against them. The [Desk API reference](../reference/desk-api.md) lists the
+routes that remain.
 
 This release removes no Helm value: the chart reads every value its values
 file lists, so your values file needs no change.

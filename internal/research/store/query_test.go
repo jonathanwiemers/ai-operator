@@ -7,8 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"k8s.io/apimachinery/pkg/types"
-
 	"github.com/jonathanwiemers/ai-operator/internal/research/blocks"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 	"github.com/jonathanwiemers/ai-operator/internal/research/storetest"
@@ -145,61 +143,6 @@ func TestReadQueriesAsReader(t *testing.T) {
 	}
 	if _, err := s.LatestResult(ctx, "agents", "missing"); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("LatestResult of an unknown research: %v, want ErrNotFound", err)
-	}
-}
-
-func TestSearchRanksAndFilters(t *testing.T) {
-	owner := storetest.New(t)
-	s := asReader(t, owner)
-	ctx := t.Context()
-	at := time.Date(2026, 10, 27, 7, 0, 0, 0, time.UTC)
-	doc := func(title, summary string) blocks.Result {
-		return blocks.Result{SchemaVersion: 1, Title: title, Summary: summary, Blocks: []blocks.Block{
-			{Type: blocks.TypeMarkdown, Markdown: &blocks.Markdown{Text: "Body " + title}},
-		}}
-	}
-	inSummary := seed(t, owner, "agents", "news", at, doc("Weather", "Rust release notes"))
-	inTitle := seed(t, owner, "agents", "news", at.Add(time.Hour), doc("Rust compiler", "What changed"))
-	older := seed(t, owner, "agents", "tech", at.Add(2*time.Hour), doc("Go release", "A new version"))
-	newer := seed(t, owner, "agents", "tech", at.Add(3*time.Hour), doc("Go release", "A new version"))
-	seed(t, owner, "team", "secret", at, doc("Rust secrets", "Go release"))
-
-	allowed := []types.NamespacedName{{Namespace: "agents", Name: "news"}, {Namespace: "agents", Name: "tech"}}
-	for _, c := range []struct {
-		q       string
-		allowed []types.NamespacedName
-		want    []string
-	}{
-		// A match in the title ranks above one in the summary.
-		{"rust", allowed, []string{inTitle.ID, inSummary.ID}},
-		// Equal ranks: newest first.
-		{`"go release"`, allowed, []string{newer.ID, older.ID}},
-		{"rust -compiler", allowed, []string{inSummary.ID}},
-		{"body", allowed[:1], []string{inTitle.ID, inSummary.ID}},
-		{"secrets", allowed, nil},
-		{"rust", nil, nil},
-		{"rust", []types.NamespacedName{{Namespace: "agents", Name: "secret"}}, nil},
-		{"!!!", allowed, nil},
-	} {
-		hits, err := s.Search(ctx, c.q, c.allowed, 50)
-		if err != nil {
-			t.Fatalf("Search(%q): %v", c.q, err)
-		}
-		var ids []string
-		for _, h := range hits {
-			ids = append(ids, h.RunID)
-			if h.Namespace != "agents" || (h.Research != "news" && h.Research != "tech") {
-				t.Errorf("Search(%q): hit of %s/%s", c.q, h.Namespace, h.Research)
-			}
-		}
-		if !slices.Equal(ids, c.want) {
-			t.Errorf("Search(%q, %v) = %v, want %v", c.q, c.allowed, ids, c.want)
-		}
-	}
-	hits, err := s.Search(ctx, "rust", allowed, 1)
-	if err != nil || len(hits) != 1 || hits[0].Title != "Rust compiler" || hits[0].Summary != "What changed" ||
-		!hits[0].CreatedAt.Equal(inTitle.StartedAt.Add(time.Minute)) {
-		t.Errorf("Search with limit 1 = %+v, %v", hits, err)
 	}
 }
 

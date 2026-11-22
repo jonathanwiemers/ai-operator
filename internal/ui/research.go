@@ -9,11 +9,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
@@ -25,8 +23,6 @@ import (
 const (
 	defaultRunsLimit = 20
 	maxRunsLimit     = 100
-	maxSearchQuery   = 200 // characters
-	maxSearchHits    = 50
 )
 
 // ResearchSummary is an AgentResearch as the research pages show it.
@@ -102,16 +98,6 @@ type itemView struct {
 	New bool `json:"new,omitempty"`
 }
 
-// SearchHit is a result that matches a search.
-type SearchHit struct {
-	RunID     string    `json:"runID"`
-	Namespace string    `json:"namespace"`
-	Research  string    `json:"research"`
-	Title     string    `json:"title"`
-	Summary   string    `json:"summary"`
-	CreatedAt time.Time `json:"createdAt"`
-}
-
 // ResearchResponse is a research page (GET /researches/{ns}/{name}, run is
 // the latest result's) or a run page (…/runs/{id}). Run and Result are null
 // before there is one.
@@ -124,11 +110,6 @@ type ResearchResponse struct {
 // ResearchRunsPage is GET /researches/{ns}/{name}/runs (?before=, ?limit=).
 type ResearchRunsPage struct {
 	Runs []ResearchRun `json:"runs"`
-}
-
-// ResearchSearchPage is GET /api/v1/research/search?q=.
-type ResearchSearchPage struct {
-	Hits []SearchHit `json:"hits"`
 }
 
 func summarizeResearch(ar *aiv1.AgentResearch, canDelete bool) ResearchSummary {
@@ -349,38 +330,4 @@ func (s *Server) researchRun(w http.ResponseWriter, r *http.Request, st *store.S
 	}
 	v := runView(run)
 	writeJSON(w, http.StatusOK, ResearchResponse{Research: s.detailOf(r, ar), Run: &v, Result: result})
-}
-
-// researchSearch searches the results of the researches the user may read
-// (?q= in web search syntax), best match first.
-func (s *Server) researchSearch(w http.ResponseWriter, r *http.Request, st *store.Store) {
-	q := strings.TrimSpace(r.URL.Query().Get("q"))
-	if n := utf8.RuneCountInString(q); n < 1 || n > maxSearchQuery || !utf8.ValidString(q) || strings.ContainsRune(q, 0) {
-		writeError(w, http.StatusBadRequest, "q must have 1 to 200 characters")
-		return
-	}
-	list, ok := s.readableResearches(w, r)
-	if !ok {
-		return
-	}
-	allowed := make([]types.NamespacedName, len(list))
-	for i, ar := range list {
-		allowed[i] = types.NamespacedName{Namespace: ar.Namespace, Name: ar.Name}
-	}
-	hits, err := st.Search(r.Context(), q, allowed, maxSearchHits)
-	if err != nil {
-		s.internalError(w, err)
-		return
-	}
-	out := []SearchHit{}
-	for _, h := range hits {
-		// Title and summary are checked like a result's; a hit that fails is left out.
-		if _, _, err := revalidate(h.Title, h.Summary, json.RawMessage("[]")); err != nil {
-			s.log.Error(err, "stored research result failed validation, search hit not sent", "run", h.RunID)
-			continue
-		}
-		out = append(out, SearchHit{RunID: h.RunID, Namespace: h.Namespace, Research: h.Research,
-			Title: h.Title, Summary: h.Summary, CreatedAt: h.CreatedAt})
-	}
-	writeJSON(w, http.StatusOK, ResearchSearchPage{Hits: out})
 }

@@ -168,7 +168,6 @@ func (s *Server) Handler() http.Handler {
 	mux.Handle("POST /api/v1/projects/{namespace}/{name}/milestones/{iid}/followups/dismiss", s.authed(s.dismissFollowUps))
 	mux.Handle("POST /api/v1/projects/{namespace}/{name}/milestones/{iid}/issues/{issue}/close", s.authed(s.closeHoldingIssue))
 	mux.Handle("GET /api/v1/plans", s.authed(s.allPlans))
-	mux.Handle("GET /api/v1/projects/{namespace}/{name}/plans", s.authed(s.plans))
 	mux.Handle("GET /api/v1/projects/{namespace}/{name}/plans/{plan}", s.authed(s.plan))
 	mux.Handle("POST /api/v1/projects/{namespace}/{name}/plans", s.authed(s.createPlan))
 	mux.Handle("DELETE /api/v1/projects/{namespace}/{name}/plans/{plan}", s.authed(s.deletePlan))
@@ -204,7 +203,6 @@ func (s *Server) Handler() http.Handler {
 		mux.Handle("GET /api/v1/researches/{namespace}/{name}", s.researchHandler(s.researchDetail))
 		mux.Handle("GET /api/v1/researches/{namespace}/{name}/runs", s.researchHandler(s.researchRuns))
 		mux.Handle("GET /api/v1/researches/{namespace}/{name}/runs/{id}", s.researchHandler(s.researchRun))
-		mux.Handle("GET /api/v1/research/search", s.researchHandler(s.researchSearch))
 	}
 	// Always registered, so they answer 404 (not 405) without allowCreate.
 	mux.Handle("GET /api/v1/research/form", s.writeHandler(s.researchForm))

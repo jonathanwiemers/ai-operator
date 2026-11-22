@@ -2553,8 +2553,7 @@ comments are dropped, images are never loaded. `mode="block"` renders run
 summaries, notes, research summaries, prompt text, pause and release
 reasons, transcript lines and research prompts; `mode="inline"` renders one
 line for rows that are links already. Machine strings (condition messages,
-exit reasons, API errors, thinking lines) stay plain text. Full-text search
-over results is in the API only (`GET /api/v1/research/search`).
+exit reasons, API errors, thinking lines) stay plain text.
 
 ### Security
 

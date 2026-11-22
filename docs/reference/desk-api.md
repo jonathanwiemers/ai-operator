@@ -134,7 +134,6 @@ exists in GitLab.
 | Method and path | Purpose | Needs |
 |-----------------|---------|-------|
 | `GET /api/v1/plans` | The plans of every project you may see, last active first, and those projects with whether you may start plans in them. `?project=namespace/name` narrows both to one project. | see, Desk chat |
-| `GET /api/v1/projects/{namespace}/{name}/plans` | The project's plans, newest first. | see, Desk chat |
 | `GET /api/v1/projects/{namespace}/{name}/plans/{plan}` | One plan with its drafts. | see, Desk chat |
 | `POST /api/v1/projects/{namespace}/{name}/plans` | Start a plan, with an optional `{"title": "…"}`. | `steer`, Desk chat |
 | `DELETE /api/v1/projects/{namespace}/{name}/plans/{plan}` | Delete a plan. | `steer`, Desk chat |
@@ -325,7 +324,6 @@ rules. See [Research](../guides/research.md).
 | `GET /api/v1/researches/{namespace}/{name}` | One research and its latest result. | `research: read` |
 | `GET /api/v1/researches/{namespace}/{name}/runs` | Its runs, newest first. | `research: read` |
 | `GET /api/v1/researches/{namespace}/{name}/runs/{id}` | One run and its result. | `research: read` |
-| `GET /api/v1/research/search?q=` | Search the results, web search syntax. | `research: read` |
 | `GET /api/v1/research/form` | What the one-off form offers: projects, models, depths. | `research: write` |
 | `POST /api/v1/researches` | Start a one-off research. | `research: write` |
 | `DELETE /api/v1/researches/{namespace}/{name}` | Delete your own one-off research. | `research: write` |

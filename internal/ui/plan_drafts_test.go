@@ -56,11 +56,11 @@ func TestPlanViewDrafts(t *testing.T) {
 	if d := v.Drafts[0]; d.CreatedMilestoneIID != 41 || d.CreatedMilestoneURL != "https://gitlab.example.com/m/41" {
 		t.Errorf("draft 1: %+v", d)
 	}
-	var list []PlanListItem
-	if code := env.get(t, shopPlans, &list); code != http.StatusOK || len(list) != 2 {
+	code, list := shopPlanList(t, env)
+	if code != http.StatusOK || len(list) != 2 {
 		t.Fatalf("list: %d", code)
 	}
-	if l := list[0]; l.DraftsTotal != 3 || l.DraftsCreated != 1 || len(l.CreatedMilestones) != 1 ||
+	if l := list["shop-plan-new"]; l.DraftsTotal != 3 || l.DraftsCreated != 1 || len(l.CreatedMilestones) != 1 ||
 		l.CreatedMilestones[0] != (PlanCreatedMilestone{41, "https://gitlab.example.com/m/41"}) || l.CreatedMilestoneIID != 41 {
 		t.Errorf("list item: %+v", l)
 	}

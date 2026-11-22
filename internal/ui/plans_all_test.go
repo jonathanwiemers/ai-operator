@@ -78,9 +78,8 @@ func TestPlanMilestoneState(t *testing.T) {
 		if got.Milestone == nil || *got.Milestone != want {
 			t.Errorf("milestone = %+v, want %+v", got.Milestone, want)
 		}
-		var list []PlanListItem
-		env.get(t, shopPlans, &list)
-		if len(list) != 2 || list[1].Milestone == nil || *list[1].Milestone != want || list[0].Milestone != nil {
+		_, list := shopPlanList(t, env)
+		if old := list["shop-plan-old"]; len(list) != 2 || old.Milestone == nil || *old.Milestone != want || list["shop-plan-new"].Milestone != nil {
 			t.Errorf("project list = %+v", list)
 		}
 	})

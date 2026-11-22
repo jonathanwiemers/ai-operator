@@ -225,20 +225,6 @@ func (s *Server) loadPlans(w http.ResponseWriter, r *http.Request) (*aiv1.AgentP
 	return ap, tasks, plans, s.planOwner(principalOf(r), ap, tasks), true
 }
 
-// plans lists a project's plans.
-func (s *Server) plans(w http.ResponseWriter, r *http.Request) {
-	ap, tasks, plans, steer, ok := s.loadPlans(w, r)
-	if !ok {
-		return
-	}
-	out := []PlanListItem{}
-	for i := range plans {
-		out = append(out, s.planItem(&plans[i], steer))
-	}
-	s.setPlanMilestones(r.Context(), out, map[string]*aiv1.AgentProject{ap.Namespace + "/" + ap.Name: ap}, tasks)
-	writeJSON(w, http.StatusOK, out)
-}
-
 // plan returns one plan with its draft and its milestone's row.
 func (s *Server) plan(w http.ResponseWriter, r *http.Request) {
 	ap, tasks, plans, steer, ok := s.loadPlans(w, r)
