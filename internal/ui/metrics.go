@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"errors"
 	"net/http"
 	"time"
 
@@ -78,25 +77,8 @@ type MetricsView struct {
 // for the parameters of costs (group, kind and engine are read and checked,
 // not used).
 func (s *Server) costsMetrics(w http.ResponseWriter, r *http.Request) {
-	if !s.cfg.Research.Enabled() {
-		notFound(w)
-		return
-	}
-	visible, _, ok := s.visibleProjects(w, r)
+	p, visible, _, st, ok := s.costRequest(w, r, time.Now())
 	if !ok {
-		return
-	}
-	p, err := s.parseCostParams(r, visible, time.Now())
-	if errors.Is(err, errCostProject) {
-		notFound(w)
-		return
-	} else if err != nil {
-		badRequest(w, err.Error())
-		return
-	}
-	st := s.costStore()
-	if st == nil {
-		writeError(w, http.StatusServiceUnavailable, "the history database is not connected yet")
 		return
 	}
 	m, err := st.Metrics(r.Context(), p.q)

@@ -45,16 +45,11 @@ func (s *Server) postChat(w http.ResponseWriter, r *http.Request) {
 		notFound(w)
 		return
 	}
-	p := principalOf(r)
-	ns, name, taskName := r.PathValue("namespace"), r.PathValue("name"), r.PathValue("task")
-	if !s.authz.CanChat(p, ns, name) {
-		if !s.authz.CanView(p, ns, name) {
-			notFound(w)
-			return
-		}
-		writeError(w, http.StatusForbidden, "no access to chat")
+	if !s.granted(w, r, s.authz.CanChat, "chat") {
 		return
 	}
+	p := principalOf(r)
+	ns, name, taskName := r.PathValue("namespace"), r.PathValue("name"), r.PathValue("task")
 	_, task, ok := s.loadTask(w, r)
 	if !ok {
 		return

@@ -198,14 +198,8 @@ func (s *Server) planOwner(p Principal, ap *aiv1.AgentProject, tasks []aiv1.Agen
 	return !owners
 }
 
-// projectPlans loads the project and its plans, newest first: 404 without
-// chat or a view of the project.
-func (s *Server) projectPlans(w http.ResponseWriter, r *http.Request) (*aiv1.AgentProject, []aiv1.AgentPlan, bool, bool) {
-	ap, _, plans, steer, ok := s.loadPlans(w, r)
-	return ap, plans, steer, ok
-}
-
-// loadPlans is projectPlans with the project's tasks.
+// loadPlans loads the project, its tasks and its plans, newest first: 404
+// without chat or a view of the project.
 func (s *Server) loadPlans(w http.ResponseWriter, r *http.Request) (*aiv1.AgentProject, []aiv1.AgentTask, []aiv1.AgentPlan, bool, bool) {
 	if !s.cfg.ChatEnabled() {
 		notFound(w)
@@ -285,10 +279,10 @@ const (
 	plansPerWindow = 10
 )
 
-// ownPlans is projectPlans for a change: 404 without the writer client, 403
+// ownPlans is loadPlans for a change: 404 without the writer client, 403
 // unless the caller steers the project's plans.
 func (s *Server) ownPlans(w http.ResponseWriter, r *http.Request) (*aiv1.AgentProject, []aiv1.AgentPlan, bool) {
-	ap, plans, steer, ok := s.projectPlans(w, r)
+	ap, _, plans, steer, ok := s.loadPlans(w, r)
 	switch {
 	case !ok:
 	case s.writer == nil:
@@ -344,23 +338,22 @@ func (s *Server) deletePlan(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	i := slices.IndexFunc(plans, func(pl aiv1.AgentPlan) bool { return pl.Name == r.PathValue("plan") })
-	if i < 0 {
-		notFound(w)
+	pl, ok := pathPlan(w, r, plans)
+	if !ok {
 		return
 	}
-	if err := s.writer.Delete(r.Context(), &plans[i]); client.IgnoreNotFound(err) != nil {
+	if err := s.writer.Delete(r.Context(), pl); client.IgnoreNotFound(err) != nil {
 		s.internalError(w, err)
 		return
 	}
-	s.log.Info("audit", "action", "plan.delete", "user", principalOf(r).Username, "namespace", ap.Namespace, "name", plans[i].Name, "project", ap.Name)
+	s.log.Info("audit", "action", "plan.delete", "user", principalOf(r).Username, "namespace", ap.Namespace, "name", pl.Name, "project", ap.Name)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// projectPlan is projectPlans for the plan of the request path: 404 when the
+// projectPlan is loadPlans for the plan of the request path: 404 when the
 // project has none of that name.
 func (s *Server) projectPlan(w http.ResponseWriter, r *http.Request) (*aiv1.AgentPlan, bool, bool) {
-	_, plans, steer, ok := s.projectPlans(w, r)
+	_, _, plans, steer, ok := s.loadPlans(w, r)
 	if !ok {
 		return nil, false, false
 	}

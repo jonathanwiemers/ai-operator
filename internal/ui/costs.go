@@ -259,6 +259,35 @@ func (s *Server) parseCostParams(r *http.Request, visible map[string]*aiv1.Agent
 	return p, nil
 }
 
+// costRequest reads a Costs or Metrics request at now over the viewer's
+// projects: 404 without the history database or for an invisible ?project=,
+// 400 for bad parameters, 503 while the database is not connected; false
+// after an error response.
+func (s *Server) costRequest(w http.ResponseWriter, r *http.Request, now time.Time) (costParams, map[string]*aiv1.AgentProject, []aiv1.AgentTask, costReader, bool) {
+	if !s.cfg.Research.Enabled() {
+		notFound(w)
+		return costParams{}, nil, nil, nil, false
+	}
+	visible, tasks, ok := s.visibleProjects(w, r)
+	if !ok {
+		return costParams{}, nil, nil, nil, false
+	}
+	p, err := s.parseCostParams(r, visible, now)
+	if errors.Is(err, errCostProject) {
+		notFound(w)
+		return costParams{}, nil, nil, nil, false
+	} else if err != nil {
+		badRequest(w, err.Error())
+		return costParams{}, nil, nil, nil, false
+	}
+	st := s.costStore()
+	if st == nil {
+		writeError(w, http.StatusServiceUnavailable, "the history database is not connected yet")
+		return costParams{}, nil, nil, nil, false
+	}
+	return p, visible, tasks, st, true
+}
+
 // localDay is the midnight of t's date in loc.
 func localDay(t time.Time, loc *time.Location) time.Time {
 	y, m, d := t.In(loc).Date()
@@ -373,25 +402,8 @@ func foldSeries(points []store.CostPoint, keep int) []CostPointView {
 // totals and breakdowns of the range and the previous period, and the
 // month's days, over the viewer's projects (or ?project=).
 func (s *Server) costs(w http.ResponseWriter, r *http.Request) {
-	if !s.cfg.Research.Enabled() {
-		notFound(w)
-		return
-	}
-	visible, tasks, ok := s.visibleProjects(w, r)
+	p, visible, tasks, st, ok := s.costRequest(w, r, time.Now())
 	if !ok {
-		return
-	}
-	p, err := s.parseCostParams(r, visible, time.Now())
-	if errors.Is(err, errCostProject) {
-		notFound(w)
-		return
-	} else if err != nil {
-		badRequest(w, err.Error())
-		return
-	}
-	st := s.costStore()
-	if st == nil {
-		writeError(w, http.StatusServiceUnavailable, "the history database is not connected yet")
 		return
 	}
 	v, err := costsView(r.Context(), st, p)
@@ -450,25 +462,8 @@ func costsView(ctx context.Context, st costReader, p costParams) (CostsView, err
 // costsTop answers the Costs page's top lists over the viewer's projects, for
 // the parameters of costs (group is read and checked, not used).
 func (s *Server) costsTop(w http.ResponseWriter, r *http.Request) {
-	if !s.cfg.Research.Enabled() {
-		notFound(w)
-		return
-	}
-	visible, _, ok := s.visibleProjects(w, r)
+	p, _, _, st, ok := s.costRequest(w, r, time.Now())
 	if !ok {
-		return
-	}
-	p, err := s.parseCostParams(r, visible, time.Now())
-	if errors.Is(err, errCostProject) {
-		notFound(w)
-		return
-	} else if err != nil {
-		badRequest(w, err.Error())
-		return
-	}
-	st := s.costStore()
-	if st == nil {
-		writeError(w, http.StatusServiceUnavailable, "the history database is not connected yet")
 		return
 	}
 	top, err := st.CostTop(r.Context(), p.q, costTopRows)

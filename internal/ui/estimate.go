@@ -70,7 +70,7 @@ func (s *Server) estimate(w http.ResponseWriter, r *http.Request) {
 	unit, n, err := store.UnitRequirement, 0, error(nil)
 	if plan != "" {
 		var plans []aiv1.AgentPlan
-		if ap, plans, _, ok = s.projectPlans(w, r); !ok {
+		if ap, _, plans, _, ok = s.loadPlans(w, r); !ok {
 			return
 		} else if i := slices.IndexFunc(plans, func(pl aiv1.AgentPlan) bool { return pl.Name == plan }); i < 0 {
 			notFound(w)

@@ -20,7 +20,7 @@ const maxLogTail = 500
 // the container stops, the client leaves or the session expires. Only the
 // task's owner subjects with the steer grant may read it.
 func (s *Server) rawLogs(w http.ResponseWriter, r *http.Request) {
-	if !s.mayPost(w, r) {
+	if !s.granted(w, r, s.authz.CanSteer, "steering") {
 		return
 	}
 	_, tasks, ok := s.loadProject(w, r)

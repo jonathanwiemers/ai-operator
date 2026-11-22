@@ -185,12 +185,12 @@ func liveReleases(st *aiv1.AgentTask) []ReleaseView {
 		v := ReleaseView{ID: r.ID, By: r.By, Actor: r.Actor, Why: r.Why, AfterIssue: r.AfterIssue, SHA: r.SHA,
 			ReleasedSHA: r.ReleasedSHA, State: r.State, Reason: r.Reason, Issues: nonNilIDs(r.Issues),
 			MergeRequests: nonNilIDs(r.MergeRequests), Version: r.Version, PipelineURL: r.PipelineURL,
-			ReleaseURL: r.ReleaseURL, DecidedAt: timeOrNil(r.DecidedAt.Time)}
+			ReleaseURL: r.ReleaseURL, DecidedAt: optTime(r.DecidedAt.Time)}
 		if r.StartedAt != nil {
-			v.StartedAt = timeOrNil(r.StartedAt.Time)
+			v.StartedAt = optTime(r.StartedAt.Time)
 		}
 		if r.EndedAt != nil {
-			v.EndedAt = timeOrNil(r.EndedAt.Time)
+			v.EndedAt = optTime(r.EndedAt.Time)
 		}
 		out = append(out, v)
 	}
@@ -205,8 +205,8 @@ func storedReleases(recs []store.ReleaseSnapshot) []ReleaseView {
 		out = append(out, ReleaseView{ID: r.ID, By: aiv1.ReleaseBy(r.By), Actor: r.Actor, Why: r.Why,
 			AfterIssue: r.AfterIID, SHA: r.SHA, ReleasedSHA: r.ReleasedSHA, State: aiv1.ReleaseState(r.State),
 			Reason: r.Reason, Issues: nonNilIDs(r.Issues), MergeRequests: nonNilIDs(r.MergeRequests),
-			Version: r.Version, PipelineURL: r.PipelineURL, ReleaseURL: r.ReleaseURL, DecidedAt: timeOrNil(r.DecidedAt),
-			StartedAt: timeOrNil(r.StartedAt), EndedAt: timeOrNil(r.EndedAt)})
+			Version: r.Version, PipelineURL: r.PipelineURL, ReleaseURL: r.ReleaseURL, DecidedAt: optTime(r.DecidedAt),
+			StartedAt: optTime(r.StartedAt), EndedAt: optTime(r.EndedAt)})
 	}
 	return byReleaseID(out)
 }
@@ -235,14 +235,6 @@ func nonNilIDs(s []int64) []int64 {
 		return []int64{}
 	}
 	return s
-}
-
-// timeOrNil is t, nil when zero.
-func timeOrNil(t time.Time) *time.Time {
-	if t.IsZero() {
-		return nil
-	}
-	return &t
 }
 
 // storedMilestoneView is the view of a milestone whose tasks are gone, from
@@ -714,13 +706,9 @@ func (s *Server) milestone(w http.ResponseWriter, r *http.Request) {
 		v.Retrospective = storedRetrospective(gitLabRef(ap).WebURL, v.Tracking, *d)
 	}
 	s.addCostDrivers(r.Context(), ap, v.IID, v.Retrospective)
-	gl := s.gitlab != nil && s.gitlab.serves(ap)
 	p := principalOf(r)
-	chat := s.cfg.ChatEnabled() && s.authz.CanChat(p, ap.Namespace, ap.Name)
-	v.Permissions = &MilestonePermissions{GitLab: gl, Steer: gl && s.authz.CanSteer(p, ap.Namespace, ap.Name),
-		Chat:       chat,
-		Transcript: s.logs != nil && s.authz.CanSeeTranscript(p, ap.Namespace, ap.Name),
-		Merge:      chat && slices.Contains(st.Spec.OwnerSubjects, p.Username)}
+	perms := s.milestonePermissions(p, ap, true, st.Spec.OwnerSubjects)
+	v.Permissions = &perms
 	v.Permissions.Parallel = v.Permissions.Merge
 	v.Permissions.Draft = v.Permissions.Merge && coord != nil && openFollowUps(v.Retrospective)
 	v.Permissions.FollowUp = v.Permissions.Steer && slices.Contains(st.Spec.OwnerSubjects, p.Username) && openFollowUps(v.Retrospective)
@@ -736,8 +724,19 @@ func (s *Server) milestone(w http.ResponseWriter, r *http.Request) {
 	if coord != nil {
 		target = coord.Name
 	}
-	v.Prompts = promptViews(st, target, p.Username, chat)
+	v.Prompts = promptViews(st, target, p.Username, v.Permissions.Chat)
 	writeJSON(w, http.StatusOK, v)
+}
+
+// milestonePermissions returns what p may do on a milestone of ap: chat only
+// when canChat, merge only as one of owners (its Plan task's owner subjects).
+func (s *Server) milestonePermissions(p Principal, ap *aiv1.AgentProject, canChat bool, owners []string) MilestonePermissions {
+	gl := s.gitlab != nil && s.gitlab.serves(ap)
+	chat := s.cfg.ChatEnabled() && s.authz.CanChat(p, ap.Namespace, ap.Name) && canChat
+	return MilestonePermissions{GitLab: gl, Steer: gl && s.authz.CanSteer(p, ap.Namespace, ap.Name),
+		Chat:       chat,
+		Transcript: s.logs != nil && s.authz.CanSeeTranscript(p, ap.Namespace, ap.Name),
+		Merge:      chat && slices.Contains(owners, p.Username)}
 }
 
 // issueFigures adds the snapshot's figures to the issues of the live view
@@ -858,7 +857,7 @@ func (s *Server) trackingIssue(w http.ResponseWriter, r *http.Request) (*aiv1.Ag
 // prefix in front unless the message starts with it. Whether the pilot
 // takes it as an owner's instruction is the operator's decision.
 func (s *Server) postMilestoneNote(w http.ResponseWriter, r *http.Request) {
-	if !s.mayPost(w, r) {
+	if !s.granted(w, r, s.authz.CanSteer, "steering") {
 		return
 	}
 	req, ok := readNote(w, r)

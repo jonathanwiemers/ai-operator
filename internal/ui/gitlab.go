@@ -397,7 +397,7 @@ const (
 // issue, in the user's GitLab name. The UI does not interpret it: the
 // operator handles it like any comment written in GitLab.
 func (s *Server) postNote(w http.ResponseWriter, r *http.Request) {
-	if !s.mayPost(w, r) {
+	if !s.granted(w, r, s.authz.CanSteer, "steering") {
 		return
 	}
 	req, ok := readNote(w, r)
@@ -435,11 +435,12 @@ type noteRequest struct {
 	Body   string `json:"body"`
 }
 
-// mayPost answers a request of a user without the steer grant: 403, or 404
-// when the project is not even visible.
-func (s *Server) mayPost(w http.ResponseWriter, r *http.Request) bool {
+// granted reports whether the user has the grant can on the request's
+// project. Without it, it answers 403 "no access to <what>", or 404 when the
+// project is not even visible.
+func (s *Server) granted(w http.ResponseWriter, r *http.Request, can func(p Principal, namespace, name string) bool, what string) bool {
 	p := principalOf(r)
-	if s.authz.CanSteer(p, r.PathValue("namespace"), r.PathValue("name")) {
+	if can(p, r.PathValue("namespace"), r.PathValue("name")) {
 		return true
 	}
 	// The project itself may still be invisible: loadProject decides.
@@ -447,7 +448,7 @@ func (s *Server) mayPost(w http.ResponseWriter, r *http.Request) bool {
 		notFound(w)
 		return false
 	}
-	writeError(w, http.StatusForbidden, "no access to steering")
+	writeError(w, http.StatusForbidden, "no access to "+what)
 	return false
 }
 

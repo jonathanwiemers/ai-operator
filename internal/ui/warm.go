@@ -19,18 +19,11 @@ const warmDebounce = time.Minute
 // Needs what posting to the task's chat needs; 202 also when the last request
 // is under a minute old (no patch then).
 func (s *Server) warmTask(w http.ResponseWriter, r *http.Request) {
-	ns, name := r.PathValue("namespace"), r.PathValue("name")
-	p := principalOf(r)
-	switch {
-	case !s.cfg.ChatEnabled() || s.writer == nil:
+	if !s.cfg.ChatEnabled() || s.writer == nil {
 		notFound(w)
 		return
-	case !s.authz.CanChat(p, ns, name):
-		if !s.authz.CanView(p, ns, name) {
-			notFound(w)
-			return
-		}
-		writeError(w, http.StatusForbidden, "no access to chat")
+	}
+	if !s.granted(w, r, s.authz.CanChat, "chat") {
 		return
 	}
 	_, task, ok := s.loadTask(w, r)

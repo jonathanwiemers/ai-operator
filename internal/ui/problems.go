@@ -163,12 +163,11 @@ func (s *Server) problemThread(w http.ResponseWriter, r *http.Request) {
 	}
 	t := ProblemThread{Problem: *view, Prompts: []PromptView{}, Exits: []ExitView{}, Events: []StreamEvent{}}
 	p := principalOf(r)
-	gl := s.gitlab != nil && s.gitlab.serves(ap)
-	chat := s.cfg.ChatEnabled() && s.authz.CanChat(p, ap.Namespace, ap.Name) && coord != nil
-	t.Permissions = MilestonePermissions{GitLab: gl, Steer: gl && s.authz.CanSteer(p, ap.Namespace, ap.Name),
-		Chat:       chat,
-		Transcript: s.logs != nil && s.authz.CanSeeTranscript(p, ap.Namespace, ap.Name),
-		Merge:      chat && st != nil && slices.Contains(st.Spec.OwnerSubjects, p.Username)}
+	var owners []string
+	if st != nil {
+		owners = st.Spec.OwnerSubjects
+	}
+	t.Permissions = s.milestonePermissions(p, ap, coord != nil, owners)
 	if coord != nil {
 		t.Pilot = coord.Name
 	}

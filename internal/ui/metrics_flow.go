@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"errors"
 	"net/http"
 	"time"
 
@@ -50,26 +49,9 @@ type MetricsFlowView struct {
 // projects, for the parameters of costs (group, kind and engine are read and
 // checked, not used).
 func (s *Server) metricsFlow(w http.ResponseWriter, r *http.Request) {
-	if !s.cfg.Research.Enabled() {
-		notFound(w)
-		return
-	}
-	visible, _, ok := s.visibleProjects(w, r)
-	if !ok {
-		return
-	}
 	now := time.Now()
-	p, err := s.parseCostParams(r, visible, now)
-	if errors.Is(err, errCostProject) {
-		notFound(w)
-		return
-	} else if err != nil {
-		badRequest(w, err.Error())
-		return
-	}
-	st := s.costStore()
-	if st == nil {
-		writeError(w, http.StatusServiceUnavailable, "the history database is not connected yet")
+	p, _, _, st, ok := s.costRequest(w, r, now)
+	if !ok {
 		return
 	}
 	// A merged issue counts whole: only the range and the projects apply.

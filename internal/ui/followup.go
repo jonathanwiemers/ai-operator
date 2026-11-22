@@ -66,7 +66,7 @@ func (f *followUpSource) addFollowUps(r *RetrospectiveView) {
 // steer grant may; follow-ups not open are refused. The operator settles
 // them once it reads the followup-of line; the UI writes nothing.
 func (s *Server) createFollowUp(w http.ResponseWriter, r *http.Request) {
-	if !s.mayPost(w, r) {
+	if !s.granted(w, r, s.authz.CanSteer, "steering") {
 		return
 	}
 	req, ok := readFollowUp(w, r)

@@ -32,7 +32,7 @@ func dismissable(st *aiv1.AgentTask) bool {
 // may. The operator settles them on its next poll (202); the UI writes
 // nothing.
 func (s *Server) dismissFollowUps(w http.ResponseWriter, r *http.Request) {
-	if !s.mayPost(w, r) {
+	if !s.granted(w, r, s.authz.CanSteer, "steering") {
 		return
 	}
 	ap, tasks, iid, ok := s.loadMilestoneIID(w, r)

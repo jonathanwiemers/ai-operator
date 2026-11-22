@@ -15,7 +15,7 @@ import (
 // and why first, then the close. Only the milestone's owner subjects with
 // the steer grant may; the operator closes the milestone on its next poll.
 func (s *Server) closeHoldingIssue(w http.ResponseWriter, r *http.Request) {
-	if !s.mayPost(w, r) {
+	if !s.granted(w, r, s.authz.CanSteer, "steering") {
 		return
 	}
 	ap, tasks, iid, ok := s.loadMilestoneIID(w, r)
