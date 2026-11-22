@@ -2911,6 +2911,285 @@ export interface ResearchCandidates {
 }
 
 //////////
+// source: agenttask_autopilot_types.go
+
+/**
+ * PlannedIssue is one issue of a milestone plan.
+ */
+export interface PlannedIssue {
+  /**
+   * Key is the planner's stable identifier of the issue.
+   */
+  key: string;
+  iid: number /* int64 */;
+  title?: string;
+  /**
+   * DependsOn are the IIDs of planned issues that must be merged first.
+   * +optional
+   */
+  dependsOn?: number /* int64 */[];
+  /**
+   * Linked are the dependencies the operator linked as GitLab issue
+   * links; only these are unlinked when the plan drops them.
+   * +optional
+   */
+  linked?: number /* int64 */[];
+  /**
+   * Release is the planner's decision to release the default branch after
+   * this issue is merged.
+   * +optional
+   */
+  release?: boolean;
+  /**
+   * ReleaseWhy is the planner's one-line reason for Release.
+   * +optional
+   */
+  releaseWhy?: string;
+}
+/**
+ * AutopilotPhase is the state of an autopilot milestone.
+ * +kubebuilder:validation:Enum=Running;Paused;Done;Off
+ */
+export type AutopilotPhase = string;
+/**
+ * AutopilotRunning: the operator works through the queue.
+ */
+export const AutopilotRunning: AutopilotPhase = "Running";
+/**
+ * AutopilotPaused: something needs a human; "/agent resume" continues.
+ */
+export const AutopilotPaused: AutopilotPhase = "Paused";
+/**
+ * AutopilotDone: every planned issue is merged or skipped.
+ */
+export const AutopilotDone: AutopilotPhase = "Done";
+/**
+ * AutopilotOff: the marker was removed from the milestone.
+ */
+export const AutopilotOff: AutopilotPhase = "Off";
+/**
+ * MergeOverride lets the merge gate skip its review checks for one head:
+ * failed or missing reviews and blocking findings. CI, the MR state and
+ * approvals still apply.
+ */
+export interface MergeOverride {
+  issueIID: number /* int64 */;
+  /**
+   * SHA is the head it was given for.
+   */
+  sha: string;
+  /**
+   * By is who decided it.
+   */
+  by: string;
+  at: string;
+}
+/**
+ * ReviewErrorKind is why one reviewer failed.
+ * +kubebuilder:validation:Enum=usageLimit;transient;other
+ */
+export type ReviewErrorKind = string;
+/**
+ * ReviewErrorUsageLimit: the reviewer's engine hit its usage limit.
+ */
+export const ReviewErrorUsageLimit: ReviewErrorKind = "usageLimit";
+/**
+ * ReviewErrorTransient: an outage of the reviewer's service.
+ */
+export const ReviewErrorTransient: ReviewErrorKind = "transient";
+/**
+ * ReviewErrorOther: any other failure.
+ */
+export const ReviewErrorOther: ReviewErrorKind = "other";
+/**
+ * ReviewError is one reviewer's failure in the last review.
+ */
+export interface ReviewError {
+  reviewer: ReviewerKind;
+  kind: ReviewErrorKind;
+  /**
+   * Engine is the limited engine (kind usageLimit).
+   * +optional
+   */
+  engine?: Engine;
+  /**
+   * ResetAt is when the limit resets, if the engine said so.
+   * +optional
+   */
+  resetAt?: string;
+}
+/**
+ * PauseKind is why autopilot paused.
+ * +kubebuilder:validation:Enum=owner;cycle;stuck;needsInput;runFailed;findings;reviewErrors;notReviewed;ciRed;ciCanceled;mergeRequest;mainRed;config;budget;companion;emptyPlan;release;stalled
+ */
+export type PauseKind = string;
+/**
+ * PauseOwner: the pause command.
+ */
+export const PauseOwner: PauseKind = "owner";
+/**
+ * PauseCycle: the plan has a dependency cycle.
+ */
+export const PauseCycle: PauseKind = "cycle";
+/**
+ * PauseStuck: no queued issue can start.
+ */
+export const PauseStuck: PauseKind = "stuck";
+/**
+ * PauseNeedsInput: the active issue has the needs-input label.
+ */
+export const PauseNeedsInput: PauseKind = "needsInput";
+/**
+ * PauseRunFailed: the active issue's last run did not succeed.
+ */
+export const PauseRunFailed: PauseKind = "runFailed";
+/**
+ * PauseFindings: blocking review findings remain.
+ */
+export const PauseFindings: PauseKind = "findings";
+/**
+ * PauseReviewErrors: reviewers failed (status.run.reviewErrorKinds).
+ */
+export const PauseReviewErrors: PauseKind = "reviewErrors";
+/**
+ * PauseNotReviewed: the head, or the companion head, was pushed after the
+ * last review.
+ */
+export const PauseNotReviewed: PauseKind = "notReviewed";
+/**
+ * PauseCIRed: CI of the MR is red.
+ */
+export const PauseCIRed: PauseKind = "ciRed";
+/**
+ * PauseCICanceled: the MR's pipeline was canceled.
+ */
+export const PauseCICanceled: PauseKind = "ciCanceled";
+/**
+ * PauseMergeRequest: the MR cannot be merged (state, draft, approvals,
+ * discussions, conflicts, a moved head, GitLab refused).
+ */
+export const PauseMergeRequest: PauseKind = "mergeRequest";
+/**
+ * PauseMainRed: the default branch is red (merge freeze).
+ */
+export const PauseMainRed: PauseKind = "mainRed";
+/**
+ * PauseConfig: the project or issue setup does not allow a merge (no
+ * workflow label, no reviewers, no pushed MR).
+ */
+export const PauseConfig: PauseKind = "config";
+/**
+ * PauseBudget: the milestone spent its budget (spec.budgetUSD).
+ */
+export const PauseBudget: PauseKind = "budget";
+/**
+ * PauseCompanion: the companion's merge request cannot go on (closed, a
+ * conflict a rebase did not fix, another blocking merge status, a moved
+ * head). A red companion pipeline pauses with ciRed.
+ */
+export const PauseCompanion: PauseKind = "companion";
+/**
+ * PauseEmptyPlan: the planning run succeeded but planned no issues.
+ */
+export const PauseEmptyPlan: PauseKind = "emptyPlan";
+/**
+ * PauseRelease: the final release failed twice.
+ */
+export const PauseRelease: PauseKind = "release";
+/**
+ * PauseStalled: the active issue's run is stalled and the pilot's
+ * restarts did not help or the interruption cap is reached.
+ */
+export const PauseStalled: PauseKind = "stalled";
+/**
+ * PauseResolver is who ended a pause (status.autopilot.resumedBy, the
+ * autopilot.resumed history event).
+ * +kubebuilder:validation:Enum=operator;pilot;owner;selfHealed;laterRun
+ */
+export type PauseResolver = string;
+/**
+ * ResolvedByOperator: an automatic exit (the cause went away).
+ */
+export const ResolvedByOperator: PauseResolver = "operator";
+/**
+ * ResolvedByPilot: the pilot's own action (managed autonomy).
+ */
+export const ResolvedByPilot: PauseResolver = "pilot";
+/**
+ * ResolvedByOwner: an owner's command or answered prompt.
+ */
+export const ResolvedByOwner: PauseResolver = "owner";
+/**
+ * ResolvedBySelfHealed: the operator rebased a BaseFailing MR onto a
+ * green default branch.
+ */
+export const ResolvedBySelfHealed: PauseResolver = "selfHealed";
+/**
+ * ResolvedByLaterRun: a later run of the paused issue made it pass the
+ * merge gate.
+ */
+export const ResolvedByLaterRun: PauseResolver = "laterRun";
+/**
+ * PauseResumeVia is how a pause ended (status.autopilot.resumedVia, the
+ * autopilot.resumed history event), next to who ended it (PauseResolver).
+ * +kubebuilder:validation:Enum=reReview;takeover;push;mergedByHand;closedByHand;command;causeGone;selfHealed
+ */
+export type PauseResumeVia = string;
+/**
+ * ResumedViaReReview: a review-only run the autopilot asked for (e.g.
+ * after a rebase) passed the merge gate on the head it was asked for.
+ */
+export const ResumedViaReReview: PauseResumeVia = "reReview";
+/**
+ * ResumedViaTakeover: a run an owner's (or the pilot's) command started
+ * made the issue pass the merge gate.
+ */
+export const ResumedViaTakeover: PauseResumeVia = "takeover";
+/**
+ * ResumedViaPush: a human pushed, and a later run reviewed that head.
+ */
+export const ResumedViaPush: PauseResumeVia = "push";
+/**
+ * ResumedViaMergedByHand: the merge request was merged by hand.
+ */
+export const ResumedViaMergedByHand: PauseResumeVia = "mergedByHand";
+/**
+ * ResumedViaClosedByHand: the issue was closed by hand.
+ */
+export const ResumedViaClosedByHand: PauseResumeVia = "closedByHand";
+/**
+ * ResumedViaCommand: `resume` or another owner or pilot command
+ * (`merge`, `rebase`, `mergeBase`, `endMilestone`, turning autopilot
+ * off).
+ */
+export const ResumedViaCommand: PauseResumeVia = "command";
+/**
+ * ResumedViaCauseGone: another automatic exit, the cause went away
+ * (green default branch, raised budget, a companion that can go on).
+ */
+export const ResumedViaCauseGone: PauseResumeVia = "causeGone";
+/**
+ * ResumedViaSelfHealed: the operator rebased a BaseFailing MR onto a
+ * green default branch.
+ */
+export const ResumedViaSelfHealed: PauseResumeVia = "selfHealed";
+/**
+ * PauseRunByAutopilot is status.autopilot.pauseRunBy for a run the
+ * autopilot itself asked for. A person's command records "@name", the
+ * pilot "the pilot", so it cannot be mistaken for one.
+ */
+export const PauseRunByAutopilot = "autopilot";
+/**
+ * AutopilotItemState is the state of one issue in the queue.
+ * +kubebuilder:validation:Enum=Pending;Active;Merged;Skipped
+ */
+export type AutopilotItemState = string;
+export const AutopilotItemPending: AutopilotItemState = "Pending";
+export const AutopilotItemActive: AutopilotItemState = "Active";
+export const AutopilotItemMerged: AutopilotItemState = "Merged";
+export const AutopilotItemSkipped: AutopilotItemState = "Skipped";
+
+//////////
 // source: agenttask_checkpoint_types.go
 
 /**
@@ -3659,6 +3938,116 @@ export interface PilotIntervention {
 }
 
 //////////
+// source: agenttask_spend_types.go
+
+/**
+ * SpendSummary is a scope's spend with its biggest cost drivers, each list
+ * the top 3 by USD.
+ */
+export interface SpendSummary {
+  /**
+   * CostUSD sums the known costs (4 decimals).
+   * +optional
+   */
+  costUSD?: string;
+  /**
+   * CostKnown is false when no call reported or estimated a cost.
+   * +optional
+   */
+  costKnown?: boolean;
+  /**
+   * +optional
+   */
+  tokens?: SpendTokens;
+  /**
+   * SubagentCalls is how often the calls delegated to a subagent.
+   * +optional
+   */
+  subagentCalls?: number /* int64 */;
+  /**
+   * UnmeteredCalls are the calls with neither a cost nor tokens (cursor
+   * reports no usage), a part of the total that costKnown does not cover.
+   * +optional
+   */
+  unmeteredCalls?: number /* int64 */;
+  /**
+   * Calls is the number of agent calls (runs from before agent calls and
+   * checkpoint events are none).
+   * +optional
+   */
+  calls?: number /* int64 */;
+  /**
+   * OldBasisCalls are the calls recorded before the token basis was
+   * stored (token_basis 0): their tokens are not comparable with newer
+   * calls.
+   * +optional
+   */
+  oldBasisCalls?: number /* int64 */;
+  /**
+   * +optional
+   * +kubebuilder:validation:MaxItems=3
+   */
+  topIssues?: SpendDriver[];
+  /**
+   * +optional
+   * +kubebuilder:validation:MaxItems=3
+   */
+  topKinds?: SpendDriver[];
+  /**
+   * TopModels counts subagent models as their own entries.
+   * +optional
+   * +kubebuilder:validation:MaxItems=3
+   */
+  topModels?: SpendDriver[];
+}
+/**
+ * SpendTokens are tokens by type.
+ */
+export interface SpendTokens {
+  /**
+   * +optional
+   */
+  input?: number /* int64 */;
+  /**
+   * +optional
+   */
+  output?: number /* int64 */;
+  /**
+   * +optional
+   */
+  cacheRead?: number /* int64 */;
+  /**
+   * +optional
+   */
+  cacheWrite?: number /* int64 */;
+}
+/**
+ * SpendDriver is one issue, kind or model of a SpendSummary: Key is the
+ * issue IID, the kind or the model, Label how to name it.
+ */
+export interface SpendDriver {
+  key: string;
+  /**
+   * +optional
+   */
+  label?: string;
+  /**
+   * CostUSD is empty when none of its calls has a known cost.
+   * +optional
+   */
+  costUSD?: string;
+  /**
+   * +optional
+   */
+  tokens?: number /* int64 */;
+  /**
+   * Unmetered is set when all its calls reported neither cost nor tokens.
+   * +optional
+   */
+  unmetered?: boolean;
+}
+
+//////////
 // source: agenttask_types.go
 
 /**
@@ -4183,112 +4572,6 @@ export interface FollowUpDraftRequest {
    * By is the owner who asked.
    */
   by: string;
-}
-/**
- * SpendSummary is a scope's spend with its biggest cost drivers, each list
- * the top 3 by USD.
- */
-export interface SpendSummary {
-  /**
-   * CostUSD sums the known costs (4 decimals).
-   * +optional
-   */
-  costUSD?: string;
-  /**
-   * CostKnown is false when no call reported or estimated a cost.
-   * +optional
-   */
-  costKnown?: boolean;
-  /**
-   * +optional
-   */
-  tokens?: SpendTokens;
-  /**
-   * SubagentCalls is how often the calls delegated to a subagent.
-   * +optional
-   */
-  subagentCalls?: number /* int64 */;
-  /**
-   * UnmeteredCalls are the calls with neither a cost nor tokens (cursor
-   * reports no usage), a part of the total that costKnown does not cover.
-   * +optional
-   */
-  unmeteredCalls?: number /* int64 */;
-  /**
-   * Calls is the number of agent calls (runs from before agent calls and
-   * checkpoint events are none).
-   * +optional
-   */
-  calls?: number /* int64 */;
-  /**
-   * OldBasisCalls are the calls recorded before the token basis was
-   * stored (token_basis 0): their tokens are not comparable with newer
-   * calls.
-   * +optional
-   */
-  oldBasisCalls?: number /* int64 */;
-  /**
-   * +optional
-   * +kubebuilder:validation:MaxItems=3
-   */
-  topIssues?: SpendDriver[];
-  /**
-   * +optional
-   * +kubebuilder:validation:MaxItems=3
-   */
-  topKinds?: SpendDriver[];
-  /**
-   * TopModels counts subagent models as their own entries.
-   * +optional
-   * +kubebuilder:validation:MaxItems=3
-   */
-  topModels?: SpendDriver[];
-}
-/**
- * SpendTokens are tokens by type.
- */
-export interface SpendTokens {
-  /**
-   * +optional
-   */
-  input?: number /* int64 */;
-  /**
-   * +optional
-   */
-  output?: number /* int64 */;
-  /**
-   * +optional
-   */
-  cacheRead?: number /* int64 */;
-  /**
-   * +optional
-   */
-  cacheWrite?: number /* int64 */;
-}
-/**
- * SpendDriver is one issue, kind or model of a SpendSummary: Key is the
- * issue IID, the kind or the model, Label how to name it.
- */
-export interface SpendDriver {
-  key: string;
-  /**
-   * +optional
-   */
-  label?: string;
-  /**
-   * CostUSD is empty when none of its calls has a known cost.
-   * +optional
-   */
-  costUSD?: string;
-  /**
-   * +optional
-   */
-  tokens?: number /* int64 */;
-  /**
-   * Unmetered is set when all its calls reported neither cost nor tokens.
-   * +optional
-   */
-  unmetered?: boolean;
 }
 /**
  * ChatMessage is one Desk chat turn handed to the runner.
@@ -5334,281 +5617,6 @@ export interface AgentTaskList extends metav1.TypeMeta {
   metadata?: ListMeta;
   items: AgentTask[];
 }
-/**
- * PlannedIssue is one issue of a milestone plan.
- */
-export interface PlannedIssue {
-  /**
-   * Key is the planner's stable identifier of the issue.
-   */
-  key: string;
-  iid: number /* int64 */;
-  title?: string;
-  /**
-   * DependsOn are the IIDs of planned issues that must be merged first.
-   * +optional
-   */
-  dependsOn?: number /* int64 */[];
-  /**
-   * Linked are the dependencies the operator linked as GitLab issue
-   * links; only these are unlinked when the plan drops them.
-   * +optional
-   */
-  linked?: number /* int64 */[];
-  /**
-   * Release is the planner's decision to release the default branch after
-   * this issue is merged.
-   * +optional
-   */
-  release?: boolean;
-  /**
-   * ReleaseWhy is the planner's one-line reason for Release.
-   * +optional
-   */
-  releaseWhy?: string;
-}
-/**
- * AutopilotPhase is the state of an autopilot milestone.
- * +kubebuilder:validation:Enum=Running;Paused;Done;Off
- */
-export type AutopilotPhase = string;
-/**
- * AutopilotRunning: the operator works through the queue.
- */
-export const AutopilotRunning: AutopilotPhase = "Running";
-/**
- * AutopilotPaused: something needs a human; "/agent resume" continues.
- */
-export const AutopilotPaused: AutopilotPhase = "Paused";
-/**
- * AutopilotDone: every planned issue is merged or skipped.
- */
-export const AutopilotDone: AutopilotPhase = "Done";
-/**
- * AutopilotOff: the marker was removed from the milestone.
- */
-export const AutopilotOff: AutopilotPhase = "Off";
-/**
- * MergeOverride lets the merge gate skip its review checks for one head:
- * failed or missing reviews and blocking findings. CI, the MR state and
- * approvals still apply.
- */
-export interface MergeOverride {
-  issueIID: number /* int64 */;
-  /**
-   * SHA is the head it was given for.
-   */
-  sha: string;
-  /**
-   * By is who decided it.
-   */
-  by: string;
-  at: string;
-}
-/**
- * ReviewErrorKind is why one reviewer failed.
- * +kubebuilder:validation:Enum=usageLimit;transient;other
- */
-export type ReviewErrorKind = string;
-/**
- * ReviewErrorUsageLimit: the reviewer's engine hit its usage limit.
- */
-export const ReviewErrorUsageLimit: ReviewErrorKind = "usageLimit";
-/**
- * ReviewErrorTransient: an outage of the reviewer's service.
- */
-export const ReviewErrorTransient: ReviewErrorKind = "transient";
-/**
- * ReviewErrorOther: any other failure.
- */
-export const ReviewErrorOther: ReviewErrorKind = "other";
-/**
- * ReviewError is one reviewer's failure in the last review.
- */
-export interface ReviewError {
-  reviewer: ReviewerKind;
-  kind: ReviewErrorKind;
-  /**
-   * Engine is the limited engine (kind usageLimit).
-   * +optional
-   */
-  engine?: Engine;
-  /**
-   * ResetAt is when the limit resets, if the engine said so.
-   * +optional
-   */
-  resetAt?: string;
-}
-/**
- * PauseKind is why autopilot paused.
- * +kubebuilder:validation:Enum=owner;cycle;stuck;needsInput;runFailed;findings;reviewErrors;notReviewed;ciRed;ciCanceled;mergeRequest;mainRed;config;budget;companion;emptyPlan;release;stalled
- */
-export type PauseKind = string;
-/**
- * PauseOwner: the pause command.
- */
-export const PauseOwner: PauseKind = "owner";
-/**
- * PauseCycle: the plan has a dependency cycle.
- */
-export const PauseCycle: PauseKind = "cycle";
-/**
- * PauseStuck: no queued issue can start.
- */
-export const PauseStuck: PauseKind = "stuck";
-/**
- * PauseNeedsInput: the active issue has the needs-input label.
- */
-export const PauseNeedsInput: PauseKind = "needsInput";
-/**
- * PauseRunFailed: the active issue's last run did not succeed.
- */
-export const PauseRunFailed: PauseKind = "runFailed";
-/**
- * PauseFindings: blocking review findings remain.
- */
-export const PauseFindings: PauseKind = "findings";
-/**
- * PauseReviewErrors: reviewers failed (status.run.reviewErrorKinds).
- */
-export const PauseReviewErrors: PauseKind = "reviewErrors";
-/**
- * PauseNotReviewed: the head, or the companion head, was pushed after the
- * last review.
- */
-export const PauseNotReviewed: PauseKind = "notReviewed";
-/**
- * PauseCIRed: CI of the MR is red.
- */
-export const PauseCIRed: PauseKind = "ciRed";
-/**
- * PauseCICanceled: the MR's pipeline was canceled.
- */
-export const PauseCICanceled: PauseKind = "ciCanceled";
-/**
- * PauseMergeRequest: the MR cannot be merged (state, draft, approvals,
- * discussions, conflicts, a moved head, GitLab refused).
- */
-export const PauseMergeRequest: PauseKind = "mergeRequest";
-/**
- * PauseMainRed: the default branch is red (merge freeze).
- */
-export const PauseMainRed: PauseKind = "mainRed";
-/**
- * PauseConfig: the project or issue setup does not allow a merge (no
- * workflow label, no reviewers, no pushed MR).
- */
-export const PauseConfig: PauseKind = "config";
-/**
- * PauseBudget: the milestone spent its budget (spec.budgetUSD).
- */
-export const PauseBudget: PauseKind = "budget";
-/**
- * PauseCompanion: the companion's merge request cannot go on (closed, a
- * conflict a rebase did not fix, another blocking merge status, a moved
- * head). A red companion pipeline pauses with ciRed.
- */
-export const PauseCompanion: PauseKind = "companion";
-/**
- * PauseEmptyPlan: the planning run succeeded but planned no issues.
- */
-export const PauseEmptyPlan: PauseKind = "emptyPlan";
-/**
- * PauseRelease: the final release failed twice.
- */
-export const PauseRelease: PauseKind = "release";
-/**
- * PauseStalled: the active issue's run is stalled and the pilot's
- * restarts did not help or the interruption cap is reached.
- */
-export const PauseStalled: PauseKind = "stalled";
-/**
- * PauseResolver is who ended a pause (status.autopilot.resumedBy, the
- * autopilot.resumed history event).
- * +kubebuilder:validation:Enum=operator;pilot;owner;selfHealed;laterRun
- */
-export type PauseResolver = string;
-/**
- * ResolvedByOperator: an automatic exit (the cause went away).
- */
-export const ResolvedByOperator: PauseResolver = "operator";
-/**
- * ResolvedByPilot: the pilot's own action (managed autonomy).
- */
-export const ResolvedByPilot: PauseResolver = "pilot";
-/**
- * ResolvedByOwner: an owner's command or answered prompt.
- */
-export const ResolvedByOwner: PauseResolver = "owner";
-/**
- * ResolvedBySelfHealed: the operator rebased a BaseFailing MR onto a
- * green default branch.
- */
-export const ResolvedBySelfHealed: PauseResolver = "selfHealed";
-/**
- * ResolvedByLaterRun: a later run of the paused issue made it pass the
- * merge gate.
- */
-export const ResolvedByLaterRun: PauseResolver = "laterRun";
-/**
- * PauseResumeVia is how a pause ended (status.autopilot.resumedVia, the
- * autopilot.resumed history event), next to who ended it (PauseResolver).
- * +kubebuilder:validation:Enum=reReview;takeover;push;mergedByHand;closedByHand;command;causeGone;selfHealed
- */
-export type PauseResumeVia = string;
-/**
- * ResumedViaReReview: a review-only run the autopilot asked for (e.g.
- * after a rebase) passed the merge gate on the head it was asked for.
- */
-export const ResumedViaReReview: PauseResumeVia = "reReview";
-/**
- * ResumedViaTakeover: a run an owner's (or the pilot's) command started
- * made the issue pass the merge gate.
- */
-export const ResumedViaTakeover: PauseResumeVia = "takeover";
-/**
- * ResumedViaPush: a human pushed, and a later run reviewed that head.
- */
-export const ResumedViaPush: PauseResumeVia = "push";
-/**
- * ResumedViaMergedByHand: the merge request was merged by hand.
- */
-export const ResumedViaMergedByHand: PauseResumeVia = "mergedByHand";
-/**
- * ResumedViaClosedByHand: the issue was closed by hand.
- */
-export const ResumedViaClosedByHand: PauseResumeVia = "closedByHand";
-/**
- * ResumedViaCommand: `resume` or another owner or pilot command
- * (`merge`, `rebase`, `mergeBase`, `endMilestone`, turning autopilot
- * off).
- */
-export const ResumedViaCommand: PauseResumeVia = "command";
-/**
- * ResumedViaCauseGone: another automatic exit, the cause went away
- * (green default branch, raised budget, a companion that can go on).
- */
-export const ResumedViaCauseGone: PauseResumeVia = "causeGone";
-/**
- * ResumedViaSelfHealed: the operator rebased a BaseFailing MR onto a
- * green default branch.
- */
-export const ResumedViaSelfHealed: PauseResumeVia = "selfHealed";
-/**
- * PauseRunByAutopilot is status.autopilot.pauseRunBy for a run the
- * autopilot itself asked for. A person's command records "@name", the
- * pilot "the pilot", so it cannot be mistaken for one.
- */
-export const PauseRunByAutopilot = "autopilot";
-/**
- * AutopilotItemState is the state of one issue in the queue.
- * +kubebuilder:validation:Enum=Pending;Active;Merged;Skipped
- */
-export type AutopilotItemState = string;
-export const AutopilotItemPending: AutopilotItemState = "Pending";
-export const AutopilotItemActive: AutopilotItemState = "Active";
-export const AutopilotItemMerged: AutopilotItemState = "Merged";
-export const AutopilotItemSkipped: AutopilotItemState = "Skipped";
 /**
  * AutopilotStatus is the queue of an autopilot milestone.
  */
