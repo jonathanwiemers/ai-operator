@@ -3709,6 +3709,246 @@ export interface BlockedStatus {
 }
 
 //////////
+// source: agenttask_calls_types.go
+
+/**
+ * ExperimentAssignment is the arm an issue got in an experiment.
+ */
+export interface ExperimentAssignment {
+  /**
+   * Name of the experiment.
+   */
+  name: string;
+  /**
+   * Arm is the arm's name; empty is "no arm": the issue had an explicit
+   * profile, effort or model label.
+   * +optional
+   */
+  arm?: string;
+}
+/**
+ * AgentCall is one engine call: what ran, for what, and what it consumed.
+ */
+export interface AgentCall {
+  /**
+   * Seq numbers the task's calls, starting at 1.
+   */
+  seq: number /* int64 */;
+  /**
+   * At is when the call started.
+   */
+  at: string;
+  /**
+   * Kind is what the call was for: spec, implement, review, fix, ci,
+   * conflict, describe, pilot, retro, followUpDraft, chat, research or plan.
+   */
+  kind: string;
+  /**
+   * Role is the agent's role, e.g. implement, bugbot or pilot.
+   * +optional
+   */
+  role?: string;
+  engine: Engine;
+  /**
+   * Model is the configured model, or the reported main model when the
+   * engine picked it.
+   * +optional
+   */
+  model?: string;
+  /**
+   * +optional
+   */
+  effort?: string;
+  /**
+   * Resumed is set when the call continued an earlier session.
+   * +optional
+   */
+  resumed?: boolean;
+  /**
+   * FallbackFrom is the limited engine this call stood in for.
+   * +optional
+   */
+  fallbackFrom?: Engine;
+  /**
+   * +optional
+   */
+  inputTokens?: number /* int64 */;
+  /**
+   * +optional
+   */
+  outputTokens?: number /* int64 */;
+  /**
+   * +optional
+   */
+  cacheReadTokens?: number /* int64 */;
+  /**
+   * +optional
+   */
+  cacheWriteTokens?: number /* int64 */;
+  /**
+   * CostUSD is the call's cost as a decimal string (4 decimals); empty
+   * when it is unknown.
+   * +optional
+   */
+  costUSD?: string;
+  /**
+   * CostSource says where CostUSD comes from: reported by the engine,
+   * estimated from tokens, or unknown.
+   */
+  costSource: string;
+  /**
+   * +optional
+   */
+  turns?: number /* int32 */;
+  /**
+   * +optional
+   */
+  durationMS?: number /* int64 */;
+  /**
+   * Run is the task's run (RunCount after it) the call belongs to.
+   * +optional
+   */
+  run?: number /* int64 */;
+  /**
+   * Models is the per-model split as the engine reported it, subagent
+   * models included.
+   * +optional
+   * +listType=atomic
+   */
+  models?: CallModelUsage[];
+  /**
+   * SubagentCalls is how many subagents the call started.
+   * +optional
+   */
+  subagentCalls?: number /* int32 */;
+  /**
+   * ReadGateBlocks is how many tool calls the read gate denied in the
+   * call.
+   * +optional
+   */
+  readGateBlocks?: number /* int32 */;
+  /**
+   * Arm is the experiment arm of the task's issue (status.experiment)
+   * while the project's experiment still has it; empty without one.
+   * +optional
+   */
+  arm?: string;
+  /**
+   * StepSession is the step-session mode (resume or fresh) of an
+   * implement-kind call of a stepwise run; empty otherwise.
+   * +optional
+   */
+  stepSession?: string;
+  /**
+   * ToolResults is what each tool put into the context during the call,
+   * by tool name (claude engine only). A subagent's tool results count
+   * under the tool that started the subagent; MCP tools keep their full
+   * name; results of an unknown tool_use count under "unknown".
+   * +optional
+   */
+  toolResults?: { [key: string]: ToolResultUsage};
+  /**
+   * BaseContextTokens is the context size of the first turn of a call
+   * that started a new session (system prompt, tools, CLAUDE.md files);
+   * 0 for resumed calls and the cursor engine.
+   * +optional
+   */
+  baseContextTokens?: number /* int64 */;
+  /**
+   * Checkpoint is the reason (e.g. usage-limit) when the call's end saved
+   * a checkpoint commit of the work tree; CheckpointSHA is that commit.
+   * +optional
+   */
+  checkpoint?: string;
+  /**
+   * +optional
+   */
+  checkpointSHA?: string;
+  /**
+   * LinesAdded and LinesDeleted are the uncommitted diff the implementer
+   * call left in the work tree (git diff --numstat HEAD plus untracked
+   * text files): the lines of the step commit that follows it. Other
+   * roles' calls leave them zero.
+   * +optional
+   */
+  linesAdded?: number /* int64 */;
+  /**
+   * +optional
+   */
+  linesDeleted?: number /* int64 */;
+  /**
+   * StepGateNudges is how often the step-size gate told the implementer
+   * to close its step during the call.
+   * +optional
+   */
+  stepGateNudges?: number /* int32 */;
+  /**
+   * TokenBasis is how the runner computed the call's tokens and model
+   * split, see TokenBasisModels. 0 (omitted) is not recorded: an older
+   * agent image wrote the call.
+   * +optional
+   */
+  tokenBasis?: number /* int32 */;
+  /**
+   * ContextSeries is the context size (input and cache tokens) of each
+   * main-thread assistant turn. Only the newest calls in status keep it.
+   * +optional
+   * +listType=atomic
+   * +kubebuilder:validation:MaxItems=500
+   */
+  contextSeries?: number /* int64 */[];
+  /**
+   * SubagentTurns are the indexes into ContextSeries after which a
+   * subagent ran. Only the newest calls in status keep them.
+   * +optional
+   * +listType=atomic
+   * +kubebuilder:validation:MaxItems=500
+   */
+  subagentTurns?: number /* int32 */[];
+}
+/**
+ * ToolResultUsage is how many results of one tool a call got and their
+ * size; EstimatedTokens turns the bytes into tokens.
+ */
+export interface ToolResultUsage {
+  /**
+   * +optional
+   */
+  calls?: number /* int32 */;
+  /**
+   * +optional
+   */
+  bytes?: number /* int64 */;
+}
+/**
+ * CallModelUsage is one model's share of an agent call.
+ */
+export interface CallModelUsage {
+  model: string;
+  /**
+   * +optional
+   */
+  inputTokens?: number /* int64 */;
+  /**
+   * +optional
+   */
+  outputTokens?: number /* int64 */;
+  /**
+   * +optional
+   */
+  cacheReadTokens?: number /* int64 */;
+  /**
+   * +optional
+   */
+  cacheWriteTokens?: number /* int64 */;
+  /**
+   * CostUSD as a decimal string (4 decimals).
+   * +optional
+   */
+  costUSD?: string;
+}
+
+//////////
 // source: agenttask_checkpoint_types.go
 
 /**
@@ -5884,242 +6124,6 @@ export const CostUnknown = "unknown";
  * Sources of an agent call's cost (AgentCall.CostSource).
  */
 export type Cost = typeof CostReported | typeof CostEstimated | typeof CostUnknown;
-/**
- * ExperimentAssignment is the arm an issue got in an experiment.
- */
-export interface ExperimentAssignment {
-  /**
-   * Name of the experiment.
-   */
-  name: string;
-  /**
-   * Arm is the arm's name; empty is "no arm": the issue had an explicit
-   * profile, effort or model label.
-   * +optional
-   */
-  arm?: string;
-}
-/**
- * AgentCall is one engine call: what ran, for what, and what it consumed.
- */
-export interface AgentCall {
-  /**
-   * Seq numbers the task's calls, starting at 1.
-   */
-  seq: number /* int64 */;
-  /**
-   * At is when the call started.
-   */
-  at: string;
-  /**
-   * Kind is what the call was for: spec, implement, review, fix, ci,
-   * conflict, describe, pilot, retro, followUpDraft, chat, research or plan.
-   */
-  kind: string;
-  /**
-   * Role is the agent's role, e.g. implement, bugbot or pilot.
-   * +optional
-   */
-  role?: string;
-  engine: Engine;
-  /**
-   * Model is the configured model, or the reported main model when the
-   * engine picked it.
-   * +optional
-   */
-  model?: string;
-  /**
-   * +optional
-   */
-  effort?: string;
-  /**
-   * Resumed is set when the call continued an earlier session.
-   * +optional
-   */
-  resumed?: boolean;
-  /**
-   * FallbackFrom is the limited engine this call stood in for.
-   * +optional
-   */
-  fallbackFrom?: Engine;
-  /**
-   * +optional
-   */
-  inputTokens?: number /* int64 */;
-  /**
-   * +optional
-   */
-  outputTokens?: number /* int64 */;
-  /**
-   * +optional
-   */
-  cacheReadTokens?: number /* int64 */;
-  /**
-   * +optional
-   */
-  cacheWriteTokens?: number /* int64 */;
-  /**
-   * CostUSD is the call's cost as a decimal string (4 decimals); empty
-   * when it is unknown.
-   * +optional
-   */
-  costUSD?: string;
-  /**
-   * CostSource says where CostUSD comes from: reported by the engine,
-   * estimated from tokens, or unknown.
-   */
-  costSource: string;
-  /**
-   * +optional
-   */
-  turns?: number /* int32 */;
-  /**
-   * +optional
-   */
-  durationMS?: number /* int64 */;
-  /**
-   * Run is the task's run (RunCount after it) the call belongs to.
-   * +optional
-   */
-  run?: number /* int64 */;
-  /**
-   * Models is the per-model split as the engine reported it, subagent
-   * models included.
-   * +optional
-   * +listType=atomic
-   */
-  models?: CallModelUsage[];
-  /**
-   * SubagentCalls is how many subagents the call started.
-   * +optional
-   */
-  subagentCalls?: number /* int32 */;
-  /**
-   * ReadGateBlocks is how many tool calls the read gate denied in the
-   * call.
-   * +optional
-   */
-  readGateBlocks?: number /* int32 */;
-  /**
-   * Arm is the experiment arm of the task's issue (status.experiment)
-   * while the project's experiment still has it; empty without one.
-   * +optional
-   */
-  arm?: string;
-  /**
-   * StepSession is the step-session mode (resume or fresh) of an
-   * implement-kind call of a stepwise run; empty otherwise.
-   * +optional
-   */
-  stepSession?: string;
-  /**
-   * ToolResults is what each tool put into the context during the call,
-   * by tool name (claude engine only). A subagent's tool results count
-   * under the tool that started the subagent; MCP tools keep their full
-   * name; results of an unknown tool_use count under "unknown".
-   * +optional
-   */
-  toolResults?: { [key: string]: ToolResultUsage};
-  /**
-   * BaseContextTokens is the context size of the first turn of a call
-   * that started a new session (system prompt, tools, CLAUDE.md files);
-   * 0 for resumed calls and the cursor engine.
-   * +optional
-   */
-  baseContextTokens?: number /* int64 */;
-  /**
-   * Checkpoint is the reason (e.g. usage-limit) when the call's end saved
-   * a checkpoint commit of the work tree; CheckpointSHA is that commit.
-   * +optional
-   */
-  checkpoint?: string;
-  /**
-   * +optional
-   */
-  checkpointSHA?: string;
-  /**
-   * LinesAdded and LinesDeleted are the uncommitted diff the implementer
-   * call left in the work tree (git diff --numstat HEAD plus untracked
-   * text files): the lines of the step commit that follows it. Other
-   * roles' calls leave them zero.
-   * +optional
-   */
-  linesAdded?: number /* int64 */;
-  /**
-   * +optional
-   */
-  linesDeleted?: number /* int64 */;
-  /**
-   * StepGateNudges is how often the step-size gate told the implementer
-   * to close its step during the call.
-   * +optional
-   */
-  stepGateNudges?: number /* int32 */;
-  /**
-   * TokenBasis is how the runner computed the call's tokens and model
-   * split, see TokenBasisModels. 0 (omitted) is not recorded: an older
-   * agent image wrote the call.
-   * +optional
-   */
-  tokenBasis?: number /* int32 */;
-  /**
-   * ContextSeries is the context size (input and cache tokens) of each
-   * main-thread assistant turn. Only the newest calls in status keep it.
-   * +optional
-   * +listType=atomic
-   * +kubebuilder:validation:MaxItems=500
-   */
-  contextSeries?: number /* int64 */[];
-  /**
-   * SubagentTurns are the indexes into ContextSeries after which a
-   * subagent ran. Only the newest calls in status keep them.
-   * +optional
-   * +listType=atomic
-   * +kubebuilder:validation:MaxItems=500
-   */
-  subagentTurns?: number /* int32 */[];
-}
-/**
- * ToolResultUsage is how many results of one tool a call got and their
- * size; EstimatedTokens turns the bytes into tokens.
- */
-export interface ToolResultUsage {
-  /**
-   * +optional
-   */
-  calls?: number /* int32 */;
-  /**
-   * +optional
-   */
-  bytes?: number /* int64 */;
-}
-/**
- * CallModelUsage is one model's share of an agent call.
- */
-export interface CallModelUsage {
-  model: string;
-  /**
-   * +optional
-   */
-  inputTokens?: number /* int64 */;
-  /**
-   * +optional
-   */
-  outputTokens?: number /* int64 */;
-  /**
-   * +optional
-   */
-  cacheReadTokens?: number /* int64 */;
-  /**
-   * +optional
-   */
-  cacheWriteTokens?: number /* int64 */;
-  /**
-   * CostUSD as a decimal string (4 decimals).
-   * +optional
-   */
-  costUSD?: string;
-}
 /**
  * AgentTask is one unit of agent work: planning a milestone or implementing
  * an issue. It owns the agent pod and the workspace PVC.
