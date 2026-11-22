@@ -22,7 +22,7 @@ export type BucketKind = 'day' | 'week' | 'month'
 // The colour tokens in style.css (docs/contributing/web-ui.md, "UI kit").
 export type ChartToken = '--chart-1' | '--chart-2' | '--chart-3' | '--chart-4' | '--chart-5' | '--chart-6' | '--chart-other'
 
-export interface ChartSeries {
+interface ChartSeries {
   key: string
   values: number[]
 }

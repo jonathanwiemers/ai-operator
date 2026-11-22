@@ -17,7 +17,7 @@ import { deskTitle } from '../format'
 import { movesFocus } from '../routeFocus'
 import { textEntry } from '../textEntry'
 
-export interface RouteDone {
+interface RouteDone {
   // title is the page's h1 text, '' on a page without one.
   title: string
   // newPage says whether the navigation went to a new path, not a new query

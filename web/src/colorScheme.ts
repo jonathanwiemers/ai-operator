@@ -10,7 +10,7 @@ import type { InjectionKey } from 'vue'
 
 export type Theme = 'light' | 'dark' | 'auto'
 
-export const themes: readonly Theme[] = ['light', 'dark', 'auto']
+const themes: readonly Theme[] = ['light', 'dark', 'auto']
 
 // The parts of MediaQueryList, DOMTokenList and Storage used here, so tests
 // can pass fakes.

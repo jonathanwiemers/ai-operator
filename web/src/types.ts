@@ -10,28 +10,22 @@ export type { Pause, PauseHistory, SpendTotals } from './generated/store'
 
 export type {
   About,
-  AboutRelease,
   Me,
   ProjectSummary,
   ProjectDetail,
-  Milestone,
   Task,
   Stage,
-  AutopilotOverview,
   Cost,
   MilestoneView,
   QueueItem,
   ProposalView,
   PromptView,
   PromptOptionView,
-  PromptAnswerView,
   NoteView,
   ThreadPart,
   Feature,
   StreamEvent,
   StreamPage,
-  HistoryDay,
-  HistoryTotals,
   HistoryResponse,
   InboxItem,
   ResearchSummary,
@@ -43,21 +37,17 @@ export type {
   ChatPage,
   GitLabStatusView as GitLabStatus,
   Entry as TranscriptEntry,
-  SearchHit as ResearchSearchHit,
   SpendView as Spend,
   SpendChildView as SpendChild,
   SpendBreakdownView as SpendBreakdown,
   SubagentBreakdownView as SubagentBreakdown,
   StepLinesView as StepLines,
-  ModelSplitView as ModelSplit,
   ExitView,
   ExitStatus,
   HoldView,
   CompanionView,
-  CompanionChip,
   OverviewView,
   WorkingNow,
-  WorkingNext,
   MilestoneRow,
   MilestoneList,
   MilestoneState,
@@ -65,13 +55,11 @@ export type {
   ReleaseView,
   IssueView,
   MilestoneProgress,
-  RetrospectiveView,
   FollowUpView,
   FollowUpDraftView,
   FollowUpMilestoneView,
   CostDriverView,
   TaskResponse,
-  TaskPermissions as Permissions,
   ProblemStatus,
   ProblemView,
   ProblemList,
@@ -79,33 +67,18 @@ export type {
 } from './generated/views'
 
 export type {
-  Condition,
   UsageLimit,
   UsageWindow,
   EngineUsage,
-  MilestoneRef,
-  IssueRef,
   TaskPhase,
   CIState,
-  CIStatus,
   RunStatus,
-  ContainerTermination,
-  PlannedIssue,
   AutopilotPhase,
-  AutopilotStatus,
   AutopilotItem,
-  BudgetStatus,
   PauseKind,
   ReviewError,
-  MergeOverride,
-  PauseExit,
   DecisionRef,
-  PilotAutonomy,
-  PilotStatus,
-  PromptKind,
-  PromptState,
   ResearchPhase,
-  ResearchRunStatus,
   AgentTaskStatus as TaskStatus,
 } from './generated/api'
 
@@ -220,13 +193,13 @@ export type SpendLevel = 'milestone' | 'issue' | 'run' | 'call'
 // Blocks of schema v1 (internal/research/blocks), validated by the server;
 // the result view passes them on as []any. Their text is untrusted agent
 // output: rendered as text only.
-export interface HeadingBlock {
+interface HeadingBlock {
   type: 'heading'
   text: string
   level?: number
 }
 
-export interface MarkdownBlock {
+interface MarkdownBlock {
   type: 'markdown'
   text: string
 }
@@ -243,23 +216,23 @@ export interface ResearchItem {
   new?: boolean
 }
 
-export interface ItemsBlock {
+interface ItemsBlock {
   type: 'items'
   items: ResearchItem[]
 }
 
-export interface TableBlock {
+interface TableBlock {
   type: 'table'
   columns: string[]
   rows: string[][]
 }
 
-export interface StatsBlock {
+interface StatsBlock {
   type: 'stats'
   stats: { label: string; value: string; delta?: string }[]
 }
 
-export interface LinksBlock {
+interface LinksBlock {
   type: 'links'
   links: { title: string; url: string }[]
 }

@@ -165,7 +165,7 @@ interface Resource<T> {
 }
 
 // now is the current time, updated every 15 seconds for relative times.
-export const now = ref(Date.now())
+const now = ref(Date.now())
 let nowUsers = 0
 let nowTimer: number | undefined
 

@@ -253,7 +253,7 @@ export function shareLabel(v: number): string {
 // cursorAutoLabel names cursor's model auto when its calls report nothing:
 // cursor's ACP tells neither the model it picked nor the usage
 // (docs/guides/budgets-and-spend.md). As aiv1.ModelLabel in Go.
-export const cursorAutoLabel = 'cursor auto (unmetered)'
+const cursorAutoLabel = 'cursor auto (unmetered)'
 
 // modelLabel names a model in the Spend tab: cursor's auto as "cursor auto
 // (unmetered)" when unmetered, "cursor auto" otherwise, any other by name.
@@ -376,7 +376,7 @@ export function splitPct(values: number[]): number[] {
   return parts.map((p) => p.units / 10)
 }
 
-export interface BarSegment {
+interface BarSegment {
   model: string
   main: boolean
   slot: number

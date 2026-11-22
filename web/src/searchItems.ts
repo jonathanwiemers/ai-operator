@@ -1,7 +1,7 @@
 // The ⌘K palette's groups, built from loaded data (no Vue, no fetching).
 import type { Feature, MilestoneRow, ProjectSummary, SearchResult } from './generated/views'
 
-export interface PaletteItem {
+interface PaletteItem {
   label: string
   suffix?: string
   icon: string

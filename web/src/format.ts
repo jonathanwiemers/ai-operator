@@ -188,18 +188,6 @@ export const stageInfo: Record<Stage, { label: string; tone: Tone; hint: string 
   blocked: { label: 'Blocked', tone: 'danger', hint: 'The task hit a safety limit and needs a human.' },
 }
 
-export const stageOrder: Stage[] = [
-  'working',
-  'waiting',
-  'needs-input',
-  'ci',
-  'review',
-  'failed',
-  'blocked',
-  'planned',
-  'pending',
-]
-
 export function phaseTone(p: TaskPhase | undefined): Tone {
   switch (p) {
     case 'Running':

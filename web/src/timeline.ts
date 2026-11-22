@@ -37,7 +37,7 @@ export interface Tick {
 }
 
 // PlacedBar is one issue's bar with what the component shows of it.
-export interface PlacedBar<R> {
+interface PlacedBar<R> {
   row: R
   bar: BarLayout | null
   label: string
@@ -196,7 +196,7 @@ export function milestoneLayout<R extends TimelineRow & Pick<TimelineRowView, 'w
   return { ...windowOf(from, to, now), groups: [...groups.values()].sort((a, b) => order(a.wave) - order(b.wave)) }
 }
 
-export interface OverviewBar<R> extends PlacedBar<R> {
+interface OverviewBar<R> extends PlacedBar<R> {
   bar: BarLayout
   token: ChartToken
 }
@@ -289,7 +289,7 @@ export interface TimelineBarItem {
   token?: ChartToken
 }
 
-export interface TimelineRowItem {
+interface TimelineRowItem {
   key: string
   label: string
   sub?: string

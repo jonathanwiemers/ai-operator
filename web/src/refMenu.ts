@@ -20,8 +20,8 @@ export interface RefItem {
 }
 
 // At most this many options, and this many done milestones among them.
-export const maxRefItems = 20
-export const maxDoneRefs = 10
+const maxRefItems = 20
+const maxDoneRefs = 10
 
 // refQuery: the menu is open while the text before the caret ends in "%"
 // and an optional word (the query), at the start or after a space or "(";

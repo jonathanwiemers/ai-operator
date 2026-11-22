@@ -15,7 +15,7 @@ export type DeskChatRole = 'user' | 'assistant' | 'system'
 export type DeskChatSend = 'sending' | 'sent' | 'failed'
 
 // DeskChatMeta is what DeskChat shows around the text.
-export interface DeskChatMeta {
+interface DeskChatMeta {
   at?: string
   author?: string
   kind?: string

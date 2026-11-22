@@ -9,6 +9,7 @@ import { computed, defineAsyncComponent, onUnmounted, ref, watch } from 'vue'
 import { chatPostError } from '../api'
 import { DecisionsChanged, getPlan, postPlanChat } from '../client'
 import * as w from '../planWizard'
+import { maxOther } from '../planWizard'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UTextarea from '@nuxt/ui/components/Textarea.vue'
 import URadioGroup from '@nuxt/ui/components/RadioGroup.vue'
@@ -136,7 +137,7 @@ async function reload() {
                 </template>
               </template>
             </URadioGroup>
-            <UTextarea v-if="typeof pick === 'string'" :model-value="pick" :maxlength="w.maxOther" :rows="3" autoresize
+            <UTextarea v-if="typeof pick === 'string'" :model-value="pick" :maxlength="maxOther" :rows="3" autoresize
               aria-label="Your answer" :ui="{ root: 'w-full', base: 'text-base tablet:text-sm' }" @update:model-value="(t: string) => setPick(t)" />
           </div>
         </section>

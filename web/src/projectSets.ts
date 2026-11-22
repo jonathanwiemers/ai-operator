@@ -3,7 +3,7 @@ import type { ProjectSetSummary, ProjectSummary } from './generated/views'
 // The rail's project list with set children under their set (R8,
 // docs/contributing/web-ui.md, "Navigation").
 
-export interface ProjectSetGroup {
+interface ProjectSetGroup {
   set: ProjectSetSummary
   children: ProjectSummary[]
 }

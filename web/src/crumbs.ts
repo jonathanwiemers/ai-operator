@@ -9,7 +9,7 @@ import type { RouteName } from './routeNames.ts'
 // filled by the views from what they loaded; until then a crumb shows the
 // IID or the route's label.
 
-export interface CrumbLink {
+interface CrumbLink {
   name: RouteName
   params: Record<string, string>
   // query: only the Plans and Needs you crumbs' tab, never the route's query.
@@ -40,8 +40,8 @@ export interface CrumbRoute {
   query?: Record<string, unknown>
 }
 
-export const overviewLabel = 'Overview'
-export const researchLabel = 'Research'
+const overviewLabel = 'Overview'
+const researchLabel = 'Research'
 
 // milestoneLabel is a milestone's title, else %<iid>.
 export function milestoneLabel(iid: number, title?: string): string {
@@ -74,7 +74,7 @@ function titleOf(
 // crumbsFor maps a route to its breadcrumbs; every route has at least one.
 // problemLabel: "Problem #42" for issue-42, "Milestone problem" for
 // issue-0, "Problem" for a row id.
-export function problemLabel(id: string): string {
+function problemLabel(id: string): string {
   const m = /^issue-(\d+)$/.exec(id)
   if (!m) return 'Problem'
   return Number(m[1]) ? `Problem #${Number(m[1])}` : 'Milestone problem'

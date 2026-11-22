@@ -51,12 +51,10 @@ import type {
 } from './generated/views'
 import type { ResearchAgent, ResearchDepth, ResearchView } from './generated/api'
 import { decisionsSearch, type DecisionParams } from './decisions'
-import { draftConflictFrom, DraftConflict } from './planConflict'
+import { draftConflictFrom } from './planConflict'
 import { plansPath } from './plansPath'
 import type { DecisionAnswer } from './generated/store'
 import type { ChatKind } from './types'
-
-export { DraftConflict }
 
 // DecisionsChanged is the 409 of a plan chat post whose answers name a
 // decision version the plan no longer has: the wizard reloads them. It

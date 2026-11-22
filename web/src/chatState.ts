@@ -3,9 +3,8 @@ import type { AutopilotItem, ChatKind, ChatMessage, ChatState, TaskPhase } from 
 
 // Efforts the Desk chat API accepts on use/effort commands (api/v1alpha1.Efforts).
 export const chatEfforts = ['low', 'medium', 'high', 'xhigh', 'max'] as const
-export type ChatEffort = (typeof chatEfforts)[number]
 
-export type ChatWaitingKind = 'capacity' | 'starting' | 'answering'
+type ChatWaitingKind = 'capacity' | 'starting' | 'answering'
 
 export interface ChatWaitingInput {
   // Unanswered user message that waits for the agent (not a command).

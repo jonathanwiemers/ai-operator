@@ -4,7 +4,7 @@ import type { PauseHistory, Pause } from './types'
 // history (MilestoneView.pauses) with its totals. The server counts an open
 // pause up to the view's time; pausesSummary counts it on up to now.
 
-export interface PauseKindRow {
+interface PauseKindRow {
   kind: string
   count: number
   sec: number
@@ -22,7 +22,7 @@ export interface PauseViaRow {
   count: number
 }
 
-export interface PauseRow {
+interface PauseRow {
   kind: string
   reason: string
   item: string

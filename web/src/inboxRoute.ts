@@ -9,7 +9,7 @@ type MilestoneRoute = {
 
 // ProblemRoute is one problem's thread on the Needs you tab (issue-<iid>;
 // issue-0 the milestone's own).
-export type ProblemRoute = {
+type ProblemRoute = {
   name: 'problem'
   params: { namespace: string; name: string; iid: string; problem: string }
 }

@@ -1,6 +1,6 @@
 import type { InboxItem } from './types'
 
-export interface PausedMilestone {
+interface PausedMilestone {
   namespace: string
   project: string
   milestoneIID: number

@@ -17,7 +17,7 @@ export interface TranscriptFold {
   count: number
 }
 
-export interface TranscriptLine {
+interface TranscriptLine {
   kind: 'entry'
   entry: TranscriptEntry
 }

@@ -54,7 +54,3 @@ export function announceChange(item: () => { key: string; text: string } | null)
     { immediate: true },
   )
 }
-
-export function useAnnounce() {
-  return { announcer, announce }
-}

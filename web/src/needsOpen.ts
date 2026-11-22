@@ -7,7 +7,7 @@ type Hold = NonNullable<NonNullable<MilestoneView['autopilot']>['holds']>[number
 // OpenProblem is what is open on one problem, an issue (iid 0: the
 // milestone). paused: the milestone's pause belongs to it; prompts: its
 // open prompts without the pause or hold card's own.
-export interface OpenProblem {
+interface OpenProblem {
   iid: number
   title?: string
   paused: boolean

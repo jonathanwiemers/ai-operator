@@ -8,7 +8,7 @@ import type { SpendChild } from './types'
 
 // stepKinds are the call kinds that are implementer steps; reviewers,
 // describe and pilot calls get no series.
-export const stepKinds = ['implement', 'ci', 'conflict', 'fix']
+const stepKinds = ['implement', 'ci', 'conflict', 'fix']
 
 // Steps are ordered, so they share one hue and grow more opaque from the
 // first to the latest; subagent markers take a contrasting hue.
@@ -23,7 +23,7 @@ export function stepOpacity(i: number, n: number): number {
 // The chart's viewBox and the plot area inside it (room for axis labels).
 export const chartBox = { width: 600, height: 170, left: 44, right: 10, top: 8, bottom: 22 }
 
-export interface ChartPoint {
+interface ChartPoint {
   x: number
   y: number
   turn: number
@@ -31,7 +31,7 @@ export interface ChartPoint {
   title: string
 }
 
-export interface ChartSeries {
+interface ChartSeries {
   key: string
   label: string
   opacity: number
@@ -41,7 +41,7 @@ export interface ChartSeries {
   end: ChartPoint
 }
 
-export interface ChartTick {
+interface ChartTick {
   pos: number
   label: string
 }

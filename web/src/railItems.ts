@@ -33,10 +33,10 @@ interface RailBase extends NavigationMenuItem {
   hint?: string
   children?: RailItem[]
 }
-export interface RailLink extends RailBase {
+interface RailLink extends RailBase {
   slot?: undefined
 }
-export interface RailSet extends RailBase {
+interface RailSet extends RailBase {
   slot: 'set'
   discoveredAt?: string
   problem: string | null

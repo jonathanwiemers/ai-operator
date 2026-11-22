@@ -115,10 +115,10 @@ export function deskCommand(cmd: string | undefined): boolean {
   return !!cmd && Object.prototype.hasOwnProperty.call(remedyActions, cmd)
 }
 
-export type ExitTone = 'success' | 'progress' | 'muted'
+type ExitTone = 'success' | 'progress' | 'muted'
 
 // WayOutAuto is an automatic exit with its live status chip.
-export interface WayOutAuto {
+interface WayOutAuto {
   id: string
   when: string
   does: string
@@ -135,7 +135,7 @@ export interface WayOutAuto {
 // instruction (for a button: what it needs first, often ''); elsewhere says
 // where the command word goes when not as a button ("on the tracking
 // issue"); link names the GitLab page it happens on.
-export interface WayOutRemedy {
+interface WayOutRemedy {
   id: string
   kind: 'button' | 'command' | 'label' | 'gitlab' | 'prompt'
   text: string

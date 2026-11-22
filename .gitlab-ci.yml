@@ -162,9 +162,8 @@ ui:
         files: [web/package-lock.json]
       paths: [.cache/npm]
 
-# Unused files, exports and dependencies of the web UI (web/knip.json), the
-# findings in the job log. Report-only while it has a backlog: the merge
-# request that brings it to zero removes allow_failure.
+# Unused files, exports and dependencies of the web UI (web/knip.json):
+# blocking, a new unused export fails the pipeline.
 knip:
   extends: [.check, .mise-task]
   variables:
@@ -175,7 +174,6 @@ knip:
       files: [web/package-lock.json]
       prefix: knip
     paths: [.cache/npm]
-  allow_failure: true
 
 # Browser checks of the built Desk (docs/contributing/web-ui.md "Checks"): every route at
 # 375, 768 and 1280 px with the server's CSP and a mocked API. The

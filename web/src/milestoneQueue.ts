@@ -114,7 +114,7 @@ export function waitingForTurn(queuedBehind?: number[] | null, milestones: reado
 }
 
 // Lane is where an autopilot item is (decision 8 of the parallel milestone).
-export type Lane = QueueItem['lane']
+type Lane = QueueItem['lane']
 
 // LaneGroup is one lane of the Issues tab's queue: its heading and items.
 export interface LaneGroup<T> {

@@ -3,7 +3,7 @@ import type { Facts } from './generated/problem'
 
 // FactPart is a piece of a facts row: text, a GitLab link (href) or a Desk
 // link (to: a task's logs tab).
-export interface FactPart {
+interface FactPart {
   text: string
   href?: string
   to?: { name: 'task'; params: { namespace: string; name: string; task: string }; query: { tab: 'logs' } }

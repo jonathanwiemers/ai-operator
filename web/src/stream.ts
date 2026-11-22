@@ -196,7 +196,7 @@ export function promptForEvent(
   return id ? prompts?.find((p) => p.id === id) : undefined
 }
 
-export type ThreadGroup = {
+type ThreadGroup = {
   kind: 'thread'
   key: string
   at: string
@@ -296,7 +296,7 @@ export function noteTargets(project: ProjectDetail | null, preferMilestone?: num
   return out
 }
 
-export function sameNoteTarget(a: NoteTarget, b: NoteTarget): boolean {
+function sameNoteTarget(a: NoteTarget, b: NoteTarget): boolean {
   if (a.type === 'pilot' && b.type === 'pilot') return a.milestoneIID === b.milestoneIID
   if (a.type === 'task' && b.type === 'task') return a.task === b.task
   return false
