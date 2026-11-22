@@ -50,7 +50,6 @@ func (e *fakeSessionEngine) StartSession(_ context.Context, inv Invocation) (Ses
 }
 
 type fakeSession struct {
-	mu     sync.Mutex
 	id     string
 	closed atomic.Bool
 	prompt func(ctx context.Context, text string, fn func(Event)) (*Result, error)
