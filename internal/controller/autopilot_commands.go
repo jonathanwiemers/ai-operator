@@ -249,3 +249,155 @@ func (a *autopilot) chatCommands(ctx context.Context) error {
 	a.chatMark, a.chatAnswers = mark, answers
 	return nil
 }
+
+// command applies one command of the tracking issue: pause, resume,
+// skip, rebase, mergeBase, merge, release or no-release arg, by someone. It returns the answer and whether the command was
+// applied; the tracking issue gets only the answers of commands that were
+// not (usage, unknown), the Desk gets every answer.
+func (a *autopilot) command(ctx context.Context, word, arg, by string) (answer string, applied bool, err error) {
+	switch word {
+	case "pause":
+		if a.ap.Phase != aiv1.AutopilotDone {
+			a.startPause(aiv1.PauseOwner, 0)
+			a.ap.PausedReason, a.ap.PauseKind = "paused by "+by, aiv1.PauseOwner
+			a.ap.PausedFor, a.ap.ResumeWhenReady = 0, false
+		}
+		return "Autopilot paused.", true, nil
+	case "resume":
+		// `resume #N` lifts N's hold only; over a pause for N (a limit of
+		// 1) it is a plain `resume`.
+		if iid, err := strconv.ParseInt(strings.TrimPrefix(arg, "#"), 10, 64); err == nil && (a.ap.Phase != aiv1.AutopilotPaused || a.ap.PausedFor != iid || iid == 0) {
+			it := heldItem(a.ap, iid)
+			if it == nil {
+				return fmt.Sprintf("`resume #N` needs a held issue, e.g. `%s resume #12`.", a.spec.Workflow.CommandPrefix), false, nil
+			}
+			if err := a.unhold(ctx, it, byCommand(by), "resumed"); err != nil {
+				return "", false, err
+			}
+			return fmt.Sprintf("#%d goes on.", iid), true, nil
+		}
+		if err := a.resumeAll(ctx, by); err != nil {
+			return "", false, err
+		}
+		return "Autopilot resumed.", true, nil
+	case "skip":
+		iid, _ := strconv.ParseInt(strings.TrimPrefix(arg, "#"), 10, 64)
+		it := a.item(iid)
+		if it == nil || it.State == aiv1.AutopilotItemMerged {
+			return fmt.Sprintf("`skip` needs a planned issue that is not merged yet, e.g. `%s skip #12`.", a.spec.Workflow.CommandPrefix), false, nil
+		}
+		it.State, it.RebasedFrom, it.Hold = aiv1.AutopilotItemSkipped, "", nil
+		a.unready(it)
+		return fmt.Sprintf("#%d skipped.", iid), true, nil
+	case "unskip":
+		iid, _ := strconv.ParseInt(strings.TrimPrefix(arg, "#"), 10, 64)
+		it := a.item(iid)
+		if is, ok := a.issues[iid]; it == nil || it.State != aiv1.AutopilotItemSkipped || it == a.ap.MainRedFix || !ok || is.State != "opened" {
+			return fmt.Sprintf("`unskip` needs a skipped issue that is still open, e.g. `%s unskip #12`.", a.spec.Workflow.CommandPrefix), false, nil
+		}
+		a.log.Info("autopilot unskips an issue", "issue", iid, "by", by)
+		it.State = aiv1.AutopilotItemPending
+		return fmt.Sprintf("#%d is pending again.", iid), true, nil
+	case "startAnyway", "startanyway":
+		return a.startAnyway(ctx, arg, by)
+	case "merge":
+		return a.mergeAnyway(ctx, arg, by)
+	case "start":
+		// start is move top (decision 14); the callers key it.
+		if strings.EqualFold(arg, "off") {
+			return noMarks, false, nil
+		}
+		return a.move(ctx, chatcmd.Move{To: "top"}, by, "")
+	case "parallel":
+		return a.setParallel(ctx, arg, by)
+	case "release":
+		return a.ownerRelease(ctx, arg, by)
+	case "no-release":
+		return a.ownerNoRelease(ctx, arg, by)
+	case "rebase", "mergeBase", "mergebase":
+		// The tracking issue's words are lower case, the pilot's tools not.
+		return a.mrCommand(ctx, strings.Replace(word, "mergebase", "mergeBase", 1), arg, by)
+	default:
+		return a.unknownCommand(), false, nil
+	}
+}
+
+// startAnyway lets the pending issue arg start although issues it depends
+// on were skipped (AutopilotItem.StartAnyway), by someone, and says so on
+// the tracking issue. Its other dependencies and links still hold.
+func (a *autopilot) startAnyway(ctx context.Context, arg, by string) (string, bool, error) {
+	iid, _ := strconv.ParseInt(strings.TrimPrefix(arg, "#"), 10, 64)
+	it := a.item(iid)
+	var skipped []int64
+	if it != nil && it != a.ap.MainRedFix && it.State == aiv1.AutopilotItemPending {
+		skipped = a.skippedDeps(iid)
+	}
+	if len(skipped) == 0 {
+		return fmt.Sprintf("`startAnyway` needs a pending issue that depends on a skipped one, e.g. `%s startAnyway #12`.", a.spec.Workflow.CommandPrefix), false, nil
+	}
+	if it.StartAnyway {
+		return fmt.Sprintf("#%d may already start without %s.", iid, issueList(skipped)), true, nil
+	}
+	which := issueList(skipped) + ", which it depends on, was skipped"
+	if len(skipped) > 1 {
+		which = issueList(skipped) + ", which it depends on, were skipped"
+	}
+	// Comment first: if it fails, the command is applied again on the next
+	// poll.
+	if err := a.comment(ctx, fmt.Sprintf("▶️ #%d may start although %s (%s).", iid, which, by)); err != nil {
+		return "", false, err
+	}
+	a.log.Info("autopilot lets an issue start without its skipped dependencies", "issue", iid, "skipped", skipped, "by", by)
+	it.StartAnyway = true
+	return fmt.Sprintf("#%d may start although %s.", iid, which), true, nil
+}
+
+// startHint is the `move top` command the tracking issue offers: none on a
+// done milestone or on the first one in the run order; and what it does.
+func (a *autopilot) startHint() (string, string) {
+	if a.ap.Phase == aiv1.AutopilotDone || a.first() {
+		return "", ""
+	}
+	return a.spec.Workflow.CommandPrefix + " move top", "run it next"
+}
+
+// first reports whether the milestone is first in the project's run order.
+func (a *autopilot) first() bool {
+	return a.project != nil && len(a.project.Status.MilestoneOrder) > 0 && a.project.Status.MilestoneOrder[0] == a.st.Spec.Milestone.IID
+}
+
+// waitingForTurn reports whether the milestone waits for its turn to be
+// planned: its spec task has never asked for a run and it has no plan.
+func (a *autopilot) waitingForTurn() bool {
+	return a.st.Spec.RunRequest == 0 && len(a.st.Status.Plan) == 0
+}
+
+// skippedDeps are the dependencies of iid in the plan that are skipped.
+func (a *autopilot) skippedDeps(iid int64) []int64 {
+	var out []int64
+	for _, d := range a.deps(iid) {
+		if dep := a.item(d); dep != nil && dep.State == aiv1.AutopilotItemSkipped {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// unknownCommand answers a command the tracking issue does not understand,
+// without quoting it: instructions for the agent go on the active issue.
+func (a *autopilot) unknownCommand() string {
+	prefix := a.spec.Workflow.CommandPrefix
+	where := "the issue it should work on"
+	for _, it := range a.ap.Items {
+		if it.State == aiv1.AutopilotItemActive {
+			where = fmt.Sprintf("#%d, the active issue", it.IID)
+			break
+		}
+	}
+	start := ""
+	if h, _ := a.startHint(); h != "" {
+		start = "`" + h + "`, "
+	}
+	return fmt.Sprintf("This tracking issue only understands %[4]s`%[1]s pause`, `%[1]s resume [#N]`, `%[1]s skip #N`, `%[1]s unskip #N`, `%[1]s startAnyway #N`, `%[1]s rebase #N`, `%[1]s mergeBase #N`, `%[1]s merge #N`, `%[1]s release [reason]`, `%[1]s no-release #N [reason]`, `%[1]s parallel N` (owners), `%[1]s move top|bottom|before %%N|after %%N` (owners), `%[1]s endMilestone` and `%[1]s revisit <id> …`. "+
+		"Did you mean `%[3]s …`? The milestone's pilot answers here. To instruct the agent, comment `%[1]s …` on %[2]s.", prefix, where, a.spec.Workflow.PilotPrefix, start)
+}
