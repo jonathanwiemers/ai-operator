@@ -2911,6 +2911,376 @@ export interface ResearchCandidates {
 }
 
 //////////
+// source: agenttask_pilot_types.go
+
+/**
+ * PilotInstruction is what the implementer gets of an accepted instruct:
+ * a fixed kind the runner turns into a fixed sentence, with the pilot's
+ * note as untrusted data, or an owner's own words.
+ */
+export interface PilotInstruction {
+  /**
+   * +optional
+   */
+  kind?: string;
+  /**
+   * +optional
+   */
+  note?: string;
+  /**
+   * +optional
+   */
+  owner?: string;
+  /**
+   * +optional
+   */
+  text?: string;
+  /**
+   * Request is the run request it is for.
+   */
+  request: number /* int64 */;
+}
+/**
+ * MaxPilotSpec bounds the new spec text of an editSpec, in bytes.
+ */
+export const MaxPilotSpec = 64 << 10;
+/**
+ * MaxAutopilotItemDecisions bounds AutopilotItem.Decisions (the newest are kept).
+ */
+export const MaxAutopilotItemDecisions = 20;
+/**
+ * PilotAction is one action of a proposal of the pilot; the operator
+ * validates and executes it once an owner accepts the proposal.
+ */
+export interface PilotAction {
+  /**
+   * Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
+   * rebase, mergeBase, skip, unskip, startAnyway, markDone, pause, resume,
+   * revisit, setRule, forgetRule or editSpec; the owner-only raiseBudget
+   * and endMilestone come only in options the operator builds (budget
+   * prompts), never from the model. unskip, startAnyway and markDone run
+   * only on an owner's answer.
+   */
+  tool: string;
+  /**
+   * Decision to revisit, e.g. D12-3; Note is the change asked for.
+   * +optional
+   */
+  decision?: string;
+  /**
+   * +optional
+   */
+  issueIID?: number /* int64 */;
+  /**
+   * Kind of an instruct, one of PilotInstructKinds.
+   * +optional
+   */
+  kind?: string;
+  /**
+   * Note: the pilot's hint to the implementer (instruct), the body of
+   * the issue it opens (openIssue), the change asked for (revisit), why
+   * an issue is done (markDone). Untrusted.
+   * +optional
+   */
+  note?: string;
+  /**
+   * Title of the issue it opens (openIssue).
+   * +optional
+   */
+  title?: string;
+  /**
+   * Owner and Text: an owner's own words for the implementer ("/pilot
+   * tell #N: …"). Only the operator sets them.
+   * +optional
+   */
+  owner?: string;
+  /**
+   * +optional
+   */
+  text?: string;
+  /**
+   * Rule is the ID ("R2") of the standing rule forgetRule removes. A
+   * setRule has its kind (switch, pilot, prompt) in Kind and its text in
+   * Note; a forgetRule the operator's copy of the rule's text in Note.
+   * +optional
+   */
+  rule?: string;
+  /**
+   * Spec is the full new spec text of an editSpec, which replaces the
+   * milestone description except its command lines (markers, owners,
+   * rules). Untrusted until an owner accepts its diff.
+   * +optional
+   */
+  spec?: string;
+  /**
+   * PipelineID is the red default-branch pipeline whose failed jobs
+   * retryPipeline retries.
+   * +optional
+   */
+  pipelineID?: number /* int64 */;
+  /**
+   * Amount is the new milestone budget of a raiseBudget, a decimal in
+   * USD ("48").
+   * +optional
+   */
+  amount?: string;
+}
+/**
+ * PilotProposal is a set of actions that waits for an owner's "yes".
+ */
+export interface PilotProposal {
+  /**
+   * ID is n of "P<n>", given when the operator posts it.
+   * +optional
+   */
+  id?: number /* int64 */;
+  summary: string;
+  /**
+   * Actions are empty for a proposal with Options: each option carries
+   * its own.
+   * +optional
+   */
+  actions?: PilotAction[];
+  /**
+   * State is PilotState when it was made.
+   */
+  state: string;
+  /**
+   * +optional
+   */
+  postedAt?: string;
+  /**
+   * AcceptedBy is the owner who accepted it.
+   * +optional
+   */
+  acceptedBy?: string;
+  /**
+   * OwnerIDs are the user IDs of the milestone's owners when it was
+   * posted, sorted: only they answer it. Empty on a proposal posted before
+   * they were pinned.
+   * +optional
+   */
+  ownerIDs?: number /* int64 */[];
+  /**
+   * Source is the message or event it answers, so a run started again
+   * does not propose it twice.
+   * +optional
+   */
+  source?: string;
+  /**
+   * Trigger is the issue whose event or message it answers, 0 for the
+   * milestone (the tracking issue, a merge request): an openIssue counts
+   * against it.
+   * +optional
+   */
+  trigger?: number /* int64 */;
+  /**
+   * ChatMessageID is the owner's chat message that asked for it; the
+   * operator checks the message and its author before it runs.
+   * +optional
+   */
+  chatMessageID?: number /* int64 */;
+  /**
+   * Why is the classification and evidence, or the owner's message, it
+   * answers, for the audit comment. Untrusted.
+   * +optional
+   */
+  why?: string;
+  /**
+   * Quiet: the run did not mention the owners (an assessment of a pilot
+   * that manages), so the operator does when it posts the proposal.
+   * +optional
+   */
+  quiet?: boolean;
+  /**
+   * Prompt is the id ("Q3") of the prompt whose chosen option this
+   * accepted proposal runs: its outcome goes into the prompt's answer.
+   * +optional
+   */
+  prompt?: string;
+  /**
+   * Kind, Question, Context and Options make it a prompt with the
+   * pilot's own options (an assessment) instead of "Do it" or "Do
+   * nothing" for Actions; State is then that of the recommended option's
+   * actions. Untrusted; the operator checks every option's actions.
+   * +optional
+   */
+  kind?: PromptKind;
+  /**
+   * +optional
+   */
+  question?: string;
+  /**
+   * +optional
+   */
+  context?: string;
+  /**
+   * +optional
+   * +kubebuilder:validation:MaxItems=5
+   */
+  options?: PromptOption[];
+}
+/**
+ * PilotEvent is something the pilot assesses without being asked: an
+ * autopilot pause, an issue that needs input or is blocked by infra or
+ * quota, a red or flaky default branch.
+ */
+export interface PilotEvent {
+  /**
+   * Key identifies the event: it wakes the pilot once.
+   */
+  key: string;
+  /**
+   * IssueIID is the issue it is about, if any.
+   * +optional
+   */
+  issueIID?: number /* int64 */;
+  /**
+   * PipelineID is the red pipeline it is about, if any.
+   * +optional
+   */
+  pipelineID?: number /* int64 */;
+  /**
+   * Text says what happened; it can quote titles and GitLab's errors.
+   */
+  text: string;
+  /**
+   * Request is the run request that assesses it.
+   */
+  request: number /* int64 */;
+}
+/**
+ * PilotMessage is a comment addressed to the pilot.
+ */
+export interface PilotMessage {
+  noteID: number /* int64 */;
+  /**
+   * Where it was written: an issue, or a merge request.
+   * +optional
+   */
+  issueIID?: number /* int64 */;
+  /**
+   * +optional
+   */
+  mergeRequestIID?: number /* int64 */;
+  author: string;
+  /**
+   * Body without the address ("/pilot", the mention).
+   */
+  body: string;
+  /**
+   * Request is the run request that answers it.
+   */
+  request: number /* int64 */;
+}
+/**
+ * PilotStatus is the operator's bookkeeping of a milestone's pilot.
+ */
+export interface PilotStatus {
+  /**
+   * LastNoteID is the newest comment on the tracking issue handed to the
+   * pilot.
+   * +optional
+   */
+  lastNoteID?: number /* int64 */;
+  /**
+   * Events are the keys of the events handed to the pilot (Coordinate
+   * tasks), those that hold first, then the last ones that ended.
+   * +optional
+   */
+  events?: string[];
+  /**
+   * Proposed are the proposals of the pilot's runs the operator has not
+   * posted yet (Coordinate tasks).
+   * +optional
+   */
+  proposed?: PilotProposal[];
+  /**
+   * Proposals are the open proposals, posted on the tracking issue.
+   * +optional
+   */
+  proposals?: PilotProposal[];
+  /**
+   * Accepted are the proposals owners accepted, run at the end of the
+   * poll.
+   * +optional
+   */
+  accepted?: PilotProposal[];
+  /**
+   * Refined are the pilot's answers to spec.source.promptRefines
+   * (Coordinate tasks), newest last, until the operator takes them.
+   * +optional
+   * +kubebuilder:validation:MaxItems=5
+   */
+  refined?: PromptRefinement[];
+  /**
+   * LastProposal is the ID of the newest proposal.
+   * +optional
+   */
+  lastProposal?: number /* int64 */;
+  /**
+   * LastChatAccepted is the newest chat message whose request ran as its
+   * owner: a message's request runs once, never one older than it.
+   * +optional
+   */
+  lastChatAccepted?: number /* int64 */;
+  /**
+   * OpenedIssues are the title keys of the issues the pilot opened.
+   * +optional
+   */
+  openedIssues?: string[];
+  /**
+   * Commands are the queue commands of accepted proposals (spec tasks),
+   * oldest first, for autopilot and the revisits to apply once each.
+   * +optional
+   */
+  commands?: PilotCommand[];
+  /**
+   * ReleaseDecisions are the release decisions of the pilot's answers and
+   * assessments (Coordinate tasks), oldest first, the newest
+   * MaxPilotReleaseDecisions. The operator validates and applies each once,
+   * by Seq. Untrusted.
+   * +optional
+   * +kubebuilder:validation:MaxItems=20
+   */
+  releaseDecisions?: PilotReleaseDecision[];
+  /**
+   * AutonomyOverride is the owners' last "/pilot stop" or "/pilot go"
+   * (Coordinate tasks). It can only lower the project's pilot.autonomy.
+   * +optional
+   */
+  autonomyOverride?: PilotAutonomyOverride;
+  /**
+   * Interventions count the pilot's own actions per issue on the issue's
+   * current head (Coordinate tasks), by issue IID; "0" is the milestone.
+   * +optional
+   */
+  interventions?: { [key: string]: PilotIntervention};
+  /**
+   * Acted are the proposals runAccepted ran without a prompt (Coordinate
+   * tasks): the pilot's own actions and the proposals owners accepted.
+   * Oldest first, the newest MaxPilotActed.
+   * +optional
+   * +kubebuilder:validation:MaxItems=30
+   */
+  acted?: PilotActed[];
+  /**
+   * Retrospective is the retrospective of the milestone once its autopilot
+   * is done: recorded by the pilot's run (Coordinate tasks) and copied to
+   * the spec task before the pilot is deleted. A milestone gets one.
+   * +optional
+   */
+  retrospective?: PilotRetrospective;
+  /**
+   * FollowUpDraft is the pilot's draft of a follow-up milestone for
+   * spec.source.followUpDraft (Coordinate tasks), the newest only.
+   * Untrusted until an owner confirms it.
+   * +optional
+   */
+  followUpDraft?: PilotFollowUpDraft;
+}
+
+//////////
 // source: agenttask_types.go
 
 /**
@@ -3624,372 +3994,6 @@ export interface PlanDecisionAnswer {
    * +kubebuilder:validation:MaxLength=2000
    */
   other?: string;
-}
-/**
- * PilotInstruction is what the implementer gets of an accepted instruct:
- * a fixed kind the runner turns into a fixed sentence, with the pilot's
- * note as untrusted data, or an owner's own words.
- */
-export interface PilotInstruction {
-  /**
-   * +optional
-   */
-  kind?: string;
-  /**
-   * +optional
-   */
-  note?: string;
-  /**
-   * +optional
-   */
-  owner?: string;
-  /**
-   * +optional
-   */
-  text?: string;
-  /**
-   * Request is the run request it is for.
-   */
-  request: number /* int64 */;
-}
-/**
- * MaxPilotSpec bounds the new spec text of an editSpec, in bytes.
- */
-export const MaxPilotSpec = 64 << 10;
-/**
- * MaxAutopilotItemDecisions bounds AutopilotItem.Decisions (the newest are kept).
- */
-export const MaxAutopilotItemDecisions = 20;
-/**
- * PilotAction is one action of a proposal of the pilot; the operator
- * validates and executes it once an owner accepts the proposal.
- */
-export interface PilotAction {
-  /**
-   * Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
-   * rebase, mergeBase, skip, unskip, startAnyway, markDone, pause, resume,
-   * revisit, setRule, forgetRule or editSpec; the owner-only raiseBudget
-   * and endMilestone come only in options the operator builds (budget
-   * prompts), never from the model. unskip, startAnyway and markDone run
-   * only on an owner's answer.
-   */
-  tool: string;
-  /**
-   * Decision to revisit, e.g. D12-3; Note is the change asked for.
-   * +optional
-   */
-  decision?: string;
-  /**
-   * +optional
-   */
-  issueIID?: number /* int64 */;
-  /**
-   * Kind of an instruct, one of PilotInstructKinds.
-   * +optional
-   */
-  kind?: string;
-  /**
-   * Note: the pilot's hint to the implementer (instruct), the body of
-   * the issue it opens (openIssue), the change asked for (revisit), why
-   * an issue is done (markDone). Untrusted.
-   * +optional
-   */
-  note?: string;
-  /**
-   * Title of the issue it opens (openIssue).
-   * +optional
-   */
-  title?: string;
-  /**
-   * Owner and Text: an owner's own words for the implementer ("/pilot
-   * tell #N: …"). Only the operator sets them.
-   * +optional
-   */
-  owner?: string;
-  /**
-   * +optional
-   */
-  text?: string;
-  /**
-   * Rule is the ID ("R2") of the standing rule forgetRule removes. A
-   * setRule has its kind (switch, pilot, prompt) in Kind and its text in
-   * Note; a forgetRule the operator's copy of the rule's text in Note.
-   * +optional
-   */
-  rule?: string;
-  /**
-   * Spec is the full new spec text of an editSpec, which replaces the
-   * milestone description except its command lines (markers, owners,
-   * rules). Untrusted until an owner accepts its diff.
-   * +optional
-   */
-  spec?: string;
-  /**
-   * PipelineID is the red default-branch pipeline whose failed jobs
-   * retryPipeline retries.
-   * +optional
-   */
-  pipelineID?: number /* int64 */;
-  /**
-   * Amount is the new milestone budget of a raiseBudget, a decimal in
-   * USD ("48").
-   * +optional
-   */
-  amount?: string;
-}
-/**
- * PilotProposal is a set of actions that waits for an owner's "yes".
- */
-export interface PilotProposal {
-  /**
-   * ID is n of "P<n>", given when the operator posts it.
-   * +optional
-   */
-  id?: number /* int64 */;
-  summary: string;
-  /**
-   * Actions are empty for a proposal with Options: each option carries
-   * its own.
-   * +optional
-   */
-  actions?: PilotAction[];
-  /**
-   * State is PilotState when it was made.
-   */
-  state: string;
-  /**
-   * +optional
-   */
-  postedAt?: string;
-  /**
-   * AcceptedBy is the owner who accepted it.
-   * +optional
-   */
-  acceptedBy?: string;
-  /**
-   * OwnerIDs are the user IDs of the milestone's owners when it was
-   * posted, sorted: only they answer it. Empty on a proposal posted before
-   * they were pinned.
-   * +optional
-   */
-  ownerIDs?: number /* int64 */[];
-  /**
-   * Source is the message or event it answers, so a run started again
-   * does not propose it twice.
-   * +optional
-   */
-  source?: string;
-  /**
-   * Trigger is the issue whose event or message it answers, 0 for the
-   * milestone (the tracking issue, a merge request): an openIssue counts
-   * against it.
-   * +optional
-   */
-  trigger?: number /* int64 */;
-  /**
-   * ChatMessageID is the owner's chat message that asked for it; the
-   * operator checks the message and its author before it runs.
-   * +optional
-   */
-  chatMessageID?: number /* int64 */;
-  /**
-   * Why is the classification and evidence, or the owner's message, it
-   * answers, for the audit comment. Untrusted.
-   * +optional
-   */
-  why?: string;
-  /**
-   * Quiet: the run did not mention the owners (an assessment of a pilot
-   * that manages), so the operator does when it posts the proposal.
-   * +optional
-   */
-  quiet?: boolean;
-  /**
-   * Prompt is the id ("Q3") of the prompt whose chosen option this
-   * accepted proposal runs: its outcome goes into the prompt's answer.
-   * +optional
-   */
-  prompt?: string;
-  /**
-   * Kind, Question, Context and Options make it a prompt with the
-   * pilot's own options (an assessment) instead of "Do it" or "Do
-   * nothing" for Actions; State is then that of the recommended option's
-   * actions. Untrusted; the operator checks every option's actions.
-   * +optional
-   */
-  kind?: PromptKind;
-  /**
-   * +optional
-   */
-  question?: string;
-  /**
-   * +optional
-   */
-  context?: string;
-  /**
-   * +optional
-   * +kubebuilder:validation:MaxItems=5
-   */
-  options?: PromptOption[];
-}
-/**
- * PilotEvent is something the pilot assesses without being asked: an
- * autopilot pause, an issue that needs input or is blocked by infra or
- * quota, a red or flaky default branch.
- */
-export interface PilotEvent {
-  /**
-   * Key identifies the event: it wakes the pilot once.
-   */
-  key: string;
-  /**
-   * IssueIID is the issue it is about, if any.
-   * +optional
-   */
-  issueIID?: number /* int64 */;
-  /**
-   * PipelineID is the red pipeline it is about, if any.
-   * +optional
-   */
-  pipelineID?: number /* int64 */;
-  /**
-   * Text says what happened; it can quote titles and GitLab's errors.
-   */
-  text: string;
-  /**
-   * Request is the run request that assesses it.
-   */
-  request: number /* int64 */;
-}
-/**
- * PilotMessage is a comment addressed to the pilot.
- */
-export interface PilotMessage {
-  noteID: number /* int64 */;
-  /**
-   * Where it was written: an issue, or a merge request.
-   * +optional
-   */
-  issueIID?: number /* int64 */;
-  /**
-   * +optional
-   */
-  mergeRequestIID?: number /* int64 */;
-  author: string;
-  /**
-   * Body without the address ("/pilot", the mention).
-   */
-  body: string;
-  /**
-   * Request is the run request that answers it.
-   */
-  request: number /* int64 */;
-}
-/**
- * PilotStatus is the operator's bookkeeping of a milestone's pilot.
- */
-export interface PilotStatus {
-  /**
-   * LastNoteID is the newest comment on the tracking issue handed to the
-   * pilot.
-   * +optional
-   */
-  lastNoteID?: number /* int64 */;
-  /**
-   * Events are the keys of the events handed to the pilot (Coordinate
-   * tasks), those that hold first, then the last ones that ended.
-   * +optional
-   */
-  events?: string[];
-  /**
-   * Proposed are the proposals of the pilot's runs the operator has not
-   * posted yet (Coordinate tasks).
-   * +optional
-   */
-  proposed?: PilotProposal[];
-  /**
-   * Proposals are the open proposals, posted on the tracking issue.
-   * +optional
-   */
-  proposals?: PilotProposal[];
-  /**
-   * Accepted are the proposals owners accepted, run at the end of the
-   * poll.
-   * +optional
-   */
-  accepted?: PilotProposal[];
-  /**
-   * Refined are the pilot's answers to spec.source.promptRefines
-   * (Coordinate tasks), newest last, until the operator takes them.
-   * +optional
-   * +kubebuilder:validation:MaxItems=5
-   */
-  refined?: PromptRefinement[];
-  /**
-   * LastProposal is the ID of the newest proposal.
-   * +optional
-   */
-  lastProposal?: number /* int64 */;
-  /**
-   * LastChatAccepted is the newest chat message whose request ran as its
-   * owner: a message's request runs once, never one older than it.
-   * +optional
-   */
-  lastChatAccepted?: number /* int64 */;
-  /**
-   * OpenedIssues are the title keys of the issues the pilot opened.
-   * +optional
-   */
-  openedIssues?: string[];
-  /**
-   * Commands are the queue commands of accepted proposals (spec tasks),
-   * oldest first, for autopilot and the revisits to apply once each.
-   * +optional
-   */
-  commands?: PilotCommand[];
-  /**
-   * ReleaseDecisions are the release decisions of the pilot's answers and
-   * assessments (Coordinate tasks), oldest first, the newest
-   * MaxPilotReleaseDecisions. The operator validates and applies each once,
-   * by Seq. Untrusted.
-   * +optional
-   * +kubebuilder:validation:MaxItems=20
-   */
-  releaseDecisions?: PilotReleaseDecision[];
-  /**
-   * AutonomyOverride is the owners' last "/pilot stop" or "/pilot go"
-   * (Coordinate tasks). It can only lower the project's pilot.autonomy.
-   * +optional
-   */
-  autonomyOverride?: PilotAutonomyOverride;
-  /**
-   * Interventions count the pilot's own actions per issue on the issue's
-   * current head (Coordinate tasks), by issue IID; "0" is the milestone.
-   * +optional
-   */
-  interventions?: { [key: string]: PilotIntervention};
-  /**
-   * Acted are the proposals runAccepted ran without a prompt (Coordinate
-   * tasks): the pilot's own actions and the proposals owners accepted.
-   * Oldest first, the newest MaxPilotActed.
-   * +optional
-   * +kubebuilder:validation:MaxItems=30
-   */
-  acted?: PilotActed[];
-  /**
-   * Retrospective is the retrospective of the milestone once its autopilot
-   * is done: recorded by the pilot's run (Coordinate tasks) and copied to
-   * the spec task before the pilot is deleted. A milestone gets one.
-   * +optional
-   */
-  retrospective?: PilotRetrospective;
-  /**
-   * FollowUpDraft is the pilot's draft of a follow-up milestone for
-   * spec.source.followUpDraft (Coordinate tasks), the newest only.
-   * Untrusted until an owner confirms it.
-   * +optional
-   */
-  followUpDraft?: PilotFollowUpDraft;
 }
 /**
  * PilotFollowUpDraft is the pilot's draft of a follow-up milestone, or why
