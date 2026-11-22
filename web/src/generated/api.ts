@@ -3422,6 +3422,291 @@ export interface MergedLines {
    */
   partial?: boolean;
 }
+/**
+ * AutopilotItem is one issue in the queue of an autopilot milestone.
+ */
+export interface AutopilotItem {
+  iid: number /* int64 */;
+  state: AutopilotItemState;
+  /**
+   * MergeRequestIID and MergeRequestURL of the issue's merge request.
+   * +optional
+   */
+  mergeRequestIID?: number /* int64 */;
+  /**
+   * +optional
+   */
+  mergeRequestURL?: string;
+  /**
+   * MergedSHA is the commit the merge request was merged as.
+   * +optional
+   */
+  mergedSHA?: string;
+  /**
+   * MergedAt is when autopilot recorded the merge; the newest one is the
+   * milestone's last merge, which the final release must contain.
+   * +optional
+   */
+  mergedAt?: string;
+  /**
+   * MergedLines are the lines the merge request merged, by category,
+   * counted once from its GitLab diff when autopilot recorded the merge.
+   * Unset when the count failed or the MR merged before lines were
+   * counted.
+   * +optional
+   */
+  mergedLines?: MergedLines;
+  /**
+   * RebasedFrom is the head the operator asked GitLab to rebase; set
+   * while the rebase is in progress.
+   * +optional
+   */
+  rebasedFrom?: string;
+  /**
+   * Rebases counts the rebases of this item. There is no limit: GitLab only
+   * asks for another one after the default branch moved.
+   * +optional
+   */
+  rebases?: number /* int32 */;
+  /**
+   * RebasedDiff is a hash of the reviewed change, taken before the rebase.
+   * The rebased head is only treated as reviewed if its change hashes the
+   * same, i.e. the rebase moved the change without changing it.
+   * +optional
+   */
+  rebasedDiff?: string;
+  /**
+   * RebasedAt is when the rebase was requested.
+   * +optional
+   */
+  rebasedAt?: string;
+  /**
+   * ReadyAt is when the item last became ready to land: its head passed
+   * the merge gate. Ready items land one at a time in this order.
+   * +optional
+   */
+  readyAt?: string;
+  /**
+   * AutoReReviews counts the rebases of this item that changed the
+   * reviewed change mechanically (the same commits, a small interdiff or
+   * one in files the default branch changed too), after which the
+   * reviewers checked the rebased head again without a pause. At most 2;
+   * the next such rebase pauses.
+   * +optional
+   */
+  autoReReviews?: number /* int32 */;
+  /**
+   * AutoReReviewHead is the rebased head the last automatic re-review was
+   * asked for.
+   * +optional
+   */
+  autoReReviewHead?: string;
+  /**
+   * HealedOn is the commit of the green default branch the operator last
+   * rebased the MR onto because its CI failed with the default branch
+   * (BaseFailing); once per such commit.
+   * +optional
+   */
+  healedOn?: string;
+  /**
+   * MarkedReady is set once the operator marked the draft MR ready, or
+   * found it ready, to run CI. A draft again after that is a human holding
+   * it, or a run that left problems.
+   * +optional
+   */
+  markedReady?: boolean;
+  /**
+   * Decisions recorded on the issue, collected when it was merged: the
+   * newest 20; the full history is in the history database.
+   * +optional
+   */
+  decisions?: DecisionRef[];
+  /**
+   * RevisitOf is set for follow-up issues the operator created to revisit
+   * a decision of a merged issue: the decision's ID.
+   * +optional
+   */
+  revisitOf?: string;
+  /**
+   * FlakyFix is set for a flaky job's issue handed to the agent
+   * (fixFlaky, mainHealth.autoFixFlaky): not in the plan, it stays on a
+   * re-plan.
+   * +optional
+   */
+  flakyFix?: boolean;
+  /**
+   * StartAnyway is set by an owner's startAnyway: a skipped dependency
+   * counts as met for this item. Pending dependencies and issue links
+   * still hold it back.
+   * +optional
+   */
+  startAnyway?: boolean;
+  /**
+   * Budget is the issue's budget (its implement task's spec.budgetUSD,
+   * else the project's budget.perIssueUSD) and its spend, refreshed every
+   * poll while the issue has one; warnedAt is unused.
+   * +optional
+   */
+  budget?: BudgetStatus;
+  /**
+   * BudgetAlertedAt is when autopilot posted the spend heads-up of this
+   * issue for the threshold BudgetAlertedUSD (the project's
+   * budget.perIssueAlertUSD, or 80 % of the issue's budget). Another
+   * threshold re-arms it.
+   * +optional
+   */
+  budgetAlertedAt?: string;
+  /**
+   * +optional
+   */
+  budgetAlertedUSD?: string;
+  /**
+   * Hold is set while a problem of this issue holds it (an item kind,
+   * PauseKind.ItemKind): autopilot does not drive it and its slot is free;
+   * the other issues go on.
+   * +optional
+   */
+  hold?: ItemHold;
+}
+/**
+ * ItemHold is a hold on one issue of an autopilot milestone, the per-issue
+ * counterpart of a milestone pause.
+ */
+export interface ItemHold {
+  /**
+   * Kind is the cause, one of PauseKind's item kinds.
+   */
+  kind: PauseKind;
+  /**
+   * Reason says what holds the issue, for the tracking issue and the Desk.
+   */
+  reason: string;
+  /**
+   * Since is when the hold started.
+   */
+  since: string;
+  /**
+   * ResumeWhenReady: the hold is over the item's run, review or CI, so a
+   * later run that passes the merge gate ends it.
+   * +optional
+   */
+  resumeWhenReady?: boolean;
+  /**
+   * RunBy and RunHead are AutopilotStatus.PauseRunBy and PauseRunHead for
+   * this item: who asked for its newest run during the hold, and the
+   * pushed head when the hold started, then the head that run was asked
+   * for.
+   * +optional
+   */
+  runBy?: string;
+  /**
+   * +optional
+   */
+  runHead?: string;
+}
+/**
+ * DecisionSyncStatus is the watermark of the decision copy.
+ */
+export interface DecisionSyncStatus {
+  /**
+   * CheckedAt is when the operator last read every issue of the milestone
+   * that had changed; the next read starts there (minus the clock skew).
+   */
+  checkedAt: string;
+}
+/**
+ * RevisitStatus is the watermark of handled revisit comments.
+ */
+export interface RevisitStatus {
+  /**
+   * Since is when the operator started watching; older comments are
+   * ignored.
+   */
+  since: string;
+  /**
+   * CheckedAt is the time of the last check.
+   */
+  checkedAt: string;
+  /**
+   * LastNoteIDs is the newest handled comment per issue IID.
+   * +optional
+   */
+  lastNoteIDs?: { [key: string]: number /* int64 */};
+  /**
+   * LastPilotCommand is the newest revisit from the pilot handled
+   * (status.pilot.commands).
+   * +optional
+   */
+  lastPilotCommand?: number /* int64 */;
+}
+/**
+ * DecisionRef points to a decision recorded on an issue.
+ */
+export interface DecisionRef {
+  id: string;
+  title?: string;
+  url?: string;
+  /**
+   * +optional
+   */
+  superseded?: boolean;
+}
+/**
+ * NeedsInputCause is why an issue got the needs-input label.
+ * +kubebuilder:validation:Enum=ciRed;runFailed;agentQuestion
+ */
+export type NeedsInputCause = string;
+/**
+ * NeedsInputCIRed: CI stayed red after the fix rounds (status.ci).
+ */
+export const NeedsInputCIRed: NeedsInputCause = "ciRed";
+/**
+ * NeedsInputRunFailed: the run failed (status.run.summary).
+ */
+export const NeedsInputRunFailed: NeedsInputCause = "runFailed";
+/**
+ * NeedsInputAgentQuestion: the agent asked (status.run.questions).
+ */
+export const NeedsInputAgentQuestion: NeedsInputCause = "agentQuestion";
+/**
+ * BlockReason is why an issue is blocked; it is the suffix of its reason label.
+ * +kubebuilder:validation:Enum=infra;main-red;quota
+ */
+export type BlockReason = string;
+/**
+ * BlockInfra: an engine or reviewer outage, a lost agent pod.
+ */
+export const BlockInfra: BlockReason = "infra";
+/**
+ * BlockMainRed: autopilot does not merge while the default branch is red.
+ */
+export const BlockMainRed: BlockReason = "main-red";
+/**
+ * BlockQuota: a usage limit defers the run.
+ */
+export const BlockQuota: BlockReason = "quota";
+/**
+ * BlockedStatus is an issue's block.
+ */
+export interface BlockedStatus {
+  reason: BlockReason;
+  /**
+   * +optional
+   */
+  message?: string;
+  since: string;
+  /**
+   * RestoreLabel is the workflow label the blocked label replaced.
+   * +optional
+   */
+  restoreLabel?: string;
+  /**
+   * Applied is set once the issue carries the blocked labels. An applied
+   * block whose issue lost the blocked label was lifted by a human.
+   * +optional
+   */
+  applied?: boolean;
+}
 
 //////////
 // source: agenttask_checkpoint_types.go
@@ -5850,291 +6135,6 @@ export interface AgentTask extends metav1.TypeMeta {
 export interface AgentTaskList extends metav1.TypeMeta {
   metadata?: ListMeta;
   items: AgentTask[];
-}
-/**
- * AutopilotItem is one issue in the queue of an autopilot milestone.
- */
-export interface AutopilotItem {
-  iid: number /* int64 */;
-  state: AutopilotItemState;
-  /**
-   * MergeRequestIID and MergeRequestURL of the issue's merge request.
-   * +optional
-   */
-  mergeRequestIID?: number /* int64 */;
-  /**
-   * +optional
-   */
-  mergeRequestURL?: string;
-  /**
-   * MergedSHA is the commit the merge request was merged as.
-   * +optional
-   */
-  mergedSHA?: string;
-  /**
-   * MergedAt is when autopilot recorded the merge; the newest one is the
-   * milestone's last merge, which the final release must contain.
-   * +optional
-   */
-  mergedAt?: string;
-  /**
-   * MergedLines are the lines the merge request merged, by category,
-   * counted once from its GitLab diff when autopilot recorded the merge.
-   * Unset when the count failed or the MR merged before lines were
-   * counted.
-   * +optional
-   */
-  mergedLines?: MergedLines;
-  /**
-   * RebasedFrom is the head the operator asked GitLab to rebase; set
-   * while the rebase is in progress.
-   * +optional
-   */
-  rebasedFrom?: string;
-  /**
-   * Rebases counts the rebases of this item. There is no limit: GitLab only
-   * asks for another one after the default branch moved.
-   * +optional
-   */
-  rebases?: number /* int32 */;
-  /**
-   * RebasedDiff is a hash of the reviewed change, taken before the rebase.
-   * The rebased head is only treated as reviewed if its change hashes the
-   * same, i.e. the rebase moved the change without changing it.
-   * +optional
-   */
-  rebasedDiff?: string;
-  /**
-   * RebasedAt is when the rebase was requested.
-   * +optional
-   */
-  rebasedAt?: string;
-  /**
-   * ReadyAt is when the item last became ready to land: its head passed
-   * the merge gate. Ready items land one at a time in this order.
-   * +optional
-   */
-  readyAt?: string;
-  /**
-   * AutoReReviews counts the rebases of this item that changed the
-   * reviewed change mechanically (the same commits, a small interdiff or
-   * one in files the default branch changed too), after which the
-   * reviewers checked the rebased head again without a pause. At most 2;
-   * the next such rebase pauses.
-   * +optional
-   */
-  autoReReviews?: number /* int32 */;
-  /**
-   * AutoReReviewHead is the rebased head the last automatic re-review was
-   * asked for.
-   * +optional
-   */
-  autoReReviewHead?: string;
-  /**
-   * HealedOn is the commit of the green default branch the operator last
-   * rebased the MR onto because its CI failed with the default branch
-   * (BaseFailing); once per such commit.
-   * +optional
-   */
-  healedOn?: string;
-  /**
-   * MarkedReady is set once the operator marked the draft MR ready, or
-   * found it ready, to run CI. A draft again after that is a human holding
-   * it, or a run that left problems.
-   * +optional
-   */
-  markedReady?: boolean;
-  /**
-   * Decisions recorded on the issue, collected when it was merged: the
-   * newest 20; the full history is in the history database.
-   * +optional
-   */
-  decisions?: DecisionRef[];
-  /**
-   * RevisitOf is set for follow-up issues the operator created to revisit
-   * a decision of a merged issue: the decision's ID.
-   * +optional
-   */
-  revisitOf?: string;
-  /**
-   * FlakyFix is set for a flaky job's issue handed to the agent
-   * (fixFlaky, mainHealth.autoFixFlaky): not in the plan, it stays on a
-   * re-plan.
-   * +optional
-   */
-  flakyFix?: boolean;
-  /**
-   * StartAnyway is set by an owner's startAnyway: a skipped dependency
-   * counts as met for this item. Pending dependencies and issue links
-   * still hold it back.
-   * +optional
-   */
-  startAnyway?: boolean;
-  /**
-   * Budget is the issue's budget (its implement task's spec.budgetUSD,
-   * else the project's budget.perIssueUSD) and its spend, refreshed every
-   * poll while the issue has one; warnedAt is unused.
-   * +optional
-   */
-  budget?: BudgetStatus;
-  /**
-   * BudgetAlertedAt is when autopilot posted the spend heads-up of this
-   * issue for the threshold BudgetAlertedUSD (the project's
-   * budget.perIssueAlertUSD, or 80 % of the issue's budget). Another
-   * threshold re-arms it.
-   * +optional
-   */
-  budgetAlertedAt?: string;
-  /**
-   * +optional
-   */
-  budgetAlertedUSD?: string;
-  /**
-   * Hold is set while a problem of this issue holds it (an item kind,
-   * PauseKind.ItemKind): autopilot does not drive it and its slot is free;
-   * the other issues go on.
-   * +optional
-   */
-  hold?: ItemHold;
-}
-/**
- * ItemHold is a hold on one issue of an autopilot milestone, the per-issue
- * counterpart of a milestone pause.
- */
-export interface ItemHold {
-  /**
-   * Kind is the cause, one of PauseKind's item kinds.
-   */
-  kind: PauseKind;
-  /**
-   * Reason says what holds the issue, for the tracking issue and the Desk.
-   */
-  reason: string;
-  /**
-   * Since is when the hold started.
-   */
-  since: string;
-  /**
-   * ResumeWhenReady: the hold is over the item's run, review or CI, so a
-   * later run that passes the merge gate ends it.
-   * +optional
-   */
-  resumeWhenReady?: boolean;
-  /**
-   * RunBy and RunHead are AutopilotStatus.PauseRunBy and PauseRunHead for
-   * this item: who asked for its newest run during the hold, and the
-   * pushed head when the hold started, then the head that run was asked
-   * for.
-   * +optional
-   */
-  runBy?: string;
-  /**
-   * +optional
-   */
-  runHead?: string;
-}
-/**
- * DecisionSyncStatus is the watermark of the decision copy.
- */
-export interface DecisionSyncStatus {
-  /**
-   * CheckedAt is when the operator last read every issue of the milestone
-   * that had changed; the next read starts there (minus the clock skew).
-   */
-  checkedAt: string;
-}
-/**
- * RevisitStatus is the watermark of handled revisit comments.
- */
-export interface RevisitStatus {
-  /**
-   * Since is when the operator started watching; older comments are
-   * ignored.
-   */
-  since: string;
-  /**
-   * CheckedAt is the time of the last check.
-   */
-  checkedAt: string;
-  /**
-   * LastNoteIDs is the newest handled comment per issue IID.
-   * +optional
-   */
-  lastNoteIDs?: { [key: string]: number /* int64 */};
-  /**
-   * LastPilotCommand is the newest revisit from the pilot handled
-   * (status.pilot.commands).
-   * +optional
-   */
-  lastPilotCommand?: number /* int64 */;
-}
-/**
- * DecisionRef points to a decision recorded on an issue.
- */
-export interface DecisionRef {
-  id: string;
-  title?: string;
-  url?: string;
-  /**
-   * +optional
-   */
-  superseded?: boolean;
-}
-/**
- * NeedsInputCause is why an issue got the needs-input label.
- * +kubebuilder:validation:Enum=ciRed;runFailed;agentQuestion
- */
-export type NeedsInputCause = string;
-/**
- * NeedsInputCIRed: CI stayed red after the fix rounds (status.ci).
- */
-export const NeedsInputCIRed: NeedsInputCause = "ciRed";
-/**
- * NeedsInputRunFailed: the run failed (status.run.summary).
- */
-export const NeedsInputRunFailed: NeedsInputCause = "runFailed";
-/**
- * NeedsInputAgentQuestion: the agent asked (status.run.questions).
- */
-export const NeedsInputAgentQuestion: NeedsInputCause = "agentQuestion";
-/**
- * BlockReason is why an issue is blocked; it is the suffix of its reason label.
- * +kubebuilder:validation:Enum=infra;main-red;quota
- */
-export type BlockReason = string;
-/**
- * BlockInfra: an engine or reviewer outage, a lost agent pod.
- */
-export const BlockInfra: BlockReason = "infra";
-/**
- * BlockMainRed: autopilot does not merge while the default branch is red.
- */
-export const BlockMainRed: BlockReason = "main-red";
-/**
- * BlockQuota: a usage limit defers the run.
- */
-export const BlockQuota: BlockReason = "quota";
-/**
- * BlockedStatus is an issue's block.
- */
-export interface BlockedStatus {
-  reason: BlockReason;
-  /**
-   * +optional
-   */
-  message?: string;
-  since: string;
-  /**
-   * RestoreLabel is the workflow label the blocked label replaced.
-   * +optional
-   */
-  restoreLabel?: string;
-  /**
-   * Applied is set once the issue carries the blocked labels. An applied
-   * block whose issue lost the blocked label was lifted by a human.
-   * +optional
-   */
-  applied?: boolean;
 }
 
 //////////
