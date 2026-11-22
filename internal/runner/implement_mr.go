@@ -165,3 +165,49 @@ func (r *Runner) updateHandoff(ctx context.Context, gl gitlab.API, glProject str
 		s.done(fmt.Sprintf("created (%d bytes)", len(text)))
 	}
 }
+
+// commit commits the agent's changes in the home tree as a step of the run
+// on branch. A commit that folds the checkpoints at the tip of the branch
+// (CommitStep) leaves the lease for the next publish.
+func (r *Runner) commit(ctx context.Context, branch, base string, message agentMessage) error {
+	s := r.step(ctx, "commit")
+	res, err := r.Agent.CommitStep(ctx, CommitRequest{Message: message.text, Branch: branch, Base: base, Pushed: r.pushedHead})
+	switch {
+	case err != nil:
+		return s.fail(err)
+	case res.FoldedFrom != "":
+		r.committed(message)
+		r.noteFold(res)
+		s.done(fmt.Sprintf("committed, folding %d checkpoint(s) up to %s", res.Folded, shortSHA(res.FoldedFrom)),
+			"committed", true, "folded", res.Folded, "foldedFrom", res.FoldedFrom)
+	case res.Committed:
+		r.committed(message)
+		s.done("committed", "committed", true)
+	default:
+		s.done("no changes", "committed", false)
+	}
+	return nil
+}
+
+// commitTree commits the agent's changes in the checkout of repo (homeTree
+// or a companion's slug) as a step of the run.
+func (r *Runner) commitTree(ctx context.Context, repo string, message agentMessage) error {
+	name, kv := "commit", []any(nil)
+	if repo != homeTree {
+		name, kv = "commit companion", []any{"repo", repo}
+	}
+	s := r.step(ctx, name, kv...)
+	committed, err := r.Agent.Commit(ctx, repo, message.text)
+	if err != nil {
+		return s.fail(err)
+	}
+	if committed {
+		if repo == homeTree {
+			r.committed(message) // a companion commit repeats the home commit's message
+		}
+		s.done("committed", "committed", true)
+	} else {
+		s.done("no changes", "committed", false)
+	}
+	return nil
+}
