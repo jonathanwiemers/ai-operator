@@ -2911,6 +2911,140 @@ export interface ResearchCandidates {
 }
 
 //////////
+// source: agenttask_checkpoint_types.go
+
+/**
+ * CompanionRun is what the runner pushed and opened in the companion
+ * project (docs/specs/cross-repo-changes.spec.md, decision 6).
+ */
+export interface CompanionRun {
+  /**
+   * Project is the companion's full path (spec.companion.project).
+   */
+  project: string;
+  /**
+   * MRIID is the companion's draft merge request; MRURL its web URL.
+   * +optional
+   */
+  mrIID?: number /* int64 */;
+  /**
+   * +optional
+   */
+  mrURL?: string;
+  /**
+   * Branch is the companion branch (spec.companion.branch).
+   * +optional
+   */
+  branch?: string;
+  /**
+   * PushedSHA is the companion branch head the last push left.
+   * +optional
+   */
+  pushedSHA?: string;
+  /**
+   * ReviewedSHA is the companion head the last review saw.
+   * +optional
+   */
+  reviewedSHA?: string;
+}
+/**
+ * CheckpointStatus is a checkpoint commit the runner pushed after an
+ * implementer call was cut off.
+ */
+export interface CheckpointStatus {
+  /**
+   * SHA is the checkpoint commit.
+   */
+  sha: string;
+  /**
+   * Branch it was pushed to.
+   */
+  branch: string;
+  /**
+   * Reason the call was cut off: usage-limit, engine-error, timeout,
+   * budget-stop, container-restart, pod-lost, oom-kill, or run-failed (the
+   * run failed after its call, e.g. its answer did not decode).
+   */
+  reason: string;
+  /**
+   * Run is the run (status.run.runCount after it) and Step the
+   * implementer call of the run that was cut off, from 1.
+   * +optional
+   */
+  run?: number /* int64 */;
+  /**
+   * +optional
+   */
+  step?: number /* int32 */;
+  /**
+   * Files, Added and Deleted are the checkpoint's diff stat.
+   * +optional
+   */
+  files?: number /* int32 */;
+  /**
+   * +optional
+   */
+  added?: number /* int64 */;
+  /**
+   * +optional
+   */
+  deleted?: number /* int64 */;
+  /**
+   * Skipped are the files left out (too big, or new files that look like
+   * secrets); they stayed in the workspace.
+   * +optional
+   * +listType=atomic
+   */
+  skipped?: string[];
+  /**
+   * At is when the checkpoint was pushed.
+   */
+  at: string;
+}
+/**
+ * RunCheckpoint is a pushed checkpoint no agent call carries
+ * (RunStatus.RunCheckpoints).
+ */
+export interface RunCheckpoint {
+  /**
+   * Reason the work was cut off: budget-stop, pod-lost, oom-kill,
+   * container-restart or run-failed.
+   */
+  reason: string;
+  /**
+   * SHA is the checkpoint commit.
+   */
+  sha: string;
+  /**
+   * Run is the run whose work it saved and Step its implementer call,
+   * from 1.
+   * +optional
+   */
+  run?: number /* int64 */;
+  /**
+   * +optional
+   */
+  step?: number /* int32 */;
+  /**
+   * Files, Added and Deleted are the checkpoint's diff stat.
+   * +optional
+   */
+  files?: number /* int32 */;
+  /**
+   * +optional
+   */
+  added?: number /* int64 */;
+  /**
+   * +optional
+   */
+  deleted?: number /* int64 */;
+  /**
+   * At is when the checkpoint was pushed.
+   */
+  at: string;
+}
+
+//////////
 // source: agenttask_pilot_types.go
 
 /**
@@ -3278,6 +3412,250 @@ export interface PilotStatus {
    * +optional
    */
   followUpDraft?: PilotFollowUpDraft;
+}
+/**
+ * PilotFollowUpDraft is the pilot's draft of a follow-up milestone, or why
+ * there is none.
+ */
+export interface PilotFollowUpDraft {
+  /**
+   * Request is the run request it answers (spec.source.followUpDraft).
+   */
+  request: number /* int64 */;
+  /**
+   * Numbers are the follow-ups it drafts from.
+   * +optional
+   */
+  numbers?: number /* int */[];
+  /**
+   * Title is the milestone's title, one line of at most MaxDraftTitle
+   * bytes. Untrusted.
+   * +optional
+   */
+  title?: string;
+  /**
+   * Description is the milestone's description: untrusted markdown
+   * without HTML, at most MaxDraftDescription bytes.
+   * +optional
+   */
+  description?: string;
+  at: string;
+  /**
+   * Error says why there is no draft.
+   * +optional
+   */
+  error?: string;
+}
+export const MaxDraftTitle = 200;
+export const MaxDraftDescription = 16 << 10;
+/**
+ * MaxDraftTitle and MaxDraftDescription bound PilotFollowUpDraft, in bytes.
+ */
+export type MaxDraft = typeof MaxDraftTitle | typeof MaxDraftDescription;
+/**
+ * PilotRetrospective is the last comment of a finished autopilot milestone's
+ * pilot on its tracking issue.
+ */
+export interface PilotRetrospective {
+  /**
+   * NoteID is the comment.
+   * +optional
+   */
+  noteID?: number /* int64 */;
+  /**
+   * +optional
+   */
+  postedAt?: string;
+  /**
+   * Text is the comment as posted, for the Desk: untrusted markdown
+   * without HTML (comments and tags removed), at most MaxRetroText bytes,
+   * truncated beyond.
+   * +optional
+   */
+  text?: string;
+  /**
+   * FollowUps are the numbered follow-up proposals, which an owner opens
+   * as issues. Untrusted.
+   * +optional
+   */
+  followUps?: PilotFollowUp[];
+  /**
+   * Failed says why there is no retrospective; it is not tried again.
+   * +optional
+   */
+  failed?: string;
+  /**
+   * OwnerIDs are the user IDs of the milestone's owners when it was
+   * posted, sorted: only they open the follow-ups.
+   * +optional
+   */
+  ownerIDs?: number /* int64 */[];
+  /**
+   * Created are the issues opened from the follow-ups, by number ("1").
+   * +optional
+   */
+  created?: { [key: string]: number /* int64 */};
+  /**
+   * Taken are the follow-ups other milestones of the project took over
+   * with their line "/agent followup-of", by number ("1"): the taking
+   * milestone's IID. The first to take one keeps it.
+   * +optional
+   */
+  taken?: { [key: string]: number /* int64 */};
+  /**
+   * DismissedBy is the owner who dismissed the remaining follow-ups with
+   * "create none", DismissedAt when: they are settled, so the milestone
+   * closes. Each can still be opened.
+   * +optional
+   */
+  dismissedBy?: string;
+  /**
+   * +optional
+   */
+  dismissedAt?: string;
+  /**
+   * LastNoteID is the newest comment on the tracking issue read for
+   * "create 1 2" and "create none" (spec tasks).
+   * +optional
+   */
+  lastNoteID?: number /* int64 */;
+}
+/**
+ * MaxRetroText bounds PilotRetrospective.Text, in bytes.
+ */
+export const MaxRetroText = 16 << 10;
+/**
+ * PilotFollowUp is a follow-up proposal of a retrospective.
+ */
+export interface PilotFollowUp {
+  title: string;
+  /**
+   * +optional
+   */
+  body?: string;
+}
+/**
+ * PilotCommand is a skip, pause, resume or revisit an owner accepted from
+ * the pilot.
+ */
+export interface PilotCommand {
+  /**
+   * Seq orders the commands; each consumer remembers the last it handled.
+   */
+  seq: number /* int64 */;
+  action: PilotAction;
+  /**
+   * Owner is who accepted it, OnIssue where it is answered.
+   */
+  owner: string;
+  onIssue: number /* int64 */;
+}
+/**
+ * MaxPilotReleaseDecisions bounds status.pilot.releaseDecisions.
+ */
+export const MaxPilotReleaseDecisions = 20;
+/**
+ * PilotReleaseDecision is the pilot's decision to add a release after an
+ * issue of its milestone, or to drop a planned one. It is no proposal: the
+ * operator validates it and carries it out.
+ */
+export interface PilotReleaseDecision {
+  /**
+   * Seq ascends; the operator remembers the last it applied.
+   */
+  seq: number /* int64 */;
+  /**
+   * IssueIID is the issue the release follows, as the model gave it.
+   */
+  issueIID: number /* int64 */;
+  /**
+   * Release true adds a release after the issue, false drops a planned
+   * one.
+   */
+  release: boolean;
+  /**
+   * Why is the pilot's one-line reason.
+   * +optional
+   */
+  why?: string;
+  /**
+   * Source is the message or event whose answer decided it ("note/2000",
+   * "event/<key>@<request>"): a run started again records it once.
+   * +optional
+   */
+  source?: string;
+  at: string;
+}
+/**
+ * PilotAutonomyOverride is an owner's "/pilot stop" (propose) or "/pilot
+ * go" (managed).
+ */
+export interface PilotAutonomyOverride {
+  autonomy: PilotAutonomy;
+  by: string;
+  at: string;
+}
+export const MaxPilotActed = 30;
+export const MaxPilotActedSummary = 300;
+export const MaxPilotActedWhy = 1000;
+export const MaxPilotActedLines = 8;
+export const MaxPilotActedLine = 300;
+/**
+ * MaxPilotActed bounds status.pilot.acted; the other bounds cut a
+ * PilotActed's untrusted text, in bytes.
+ */
+export type MaxPilotActed = typeof MaxPilotActed | typeof MaxPilotActedSummary | typeof MaxPilotActedWhy | typeof MaxPilotActedLines | typeof MaxPilotActedLine;
+/**
+ * PilotActed is one proposal runAccepted ran without a prompt.
+ */
+export interface PilotActed {
+  at: string;
+  /**
+   * By is the owner who accepted it, empty when the pilot acted on its
+   * own.
+   * +optional
+   */
+  by?: string;
+  /**
+   * Summary is the proposal's summary, at most MaxPilotActedSummary
+   * bytes. Untrusted.
+   * +optional
+   */
+  summary?: string;
+  /**
+   * Why is the proposal's reason, at most MaxPilotActedWhy bytes.
+   * Untrusted.
+   * +optional
+   */
+  why?: string;
+  /**
+   * Lines are the per-action result lines its comment shows, each at most
+   * MaxPilotActedLine bytes. Untrusted.
+   * +optional
+   * +kubebuilder:validation:MaxItems=8
+   */
+  lines?: string[];
+  /**
+   * Issues are the intervention keys it counted against; 0 is the
+   * milestone.
+   * +optional
+   */
+  issues?: number /* int64 */[];
+  /**
+   * Ran is false when none of its actions ran.
+   * +optional
+   */
+  ran?: boolean;
+}
+/**
+ * PilotIntervention counts the pilot's own actions on an issue's head.
+ */
+export interface PilotIntervention {
+  /**
+   * +optional
+   */
+  head?: string;
+  count: number /* int32 */;
 }
 
 //////////
@@ -3996,250 +4374,6 @@ export interface PlanDecisionAnswer {
   other?: string;
 }
 /**
- * PilotFollowUpDraft is the pilot's draft of a follow-up milestone, or why
- * there is none.
- */
-export interface PilotFollowUpDraft {
-  /**
-   * Request is the run request it answers (spec.source.followUpDraft).
-   */
-  request: number /* int64 */;
-  /**
-   * Numbers are the follow-ups it drafts from.
-   * +optional
-   */
-  numbers?: number /* int */[];
-  /**
-   * Title is the milestone's title, one line of at most MaxDraftTitle
-   * bytes. Untrusted.
-   * +optional
-   */
-  title?: string;
-  /**
-   * Description is the milestone's description: untrusted markdown
-   * without HTML, at most MaxDraftDescription bytes.
-   * +optional
-   */
-  description?: string;
-  at: string;
-  /**
-   * Error says why there is no draft.
-   * +optional
-   */
-  error?: string;
-}
-export const MaxDraftTitle = 200;
-export const MaxDraftDescription = 16 << 10;
-/**
- * MaxDraftTitle and MaxDraftDescription bound PilotFollowUpDraft, in bytes.
- */
-export type MaxDraft = typeof MaxDraftTitle | typeof MaxDraftDescription;
-/**
- * PilotRetrospective is the last comment of a finished autopilot milestone's
- * pilot on its tracking issue.
- */
-export interface PilotRetrospective {
-  /**
-   * NoteID is the comment.
-   * +optional
-   */
-  noteID?: number /* int64 */;
-  /**
-   * +optional
-   */
-  postedAt?: string;
-  /**
-   * Text is the comment as posted, for the Desk: untrusted markdown
-   * without HTML (comments and tags removed), at most MaxRetroText bytes,
-   * truncated beyond.
-   * +optional
-   */
-  text?: string;
-  /**
-   * FollowUps are the numbered follow-up proposals, which an owner opens
-   * as issues. Untrusted.
-   * +optional
-   */
-  followUps?: PilotFollowUp[];
-  /**
-   * Failed says why there is no retrospective; it is not tried again.
-   * +optional
-   */
-  failed?: string;
-  /**
-   * OwnerIDs are the user IDs of the milestone's owners when it was
-   * posted, sorted: only they open the follow-ups.
-   * +optional
-   */
-  ownerIDs?: number /* int64 */[];
-  /**
-   * Created are the issues opened from the follow-ups, by number ("1").
-   * +optional
-   */
-  created?: { [key: string]: number /* int64 */};
-  /**
-   * Taken are the follow-ups other milestones of the project took over
-   * with their line "/agent followup-of", by number ("1"): the taking
-   * milestone's IID. The first to take one keeps it.
-   * +optional
-   */
-  taken?: { [key: string]: number /* int64 */};
-  /**
-   * DismissedBy is the owner who dismissed the remaining follow-ups with
-   * "create none", DismissedAt when: they are settled, so the milestone
-   * closes. Each can still be opened.
-   * +optional
-   */
-  dismissedBy?: string;
-  /**
-   * +optional
-   */
-  dismissedAt?: string;
-  /**
-   * LastNoteID is the newest comment on the tracking issue read for
-   * "create 1 2" and "create none" (spec tasks).
-   * +optional
-   */
-  lastNoteID?: number /* int64 */;
-}
-/**
- * MaxRetroText bounds PilotRetrospective.Text, in bytes.
- */
-export const MaxRetroText = 16 << 10;
-/**
- * PilotFollowUp is a follow-up proposal of a retrospective.
- */
-export interface PilotFollowUp {
-  title: string;
-  /**
-   * +optional
-   */
-  body?: string;
-}
-/**
- * PilotCommand is a skip, pause, resume or revisit an owner accepted from
- * the pilot.
- */
-export interface PilotCommand {
-  /**
-   * Seq orders the commands; each consumer remembers the last it handled.
-   */
-  seq: number /* int64 */;
-  action: PilotAction;
-  /**
-   * Owner is who accepted it, OnIssue where it is answered.
-   */
-  owner: string;
-  onIssue: number /* int64 */;
-}
-/**
- * MaxPilotReleaseDecisions bounds status.pilot.releaseDecisions.
- */
-export const MaxPilotReleaseDecisions = 20;
-/**
- * PilotReleaseDecision is the pilot's decision to add a release after an
- * issue of its milestone, or to drop a planned one. It is no proposal: the
- * operator validates it and carries it out.
- */
-export interface PilotReleaseDecision {
-  /**
-   * Seq ascends; the operator remembers the last it applied.
-   */
-  seq: number /* int64 */;
-  /**
-   * IssueIID is the issue the release follows, as the model gave it.
-   */
-  issueIID: number /* int64 */;
-  /**
-   * Release true adds a release after the issue, false drops a planned
-   * one.
-   */
-  release: boolean;
-  /**
-   * Why is the pilot's one-line reason.
-   * +optional
-   */
-  why?: string;
-  /**
-   * Source is the message or event whose answer decided it ("note/2000",
-   * "event/<key>@<request>"): a run started again records it once.
-   * +optional
-   */
-  source?: string;
-  at: string;
-}
-/**
- * PilotAutonomyOverride is an owner's "/pilot stop" (propose) or "/pilot
- * go" (managed).
- */
-export interface PilotAutonomyOverride {
-  autonomy: PilotAutonomy;
-  by: string;
-  at: string;
-}
-export const MaxPilotActed = 30;
-export const MaxPilotActedSummary = 300;
-export const MaxPilotActedWhy = 1000;
-export const MaxPilotActedLines = 8;
-export const MaxPilotActedLine = 300;
-/**
- * MaxPilotActed bounds status.pilot.acted; the other bounds cut a
- * PilotActed's untrusted text, in bytes.
- */
-export type MaxPilotActed = typeof MaxPilotActed | typeof MaxPilotActedSummary | typeof MaxPilotActedWhy | typeof MaxPilotActedLines | typeof MaxPilotActedLine;
-/**
- * PilotActed is one proposal runAccepted ran without a prompt.
- */
-export interface PilotActed {
-  at: string;
-  /**
-   * By is the owner who accepted it, empty when the pilot acted on its
-   * own.
-   * +optional
-   */
-  by?: string;
-  /**
-   * Summary is the proposal's summary, at most MaxPilotActedSummary
-   * bytes. Untrusted.
-   * +optional
-   */
-  summary?: string;
-  /**
-   * Why is the proposal's reason, at most MaxPilotActedWhy bytes.
-   * Untrusted.
-   * +optional
-   */
-  why?: string;
-  /**
-   * Lines are the per-action result lines its comment shows, each at most
-   * MaxPilotActedLine bytes. Untrusted.
-   * +optional
-   * +kubebuilder:validation:MaxItems=8
-   */
-  lines?: string[];
-  /**
-   * Issues are the intervention keys it counted against; 0 is the
-   * milestone.
-   * +optional
-   */
-  issues?: number /* int64 */[];
-  /**
-   * Ran is false when none of its actions ran.
-   * +optional
-   */
-  ran?: boolean;
-}
-/**
- * PilotIntervention counts the pilot's own actions on an issue's head.
- */
-export interface PilotIntervention {
-  /**
-   * +optional
-   */
-  head?: string;
-  count: number /* int32 */;
-}
-/**
  * CIState is the state of the pipeline of the agent's last push.
  * +kubebuilder:validation:Enum=Pending;Running;Fixing;Success;Failed;BaseFailing;Canceled;None
  */
@@ -4920,136 +5054,6 @@ export interface RunStatus {
    * +optional
    */
   lastCallSeq?: number /* int64 */;
-}
-/**
- * CompanionRun is what the runner pushed and opened in the companion
- * project (docs/specs/cross-repo-changes.spec.md, decision 6).
- */
-export interface CompanionRun {
-  /**
-   * Project is the companion's full path (spec.companion.project).
-   */
-  project: string;
-  /**
-   * MRIID is the companion's draft merge request; MRURL its web URL.
-   * +optional
-   */
-  mrIID?: number /* int64 */;
-  /**
-   * +optional
-   */
-  mrURL?: string;
-  /**
-   * Branch is the companion branch (spec.companion.branch).
-   * +optional
-   */
-  branch?: string;
-  /**
-   * PushedSHA is the companion branch head the last push left.
-   * +optional
-   */
-  pushedSHA?: string;
-  /**
-   * ReviewedSHA is the companion head the last review saw.
-   * +optional
-   */
-  reviewedSHA?: string;
-}
-/**
- * CheckpointStatus is a checkpoint commit the runner pushed after an
- * implementer call was cut off.
- */
-export interface CheckpointStatus {
-  /**
-   * SHA is the checkpoint commit.
-   */
-  sha: string;
-  /**
-   * Branch it was pushed to.
-   */
-  branch: string;
-  /**
-   * Reason the call was cut off: usage-limit, engine-error, timeout,
-   * budget-stop, container-restart, pod-lost, oom-kill, or run-failed (the
-   * run failed after its call, e.g. its answer did not decode).
-   */
-  reason: string;
-  /**
-   * Run is the run (status.run.runCount after it) and Step the
-   * implementer call of the run that was cut off, from 1.
-   * +optional
-   */
-  run?: number /* int64 */;
-  /**
-   * +optional
-   */
-  step?: number /* int32 */;
-  /**
-   * Files, Added and Deleted are the checkpoint's diff stat.
-   * +optional
-   */
-  files?: number /* int32 */;
-  /**
-   * +optional
-   */
-  added?: number /* int64 */;
-  /**
-   * +optional
-   */
-  deleted?: number /* int64 */;
-  /**
-   * Skipped are the files left out (too big, or new files that look like
-   * secrets); they stayed in the workspace.
-   * +optional
-   * +listType=atomic
-   */
-  skipped?: string[];
-  /**
-   * At is when the checkpoint was pushed.
-   */
-  at: string;
-}
-/**
- * RunCheckpoint is a pushed checkpoint no agent call carries
- * (RunStatus.RunCheckpoints).
- */
-export interface RunCheckpoint {
-  /**
-   * Reason the work was cut off: budget-stop, pod-lost, oom-kill,
-   * container-restart or run-failed.
-   */
-  reason: string;
-  /**
-   * SHA is the checkpoint commit.
-   */
-  sha: string;
-  /**
-   * Run is the run whose work it saved and Step its implementer call,
-   * from 1.
-   * +optional
-   */
-  run?: number /* int64 */;
-  /**
-   * +optional
-   */
-  step?: number /* int32 */;
-  /**
-   * Files, Added and Deleted are the checkpoint's diff stat.
-   * +optional
-   */
-  files?: number /* int32 */;
-  /**
-   * +optional
-   */
-  added?: number /* int64 */;
-  /**
-   * +optional
-   */
-  deleted?: number /* int64 */;
-  /**
-   * At is when the checkpoint was pushed.
-   */
-  at: string;
 }
 export const CallKindSpec = "spec";
 export const CallKindImplement = "implement";

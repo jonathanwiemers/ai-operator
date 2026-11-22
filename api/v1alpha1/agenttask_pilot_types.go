@@ -263,3 +263,175 @@ type PilotStatus struct {
 	// +optional
 	FollowUpDraft *PilotFollowUpDraft `json:"followUpDraft,omitempty"`
 }
+
+// PilotFollowUpDraft is the pilot's draft of a follow-up milestone, or why
+// there is none.
+type PilotFollowUpDraft struct {
+	// Request is the run request it answers (spec.source.followUpDraft).
+	Request int64 `json:"request"`
+	// Numbers are the follow-ups it drafts from.
+	// +optional
+	Numbers []int `json:"numbers,omitempty"`
+	// Title is the milestone's title, one line of at most MaxDraftTitle
+	// bytes. Untrusted.
+	// +optional
+	Title string `json:"title,omitempty"`
+	// Description is the milestone's description: untrusted markdown
+	// without HTML, at most MaxDraftDescription bytes.
+	// +optional
+	Description string      `json:"description,omitempty"`
+	At          metav1.Time `json:"at"`
+	// Error says why there is no draft.
+	// +optional
+	Error string `json:"error,omitempty"`
+}
+
+// MaxDraftTitle and MaxDraftDescription bound PilotFollowUpDraft, in bytes.
+const (
+	MaxDraftTitle       = 200
+	MaxDraftDescription = 16 << 10
+)
+
+// PilotRetrospective is the last comment of a finished autopilot milestone's
+// pilot on its tracking issue.
+type PilotRetrospective struct {
+	// NoteID is the comment.
+	// +optional
+	NoteID int64 `json:"noteID,omitempty"`
+	// +optional
+	PostedAt *metav1.Time `json:"postedAt,omitempty"`
+	// Text is the comment as posted, for the Desk: untrusted markdown
+	// without HTML (comments and tags removed), at most MaxRetroText bytes,
+	// truncated beyond.
+	// +optional
+	Text string `json:"text,omitempty"`
+	// FollowUps are the numbered follow-up proposals, which an owner opens
+	// as issues. Untrusted.
+	// +optional
+	FollowUps []PilotFollowUp `json:"followUps,omitempty"`
+	// Failed says why there is no retrospective; it is not tried again.
+	// +optional
+	Failed string `json:"failed,omitempty"`
+	// OwnerIDs are the user IDs of the milestone's owners when it was
+	// posted, sorted: only they open the follow-ups.
+	// +optional
+	OwnerIDs []int64 `json:"ownerIDs,omitempty"`
+	// Created are the issues opened from the follow-ups, by number ("1").
+	// +optional
+	Created map[string]int64 `json:"created,omitempty"`
+	// Taken are the follow-ups other milestones of the project took over
+	// with their line "/agent followup-of", by number ("1"): the taking
+	// milestone's IID. The first to take one keeps it.
+	// +optional
+	Taken map[string]int64 `json:"taken,omitempty"`
+	// DismissedBy is the owner who dismissed the remaining follow-ups with
+	// "create none", DismissedAt when: they are settled, so the milestone
+	// closes. Each can still be opened.
+	// +optional
+	DismissedBy string `json:"dismissedBy,omitempty"`
+	// +optional
+	DismissedAt *metav1.Time `json:"dismissedAt,omitempty"`
+	// LastNoteID is the newest comment on the tracking issue read for
+	// "create 1 2" and "create none" (spec tasks).
+	// +optional
+	LastNoteID int64 `json:"lastNoteID,omitempty"`
+}
+
+// MaxRetroText bounds PilotRetrospective.Text, in bytes.
+const MaxRetroText = 16 << 10
+
+// PilotFollowUp is a follow-up proposal of a retrospective.
+type PilotFollowUp struct {
+	Title string `json:"title"`
+	// +optional
+	Body string `json:"body,omitempty"`
+}
+
+// PilotCommand is a skip, pause, resume or revisit an owner accepted from
+// the pilot.
+type PilotCommand struct {
+	// Seq orders the commands; each consumer remembers the last it handled.
+	Seq    int64       `json:"seq"`
+	Action PilotAction `json:"action"`
+	// Owner is who accepted it, OnIssue where it is answered.
+	Owner   string `json:"owner"`
+	OnIssue int64  `json:"onIssue"`
+}
+
+// MaxPilotReleaseDecisions bounds status.pilot.releaseDecisions.
+const MaxPilotReleaseDecisions = 20
+
+// PilotReleaseDecision is the pilot's decision to add a release after an
+// issue of its milestone, or to drop a planned one. It is no proposal: the
+// operator validates it and carries it out.
+type PilotReleaseDecision struct {
+	// Seq ascends; the operator remembers the last it applied.
+	Seq int64 `json:"seq"`
+	// IssueIID is the issue the release follows, as the model gave it.
+	IssueIID int64 `json:"issueIID"`
+	// Release true adds a release after the issue, false drops a planned
+	// one.
+	Release bool `json:"release"`
+	// Why is the pilot's one-line reason.
+	// +optional
+	Why string `json:"why,omitempty"`
+	// Source is the message or event whose answer decided it ("note/2000",
+	// "event/<key>@<request>"): a run started again records it once.
+	// +optional
+	Source string      `json:"source,omitempty"`
+	At     metav1.Time `json:"at"`
+}
+
+// PilotAutonomyOverride is an owner's "/pilot stop" (propose) or "/pilot
+// go" (managed).
+type PilotAutonomyOverride struct {
+	Autonomy PilotAutonomy `json:"autonomy"`
+	By       string        `json:"by"`
+	At       metav1.Time   `json:"at"`
+}
+
+// MaxPilotActed bounds status.pilot.acted; the other bounds cut a
+// PilotActed's untrusted text, in bytes.
+const (
+	MaxPilotActed        = 30
+	MaxPilotActedSummary = 300
+	MaxPilotActedWhy     = 1000
+	MaxPilotActedLines   = 8
+	MaxPilotActedLine    = 300
+)
+
+// PilotActed is one proposal runAccepted ran without a prompt.
+type PilotActed struct {
+	At metav1.Time `json:"at"`
+	// By is the owner who accepted it, empty when the pilot acted on its
+	// own.
+	// +optional
+	By string `json:"by,omitempty"`
+	// Summary is the proposal's summary, at most MaxPilotActedSummary
+	// bytes. Untrusted.
+	// +optional
+	Summary string `json:"summary,omitempty"`
+	// Why is the proposal's reason, at most MaxPilotActedWhy bytes.
+	// Untrusted.
+	// +optional
+	Why string `json:"why,omitempty"`
+	// Lines are the per-action result lines its comment shows, each at most
+	// MaxPilotActedLine bytes. Untrusted.
+	// +optional
+	// +kubebuilder:validation:MaxItems=8
+	Lines []string `json:"lines,omitempty"`
+	// Issues are the intervention keys it counted against; 0 is the
+	// milestone.
+	// +optional
+	Issues []int64 `json:"issues,omitempty"`
+	// Ran is false when none of its actions ran.
+	// +optional
+	Ran bool `json:"ran,omitempty"`
+}
+
+// PilotIntervention counts the pilot's own actions on an issue's head.
+type PilotIntervention struct {
+	// +optional
+	Head  string `json:"head,omitempty"`
+	Count int32  `json:"count"`
+}

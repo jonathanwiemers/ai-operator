@@ -20,6 +20,7 @@ packages:
       - agentprojectset_types.go
       - agentproject_types.go
       - agentresearch_types.go
+      - agenttask_checkpoint_types.go
       - agenttask_pilot_types.go
       - agenttask_types.go
       - crossrepo.go
