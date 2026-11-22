@@ -476,7 +476,9 @@ func (r *Runner) Loop(ctx context.Context) error {
 	if !r.waitAgent(ctx) {
 		return nil
 	}
-	wake := r.watchTask(ctx)
+	// Wake on changes of this runner's AgentTask. The poll below remains the
+	// fallback when the client cannot watch.
+	wake := r.watchObject(ctx, &aiv1.AgentTaskList{}, r.TaskName)
 	for {
 		did, err := r.tick(ctx, wake)
 		if err != nil && ctx.Err() == nil {
@@ -1070,7 +1072,7 @@ func (r *Runner) reportFailure(ctx context.Context, gl gitlab.API, spec aiv1.Age
 	switch {
 	case retry:
 		body += fmt.Sprintf("The cause is outside the issue, so it is blocked (`%sinfra`) and the operator starts one new run at %s UTC (`lifecycle.infraRetryAfter`). To try earlier, ",
-			wf.BlockedReasonPrefix, r.now().Add(spec.Lifecycle.InfraRetryAfter.Duration).UTC().Format("2006-01-02 15:04"))
+			wf.BlockedReasonPrefix, utcMinute(r.now().Add(spec.Lifecycle.InfraRetryAfter.Duration)))
 	case block == aiv1.BlockInfra:
 		body += fmt.Sprintf("This was the automatic retry, so the issue stays blocked (`%sinfra`) and waits for you. Once the cause is fixed, ", wf.BlockedReasonPrefix)
 	case block != "":
@@ -1133,7 +1135,7 @@ func (r *Runner) reportSpecFailure(ctx context.Context, gl gitlab.API, spec aiv1
 	switch {
 	case block == aiv1.BlockInfra && task.Spec.Source.InfraRetry != task.Spec.RunRequest:
 		body += fmt.Sprintf("The cause is outside the plan, so the operator plans again at %s UTC (`lifecycle.infraRetryAfter`), once.",
-			r.now().Add(spec.Lifecycle.InfraRetryAfter.Duration).UTC().Format("2006-01-02 15:04"))
+			utcMinute(r.now().Add(spec.Lifecycle.InfraRetryAfter.Duration)))
 	case block == aiv1.BlockInfra:
 		body += "This was the automatic retry. Once the cause is fixed, change the milestone's spec to plan again."
 	default:

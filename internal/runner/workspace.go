@@ -748,7 +748,7 @@ func isSecretName(name string) bool {
 // checkpointMessage is the message of a checkpoint commit: the fixed subject,
 // the diff stat, the agent's status and the Agent-Checkpoint trailer.
 func checkpointMessage(req CheckpointRequest, stat string) string {
-	reason := strings.Join(strings.Fields(req.Reason), " ")
+	reason := oneLine(req.Reason)
 	parts := []string{
 		fmt.Sprintf("chore(wip): checkpoint #%d step %d (%s)", req.Issue, req.Step, reason),
 		stat,

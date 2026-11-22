@@ -313,4 +313,6 @@ func buildRevisitPrompt(rvs []revisit) string {
 	return b.String()
 }
 
+// oneLine collapses each run of whitespace in s, line breaks included, into
+// one space and trims both ends.
 func oneLine(s string) string { return strings.Join(strings.Fields(s), " ") }

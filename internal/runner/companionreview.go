@@ -83,25 +83,20 @@ func buildTreesReviewPrompt(b *strings.Builder, in reviewInput, maxInline int) {
 	}
 }
 
-// securityCompanionNote is the security reviewer's extra note when the
-// change has a companion. It goes into the user prompt: the system prompts
-// stay the same (prompt cache).
-func securityCompanionNote(c *companionReview) string {
+// reviewerNote is the extra text of a reviewer's prompt: the companion note
+// for the security reviewer of a change with a companion, else nothing. It
+// goes into the user prompt: the system prompts stay the same (prompt
+// cache).
+func reviewerNote(kind aiv1.ReviewerKind, in reviewInput) string {
+	if kind != aiv1.ReviewerSecurity || in.companion == nil {
+		return ""
+	}
 	return fmt.Sprintf("\n## Companion repository\n\n"+
 		"The companion repository `%s` is applied to production by Flux when its merge request is merged. "+
 		"In its diff, flag secrets and plaintext credentials (encrypted SealedSecrets are fine), RBAC widening "+
 		"(new or broader roles, cluster roles, bindings or service account permissions), and changes that would break "+
 		"when applied before the home change is released (fields or values the running release does not know yet).\n",
-		inertText(c.project))
-}
-
-// reviewerNote is the extra text of a reviewer's prompt: the companion note
-// for the security reviewer of a change with a companion, else nothing.
-func reviewerNote(kind aiv1.ReviewerKind, in reviewInput) string {
-	if kind != aiv1.ReviewerSecurity || in.companion == nil {
-		return ""
-	}
-	return securityCompanionNote(in.companion)
+		inertText(in.companion.project))
 }
 
 // reviewedHeads names the heads of a review key (aiv1.ReviewHeads) for the

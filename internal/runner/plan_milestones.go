@@ -181,7 +181,7 @@ func planMilestoneState(m gitlab.Milestone, t *aiv1.AgentTask, first bool) strin
 	case ap.Phase == aiv1.AutopilotDone:
 		return "done"
 	case ap.Phase == aiv1.AutopilotPaused && ap.PausedReason != "":
-		return "paused: " + strings.Join(strings.Fields(ap.PausedReason), " ")
+		return "paused: " + oneLine(ap.PausedReason)
 	case ap.Phase == aiv1.AutopilotPaused:
 		return "paused"
 	case len(ap.Items) == 0 && first:

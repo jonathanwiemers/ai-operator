@@ -98,7 +98,7 @@ func (r *Runner) runRetrospective(ctx context.Context, gl gitlab.API, task *aiv1
 	}
 	retro := &aiv1.PilotRetrospective{OwnerIDs: ids}
 	for _, f := range a.FollowUps[:min(len(a.FollowUps), maxFollowUps)] {
-		if t := strings.Join(strings.Fields(f.Title), " "); t != "" {
+		if t := oneLine(f.Title); t != "" {
 			retro.FollowUps = append(retro.FollowUps, aiv1.PilotFollowUp{Title: textutil.Truncate(t, 200), Body: textutil.Truncate(strings.TrimSpace(f.Body), 4000)})
 		}
 	}
@@ -328,7 +328,7 @@ func retroReleases(recs []aiv1.ReleaseRecord) []retroRelease {
 	for _, r := range recs {
 		rr := retroRelease{By: string(r.By), AfterIssue: r.AfterIssue, State: string(r.State),
 			Reason: textutil.Truncate(r.Reason, 300), Version: r.Version, Issues: r.Issues}
-		rr.Why = truncateRunes(strings.Join(strings.Fields(r.Why), " "), maxRetroReleaseWhy)
+		rr.Why = truncateRunes(oneLine(r.Why), maxRetroReleaseWhy)
 		if r.StartedAt != nil {
 			rr.StartedAt = r.StartedAt.UTC().Format(time.RFC3339)
 		}
@@ -755,7 +755,7 @@ func renderRetro(summary string, followUps []aiv1.PilotFollowUp, spend *aiv1.Spe
 	if len(followUps) > 0 {
 		b.WriteString("**Follow-ups**\n\n")
 		for i, f := range followUps {
-			fmt.Fprintf(&b, "%d. **%s**: %s\n", i+1, notify.Inert(f.Title), notify.Inert(strings.Join(strings.Fields(textutil.Truncate(f.Body, 600)), " ")))
+			fmt.Fprintf(&b, "%d. **%s**: %s\n", i+1, notify.Inert(f.Title), notify.Inert(oneLine(textutil.Truncate(f.Body, 600))))
 		}
 		b.WriteString("\nAn owner opens them with `create 1 2` as a reply in this thread.\n\n")
 	}

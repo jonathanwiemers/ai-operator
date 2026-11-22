@@ -1510,10 +1510,6 @@ func reviewErrorOf(reviewer aiv1.ReviewerKind, err error) aiv1.ReviewError {
 // nobody and runs no quick actions. desk is the task's Desk page, where the
 // questions are answered ("": no link).
 func renderReport(answer ImplementAnswer, findings []Finding, reviewErrs []string, desk string) string {
-	return notify.Defuse(renderReportText(answer, findings, reviewErrs, desk))
-}
-
-func renderReportText(answer ImplementAnswer, findings []Finding, reviewErrs []string, desk string) string {
 	var b strings.Builder
 	b.WriteString(strings.TrimSpace(answer.Summary))
 	if drafts := questionDrafts(answer); len(drafts) > 0 {
@@ -1530,7 +1526,7 @@ func renderReportText(answer ImplementAnswer, findings []Finding, reviewErrs []s
 	for _, e := range reviewErrs {
 		fmt.Fprintf(&b, "\n> ⚠️ %s\n", e)
 	}
-	return b.String()
+	return notify.Defuse(b.String())
 }
 
 // steer is how an owner steers task, for a report: viaComment for a project

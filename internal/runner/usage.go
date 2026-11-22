@@ -98,7 +98,7 @@ func (r *Runner) routeAround(ctx context.Context, lim *UsageLimitError, role str
 	l := aiv1.UsageLimit{Engine: lim.Engine, Until: metav1.Time{Time: until}, Message: textutil.Truncate(lim.Message, 300)}
 	r.log().Info("usage limit reached, running on the fallback", "role", role, "engine", lim.Engine, "until", until.UTC(), "fallback", fb.Engine, "model", fb.Model)
 	r.run.noteFallback(fmt.Sprintf("↪️ `%s` reached its usage limit (until %s UTC), so %s ran on `%s/%s` instead.",
-		lim.Engine, until.UTC().Format("2006-01-02 15:04"), role, fb.Engine, fb.Model))
+		lim.Engine, utcMinute(until), role, fb.Engine, fb.Model))
 	r.usageMu.Lock()
 	defer r.usageMu.Unlock()
 	r.routed = aiv1.MergeUsageLimit(r.routed, l)

@@ -57,7 +57,7 @@ func stripLinks(body string) string {
 
 // companionLink is the home merge request's line naming the companion's.
 func companionLink(project string, iid int64) string {
-	return fmt.Sprintf("Companion: %s!%d", project, iid)
+	return "Companion: " + companionRef(project, iid)
 }
 
 // landsAfterLink is the companion merge request's line naming the home

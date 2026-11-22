@@ -40,7 +40,7 @@ func (r *Runner) assessEvents(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		}
 		// Its first paragraph: a flaky event quotes a log after it.
 		head, _, _ := strings.Cut(e.Text, "\n\n")
-		what := notify.Inert(strings.Join(strings.Fields(textutil.Truncate(head, 300)), " "))
+		what := notify.Inert(oneLine(textutil.Truncate(head, 300)))
 		var body string
 		switch left := pilotLeft(spec, task, out); {
 		case left < 0.01:
@@ -254,7 +254,7 @@ func assessOptions(in []AssessOption) ([]aiv1.PromptOption, string) {
 	var out []aiv1.PromptOption
 	var refused strings.Builder
 	for _, o := range in {
-		label := strings.Join(strings.Fields(o.Label), " ")
+		label := oneLine(o.Label)
 		if label == "" {
 			continue
 		}
@@ -265,7 +265,7 @@ func assessOptions(in []AssessOption) ([]aiv1.PromptOption, string) {
 		}
 		out = append(out, aiv1.PromptOption{Label: textutil.Truncate(label, aiv1.MaxPromptOptionLabel-len("…")),
 			Detail:      textutil.Truncate(strings.TrimSpace(o.Detail), aiv1.MaxPromptOptionDetail-len("…")),
-			Consequence: textutil.Truncate(strings.Join(strings.Fields(o.Consequence), " "), aiv1.MaxPromptOptionConsequence-len("…")),
+			Consequence: textutil.Truncate(oneLine(o.Consequence), aiv1.MaxPromptOptionConsequence-len("…")),
 			Recommended: o.Recommended, Actions: pilotActions(p.Actions)})
 	}
 	idle := func(o aiv1.PromptOption) bool { return len(o.Actions) == 0 }
@@ -416,7 +416,7 @@ func (r *Runner) proposePrompt(ctx context.Context, task *aiv1.AgentTask, a Pilo
 	options, refused := assessOptions(a.Options)
 	rec := options[slices.IndexFunc(options, func(o aiv1.PromptOption) bool { return o.Recommended })]
 	prop := aiv1.PilotProposal{Kind: kind, Summary: rec.Label, Source: source, Trigger: trigger, Why: textutil.Truncate(why, 1000), Quiet: true,
-		Question: textutil.Truncate(strings.Join(strings.Fields(a.Question), " "), aiv1.MaxPromptQuestion-len("…")),
+		Question: textutil.Truncate(oneLine(a.Question), aiv1.MaxPromptQuestion-len("…")),
 		Context:  textutil.Truncate(evidence+refused, aiv1.MaxPromptContext-len("…")), Options: options}
 	if stateOf != nil {
 		prop.State = stateOf(rec.Actions)

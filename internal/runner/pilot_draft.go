@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
@@ -58,7 +57,7 @@ func (r *Runner) runFollowUpDraft(ctx context.Context, task *aiv1.AgentTask, spe
 		return out, s.fail(err) // the run is deferred and writes it then
 	}
 	if err == nil {
-		draft.Title = textutil.Truncate(strings.Join(strings.Fields(textutil.UntrustedMarkdown(a.Title, aiv1.MaxDraftTitle)), " "), aiv1.MaxDraftTitle)
+		draft.Title = textutil.Truncate(oneLine(textutil.UntrustedMarkdown(a.Title, aiv1.MaxDraftTitle)), aiv1.MaxDraftTitle)
 		// The operator's lines (owners, rules, budget, followup-of) are the
 		// confirming owner's to add, never the draft's.
 		draft.Description = textutil.UntrustedMarkdown(rules.Spec(a.Description, spec.Workflow.CommandPrefix), aiv1.MaxDraftDescription)

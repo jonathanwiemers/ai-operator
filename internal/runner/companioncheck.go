@@ -100,7 +100,7 @@ func (m *Mirror) CheckCompanion(ctx context.Context, base, head string, paths *p
 			if reason := companionChangeRefusal(c, paths); reason != "" {
 				return &CompanionViolation{Path: c.path, Reason: reason, Commit: commit}
 			}
-			if c.status != "D" && !isZeroSHA(c.newSHA) {
+			if c.status != "D" && strings.Trim(c.newSHA, "0") != "" {
 				newBlobs[c.newSHA] = true
 			}
 		}
@@ -190,10 +190,6 @@ func parseRawDiff(out string) ([]treeChange, error) {
 		changes = append(changes, treeChange{oldMode: f[0], newMode: f[1], newSHA: f[3], status: status, path: fields[i]})
 	}
 	return changes, nil
-}
-
-func isZeroSHA(sha string) bool {
-	return strings.Trim(sha, "0") == ""
 }
 
 // blobBytes sums the sizes of the given objects (git cat-file

@@ -107,7 +107,7 @@ func (a *LocalAgent) Run(ctx context.Context, engine aiv1.Engine, inv Invocation
 		// also when this container or its pod does not survive the call.
 		w := &statusWriter{path: a.Workspace.lastStatusPath(), every: statusInterval}
 		_ = os.Remove(w.path)
-		ctx = withStatusSink(ctx, w.set)
+		ctx = context.WithValue(ctx, statusSinkKey{}, w.set)
 		defer w.flush()
 	}
 	// Sessions are resumed across calls and the gate's count is per
@@ -188,15 +188,11 @@ func (w *statusWriter) flush() {
 	w.pending, w.last = "", time.Now()
 }
 
+// statusSinkKey holds the function the engine calls with the agent's status
+// text (streamStatus) as the call streams.
 type statusSinkKey struct{}
 
-// withStatusSink passes fn to the engine, which calls it with the agent's
-// status text (streamStatus) as the call streams.
-func withStatusSink(ctx context.Context, fn func(string)) context.Context {
-	return context.WithValue(ctx, statusSinkKey{}, fn)
-}
-
-// statusSink is the function withStatusSink set, or nil.
+// statusSink is the function under statusSinkKey, or nil.
 func statusSink(ctx context.Context) func(string) {
 	fn, _ := ctx.Value(statusSinkKey{}).(func(string))
 	return fn

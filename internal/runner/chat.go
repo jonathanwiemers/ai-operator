@@ -31,12 +31,6 @@ const maxChatReplyBytes = 16384
 // that left ChatInFlight set.
 const chatResendPrefix = "(Your answer to the following message may not have arrived; answer it again if needed.)"
 
-// watchTask watches this runner's AgentTask and signals wake on changes.
-// The poll in Loop remains the fallback when the client cannot watch.
-func (r *Runner) watchTask(ctx context.Context) <-chan struct{} {
-	return r.watchObject(ctx, &aiv1.AgentTaskList{}, r.TaskName)
-}
-
 // watchObject watches the object called name of list's kind in the runner's
 // namespace (a task or a plan) and signals wake on changes.
 func (r *Runner) watchObject(ctx context.Context, list client.ObjectList, name string) <-chan struct{} {

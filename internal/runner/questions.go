@@ -28,7 +28,7 @@ func questionDrafts(a ImplementAnswer) []aiv1.QuestionDraft {
 			AllowFreeText: p.AllowFreeText == nil || *p.AllowFreeText}
 		def := -1
 		for _, o := range p.Options {
-			label := strings.Join(strings.Fields(o.Label), " ")
+			label := oneLine(o.Label)
 			if label == "" || len(d.Options) == maxQuestionOptions {
 				continue
 			}
@@ -59,14 +59,16 @@ func questionDrafts(a ImplementAnswer) []aiv1.QuestionDraft {
 func renderQuestions(drafts []aiv1.QuestionDraft) string {
 	var b strings.Builder
 	for i, d := range drafts {
-		fmt.Fprintf(&b, "%d. %s\n", i+1, indent(d.Question, "   "))
+		// Indent the lines after the first, so a multi-line question stays
+		// in its list item.
+		fmt.Fprintf(&b, "%d. %s\n", i+1, strings.ReplaceAll(d.Question, "\n", "\n   "))
 		for _, o := range d.Options {
 			fmt.Fprintf(&b, "   - **%s** %s", o.ID, o.Label)
 			if o.Recommended {
 				b.WriteString(" _(default)_")
 			}
 			if o.Detail != "" {
-				b.WriteString(": " + strings.Join(strings.Fields(o.Detail), " "))
+				b.WriteString(": " + oneLine(o.Detail))
 			}
 			b.WriteString("\n")
 		}
@@ -75,10 +77,4 @@ func renderQuestions(drafts []aiv1.QuestionDraft) string {
 		}
 	}
 	return b.String()
-}
-
-// indent indents the lines after the first, so a multi-line question stays
-// in its list item.
-func indent(s, prefix string) string {
-	return strings.ReplaceAll(s, "\n", "\n"+prefix)
 }

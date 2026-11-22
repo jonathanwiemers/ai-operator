@@ -318,7 +318,7 @@ func streamStatus(line []byte) string {
 				case "in_progress":
 					mark = ">"
 				}
-				lines = append(lines, fmt.Sprintf("- [%s] %s", mark, strings.Join(strings.Fields(todo.Content), " ")))
+				lines = append(lines, fmt.Sprintf("- [%s] %s", mark, oneLine(todo.Content)))
 			}
 			status = strings.Join(lines, "\n")
 		}

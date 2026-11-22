@@ -117,12 +117,8 @@ func (r *Runner) syncCompanion(ctx context.Context, c *companionTree) error {
 		result += fmt.Sprintf(", %s is new", c.spec.Branch)
 	}
 	s.done(result, kv...)
-	return r.prepareCompanion(ctx, c)
-}
-
-// prepareCompanion hands the companion checkout the commits of the
-// companion mirror it lacks and checks out the companion branch.
-func (r *Runner) prepareCompanion(ctx context.Context, c *companionTree) error {
+	// Hand the companion checkout the commits of the companion mirror it
+	// lacks and check out the companion branch.
 	return r.prepareTree(ctx, c.mirror, c.slug, c.spec.Branch, c.base)
 }
 

@@ -105,7 +105,7 @@ func refineResult(a RefineAnswer) (*aiv1.PromptOption, string, error) {
 	case a.Option == nil:
 		return nil, "", errors.New("the pilot returned neither an option nor a follow-up question")
 	}
-	label := strings.Join(strings.Fields(a.Option.Label), " ")
+	label := oneLine(a.Option.Label)
 	if label == "" {
 		return nil, "", errors.New("the pilot's option has no label")
 	}

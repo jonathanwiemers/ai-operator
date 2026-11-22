@@ -215,7 +215,7 @@ func inlineCodeList(items []string) string {
 
 // inertText makes text safe for one line of markdown.
 func inertText(s string) string {
-	return strings.Join(strings.Fields(strings.ReplaceAll(s, "`", "")), " ")
+	return oneLine(strings.ReplaceAll(s, "`", ""))
 }
 
 // planRepoMarker records in a planned issue's description the companion
