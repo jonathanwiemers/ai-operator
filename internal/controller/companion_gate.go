@@ -144,7 +144,7 @@ func (a *autopilot) companionGate(ctx context.Context, it *aiv1.AutopilotItem, t
 // head is never taken for someone's push.
 func (a *autopilot) rebaseCompanion(ctx context.Context, it *aiv1.AutopilotItem, task *aiv1.AgentTask, mr *gitlab.MergeRequest) error {
 	c := task.Status.Run.Companion
-	diff, err := a.diffHash(ctx, c.Project, mr.IID)
+	diff, err := diffHash(ctx, a.gl, c.Project, mr.IID)
 	if err != nil {
 		return err
 	}
@@ -164,7 +164,7 @@ func (a *autopilot) rebaseCompanion(ctx context.Context, it *aiv1.AutopilotItem,
 // the CI loop follows the new head's pipeline (gateCheck hands it back).
 func (a *autopilot) companionRebased(ctx context.Context, task *aiv1.AgentTask, mr *gitlab.MergeRequest) error {
 	c := *task.Status.Run.Companion
-	diff, err := a.diffHash(ctx, c.Project, mr.IID)
+	diff, err := diffHash(ctx, a.gl, c.Project, mr.IID)
 	if err != nil {
 		return err
 	}

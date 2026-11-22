@@ -68,7 +68,7 @@ func validAction(a aiv1.PilotAction, st *aiv1.AgentTask, tasks map[int64]*aiv1.A
 		return fmt.Errorf("`%s` is not a tool of the pilot; merging, closing and pushing are not available", inertLine(a.Tool, 40))
 	case a.Tool == "raiseBudget":
 		return validRaise(a, st)
-	case isRuleTool(a.Tool):
+	case a.Tool == "setRule" || a.Tool == "forgetRule":
 		return validRule(a)
 	case a.Tool == "revisit" && marker.DecisionIssue(a.Decision) == 0:
 		return fmt.Errorf("`%s` is not a decision", inertLine(a.Decision, 40))
@@ -421,8 +421,7 @@ func (r *AgentProjectReconciler) optionsPrompt(ctx context.Context, gl gitlab.AP
 		Options:  slices.Clone(p.Options),
 	}
 	// A pause's assessment belongs to the problem of the issue it holds up.
-	if key := strings.TrimPrefix(p.Source, "event/"); q.Source.IssueIID == 0 && q.Source.Kind == aiv1.PromptAssessment &&
-		(strings.HasPrefix(key, "pause-") || strings.HasPrefix(key, aiv1.StalledEventPrefix)) {
+	if q.Source.IssueIID == 0 && q.Source.Kind == aiv1.PromptAssessment && pauseSource(p.Source) {
 		q.Source.IssueIID = aiv1.ProblemIssue(st.Status.Autopilot)
 	}
 	if _, err := r.validOptions(ctx, gl, project, spec, st, tasks, opened, &q, true); err != nil {

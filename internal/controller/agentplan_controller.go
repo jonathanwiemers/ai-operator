@@ -171,12 +171,7 @@ func lastActivity(plan *aiv1.AgentPlan) time.Time {
 	return last
 }
 
-func (r *AgentPlanReconciler) now() time.Time {
-	if r.Now != nil {
-		return r.Now()
-	}
-	return time.Now()
-}
+func (r *AgentPlanReconciler) now() time.Time { return nowOr(r.Now) }
 
 // planPending reports whether a message of plan waits for a reply.
 func planPending(plan *aiv1.AgentPlan) bool {

@@ -180,24 +180,18 @@ func (r *AgentProjectReconciler) switchAutonomy(ctx context.Context, spec aiv1.A
 	return "The pilot still proposes every action: `pilot.autonomy` of the project (or, unset, a milestone without autopilot) says so, and `go` cannot raise it.", nil
 }
 
-// pilotHow says how an action of the pilot came to run.
-func pilotHow(id int64, by string) string {
-	if by == "" {
-		return "on its own, audited on the tracking issue"
-	}
-	return fmt.Sprintf("proposal P%d, accepted by `@%s`", id, by)
-}
-
-// proposalHow is pilotHow of an accepted proposal, which names the prompt
-// it was chosen on, if any.
+// proposalHow says how the actions of an accepted proposal came to run,
+// naming the prompt they were chosen on, if any.
 func proposalHow(p aiv1.PilotProposal) string {
-	if p.Prompt != "" && p.AcceptedBy != "" {
+	switch {
+	case p.AcceptedBy == "":
+		return "on its own, audited on the tracking issue"
+	case p.Prompt != "":
 		return fmt.Sprintf("prompt %s, answered by `@%s`", p.Prompt, p.AcceptedBy)
-	}
-	if p.ChatMessageID != 0 && p.AcceptedBy != "" {
+	case p.ChatMessageID != 0:
 		return fmt.Sprintf("asked for in the Desk chat by `@%s`", p.AcceptedBy)
 	}
-	return pilotHow(p.ID, p.AcceptedBy)
+	return fmt.Sprintf("proposal P%d, accepted by `@%s`", p.ID, p.AcceptedBy)
 }
 
 // refund gives back the interventions of the pilot's own actions that were

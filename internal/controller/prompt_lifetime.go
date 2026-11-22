@@ -162,13 +162,18 @@ func promptResolved(now time.Time, mh *aiv1.MainHealthStatus, issues map[int64]g
 // the operator's.
 func pauseEndedBy(p aiv1.Prompt, st *aiv1.AgentTask) aiv1.PauseResolver {
 	ap := st.Status.Autopilot // pauseOver held: not nil
-	key := strings.TrimPrefix(p.Source.Key, "event/")
-	pauseKey := strings.HasPrefix(key, "pause-") || strings.HasPrefix(key, aiv1.StalledEventPrefix)
 	paused := ap.Phase == aiv1.AutopilotPaused && ap.PausedAt != nil
-	if pauseKey && !paused && ap.ResumedBy != "" {
+	if pauseSource(p.Source.Key) && !paused && ap.ResumedBy != "" {
 		return ap.ResumedBy
 	}
 	return aiv1.ResolvedByOperator
+}
+
+// pauseSource reports whether the event source (with or without its
+// "event/" prefix) is a pause or stalled event.
+func pauseSource(source string) bool {
+	key := strings.TrimPrefix(source, "event/")
+	return strings.HasPrefix(key, "pause-") || strings.HasPrefix(key, aiv1.StalledEventPrefix)
 }
 
 // pauseOver reports whether assessment p, of a pause event (pilotEvents), is

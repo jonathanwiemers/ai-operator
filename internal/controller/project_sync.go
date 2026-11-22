@@ -120,10 +120,6 @@ func (p *projectPoll) owners(description string) []string {
 	return notify.Resolve(description, p.prefix, p.spec.Notify.Users, p.r.DefaultOwners)
 }
 
-func (p *projectPoll) ownerSubjects(description string) []string {
-	return notify.MilestoneOwnerSubjects(description, p.prefix)
-}
-
 // syncMilestones keeps one spec task per selected milestone and picks the
 // lane and the main-red issue.
 func (p *projectPoll) syncMilestones(ctx context.Context) error {
@@ -154,7 +150,7 @@ func (p *projectPoll) syncMilestones(ctx context.Context) error {
 		if p.byMilestone[m.IID] != nil {
 			requirements[m.IID] = rules.CountRequirements(m.Description)
 		}
-		task, err := r.syncSpecTask(ctx, project, spec, m, p.byMilestone[m.IID], autopilot, p.ahead[m.IID], p.owners(m.Description), p.ownerSubjects(m.Description))
+		task, err := r.syncSpecTask(ctx, project, spec, m, p.byMilestone[m.IID], autopilot, p.ahead[m.IID], p.owners(m.Description), notify.MilestoneOwnerSubjects(m.Description, p.prefix))
 		if err != nil {
 			return err
 		}
@@ -296,7 +292,7 @@ func (ph issuePhases) implement(ctx context.Context, is gitlab.Issue) (*aiv1.Age
 	if autopilot && is.Milestone != nil {
 		ap = ph.autopilots[is.Milestone.IID]
 	}
-	task, mr, err := ph.r.syncImplementTask(ctx, ph.gl, ph.gate, ph.project, ph.spec, is, ph.byIssue[is.IID], autopilot, pause, budgetStop, is.IID == ph.urgentIssue, ms, ph.owners(description), ph.ownerSubjects(description), ap)
+	task, mr, err := ph.r.syncImplementTask(ctx, ph.gl, ph.gate, ph.project, ph.spec, is, ph.byIssue[is.IID], autopilot, pause, budgetStop, is.IID == ph.urgentIssue, ms, ph.owners(description), notify.MilestoneOwnerSubjects(description, ph.prefix), ap)
 	if err != nil {
 		// Keep the existing task, so the cleanup below does not delete
 		// it and the autopilot still sees it.

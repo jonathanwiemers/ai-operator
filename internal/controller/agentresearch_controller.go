@@ -147,7 +147,7 @@ func (r *AgentResearchReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			runDeadline = run.StartedAt.Add(res.Spec.Timeout() + researchDeadlineSlack + researchRunGrace)
 		}
 		if run.Outcome != "" || pod == nil || podEnded(pod) || !now.Before(runDeadline) {
-			if err := r.finishRun(ctx, &res, orig, pod, runEnd(pod), now); err != nil {
+			if err := r.finishRun(ctx, &res, orig, pod, "no report from the runner: "+podEnd(pod), now); err != nil {
 				return ctrl.Result{}, err
 			}
 			orig = res.DeepCopy()
@@ -465,11 +465,6 @@ func podEnded(pod *corev1.Pod) bool {
 	return pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed
 }
 
-// runEnd says how a run ended without the runner's report.
-func runEnd(pod *corev1.Pod) string {
-	return "no report from the runner: " + podEnd(pod)
-}
-
 // podEnd says how a pod ended, or why it did not.
 func podEnd(pod *corev1.Pod) string {
 	switch {
@@ -500,12 +495,7 @@ func (r *AgentResearchReconciler) maxUsagePercent() int32 {
 	return aiv1.DefaultResearchMaxUsagePercent
 }
 
-func (r *AgentResearchReconciler) now() time.Time {
-	if r.Now != nil {
-		return r.Now()
-	}
-	return time.Now()
-}
+func (r *AgentResearchReconciler) now() time.Time { return nowOr(r.Now) }
 
 // patchStatus fails on a conflict, so a report the runner just wrote is not
 // overwritten from a stale copy.

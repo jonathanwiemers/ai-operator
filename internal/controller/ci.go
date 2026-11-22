@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"slices"
@@ -325,7 +326,7 @@ func (r *AgentProjectReconciler) ciRed(ctx context.Context, gl gitlab.API, spec 
 			fmt.Sprintf("🤖 CI%s is still red after %d fix attempts (%s): failing jobs %s. Comment `%s …` with guidance or fix it by hand.",
 				of, run.CIRound, url, jobList(jobs), spec.Workflow.CommandPrefix))
 	}
-	log.FromContext(ctx).Info("pipeline failed, asking the agent to fix it", "task", task.Name, "project", cmpProject(project, spec.GitLab.Project),
+	log.FromContext(ctx).Info("pipeline failed, asking the agent to fix it", "task", task.Name, "project", cmp.Or(project, spec.GitLab.Project),
 		"pipeline", pipelineID, "round", run.CIRound+1, "jobs", jobs)
 	task.Spec.RunRequest++
 	task.Spec.Source.CIFixPipelineID = pipelineID
@@ -336,13 +337,6 @@ func (r *AgentProjectReconciler) ciRed(ctx context.Context, gl gitlab.API, spec 
 	}
 	*state = aiv1.CIStateFixing
 	return r.patchCI(ctx, task, ci)
-}
-
-func cmpProject(project, home string) string {
-	if project == "" {
-		return home
-	}
-	return project
 }
 
 // syncReviewCI watches the CI of an issue in review. A loop that is not done
@@ -360,7 +354,7 @@ func (r *AgentProjectReconciler) syncReviewCI(ctx context.Context, gl gitlab.API
 	cur := task.Status.CI.DeepCopy()
 	cur.Companion, _ = r.companionCI(task)
 	if !cur.Done() {
-		return r.backToWorking(ctx, gl, spec, is)
+		return r.backToWorking(ctx, gl, spec, is.IID)
 	}
 	if head == nil || head.Status == "skipped" || !pipelineChanged(cur.PipelineID, cur.State, head) {
 		return r.syncReviewCompanionCI(ctx, gl, spec, is, task, cur)
@@ -383,7 +377,7 @@ func (r *AgentProjectReconciler) syncReviewCI(ctx context.Context, gl gitlab.API
 		PingedFor: cur.PingedFor, Companion: cur.Companion}); err != nil {
 		return err
 	}
-	return r.backToWorking(ctx, gl, spec, is)
+	return r.backToWorking(ctx, gl, spec, is.IID)
 }
 
 // syncReviewCompanionCI follows a companion pipeline of an issue in review
@@ -421,7 +415,7 @@ func (r *AgentProjectReconciler) syncReviewCompanionCI(ctx context.Context, gl g
 	if err := r.patchCI(ctx, task, ci); err != nil {
 		return err
 	}
-	return r.backToWorking(ctx, gl, spec, is)
+	return r.backToWorking(ctx, gl, spec, is.IID)
 }
 
 // pipelineChanged reports whether the head pipeline is not the one the CI
@@ -439,12 +433,12 @@ func pipelineChanged(id int64, state aiv1.CIState, head *gitlab.Pipeline) bool {
 	return false
 }
 
-func (r *AgentProjectReconciler) backToWorking(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, is gitlab.Issue) error {
+func (r *AgentProjectReconciler) backToWorking(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, iid int64) error {
 	wf := spec.Workflow
-	if _, err := gl.UpdateIssue(ctx, spec.GitLab.Project, is.IID, gitlab.UpdateIssueOptions{
+	if _, err := gl.UpdateIssue(ctx, spec.GitLab.Project, iid, gitlab.UpdateIssueOptions{
 		AddLabels: []string{wf.WorkingLabel}, RemoveLabels: []string{wf.ReviewLabel},
 	}); err != nil {
-		return fmt.Errorf("moving issue #%d to %q: %w", is.IID, wf.WorkingLabel, err)
+		return fmt.Errorf("moving issue #%d back to %q: %w", iid, wf.WorkingLabel, err)
 	}
 	return nil
 }

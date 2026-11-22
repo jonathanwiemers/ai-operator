@@ -512,10 +512,6 @@ func (a *autopilot) landingPause() bool {
 	return a.ap.Phase == aiv1.AutopilotPaused && a.ap.PauseKind == aiv1.PauseCompanion && a.ap.PausedFor == 0
 }
 
-func landingPauseReason(e *aiv1.CompanionStatus) string {
-	return fmt.Sprintf("the companion %s of #%d cannot land: %s", landingRef(e), e.HomeIssueIID, e.Reason)
-}
-
 // companionLanding pauses the milestone with kind companion while one of
 // its companions is blocked (once per reason), and lifts that pause once
 // none is: rebased, fixed, merged or closed by hand.
@@ -526,7 +522,7 @@ func (a *autopilot) companionLanding(ctx context.Context) error {
 		a.log.Info("autopilot continues: no companion of the milestone is blocked any more")
 		return a.resumed(ctx, byOperator, "the companions of the milestone can land again (or were merged or closed by hand)")
 	case e != nil && (a.ap.Phase == aiv1.AutopilotRunning || a.landingPause()):
-		return a.pause(ctx, aiv1.PauseCompanion, 0, landingPauseReason(e))
+		return a.pause(ctx, aiv1.PauseCompanion, 0, fmt.Sprintf("the companion %s of #%d cannot land: %s", landingRef(e), e.HomeIssueIID, e.Reason))
 	}
 	return nil
 }

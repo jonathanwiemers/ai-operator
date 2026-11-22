@@ -22,9 +22,6 @@ import (
 // maxRule bounds the text of a rule the pilot sets.
 const maxRule = 500
 
-// isRuleTool reports whether tool edits the standing rules.
-func isRuleTool(tool string) bool { return tool == "setRule" || tool == "forgetRule" }
-
 // validRule checks a rule action: a rule the operator would store, or
 // a rule of the milestone to forget (withRuleText found its text).
 func validRule(a aiv1.PilotAction) error {

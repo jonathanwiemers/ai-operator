@@ -1103,12 +1103,7 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 		// working, never finished this commit: hand it back. It always
 		// ends in review or needs-input, so this does not repeat.
 		a.log.Info("autopilot hands the issue back to the CI loop", "issue", it.IID, "sha", task.Status.Run.PushedSHA)
-		if _, err := a.gl.UpdateIssue(ctx, glProject, it.IID, gitlab.UpdateIssueOptions{
-			AddLabels: []string{wf.WorkingLabel}, RemoveLabels: []string{wf.ReviewLabel},
-		}); err != nil {
-			return fmt.Errorf("moving issue #%d back to %q: %w", it.IID, wf.WorkingLabel, err)
-		}
-		return nil
+		return a.r.backToWorking(ctx, a.gl, a.spec, it.IID)
 	case gateReReview:
 		return a.reReview(ctx, it, task)
 	case gateFailed:
@@ -1224,7 +1219,6 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 // still none, the gate goes on as before (the MR is not a draft any more).
 func (a *autopilot) readyForCI(ctx context.Context, it *aiv1.AutopilotItem, mr *gitlab.MergeRequest, task *aiv1.AgentTask) error {
 	glProject := a.spec.GitLab.Project
-	wf := a.spec.Workflow
 	if task.Status.Run.CheckpointHead(mr.SHA) {
 		return nil // a checkpoint is never marked ready or checked
 	}
@@ -1256,12 +1250,7 @@ func (a *autopilot) readyForCI(ctx context.Context, it *aiv1.AutopilotItem, mr *
 	if err := a.r.Status().Patch(ctx, task, client.MergeFrom(orig)); err != nil {
 		return err
 	}
-	if _, err := a.gl.UpdateIssue(ctx, glProject, it.IID, gitlab.UpdateIssueOptions{
-		AddLabels: []string{wf.WorkingLabel}, RemoveLabels: []string{wf.ReviewLabel},
-	}); err != nil {
-		return fmt.Errorf("moving issue #%d back to %q: %w", it.IID, wf.WorkingLabel, err)
-	}
-	return nil
+	return a.r.backToWorking(ctx, a.gl, a.spec, it.IID)
 }
 
 // glProject returns the GitLab project, read once per poll.
@@ -1660,7 +1649,7 @@ func (a *autopilot) mergeBase(ctx context.Context, it *aiv1.AutopilotItem, mr *g
 // hashed first, so the rebased head can be checked against it. If a rebase
 // cannot help, the agent merges the default branch instead.
 func (a *autopilot) rebase(ctx context.Context, it *aiv1.AutopilotItem, mr *gitlab.MergeRequest, task *aiv1.AgentTask) error {
-	diff, err := a.diffHash(ctx, a.spec.GitLab.Project, mr.IID)
+	diff, err := diffHash(ctx, a.gl, a.spec.GitLab.Project, mr.IID)
 	if err != nil {
 		return err
 	}
@@ -1713,7 +1702,7 @@ func (a *autopilot) rebased(ctx context.Context, it *aiv1.AutopilotItem, mr *git
 	// The review only holds if the rebase moved the change without changing
 	// it; a commit pushed meanwhile, or a rebase that had to adapt lines,
 	// changes the diff.
-	diff, err := a.diffHash(ctx, a.spec.GitLab.Project, mr.IID)
+	diff, err := diffHash(ctx, a.gl, a.spec.GitLab.Project, mr.IID)
 	if err != nil {
 		return err
 	}
@@ -1785,24 +1774,13 @@ func (a *autopilot) rebased(ctx context.Context, it *aiv1.AutopilotItem, mr *git
 	}
 	// Back to working, so the CI loop follows the new pipeline. If this
 	// fails, the gate hands the unchecked head back on the next poll.
-	wf := a.spec.Workflow
-	if _, err := a.gl.UpdateIssue(ctx, a.spec.GitLab.Project, it.IID, gitlab.UpdateIssueOptions{
-		AddLabels: []string{wf.WorkingLabel}, RemoveLabels: []string{wf.ReviewLabel},
-	}); err != nil {
-		return fmt.Errorf("moving issue #%d back to %q: %w", it.IID, wf.WorkingLabel, err)
-	}
-	return nil
+	return a.r.backToWorking(ctx, a.gl, a.spec, it.IID)
 }
 
 // diffHash hashes the change of an MR of project (home, or the companion's):
 // the files and their added and removed lines, without positions, so a
 // rebase that only moves the change keeps the
 // hash. It is empty if GitLab does not return the whole change.
-func (a *autopilot) diffHash(ctx context.Context, project string, iid int64) (string, error) {
-	return diffHash(ctx, a.gl, project, iid)
-}
-
-// diffHash is autopilot.diffHash with the client gl.
 func diffHash(ctx context.Context, gl gitlab.API, project string, iid int64) (string, error) {
 	diffs, err := gl.ListMergeRequestDiffs(ctx, project, iid)
 	if err != nil {
@@ -1910,15 +1888,8 @@ func collectDecisions(is *gitlab.Issue, notes []gitlab.Note, botID int64) []aiv1
 			out = append(out, aiv1.DecisionRef{ID: d.ID, Title: d.Title, URL: fmt.Sprintf("%s#note_%d", is.WebURL, n.ID), Superseded: d.Superseded})
 		}
 	}
-	return capDecisions(out)
-}
-
-// capDecisions keeps the newest (last) aiv1.MaxAutopilotItemDecisions.
-func capDecisions(ds []aiv1.DecisionRef) []aiv1.DecisionRef {
-	if len(ds) > aiv1.MaxAutopilotItemDecisions {
-		return ds[len(ds)-aiv1.MaxAutopilotItemDecisions:]
-	}
-	return ds
+	// Keep the newest (last) aiv1.MaxAutopilotItemDecisions.
+	return out[max(0, len(out)-aiv1.MaxAutopilotItemDecisions):]
 }
 
 // pause stops the queue over issue iid (0: none) and says why and the ways
@@ -2250,7 +2221,7 @@ func (a *autopilot) commands(ctx context.Context) error {
 		}
 		if word == "merge" || word == "start" || word == "move" || word == "endmilestone" || word == "release" || word == "no-release" || word == "parallel" {
 			// Owners only, also where anyone may give commands.
-			if ok, err := a.gate.byOwner(ctx, n, a.st.Spec.Owners); err != nil {
+			if ok, err := a.gate.isOwner(ctx, n.Author.ID, a.st.Spec.Owners); err != nil {
 				return err
 			} else if !ok {
 				reply := map[string]string{"merge": notOwnerMerge, "start": notOwnerStart, "move": notOwnerMove, "endmilestone": notOwnerEnd,

@@ -284,12 +284,8 @@ func setProjectSetReady(set *aiv1.AgentProjectSet) {
 }
 
 func setProjectSetCondition(set *aiv1.AgentProjectSet, typ string, ok bool, reason, msg string) {
-	status := metav1.ConditionFalse
-	if ok {
-		status = metav1.ConditionTrue
-	}
 	meta.SetStatusCondition(&set.Status.Conditions, metav1.Condition{
-		Type: typ, Status: status, Reason: reason, Message: msg, ObservedGeneration: set.Generation,
+		Type: typ, Status: boolCondition(ok), Reason: reason, Message: msg, ObservedGeneration: set.Generation,
 	})
 }
 
@@ -300,12 +296,7 @@ func (r *AgentProjectSetReconciler) patchStatus(ctx context.Context, set, orig *
 	return ctrl.Result{RequeueAfter: poll}, nil
 }
 
-func (r *AgentProjectSetReconciler) now() time.Time {
-	if r.Now != nil {
-		return r.Now()
-	}
-	return time.Now()
-}
+func (r *AgentProjectSetReconciler) now() time.Time { return nowOr(r.Now) }
 
 // SetupWithManager registers the controller. It does not watch the children:
 // their status changes on every poll and must not re-run discovery.

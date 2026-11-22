@@ -377,12 +377,7 @@ func (r *AgentProjectReconciler) milestonesChanged(ctx context.Context, project 
 // syncTimeout is the least time a poll of GitLab may take.
 const syncTimeout = 2 * time.Minute
 
-func (r *AgentProjectReconciler) now() time.Time {
-	if r.Now != nil {
-		return r.Now()
-	}
-	return time.Now()
-}
+func (r *AgentProjectReconciler) now() time.Time { return nowOr(r.Now) }
 
 func (r *AgentProjectReconciler) gitlabClient(ctx context.Context, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec) (gitlab.API, error) {
 	ref := spec.GitLab.TokenSecretRef
@@ -862,7 +857,7 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 	// The merge request of an issue in review conflicts with the default
 	// branch: the next run merges it in and the agent resolves the
 	// conflicts, once per head.
-	conflict := !created && *wf.ResolveConflicts && mr != nil && mr.State == "opened" && hasConflicts(mr) && mr.SHA != "" &&
+	conflict := !created && *wf.ResolveConflicts && mr != nil && mr.State == "opened" && (mr.HasConflicts || mr.DetailedMergeStatus == "conflict") && mr.SHA != "" &&
 		is.HasLabel(wf.ReviewLabel) && !task.RunPending() && src.MergeBaseFor != mr.SHA
 	if conflict {
 		log.FromContext(ctx).Info("merge request conflicts with the default branch, asking the agent to merge it", "issue", is.IID, "mr", mr.IID, "sha", mr.SHA)
@@ -1238,12 +1233,6 @@ func (r *AgentProjectReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		b = b.WatchesRawSource(source.Channel(r.Wakes, &handler.EnqueueRequestForObject{}))
 	}
 	return b.Named("agentproject").Complete(r)
-}
-
-// hasConflicts reports whether GitLab sees conflicts between the MR and its
-// target branch.
-func hasConflicts(mr *gitlab.MergeRequest) bool {
-	return mr.HasConflicts || mr.DetailedMergeStatus == "conflict"
 }
 
 // requestMergeBase asks the next run of task to merge the default branch into

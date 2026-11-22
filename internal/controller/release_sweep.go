@@ -48,7 +48,12 @@ func (r *AgentProjectReconciler) syncProjectReleases(ctx context.Context, gl git
 	defer func() {
 		project.Status.Releases = aiv1.TrimReleases(project.Status.Releases, aiv1.MaxProjectReleases)
 	}()
-	if autopilotRunning(specTasks) {
+	// While an autopilot of the project is Running or Paused, only follow
+	// the releases that already run.
+	if slices.ContainsFunc(specTasks, func(st *aiv1.AgentTask) bool {
+		ap := st.Status.Autopilot
+		return ap != nil && (ap.Phase == aiv1.AutopilotRunning || ap.Phase == aiv1.AutopilotPaused)
+	}) {
 		for i := range project.Status.Releases {
 			if rec := &project.Status.Releases[i]; rec.State == aiv1.ReleaseRunning {
 				if err := x.running(ctx, rec); err != nil {
@@ -65,15 +70,6 @@ func (r *AgentProjectReconciler) syncProjectReleases(ctx context.Context, gl git
 		}
 	}
 	return x.step(ctx, project.Status.Releases)
-}
-
-// autopilotRunning reports whether an autopilot of the project is Running
-// or Paused.
-func autopilotRunning(specTasks []*aiv1.AgentTask) bool {
-	return slices.ContainsFunc(specTasks, func(st *aiv1.AgentTask) bool {
-		ap := st.Status.Autopilot
-		return ap != nil && (ap.Phase == aiv1.AutopilotRunning || ap.Phase == aiv1.AutopilotPaused)
-	})
 }
 
 // releasesOpen reports whether a record of recs has not ended.

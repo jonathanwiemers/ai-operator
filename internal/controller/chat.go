@@ -69,12 +69,7 @@ type Chat struct {
 // NeedLeaderElection makes the dispatch loop leader-only.
 func (c *Chat) NeedLeaderElection() bool { return true }
 
-func (c *Chat) now() time.Time {
-	if c.Now != nil {
-		return c.Now()
-	}
-	return time.Now()
-}
+func (c *Chat) now() time.Time { return nowOr(c.Now) }
 
 // Start waits for the database, then dispatches queued messages until ctx
 // ends: once immediately, on each LISTEN notification, and every poll.

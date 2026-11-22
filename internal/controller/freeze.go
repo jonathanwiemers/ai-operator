@@ -23,19 +23,14 @@ const mainHealthStale = 3
 // loop saw the issue's pipelines. Each active item in queue order, until one
 // paused or resumed.
 func (a *autopilot) freezeOnMainRed(ctx context.Context) error {
-	return a.eachActive(ctx, func(ctx context.Context, it *aiv1.AutopilotItem) (bool, error) {
+	return a.eachItem(ctx, func(it *aiv1.AutopilotItem) bool { return it.Hold == nil }, func(ctx context.Context, it *aiv1.AutopilotItem) (bool, error) {
 		return false, a.freezeItem(ctx, it)
 	})
 }
 
-// eachActive runs f for each active item that is not held, in queue order,
-// and stops after the first that acted (f says so) or changed the phase or
-// its pause.
-func (a *autopilot) eachActive(ctx context.Context, f func(context.Context, *aiv1.AutopilotItem) (bool, error)) error {
-	return a.eachItem(ctx, func(it *aiv1.AutopilotItem) bool { return it.Hold == nil }, f)
-}
-
-// eachItem is eachActive over the active items keep accepts, held or not.
+// eachItem runs f for each active item keep accepts, in queue order, and
+// stops after the first that acted (f says so) or changed the phase or its
+// pause.
 func (a *autopilot) eachItem(ctx context.Context, keep func(*aiv1.AutopilotItem) bool, f func(context.Context, *aiv1.AutopilotItem) (bool, error)) error {
 	for i := range a.ap.Items {
 		it := &a.ap.Items[i]

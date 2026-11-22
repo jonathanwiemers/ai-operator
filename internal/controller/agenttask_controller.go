@@ -398,9 +398,12 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	return result, r.patchStatus(ctx, &task, orig)
 }
 
-func (r *AgentTaskReconciler) now() time.Time {
-	if r.Now != nil {
-		return r.Now()
+func (r *AgentTaskReconciler) now() time.Time { return nowOr(r.Now) }
+
+// nowOr is now (a clock that tests set), or the wall clock if now is nil.
+func nowOr(now func() time.Time) time.Time {
+	if now != nil {
+		return now()
 	}
 	return time.Now()
 }

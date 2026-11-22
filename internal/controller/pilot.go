@@ -532,11 +532,7 @@ func (r *AgentProjectReconciler) writeFailed(ctx context.Context, task *aiv1.Age
 // pilotReply answers a comment where it was written. A failed answer is not
 // tried again: the comment is handled.
 func pilotReply(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, n pilotNote, text string) {
-	noteReply(ctx, gl, spec, n, "🧭 "+text)
-}
-
-// noteReply is pilotReply without the pilot's sign.
-func noteReply(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, n pilotNote, body string) {
+	body := "🧭 " + text
 	var err error
 	if n.mr != 0 {
 		_, err = gl.CreateMergeRequestNote(ctx, spec.GitLab.Project, n.mr, body)
