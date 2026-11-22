@@ -100,12 +100,10 @@ vulncheck:
   extends: .go
   variables: { MISE_TASK: vulncheck }
 
-# Unused Go code, the findings in the job log. Report-only while it has a
-# backlog: the merge request that brings it to zero removes allow_failure.
+# Unused Go code (staticcheck U1000 and deadcode); fails on any finding.
 deadcode:
   extends: .go
   variables: { MISE_TASK: deadcode }
-  allow_failure: true
 
 # The research store tests need a real Postgres; with
 # AI_TEST_REQUIRE_DATABASE they fail instead of skipping without one.

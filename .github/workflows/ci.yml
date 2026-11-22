@@ -46,11 +46,9 @@ jobs:
         run: go vet ./...
       - name: vulncheck
         run: make vulncheck
-      # Report-only while it has a backlog: the merge request that brings it
-      # to zero removes continue-on-error.
+      # Unused Go code (staticcheck U1000 and deadcode); fails on any finding.
       - name: deadcode
         run: make deadcode
-        continue-on-error: true
       - name: test
         # Fails when a package is more than 0.2 points below its baseline.
         run: |

@@ -43,7 +43,6 @@ func line(prefix string) *regexp.Regexp {
 var (
 	ruleRE   = regexp.MustCompile(`(?i)^(R[0-9]+)[ \t]*:[ \t]*(switch|pilot|prompt)\b[ \t]*:?[ \t]*(.*)$`)
 	switchRE = regexp.MustCompile(`^([A-Za-z.]{1,60})[ \t]*=[ \t]*(\S{1,20})$`)
-	idRE     = regexp.MustCompile(`^R[0-9]+$`)
 	idLineRE = regexp.MustCompile(`(?i)^(R[0-9]+)[ \t]*:`)
 )
 
@@ -138,9 +137,6 @@ func Check(kind, text string) error {
 	}
 	return nil
 }
-
-// ValidID reports whether id names a rule ("R2").
-func ValidID(id string) bool { return idRE.MatchString(id) }
 
 // Add appends a rule with the next free ID to a description; it returns
 // the new description and the ID.
