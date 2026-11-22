@@ -3949,6 +3949,93 @@ export interface CallModelUsage {
 }
 
 //////////
+// source: agenttask_chat_types.go
+
+/**
+ * ChatMessage is one Desk chat turn handed to the runner.
+ */
+export interface ChatMessage {
+  /**
+   * ID is the chat_messages row id.
+   */
+  id: number /* int64 */;
+  /**
+   * Kind is message, interrupt or command. The runner skips command;
+   * the operator handles those.
+   * +kubebuilder:validation:Enum=message;interrupt;command
+   */
+  kind: string;
+  /**
+   * Text is the user's message, at most 16 KiB.
+   * +kubebuilder:validation:MaxLength=16384
+   */
+  text: string;
+  /**
+   * Author is the OIDC subject.
+   */
+  author: string;
+  /**
+   * AuthorName is a display name for the prompt.
+   * +optional
+   */
+  authorName?: string;
+  /**
+   * Role is who wrote a chatContext message: user or agent. Unset on
+   * chatMessages, which are the user's.
+   * +optional
+   * +kubebuilder:validation:Enum=user;agent
+   */
+  role?: string;
+  /**
+   * At is when the message was written.
+   */
+  at: string;
+  /**
+   * Decisions are the owner's answers to a plan's decisions, sent with
+   * this message from the Desk. Plan messages only.
+   * +optional
+   * +listType=atomic
+   * +kubebuilder:validation:MaxItems=30
+   */
+  decisions?: PlanDecisionAnswer[];
+}
+/**
+ * PlanDecisionAnswer is an owner's answer to one plan decision at the
+ * version the owner saw: keep it, pick option Option or answer Other.
+ * Exactly one of Keep, Option and Other is set.
+ */
+export interface PlanDecisionAnswer {
+  /**
+   * ID is the decision's ID: D1, D2, …
+   * +kubebuilder:validation:MaxLength=16
+   */
+  id: string;
+  /**
+   * Version is the decision's version the owner answered.
+   * +kubebuilder:validation:Minimum=1
+   */
+  version: number /* int64 */;
+  /**
+   * Keep signs the version off as it is.
+   * +optional
+   */
+  keep?: boolean;
+  /**
+   * Option is the 0-based index of the option the owner picked.
+   * +optional
+   * +kubebuilder:validation:Minimum=0
+   * +kubebuilder:validation:Maximum=4
+   */
+  option?: number /* int32 */;
+  /**
+   * Other is the owner's own answer.
+   * +optional
+   * +kubebuilder:validation:MaxLength=2000
+   */
+  other?: string;
+}
+
+//////////
 // source: agenttask_checkpoint_types.go
 
 /**
@@ -4080,6 +4167,204 @@ export interface RunCheckpoint {
    * At is when the checkpoint was pushed.
    */
   at: string;
+}
+
+//////////
+// source: agenttask_ci_types.go
+
+/**
+ * CIState is the state of the pipeline of the agent's last push.
+ * +kubebuilder:validation:Enum=Pending;Running;Fixing;Success;Failed;BaseFailing;Canceled;None
+ */
+/**
+ * CIStatePending: no pipeline yet for the pushed commit.
+ */
+export const CIStatePending = "Pending";
+/**
+ * CIStateRunning: the pipeline (or a retry of its failed jobs) runs.
+ */
+export const CIStateRunning = "Running";
+/**
+ * CIStateFixing: the agent was asked to fix the red pipeline.
+ */
+export const CIStateFixing = "Fixing";
+/**
+ * CIStateSuccess: green (or skipped / waiting for manual jobs).
+ */
+export const CIStateSuccess = "Success";
+/**
+ * CIStateFailed: still red after MaxFixRounds, handed to a human.
+ */
+export const CIStateFailed = "Failed";
+/**
+ * CIStateBaseFailing: the same jobs fail on the default branch too.
+ */
+export const CIStateBaseFailing = "BaseFailing";
+/**
+ * CIStateCanceled: the pipeline was canceled.
+ */
+export const CIStateCanceled = "Canceled";
+/**
+ * CIStateNone: no pipeline ran for the commit.
+ */
+export const CIStateNone = "None";
+export type CIState = typeof CIStatePending | typeof CIStateRunning | typeof CIStateFixing | typeof CIStateSuccess | typeof CIStateFailed | typeof CIStateBaseFailing | typeof CIStateCanceled | typeof CIStateNone;
+/**
+ * CIStatus tracks the pipeline of the agent's last push. It is written by
+ * the operator.
+ */
+export interface CIStatus {
+  /**
+   * SHA of the pushed commit this status is about.
+   */
+  sha: string;
+  state: CIState;
+  /**
+   * +optional
+   */
+  pipelineID?: number /* int64 */;
+  /**
+   * +optional
+   */
+  pipelineURL?: string;
+  /**
+   * Retried is set once the failed jobs of the pipeline were retried.
+   * +optional
+   */
+  retried?: boolean;
+  /**
+   * FailedJobs of the latest failed pipeline.
+   * +optional
+   */
+  failedJobs?: string[];
+  /**
+   * PingedFor is the event the owners were last mentioned for on this
+   * commit, so a pipeline run again in review does not ping them again
+   * for the same thing. A ping is sent at most once: if its comment
+   * fails, the comment is posted again without it.
+   * +optional
+   */
+  pingedFor?: NotifyEvent;
+  /**
+   * Companion is the pipeline of the companion's pushed head
+   * (status.run.companion.pushedSHA); unset without a pushed companion.
+   * +optional
+   */
+  companion?: CompanionCI;
+}
+/**
+ * CompanionCI tracks the pipeline of the companion's pushed head, with the
+ * rules of the home pipeline except the default-branch check (BaseFailing).
+ */
+export interface CompanionCI {
+  /**
+   * SHA is the companion head this status is about.
+   */
+  sha: string;
+  state: CIState;
+  /**
+   * +optional
+   */
+  pipelineID?: number /* int64 */;
+  /**
+   * +optional
+   */
+  pipelineURL?: string;
+  /**
+   * Retried is set once the failed jobs of the pipeline were retried.
+   * +optional
+   */
+  retried?: boolean;
+  /**
+   * FailedJobs of the latest failed pipeline.
+   * +optional
+   */
+  failedJobs?: string[];
+  /**
+   * Since is when the operator first followed SHA: without a pipeline
+   * after ci.noPipelineTimeout it counts as no CI (None).
+   * +optional
+   */
+  since?: string;
+}
+/**
+ * TaskPhase is a coarse summary of where a task is in its lifecycle.
+ * +kubebuilder:validation:Enum=Pending;Queued;Running;Waiting;Idle;Hibernated;Archived;Blocked
+ */
+/**
+ * TaskPhasePending: created, nothing has run yet and no run is requested.
+ */
+export const TaskPhasePending = "Pending";
+/**
+ * TaskPhaseQueued: a run is requested but the project is at capacity.
+ */
+export const TaskPhaseQueued = "Queued";
+/**
+ * TaskPhaseRunning: a pod exists and a run is requested or in progress.
+ */
+export const TaskPhaseRunning = "Running";
+/**
+ * TaskPhaseWaiting: a run is requested but deferred because an agent
+ * engine hit its usage or rate limit; it resumes at run.deferredUntil.
+ */
+export const TaskPhaseWaiting = "Waiting";
+/**
+ * TaskPhaseIdle: the run is done; the pod waits IdleTimeout for a
+ * follow-up request before it is stopped.
+ */
+export const TaskPhaseIdle = "Idle";
+/**
+ * TaskPhaseHibernated: pod deleted after IdleTimeout, workspace kept.
+ */
+export const TaskPhaseHibernated = "Hibernated";
+/**
+ * TaskPhaseArchived: workspace deleted after RetentionPeriod.
+ */
+export const TaskPhaseArchived = "Archived";
+/**
+ * TaskPhaseBlocked: the task hit a safety limit and needs a human.
+ */
+export const TaskPhaseBlocked = "Blocked";
+export type TaskPhase = typeof TaskPhasePending | typeof TaskPhaseQueued | typeof TaskPhaseRunning | typeof TaskPhaseWaiting | typeof TaskPhaseIdle | typeof TaskPhaseHibernated | typeof TaskPhaseArchived | typeof TaskPhaseBlocked;
+/**
+ * RunResult is the outcome of the last agent run.
+ */
+export const RunResultSucceeded = "Succeeded";
+export const RunResultNeedsInput = "NeedsInput";
+export const RunResultFailed = "Failed";
+/**
+ * RunResultDeferred: the run hit a usage or rate limit and will be
+ * retried; it does not count towards maxRunsPerTask.
+ */
+export const RunResultDeferred = "Deferred";
+export type RunResult = typeof RunResultSucceeded | typeof RunResultNeedsInput | typeof RunResultFailed | typeof RunResultDeferred;
+/**
+ * ContainerTermination is how a container last stopped.
+ */
+export interface ContainerTermination {
+  /**
+   * Reason as the kubelet reports it, e.g. OOMKilled or Error.
+   * +optional
+   */
+  reason?: string;
+  /**
+   * +optional
+   */
+  exitCode?: number /* int32 */;
+  /**
+   * +optional
+   */
+  finishedAt?: string;
+  /**
+   * Restarts of the container in its pod so far.
+   * +optional
+   */
+  restarts?: number /* int32 */;
+  /**
+   * MemoryLimit of the container, if it has one.
+   * +optional
+   */
+  memoryLimit?: string;
 }
 
 //////////
@@ -5331,283 +5616,6 @@ export interface FollowUpDraftRequest {
    * By is the owner who asked.
    */
   by: string;
-}
-/**
- * ChatMessage is one Desk chat turn handed to the runner.
- */
-export interface ChatMessage {
-  /**
-   * ID is the chat_messages row id.
-   */
-  id: number /* int64 */;
-  /**
-   * Kind is message, interrupt or command. The runner skips command;
-   * the operator handles those.
-   * +kubebuilder:validation:Enum=message;interrupt;command
-   */
-  kind: string;
-  /**
-   * Text is the user's message, at most 16 KiB.
-   * +kubebuilder:validation:MaxLength=16384
-   */
-  text: string;
-  /**
-   * Author is the OIDC subject.
-   */
-  author: string;
-  /**
-   * AuthorName is a display name for the prompt.
-   * +optional
-   */
-  authorName?: string;
-  /**
-   * Role is who wrote a chatContext message: user or agent. Unset on
-   * chatMessages, which are the user's.
-   * +optional
-   * +kubebuilder:validation:Enum=user;agent
-   */
-  role?: string;
-  /**
-   * At is when the message was written.
-   */
-  at: string;
-  /**
-   * Decisions are the owner's answers to a plan's decisions, sent with
-   * this message from the Desk. Plan messages only.
-   * +optional
-   * +listType=atomic
-   * +kubebuilder:validation:MaxItems=30
-   */
-  decisions?: PlanDecisionAnswer[];
-}
-/**
- * PlanDecisionAnswer is an owner's answer to one plan decision at the
- * version the owner saw: keep it, pick option Option or answer Other.
- * Exactly one of Keep, Option and Other is set.
- */
-export interface PlanDecisionAnswer {
-  /**
-   * ID is the decision's ID: D1, D2, …
-   * +kubebuilder:validation:MaxLength=16
-   */
-  id: string;
-  /**
-   * Version is the decision's version the owner answered.
-   * +kubebuilder:validation:Minimum=1
-   */
-  version: number /* int64 */;
-  /**
-   * Keep signs the version off as it is.
-   * +optional
-   */
-  keep?: boolean;
-  /**
-   * Option is the 0-based index of the option the owner picked.
-   * +optional
-   * +kubebuilder:validation:Minimum=0
-   * +kubebuilder:validation:Maximum=4
-   */
-  option?: number /* int32 */;
-  /**
-   * Other is the owner's own answer.
-   * +optional
-   * +kubebuilder:validation:MaxLength=2000
-   */
-  other?: string;
-}
-/**
- * CIState is the state of the pipeline of the agent's last push.
- * +kubebuilder:validation:Enum=Pending;Running;Fixing;Success;Failed;BaseFailing;Canceled;None
- */
-/**
- * CIStatePending: no pipeline yet for the pushed commit.
- */
-export const CIStatePending = "Pending";
-/**
- * CIStateRunning: the pipeline (or a retry of its failed jobs) runs.
- */
-export const CIStateRunning = "Running";
-/**
- * CIStateFixing: the agent was asked to fix the red pipeline.
- */
-export const CIStateFixing = "Fixing";
-/**
- * CIStateSuccess: green (or skipped / waiting for manual jobs).
- */
-export const CIStateSuccess = "Success";
-/**
- * CIStateFailed: still red after MaxFixRounds, handed to a human.
- */
-export const CIStateFailed = "Failed";
-/**
- * CIStateBaseFailing: the same jobs fail on the default branch too.
- */
-export const CIStateBaseFailing = "BaseFailing";
-/**
- * CIStateCanceled: the pipeline was canceled.
- */
-export const CIStateCanceled = "Canceled";
-/**
- * CIStateNone: no pipeline ran for the commit.
- */
-export const CIStateNone = "None";
-export type CIState = typeof CIStatePending | typeof CIStateRunning | typeof CIStateFixing | typeof CIStateSuccess | typeof CIStateFailed | typeof CIStateBaseFailing | typeof CIStateCanceled | typeof CIStateNone;
-/**
- * CIStatus tracks the pipeline of the agent's last push. It is written by
- * the operator.
- */
-export interface CIStatus {
-  /**
-   * SHA of the pushed commit this status is about.
-   */
-  sha: string;
-  state: CIState;
-  /**
-   * +optional
-   */
-  pipelineID?: number /* int64 */;
-  /**
-   * +optional
-   */
-  pipelineURL?: string;
-  /**
-   * Retried is set once the failed jobs of the pipeline were retried.
-   * +optional
-   */
-  retried?: boolean;
-  /**
-   * FailedJobs of the latest failed pipeline.
-   * +optional
-   */
-  failedJobs?: string[];
-  /**
-   * PingedFor is the event the owners were last mentioned for on this
-   * commit, so a pipeline run again in review does not ping them again
-   * for the same thing. A ping is sent at most once: if its comment
-   * fails, the comment is posted again without it.
-   * +optional
-   */
-  pingedFor?: NotifyEvent;
-  /**
-   * Companion is the pipeline of the companion's pushed head
-   * (status.run.companion.pushedSHA); unset without a pushed companion.
-   * +optional
-   */
-  companion?: CompanionCI;
-}
-/**
- * CompanionCI tracks the pipeline of the companion's pushed head, with the
- * rules of the home pipeline except the default-branch check (BaseFailing).
- */
-export interface CompanionCI {
-  /**
-   * SHA is the companion head this status is about.
-   */
-  sha: string;
-  state: CIState;
-  /**
-   * +optional
-   */
-  pipelineID?: number /* int64 */;
-  /**
-   * +optional
-   */
-  pipelineURL?: string;
-  /**
-   * Retried is set once the failed jobs of the pipeline were retried.
-   * +optional
-   */
-  retried?: boolean;
-  /**
-   * FailedJobs of the latest failed pipeline.
-   * +optional
-   */
-  failedJobs?: string[];
-  /**
-   * Since is when the operator first followed SHA: without a pipeline
-   * after ci.noPipelineTimeout it counts as no CI (None).
-   * +optional
-   */
-  since?: string;
-}
-/**
- * TaskPhase is a coarse summary of where a task is in its lifecycle.
- * +kubebuilder:validation:Enum=Pending;Queued;Running;Waiting;Idle;Hibernated;Archived;Blocked
- */
-/**
- * TaskPhasePending: created, nothing has run yet and no run is requested.
- */
-export const TaskPhasePending = "Pending";
-/**
- * TaskPhaseQueued: a run is requested but the project is at capacity.
- */
-export const TaskPhaseQueued = "Queued";
-/**
- * TaskPhaseRunning: a pod exists and a run is requested or in progress.
- */
-export const TaskPhaseRunning = "Running";
-/**
- * TaskPhaseWaiting: a run is requested but deferred because an agent
- * engine hit its usage or rate limit; it resumes at run.deferredUntil.
- */
-export const TaskPhaseWaiting = "Waiting";
-/**
- * TaskPhaseIdle: the run is done; the pod waits IdleTimeout for a
- * follow-up request before it is stopped.
- */
-export const TaskPhaseIdle = "Idle";
-/**
- * TaskPhaseHibernated: pod deleted after IdleTimeout, workspace kept.
- */
-export const TaskPhaseHibernated = "Hibernated";
-/**
- * TaskPhaseArchived: workspace deleted after RetentionPeriod.
- */
-export const TaskPhaseArchived = "Archived";
-/**
- * TaskPhaseBlocked: the task hit a safety limit and needs a human.
- */
-export const TaskPhaseBlocked = "Blocked";
-export type TaskPhase = typeof TaskPhasePending | typeof TaskPhaseQueued | typeof TaskPhaseRunning | typeof TaskPhaseWaiting | typeof TaskPhaseIdle | typeof TaskPhaseHibernated | typeof TaskPhaseArchived | typeof TaskPhaseBlocked;
-/**
- * RunResult is the outcome of the last agent run.
- */
-export const RunResultSucceeded = "Succeeded";
-export const RunResultNeedsInput = "NeedsInput";
-export const RunResultFailed = "Failed";
-/**
- * RunResultDeferred: the run hit a usage or rate limit and will be
- * retried; it does not count towards maxRunsPerTask.
- */
-export const RunResultDeferred = "Deferred";
-export type RunResult = typeof RunResultSucceeded | typeof RunResultNeedsInput | typeof RunResultFailed | typeof RunResultDeferred;
-/**
- * ContainerTermination is how a container last stopped.
- */
-export interface ContainerTermination {
-  /**
-   * Reason as the kubelet reports it, e.g. OOMKilled or Error.
-   * +optional
-   */
-  reason?: string;
-  /**
-   * +optional
-   */
-  exitCode?: number /* int32 */;
-  /**
-   * +optional
-   */
-  finishedAt?: string;
-  /**
-   * Restarts of the container in its pod so far.
-   * +optional
-   */
-  restarts?: number /* int32 */;
-  /**
-   * MemoryLimit of the container, if it has one.
-   * +optional
-   */
-  memoryLimit?: string;
 }
 /**
  * AgentTaskStatus is the observed state of an AgentTask. The top-level fields

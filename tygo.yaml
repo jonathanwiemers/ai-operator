@@ -25,6 +25,8 @@ packages:
       - agenttask_pilot_types.go
       - agenttask_spend_types.go
       - agenttask_calls_types.go
+      - agenttask_ci_types.go
+      - agenttask_chat_types.go
       - agenttask_types.go
       - crossrepo.go
       - pause.go
