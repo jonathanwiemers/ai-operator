@@ -724,12 +724,6 @@ type PilotStatus struct {
 	// +optional
 	LastNoteID int64 `json:"lastNoteID,omitempty"`
 
-	// Rejected is when a user who is no owner was last told so, by GitLab
-	// user ID. No longer written: each comment gets its own reply, counted
-	// in the project's status.commandReplies.authors.
-	// +optional
-	Rejected map[string]metav1.Time `json:"rejected,omitempty"`
-
 	// Events are the keys of the events handed to the pilot (Coordinate
 	// tasks), those that hold first, then the last ones that ended.
 	// +optional
@@ -2162,13 +2156,6 @@ type AutopilotStatus struct {
 	// Deprecated: read only to seed the project's status.milestoneOrder.
 	// +optional
 	StartRequestedAt *metav1.Time `json:"startRequestedAt,omitempty"`
-
-	// PassedBy are the younger milestones a run-next mark ranked ahead of
-	// this one, whose "goes first" note the tracking issue already has.
-	//
-	// Deprecated: no longer read or written.
-	// +optional
-	PassedBy []int64 `json:"passedBy,omitempty"`
 
 	// Items in queue order: dependencies first, ties in plan order.
 	// +optional

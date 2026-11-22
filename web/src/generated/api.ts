@@ -3896,13 +3896,6 @@ export interface PilotStatus {
    */
   lastNoteID?: number /* int64 */;
   /**
-   * Rejected is when a user who is no owner was last told so, by GitLab
-   * user ID. No longer written: each comment gets its own reply, counted
-   * in the project's status.commandReplies.authors.
-   * +optional
-   */
-  rejected?: { [key: string]: string};
-  /**
    * Events are the keys of the events handed to the pilot (Coordinate
    * tasks), those that hold first, then the last ones that ended.
    * +optional
@@ -5676,13 +5669,6 @@ export interface AutopilotStatus {
    * +optional
    */
   startRequestedAt?: string;
-  /**
-   * PassedBy are the younger milestones a run-next mark ranked ahead of
-   * this one, whose "goes first" note the tracking issue already has.
-   * Deprecated: no longer read or written.
-   * +optional
-   */
-  passedBy?: number /* int64 */[];
   /**
    * Items in queue order: dependencies first, ties in plan order.
    * +optional

@@ -123,8 +123,9 @@ Every namespace that hosts an AgentProject must be listed in
 All chart values, with their defaults, are in the
 [chart README](../../charts/ai-operator/README.md#values).
 
-To upgrade, run the same command with a new `--version`. The custom
-resource definitions are upgraded with the chart.
+To upgrade, run the same command with a new `--version`; the custom
+resource definitions come with the chart. [Upgrade](../guides/upgrade.md)
+lists what each release removed and what to delete from your files.
 
 ## Install with Flux
 

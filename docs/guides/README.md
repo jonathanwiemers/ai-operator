@@ -54,6 +54,8 @@ In the order you need them for a milestone:
     research on, choosing agents, retention and troubleshooting.
 20. [Project sets](project-sets.md): one AgentProjectSet for a whole GitLab
     group, active and dormant projects, globs and the request budget.
+21. [Upgrade](upgrade.md): move to a new release, and what each release
+    removed from manifests and Helm values.
 
 ## Next
 

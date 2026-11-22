@@ -235,8 +235,7 @@ GitLab call). A denied command gets one reply in its thread (`replyPerNote` in
 `command_replies.go`: the reply carries a `reply-to` marker, so a repeated
 poll does not answer twice), at most `maxRepliesPerDay` (10) per author and
 24 h, counted in the AgentProject's `status.commandReplies.authors`; beyond
-the cap it is logged. The place's watermark moves past it either way. The
-older `status.pilot.rejected` is no longer written.
+the cap it is logged. The place's watermark moves past it either way.
 
 **Model and effort per issue.** `/agent use` and `/agent effort` start no
 run: on the poll that sees them the operator validates them against
@@ -2668,8 +2667,8 @@ counted interventions; more tools are later steps of
   `spec.source.lastPilotNoteID` of an implement task for its issue and MR;
   both start at the newest comment, so comments from before are history.
   Owners are compared by user ID (`FindUser` per poll with messages).
-  Others get one reply per user and day (`status.pilot.rejected`) and never
-  reach the model; replies of the operator itself start with 🧭.
+  Others get one reply per comment (capped per author in the AgentProject's
+  `status.commandReplies.authors`) and never reach the model; replies of the operator itself start with 🧭.
 * **Messages.** The operator puts the owners' messages into
   `spec.source.pilotMessages`, each with the run request that answers it, and
   bumps `spec.runRequest` in the same update. A run answers the messages of

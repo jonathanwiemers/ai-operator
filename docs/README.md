@@ -32,8 +32,9 @@ watch [budgets and spend](guides/budgets-and-spend.md), try
 [releases](guides/releases.md), make
 [cross-repo changes](guides/cross-repo-changes.md),
 [watch from Kubernetes](guides/watch-from-kubernetes.md), cover a group with
-[project sets](guides/project-sets.md) and run
-[research](guides/research.md).
+[project sets](guides/project-sets.md), run
+[research](guides/research.md) and [upgrade](guides/upgrade.md) to a new
+release.
 
 ## Reference
 
