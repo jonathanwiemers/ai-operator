@@ -28,12 +28,11 @@ func Usernames(names []string) []string {
 	return out
 }
 
-func ownersLine(prefix string) *regexp.Regexp {
-	return regexp.MustCompile(`(?m)^[ \t]*` + regexp.QuoteMeta(prefix) + `[ \t]+owners(?:[ \t]+(.*?))?[ \t]*\r?(?:\n|\z)`)
-}
-
-func ownerSubjectsLine(prefix string) *regexp.Regexp {
-	return regexp.MustCompile(`(?m)^[ \t]*` + regexp.QuoteMeta(prefix) + `[ \t]+owner-subjects(?:[ \t]+(.*?))?[ \t]*\r?(?:\n|\z)`)
+// KeywordLine matches an operator line "<prefix> <keyword> <value>" of a
+// description, such as "/agent owners @alice"; group 1 is the value. The
+// keyword is a literal word such as "owners" or "followup-of".
+func KeywordLine(prefix, keyword string) *regexp.Regexp {
+	return regexp.MustCompile(`(?m)^[ \t]*` + regexp.QuoteMeta(prefix) + `[ \t]+` + keyword + `(?:[ \t]+(.*?))?[ \t]*\r?(?:\n|\z)`)
 }
 
 // WithoutOwners removes the owners lines from a milestone description, so
@@ -41,13 +40,13 @@ func ownerSubjectsLine(prefix string) *regexp.Regexp {
 // set off by blank lines takes one of them along, so the paragraphs around
 // it are spaced as before.
 func WithoutOwners(description, prefix string) string {
-	return WithoutLines(description, ownersLine(prefix))
+	return WithoutLines(description, KeywordLine(prefix, "owners"))
 }
 
 // WithoutOwnerSubjects removes the owner-subjects lines from a milestone
 // description, like WithoutOwners.
 func WithoutOwnerSubjects(description, prefix string) string {
-	return WithoutLines(description, ownerSubjectsLine(prefix))
+	return WithoutLines(description, KeywordLine(prefix, "owner-subjects"))
 }
 
 // WithoutLines removes the lines re matches, spaced like WithoutOwners.
@@ -71,7 +70,7 @@ func WithoutLines(description string, re *regexp.Regexp) string {
 // "<prefix> owners @alice @bob", and whether it has such a line. A line
 // without users names nobody, which turns the mentions off.
 func MilestoneOwners(description, prefix string) ([]string, bool) {
-	m := ownersLine(prefix).FindStringSubmatch(description)
+	m := KeywordLine(prefix, "owners").FindStringSubmatch(description)
 	if m == nil {
 		return nil, false
 	}
@@ -83,7 +82,7 @@ func MilestoneOwners(description, prefix string) ([]string, bool) {
 // no project-level or default fallback: no line means nobody. Tokens are
 // kept as written (unique, in order); they match chat_messages.author.
 func MilestoneOwnerSubjects(description, prefix string) []string {
-	m := ownerSubjectsLine(prefix).FindStringSubmatch(description)
+	m := KeywordLine(prefix, "owner-subjects").FindStringSubmatch(description)
 	if m == nil {
 		return nil
 	}
@@ -135,6 +134,13 @@ var quickAction = regexp.MustCompile(`(?m)^([ \t>]*)/`)
 func Defuse(s string) string {
 	s = mention.ReplaceAllString(s, "$1@​$2")
 	return quickAction.ReplaceAllString(s, "$1​/")
+}
+
+// Inert makes agent text safe for a comment or a description: trimmed,
+// defused, and without HTML comments that could end an operator's marker
+// or block.
+func Inert(s string) string {
+	return Defuse(strings.ReplaceAll(strings.TrimSpace(s), "<!--", "&lt;!--"))
 }
 
 // RequestReview makes the owners the reviewers of a merge request that has

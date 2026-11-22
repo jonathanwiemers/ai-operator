@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"unicode/utf8"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/notify"
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 )
 
 // maxReleaseNotes caps the release notes in bytes, well under GitLab's limit
@@ -158,18 +158,7 @@ func capNotes(head string, lines []string, tail string) string {
 		b.WriteString(more(len(lines) - keep))
 	}
 	b.WriteString(tail)
-	return cutUTF8(b.String(), maxReleaseNotes)
-}
-
-// cutUTF8 cuts the valid UTF-8 string s to at most n bytes, at a character.
-func cutUTF8(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	for n > 0 && !utf8.RuneStart(s[n]) {
-		n--
-	}
-	return s[:n]
+	return textutil.Cut(b.String(), maxReleaseNotes)
 }
 
 // milestoneURL is the milestone's GitLab page, "" outside milestones.

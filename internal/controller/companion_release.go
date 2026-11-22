@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 
@@ -59,7 +60,7 @@ func (a *autopilot) companionReleaseCovered(ctx context.Context, e *aiv1.Compani
 		}
 	}
 	for _, o := range a.ap.Releases {
-		sha := firstNonEmpty(o.ReleasedSHA, o.SHA)
+		sha := cmp.Or(o.ReleasedSHA, o.SHA)
 		if !live(o) || sha == "" {
 			continue
 		}

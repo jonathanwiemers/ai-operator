@@ -18,6 +18,7 @@ import (
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
+	"github.com/jonathanwiemers/ai-operator/internal/notify"
 	"github.com/jonathanwiemers/ai-operator/internal/rules"
 	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 )
@@ -747,14 +748,14 @@ func buildRetroPrompt(facts string) string {
 // renderRetro renders the retrospective comment; agent text is made inert.
 func renderRetro(summary string, followUps []aiv1.PilotFollowUp, spend *aiv1.SpendSummary) string {
 	var b strings.Builder
-	b.WriteString("🧭 **Retrospective**\n\n" + prose(summary) + "\n\n")
+	b.WriteString("🧭 **Retrospective**\n\n" + notify.Inert(summary) + "\n\n")
 	if spend != nil {
 		b.WriteString(renderSpend(spend) + "\n")
 	}
 	if len(followUps) > 0 {
 		b.WriteString("**Follow-ups**\n\n")
 		for i, f := range followUps {
-			fmt.Fprintf(&b, "%d. **%s**: %s\n", i+1, prose(f.Title), prose(strings.Join(strings.Fields(textutil.Truncate(f.Body, 600)), " ")))
+			fmt.Fprintf(&b, "%d. **%s**: %s\n", i+1, notify.Inert(f.Title), notify.Inert(strings.Join(strings.Fields(textutil.Truncate(f.Body, 600)), " ")))
 		}
 		b.WriteString("\nAn owner opens them with `create 1 2` as a reply in this thread.\n\n")
 	}
@@ -804,11 +805,11 @@ func renderSpend(s *aiv1.SpendSummary) string {
 			}
 			switch {
 			case name == aiv1.CursorAutoLabel:
-				parts[i] = prose(name)
+				parts[i] = notify.Inert(name)
 			case d.Unmetered:
-				parts[i] = prose(name) + " (not metered)"
+				parts[i] = notify.Inert(name) + " (not metered)"
 			default:
-				parts[i] = fmt.Sprintf("%s %s (%s tokens)", prose(name), spendUSD(d.CostUSD, d.CostUSD != ""), showTokens(d.Tokens))
+				parts[i] = fmt.Sprintf("%s %s (%s tokens)", notify.Inert(name), spendUSD(d.CostUSD, d.CostUSD != ""), showTokens(d.Tokens))
 			}
 		}
 		fmt.Fprintf(&b, "- %s: %s", dim.name, parts[0])

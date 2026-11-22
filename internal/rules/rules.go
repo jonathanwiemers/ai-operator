@@ -36,10 +36,6 @@ type Rule struct {
 // Active reports whether r is applied.
 func (r Rule) Active() bool { return r.Problem == "" }
 
-func line(prefix string) *regexp.Regexp {
-	return regexp.MustCompile(`(?m)^[ \t]*` + regexp.QuoteMeta(prefix) + `[ \t]+rule(?:[ \t]+(.*?))?[ \t]*\r?(?:\n|\z)`)
-}
-
 var (
 	ruleRE   = regexp.MustCompile(`(?i)^(R[0-9]+)[ \t]*:[ \t]*(switch|pilot|prompt)\b[ \t]*:?[ \t]*(.*)$`)
 	switchRE = regexp.MustCompile(`^([A-Za-z.]{1,60})[ \t]*=[ \t]*(\S{1,20})$`)
@@ -59,15 +55,15 @@ func idOf(l string) string {
 // and the agents get, and what is hashed for re-planning.
 func Spec(description, prefix string) string {
 	d := notify.WithoutOwnerSubjects(notify.WithoutOwners(description, prefix), prefix)
-	d = notify.WithoutLines(notify.WithoutLines(d, line(prefix)), budgetLine(prefix))
-	d = notify.WithoutLines(d, parallelLine(prefix))
-	return notify.WithoutLines(d, followUpLine(prefix))
+	d = notify.WithoutLines(notify.WithoutLines(d, notify.KeywordLine(prefix, "rule")), notify.KeywordLine(prefix, "budget"))
+	d = notify.WithoutLines(d, notify.KeywordLine(prefix, "parallel"))
+	return notify.WithoutLines(d, notify.KeywordLine(prefix, "followup-of"))
 }
 
 // Lines returns the rule lines of a description without "<prefix> rule ".
 func Lines(description, prefix string) []string {
 	var out []string
-	for _, m := range line(prefix).FindAllStringSubmatch(description, -1) {
+	for _, m := range notify.KeywordLine(prefix, "rule").FindAllStringSubmatch(description, -1) {
 		out = append(out, strings.TrimSpace(m[1]))
 	}
 	return out
@@ -96,7 +92,7 @@ func Parse(lines []string) []Rule {
 	conflicts := map[int][]string{}
 	for i, r := range out {
 		for j, o := range out {
-			if i != j && r.Active() && o.Active() && r.Kind == Switch && o.Kind == Switch && settingOf(r.Text) == settingOf(o.Text) {
+			if i != j && r.Active() && o.Active() && r.Kind == Switch && o.Kind == Switch && Setting(r.Text) == Setting(o.Text) {
 				conflicts[i] = append(conflicts[i], o.ID)
 			}
 		}
@@ -153,7 +149,7 @@ func Add(description, prefix, kind, text string) (string, string) {
 	lines := strings.Split(description, "\n")
 	switch {
 	case description == "":
-	case line(prefix).MatchString(lines[len(lines)-1]):
+	case notify.KeywordLine(prefix, "rule").MatchString(lines[len(lines)-1]):
 		description += "\n" // next to the other rules
 	default:
 		description += "\n\n"
@@ -201,9 +197,7 @@ func Switches() []string {
 }
 
 // Setting is the setting of a switch rule's text, "" for none.
-func Setting(text string) string { return settingOf(text) }
-
-func settingOf(text string) string {
+func Setting(text string) string {
 	key, _, _ := parseSwitch(text)
 	return key
 }

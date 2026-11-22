@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"github.com/jonathanwiemers/ai-operator/internal/notify"
 	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"regexp"
 	"strconv"
@@ -122,7 +123,7 @@ func (r *AgentProjectReconciler) syncRevisits(ctx context.Context, gl gitlab.API
 					by += " via the pilot"
 				}
 				n := gitlab.Note{Author: gitlab.User{Username: by}}
-				if err := r.revisitAfterMerge(ctx, gl, spec, st, project.Status.BotUserID, c.OnIssue, n, c.Action.Decision, inert(c.Action.Note)); err != nil {
+				if err := r.revisitAfterMerge(ctx, gl, spec, st, project.Status.BotUserID, c.OnIssue, n, c.Action.Decision, notify.Inert(c.Action.Note)); err != nil {
 					return err
 				}
 			}

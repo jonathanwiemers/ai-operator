@@ -2,6 +2,7 @@ package ui
 
 import (
 	"bufio"
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -95,7 +96,7 @@ func parseLogLine(line []byte) (Entry, bool) {
 		e.StepNo, _ = strconv.Atoi(str("step"))
 		e.Result = str("result")
 		if e.Result == "" {
-			e.Result = firstOf(str("error"), str("reason"))
+			e.Result = cmp.Or(str("error"), str("reason"))
 		}
 	case "agent CLI started":
 		e.Kind, e.Role, e.Engine, e.Model, e.ReadOnly = "cli", str("role"), str("engine"), str("model"), str("readOnly") == "true"
@@ -124,15 +125,6 @@ func parseLogLine(line []byte) (Entry, bool) {
 		}
 	}
 	return e, true
-}
-
-func firstOf(s ...string) string {
-	for _, v := range s {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
 }
 
 // transcriptContainers are read for a task's pod: the runner's steps and

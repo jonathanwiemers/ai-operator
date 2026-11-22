@@ -90,7 +90,7 @@ func costSeriesSQL(q CostQuery, bucket, group string) (string, []any, error) {
 	c := newCostSQL(q, q.From, q.To)
 	b, l := c.arg(bucket), c.arg(loc.String())
 	return c.with + `SELECT to_char(date_trunc(` + b + `::text, at AT TIME ZONE ` + l + `::text), 'YYYY-MM-DD'), ` + key + `, ` + spendTotals + `
-		FROM ` + c.rows(group == "model") + ` GROUP BY 1, 2 ORDER BY 1, 2`, c.args, nil
+		FROM ` + c.rowsWith(costCols, group == "model") + ` GROUP BY 1, 2 ORDER BY 1, 2`, c.args, nil
 }
 
 // costSQL is the common part of the cost queries over q's projects in
@@ -128,14 +128,10 @@ func (c *costSQL) arg(v any) string {
 	return "$" + strconv.Itoa(len(c.args))
 }
 
-// rows is the filtered calls and legacy runs as relation r, without the
-// checkpoint events (legacy with a checkpoint), which cost nothing; byModel
-// splits the calls by model (split).
-func (c *costSQL) rows(byModel bool) string {
-	return c.rowsWith(costCols, byModel)
-}
-
-// rowsWith is rows with the columns cols of spend (and split, byModel).
+// rowsWith is the filtered calls and legacy runs as relation r, with the
+// columns cols of spend (and split, byModel), without the checkpoint events
+// (legacy with a checkpoint), which cost nothing; byModel splits the calls by
+// model (split).
 func (c *costSQL) rowsWith(cols string, byModel bool) string {
 	rows := `SELECT ` + cols + ` FROM spend WHERE NOT legacy OR checkpoint = ''`
 	if byModel {
@@ -175,10 +171,10 @@ type costStmt struct {
 // lines, and the first research call unless research is excluded.
 func costBreakdownsSQL(q CostQuery) []costStmt {
 	cur, prev := newCostSQL(q, q.From, q.To), newCostSQL(q, q.From.Add(-q.To.Sub(q.From)), q.From)
-	totals := `SELECT ` + spendTotals + ` FROM ` + cur.rows(false)
+	totals := `SELECT ` + spendTotals + ` FROM ` + cur.rowsWith(costCols, false)
 	stmts := []costStmt{{cur.with + totals, cur.args}, {prev.with + totals, prev.args}}
 	for _, group := range []string{"project", "kind", "model", "engine"} {
-		stmts = append(stmts, costStmt{cur.with + `SELECT ` + costGroups[group] + `, ` + spendTotals + ` FROM ` + cur.rows(group == "model") +
+		stmts = append(stmts, costStmt{cur.with + `SELECT ` + costGroups[group] + `, ` + spendTotals + ` FROM ` + cur.rowsWith(costCols, group == "model") +
 			` GROUP BY 1 ORDER BY sum(cost_usd) DESC NULLS LAST, 1`, cur.args})
 	}
 	stmts = append(stmts, costStmt{cur.with + stepLinesSQL(cur.filter), cur.args})

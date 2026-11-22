@@ -1869,8 +1869,8 @@ func (a *autopilot) merged(ctx context.Context, it *aiv1.AutopilotItem, mr *gitl
 	a.unready(it)
 	it.Decisions = collectDecisions(is, notes, a.project.Status.BotUserID)
 	if mr != nil {
-		it.MergedSHA = firstNonEmpty(mr.MergeCommitSHA, mr.SquashCommitSHA, mr.SHA)
-		it.MergeRequestIID, it.MergeRequestURL = mr.IID, firstNonEmpty(mr.WebURL, it.MergeRequestURL)
+		it.MergedSHA = cmp.Or(mr.MergeCommitSHA, mr.SquashCommitSHA, mr.SHA)
+		it.MergeRequestIID, it.MergeRequestURL = mr.IID, cmp.Or(mr.WebURL, it.MergeRequestURL)
 		a.countMergedLines(ctx, it, mr.IID)
 	}
 	a.log.Info("autopilot merged", "issue", it.IID, "mr", it.MergeRequestIID, "sha", it.MergedSHA)
@@ -2887,13 +2887,4 @@ func short(sha string) string {
 		return sha[:8]
 	}
 	return sha
-}
-
-func firstNonEmpty(s ...string) string {
-	for _, v := range s {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
 }

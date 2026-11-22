@@ -227,7 +227,7 @@ func promptBody(p aiv1.Prompt, link, newer, extra string, limit int) string {
 		b.WriteString(s + "\n\n")
 	}
 	fmt.Fprintf(&b, "🧭 **%s:** %s", p.ID, inertLine(p.Question, aiv1.MaxPromptQuestion))
-	if c := inert(p.Context); c != "" {
+	if c := notify.Inert(p.Context); c != "" {
 		b.WriteString("\n\n" + c)
 	}
 	if len(p.Options) > 0 {
@@ -389,10 +389,10 @@ func answerReply(p aiv1.Prompt, limit int) string {
 	if o := p.Option(a.OptionID); o != nil {
 		fmt.Fprintf(&b, ": **%s** %s", o.ID, inertLine(o.Label, aiv1.MaxPromptOptionLabel))
 	}
-	if t := inert(textutil.Truncate(strings.TrimSpace(a.Text), maxAnswerQuote)); t != "" {
+	if t := notify.Inert(textutil.Truncate(strings.TrimSpace(a.Text), maxAnswerQuote)); t != "" {
 		b.WriteString("\n\nIn their words (untrusted):\n\n" + quote(t))
 	}
-	if out := inert(a.Outcome); out != "" {
+	if out := notify.Inert(a.Outcome); out != "" {
 		b.WriteString("\n\n" + out)
 	}
 	return fitNote(b.String(), "\n\n"+answerMarker(p), "", limit)

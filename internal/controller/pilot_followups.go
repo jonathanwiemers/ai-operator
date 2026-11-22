@@ -12,6 +12,7 @@ import (
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/command"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/notify"
 )
 
 // followUps opens the follow-ups of the milestone's retrospective that an
@@ -114,7 +115,7 @@ func (a *autopilot) createFollowUps(ctx context.Context, thread string, n gitlab
 		is, err := a.gl.CreateIssue(ctx, a.spec.GitLab.Project, gitlab.CreateIssueOptions{
 			Title: inertLine(f.Title, 200),
 			Description: fmt.Sprintf("%s\n\n_Follow-up from the retrospective of %s (#%d)._\n\n<!-- ai-operator:follow-up=%d-%d -->",
-				inert(f.Body), inertLine(m.Title, 200), a.ap.TrackingIssueIID, m.IID, k),
+				notify.Inert(f.Body), inertLine(m.Title, 200), a.ap.TrackingIssueIID, m.IID, k),
 			Labels: a.spec.Workflow.GeneratedLabel,
 		})
 		if err != nil {

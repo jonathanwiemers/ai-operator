@@ -113,7 +113,8 @@ func (s *Store) CodeInRange(ctx context.Context, q CostQuery, bucket string) (Co
 	if !costBuckets[bucket] {
 		return CodeRange{}, fmt.Errorf("code: unknown bucket %q", bucket)
 	}
-	b := newCodeBuilder()
+	b := &codeBuilder{r: CodeRange{Buckets: []CodeBucket{}, ByProject: []CodeProject{}},
+		buckets: map[string]int{}, projects: map[[2]string]int{}}
 	if len(q.Projects) == 0 {
 		return b.done(), nil
 	}
@@ -168,11 +169,6 @@ type codeBuilder struct {
 	r        CodeRange
 	buckets  map[string]int
 	projects map[[2]string]int
-}
-
-func newCodeBuilder() *codeBuilder {
-	return &codeBuilder{r: CodeRange{Buckets: []CodeBucket{}, ByProject: []CodeProject{}},
-		buckets: map[string]int{}, projects: map[[2]string]int{}}
 }
 
 // bucket is the bucket starting at key, added when new.

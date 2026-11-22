@@ -2,9 +2,10 @@ package rules
 
 import (
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/jonathanwiemers/ai-operator/internal/notify"
 )
 
 // MaxParallelLine is the highest value a milestone's parallel line may set.
@@ -13,16 +14,12 @@ const MaxParallelLine = 10
 // The parallel line "<prefix> parallel <n>" of a milestone is the operator's,
 // like the budget: not part of the spec.
 
-func parallelLine(prefix string) *regexp.Regexp {
-	return regexp.MustCompile(`(?m)^[ \t]*` + regexp.QuoteMeta(prefix) + `[ \t]+parallel(?:[ \t]+(.*?))?[ \t]*\r?(?:\n|\z)`)
-}
-
 // Parallel returns the parallel-issue limit of the first line
 // "<prefix> parallel <n>" of a milestone description, or 0 without such a
 // line. n must be an integer from 1 to MaxParallelLine; anything else is an
 // error, and there is no override then.
 func Parallel(description, prefix string) (int32, error) {
-	m := parallelLine(prefix).FindStringSubmatch(description)
+	m := notify.KeywordLine(prefix, "parallel").FindStringSubmatch(description)
 	if m == nil {
 		return 0, nil
 	}
@@ -38,7 +35,7 @@ func Parallel(description, prefix string) (int32, error) {
 // after the last line.
 func SetParallel(description, prefix string, n int32) string {
 	line := prefix + " parallel " + strconv.FormatInt(int64(n), 10)
-	re := parallelLine(prefix)
+	re := notify.KeywordLine(prefix, "parallel")
 	if loc := re.FindStringIndex(description); loc != nil {
 		old := description[loc[0]:loc[1]]
 		end := ""

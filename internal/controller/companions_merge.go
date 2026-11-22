@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -272,7 +273,7 @@ func (r *AgentProjectReconciler) mergeNow(ctx context.Context, gl gitlab.API, sp
 		if res.State != "merged" {
 			return nil // GitLab merges asynchronously; seen on the next poll
 		}
-		e.MergeSHA = firstNonEmpty(res.MergeCommitSHA, res.SquashCommitSHA, res.SHA)
+		e.MergeSHA = cmp.Or(res.MergeCommitSHA, res.SquashCommitSHA, res.SHA)
 		return r.followMerge(ctx, gl, spec, e)
 	case errors.As(err, &refused):
 		// Never in normal operation: mergeSwitches checks the same target.

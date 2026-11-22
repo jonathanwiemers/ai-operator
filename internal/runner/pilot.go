@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/jonathanwiemers/ai-operator/internal/notify"
 	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"slices"
 	"strings"
@@ -181,7 +182,7 @@ const maxPilotAnswered = 100
 // pilotReply posts a reply where the message was written. Agent text is made
 // inert: no mentions, quick actions or markers.
 func (r *Runner) pilotReply(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, m aiv1.PilotMessage, reply string) {
-	body := "🧭 " + prose(reply)
+	body := "🧭 " + notify.Inert(reply)
 	var err error
 	if m.MergeRequestIID != 0 {
 		_, err = gl.CreateMergeRequestNote(ctx, spec.GitLab.Project, m.MergeRequestIID, body)

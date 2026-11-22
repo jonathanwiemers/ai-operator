@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"strings"
@@ -126,7 +127,7 @@ func describeRule(a aiv1.PilotAction) string {
 func renderRules(rs []rules.Rule) string {
 	var b strings.Builder
 	for _, r := range rs {
-		fmt.Fprintf(&b, "- **%s** %s: %s", firstNonEmpty(r.ID, "?"), ruleKinds[r.Kind], inertLine(r.Text, maxRule))
+		fmt.Fprintf(&b, "- **%s** %s: %s", cmp.Or(r.ID, "?"), ruleKinds[r.Kind], inertLine(r.Text, maxRule))
 		if !r.Active() {
 			fmt.Fprintf(&b, " _(not applied: %s)_", r.Problem)
 		}

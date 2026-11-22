@@ -119,6 +119,18 @@ func TestDefuse(t *testing.T) {
 	}
 }
 
+func TestInert(t *testing.T) {
+	for in, want := range map[string]string{
+		"  ping @alice  ":             "ping @​alice",
+		"/close\nend <!-- marker -->": "​/close\nend &lt;!-- marker -->",
+		"plain":                       "plain",
+	} {
+		if got := Inert(in); got != want {
+			t.Errorf("%q: got %q, want %q", in, got, want)
+		}
+	}
+}
+
 func TestRequestReview(t *testing.T) {
 	ctx := context.Background()
 	gl := gitlabfake.New()
@@ -139,5 +151,15 @@ func TestRequestReview(t *testing.T) {
 	}
 	if got := gl.MRs[mr.IID].Reviewers; len(got) != 1 || got[0].Username != "bob" {
 		t.Fatalf("reviewers %+v", got)
+	}
+}
+
+func TestKeywordLine(t *testing.T) {
+	re := KeywordLine("/agent", "owners")
+	if m := re.FindStringSubmatch("spec\n  /agent owners @a @b  \nmore"); m == nil || m[1] != "@a @b" {
+		t.Errorf("owners line: %q", m)
+	}
+	if re.MatchString("/agent owners-of x\n/agent ownersx\n") {
+		t.Error("a longer keyword must not match")
 	}
 }

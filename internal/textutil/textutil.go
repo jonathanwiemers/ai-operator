@@ -12,11 +12,18 @@ func Truncate(s string, n int) string {
 	if len(s) <= n {
 		return s
 	}
-	if n < 0 {
-		n = 0
+	return Cut(s, max(n, 0)) + "…"
+}
+
+// Cut is Truncate without the ellipsis: s unchanged when it has at most n
+// bytes, else cut to at most n bytes at a rune boundary. n must not be
+// negative.
+func Cut(s string, n int) string {
+	if len(s) <= n {
+		return s
 	}
 	for n > 0 && !utf8.RuneStart(s[n]) {
 		n--
 	}
-	return s[:n] + "…"
+	return s[:n]
 }

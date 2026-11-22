@@ -2,6 +2,7 @@ package v1alpha1
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -88,7 +89,7 @@ func ValidateCrossRepo(spec AgentProjectSpec, allowed, never []string) (valid []
 	if spec.CrossRepo == nil {
 		return nil, nil
 	}
-	off := !anyProject(allowed)
+	off := !slices.ContainsFunc(allowed, func(p string) bool { return NormalizeProject(p) != "" })
 	home := NormalizeProject(spec.GitLab.Project)
 	seen := map[string]bool{}
 	for _, t := range spec.CrossRepo.Targets {
@@ -122,16 +123,6 @@ func ValidateCrossRepo(spec AgentProjectSpec, allowed, never []string) (valid []
 		}
 	}
 	return valid, problems
-}
-
-// anyProject reports whether the list has an entry that is not empty.
-func anyProject(projects []string) bool {
-	for _, p := range projects {
-		if NormalizeProject(p) != "" {
-			return true
-		}
-	}
-	return false
 }
 
 // crossRepoPathProblems checks a target's paths: non-empty, each pattern

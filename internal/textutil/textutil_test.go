@@ -54,3 +54,23 @@ func TestUntrustedMarkdown(t *testing.T) {
 		t.Errorf("UntrustedMarkdown cut = %q, want at most 10 bytes with an ellipsis", got)
 	}
 }
+
+func TestCut(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		n    int
+		want string
+	}{
+		{"hello", 10, "hello"},
+		{"hello", 5, "hello"},
+		{"hello world", 5, "hello"},
+		{"hello", 0, ""},
+		{"ääää", 3, "ä"},
+		{"a😀b", 4, "a"},
+		{"a😀b", 5, "a😀"},
+	} {
+		if got := Cut(tc.in, tc.n); got != tc.want {
+			t.Errorf("Cut(%q, %d) = %q, want %q", tc.in, tc.n, got, tc.want)
+		}
+	}
+}

@@ -8,6 +8,7 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/notify"
 )
 
 // revisitDecisions are two decisions of #1: D1-1 with alternatives, D1-2
@@ -151,7 +152,7 @@ func TestDeskRevisitFreeTextIsAnOptionToConfirm(t *testing.T) {
 		t.Fatalf("no pilot turn: run request %d → %d, refines %+v", runs, pilot.Spec.RunRequest, pilot.Spec.Source.PromptRefines)
 	}
 	p := e.prompt(specTaskName, "Q1")
-	if got := answerLabels(p); got != "A:Keep Postgres* B:Decide later C:From your answer: revisit D1-2 asking for: use SQLite, cc "+inert("@everyone")+"+" {
+	if got := answerLabels(p); got != "A:Keep Postgres* B:Decide later C:From your answer: revisit D1-2 asking for: use SQLite, cc "+notify.Inert("@everyone")+"+" {
 		t.Fatalf("the option from the answer follows: %s", got)
 	}
 	if a := p.Options[2].Actions; len(a) != 1 || a[0] != (aiv1.PilotAction{Tool: "revisit", Decision: "D1-2", Note: "use SQLite, cc @everyone"}) {

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/jonathanwiemers/ai-operator/internal/notify"
 	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"regexp"
 	"slices"
@@ -380,7 +381,7 @@ func shortUsageLimit(lim *UsageLimitError) string {
 // call is the turn's engine call for status.run.calls, nil when the engine
 // returned no result.
 func (r *Runner) finishChatTurn(ctx context.Context, st *state, msg aiv1.ChatMessage, text, errStr string, call *aiv1.AgentCall, turnErr error, start time.Time, publish bool) error {
-	replyText := textutil.Truncate(prose(text), maxChatReplyBytes)
+	replyText := textutil.Truncate(notify.Inert(text), maxChatReplyBytes)
 	var pushedSHA string
 	if publish && turnErr == nil && errStr == "" {
 		if sha, err := r.publishChatTurn(ctx, msg); err != nil {

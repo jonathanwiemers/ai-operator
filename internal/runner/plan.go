@@ -14,6 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/notify"
 	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 )
 
@@ -111,7 +112,7 @@ func (p *PlanRun) turn(ctx context.Context, plan *aiv1.AgentPlan, project *aiv1.
 	return p.answer(ctx, &st, func(s *aiv1.AgentPlanStatus) []aiv1.ChatReply {
 		notes, refused := applyPlanDrafts(s, base, out.Drafts, sha)
 		note := textutil.Truncate(strings.Join(append([]string{""}, notes...), "\n\n"), 2048)
-		text := textutil.Truncate(prose(out.Reply), maxChatReplyBytes-128-len(note)) + note
+		text := textutil.Truncate(notify.Inert(out.Reply), maxChatReplyBytes-128-len(note)) + note
 		// The list follows the drafts: not applied when every changed draft
 		// was refused. The owner's keeps sign off even when it is not applied.
 		merged := false

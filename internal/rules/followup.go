@@ -2,7 +2,6 @@ package rules
 
 import (
 	"fmt"
-	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -18,17 +17,13 @@ import (
 // maxFollowUps bounds the follow-ups of a retrospective (the runner's).
 const maxFollowUps = 9
 
-func followUpLine(prefix string) *regexp.Regexp {
-	return regexp.MustCompile(`(?m)^[ \t]*` + regexp.QuoteMeta(prefix) + `[ \t]+followup-of(?:[ \t]+(.*?))?[ \t]*\r?(?:\n|\z)`)
-}
-
 // FollowUpOf reads the first line "<prefix> followup-of <iid> <numbers>" of
 // a milestone description ("12 1 3", "%12 1,3"): the milestone's IID and the
 // follow-ups' numbers, space- or comma-separated, each 1..9, deduplicated
 // and sorted. Nil without such a line. A malformed line is an error, and
 // there is no value then.
 func FollowUpOf(description, prefix string) (*aiv1.FollowUpOf, error) {
-	m := followUpLine(prefix).FindStringSubmatch(description)
+	m := notify.KeywordLine(prefix, "followup-of").FindStringSubmatch(description)
 	if m == nil {
 		return nil, nil
 	}
@@ -71,5 +66,5 @@ func FollowUpOfLine(prefix string, iid int64, numbers []int) string {
 // WithoutFollowUpOf removes the followup-of lines from a description,
 // spaced like notify.WithoutOwners.
 func WithoutFollowUpOf(description, prefix string) string {
-	return notify.WithoutLines(description, followUpLine(prefix))
+	return notify.WithoutLines(description, notify.KeywordLine(prefix, "followup-of"))
 }

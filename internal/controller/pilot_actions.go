@@ -849,7 +849,7 @@ func pilotActed(now time.Time, p aiv1.PilotProposal, lines []string, errs []erro
 
 // cutText cuts untrusted text to at most n bytes of valid UTF-8.
 func cutText(s string, n int) string {
-	return cutUTF8(strings.ToValidUTF8(s, "�"), n)
+	return textutil.Cut(strings.ToValidUTF8(s, "�"), n)
 }
 
 // runAction executes one validated action of an accepted proposal; how
@@ -893,7 +893,7 @@ func (r *AgentProjectReconciler) runAction(ctx context.Context, gl gitlab.API, p
 		_, err := gl.CreateIssue(ctx, spec.GitLab.Project, gitlab.CreateIssueOptions{
 			Title: inertLine(a.Title, 200),
 			Description: fmt.Sprintf("%s\n\n_Opened by the pilot of %s (%s)._\n\n<!-- ai-operator:pilot-issue=%s -->",
-				inert(a.Note), inertLine(st.Spec.Milestone.Title, 200), how, titleKey(a.Title)),
+				notify.Inert(a.Note), inertLine(st.Spec.Milestone.Title, 200), how, titleKey(a.Title)),
 			Labels: spec.Workflow.GeneratedLabel,
 		})
 		return err
@@ -1088,15 +1088,9 @@ func titleKey(title string) string {
 	return hashString(strings.ToLower(strings.Join(strings.Fields(title), " ")))
 }
 
-// inert makes agent text safe for a comment: no mentions, quick actions
-// or markers.
-func inert(s string) string {
-	return notify.Defuse(strings.ReplaceAll(strings.TrimSpace(s), "<!--", "&lt;!--"))
-}
-
 // inertLine is inert text on one line, cut to n bytes.
 func inertLine(s string, n int) string {
-	return inert(textutil.Truncate(strings.Join(strings.Fields(s), " "), n))
+	return notify.Inert(textutil.Truncate(strings.Join(strings.Fields(s), " "), n))
 }
 
 // threadAnswers handles the owners' "yes" and "no" written as replies in

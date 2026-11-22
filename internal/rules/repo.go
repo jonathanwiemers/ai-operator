@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/notify"
 )
 
 // The repo lines "<prefix> repo <project> [merge]" of a milestone name the
@@ -30,15 +31,11 @@ type RepoLine struct {
 	Problem string
 }
 
-func repoLine(prefix string) *regexp.Regexp {
-	return regexp.MustCompile(`(?m)^[ \t]*` + regexp.QuoteMeta(prefix) + `[ \t]+repo(?:[ \t]+(.*?))?[ \t]*\r?(?:\n|\z)`)
-}
-
 // Repos returns the repo lines of a milestone description, in order. A
 // line for a project an earlier line names already has a Problem.
 func Repos(description, prefix string) []RepoLine {
 	var out []RepoLine
-	for _, m := range repoLine(prefix).FindAllStringSubmatch(description, -1) {
+	for _, m := range notify.KeywordLine(prefix, "repo").FindAllStringSubmatch(description, -1) {
 		l := RepoLine{Raw: strings.TrimSpace(m[0])}
 		fields := strings.Fields(m[1])
 		switch {

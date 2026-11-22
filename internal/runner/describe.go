@@ -214,12 +214,6 @@ func cleanDiagram(d string) string {
 	return ""
 }
 
-// prose makes agent-written text safe for the description: no mentions, no
-// HTML comments that could end the runner's block.
-func prose(s string) string {
-	return notify.Defuse(strings.ReplaceAll(strings.TrimSpace(s), "<!--", "&lt;!--"))
-}
-
 // renderDescription renders the describer's answer; the diagram comes last.
 func renderDescription(a DescribeAnswer) (string, error) {
 	if strings.TrimSpace(a.What) == "" {
@@ -230,7 +224,7 @@ func renderDescription(a DescribeAnswer) (string, error) {
 		{"Why", a.Why}, {"What", a.What}, {"How", a.How}, {"Verification", a.Verification},
 	} {
 		if strings.TrimSpace(sec.text) != "" {
-			fmt.Fprintf(&b, "### %s\n\n%s\n\n", sec.title, prose(sec.text))
+			fmt.Fprintf(&b, "### %s\n\n%s\n\n", sec.title, notify.Inert(sec.text))
 		}
 	}
 	if d := cleanDiagram(a.Diagram); d != "" {

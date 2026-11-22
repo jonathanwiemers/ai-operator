@@ -40,7 +40,7 @@ func (r *Runner) assessEvents(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		}
 		// Its first paragraph: a flaky event quotes a log after it.
 		head, _, _ := strings.Cut(e.Text, "\n\n")
-		what := prose(strings.Join(strings.Fields(textutil.Truncate(head, 300)), " "))
+		what := notify.Inert(strings.Join(strings.Fields(textutil.Truncate(head, 300)), " "))
 		var body string
 		switch left := pilotLeft(spec, task, out); {
 		case left < 0.01:
@@ -238,7 +238,7 @@ func renderAssessment(a PilotAssessment) string {
 	if !slices.Contains([]string{"infra", "flaky", "regression", "env", "decision"}, c) {
 		c = "unknown"
 	}
-	return fmt.Sprintf("**Classification:** `%s`\n\n**Evidence:** %s\n\n**What I would do:** %s", c, prose(a.Evidence), prose(a.WouldDo))
+	return fmt.Sprintf("**Classification:** `%s`\n\n**Evidence:** %s\n\n**What I would do:** %s", c, notify.Inert(a.Evidence), notify.Inert(a.WouldDo))
 }
 
 // maxAssessOptions bounds an assessment's options, "Do nothing" included.

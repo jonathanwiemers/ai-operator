@@ -9,6 +9,8 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 )
 
 // maxProblems caps the problems an error lists, so a repair prompt stays short.
@@ -245,7 +247,7 @@ func Degraded(raw string) Result {
 				Blocks:        []Block{{Type: TypeMarkdown, Markdown: &Markdown{Text: md}}},
 			}
 		}
-		text, note = cutUTF8(text, max(0, limit)), cut
+		text, note = textutil.Cut(text, max(0, limit)), cut
 	}
 }
 
@@ -260,11 +262,4 @@ func longestRun(s string, ch byte) int {
 		}
 	}
 	return longest
-}
-
-func cutUTF8(s string, n int) string {
-	for n > 0 && n < len(s) && !utf8.RuneStart(s[n]) {
-		n--
-	}
-	return s[:n]
 }

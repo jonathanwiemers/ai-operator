@@ -138,7 +138,7 @@ func (r *AgentProjectReconciler) newCompanion(ctx context.Context, gl gitlab.API
 	now := metav1.NewTime(r.now())
 	e := aiv1.CompanionStatus{
 		HomeIssueIID: t.Spec.Issue.IID, HomeMRIID: mr.IID,
-		HomeMergeSHA: firstNonEmpty(mr.MergeCommitSHA, mr.SquashCommitSHA, mr.SHA),
+		HomeMergeSHA: cmp.Or(mr.MergeCommitSHA, mr.SquashCommitSHA, mr.SHA),
 		Project:      c.Project, MRIID: c.MRIID, MRURL: c.MRURL,
 		HeadSHA: c.PushedSHA, HeadSince: &now,
 		State: aiv1.LandingWaitingRelease, Owners: slices.Clone(t.Spec.Owners),
@@ -191,7 +191,7 @@ func (r *AgentProjectReconciler) landCompanion(ctx context.Context, gl gitlab.AP
 	}
 	switch mr.State {
 	case "merged":
-		e.MergeSHA = cmp.Or(e.MergeSHA, firstNonEmpty(mr.MergeCommitSHA, mr.SquashCommitSHA, mr.SHA))
+		e.MergeSHA = cmp.Or(e.MergeSHA, cmp.Or(mr.MergeCommitSHA, mr.SquashCommitSHA, mr.SHA))
 		if e.MergeStartedAt != nil {
 			return r.followMerge(ctx, gl, spec, e) // autopilot's merge
 		}

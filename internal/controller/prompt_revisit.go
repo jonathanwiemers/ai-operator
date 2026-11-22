@@ -13,6 +13,7 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/chatcmd"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
+	"github.com/jonathanwiemers/ai-operator/internal/notify"
 	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 )
 
@@ -90,7 +91,7 @@ func revisitPrompt(st *aiv1.AgentTask, iid int64, id, section string) aiv1.Promp
 	var ctxt []string
 	for _, f := range []struct{ name, value string }{{"Question", d.Question}, {"Chosen", d.Choice}, {"Why", d.Why}} {
 		if f.value != "" {
-			ctxt = append(ctxt, fmt.Sprintf("**%s:** %s", f.name, inert(f.value)))
+			ctxt = append(ctxt, fmt.Sprintf("**%s:** %s", f.name, notify.Inert(f.value)))
 		}
 	}
 	if section == "" {
@@ -122,7 +123,7 @@ func revisitPrompt(st *aiv1.AgentTask, iid int64, id, section string) aiv1.Promp
 func revisitFromAnswer(id, text string) aiv1.PromptOption {
 	label := fmt.Sprintf("%srevisit %s asking for: %s", fromAnswerLabel, id, inertLine(text, aiv1.MaxPromptOptionLabel))
 	return aiv1.PromptOption{Label: textutil.Truncate(label, aiv1.MaxPromptOptionLabel-len("…")),
-		Detail:     textutil.Truncate(inert(text), aiv1.MaxPromptOptionDetail-len("…")),
+		Detail:     textutil.Truncate(notify.Inert(text), aiv1.MaxPromptOptionDetail-len("…")),
 		Actions:    []aiv1.PilotAction{{Tool: "revisit", Decision: id, Note: text}},
 		FromAnswer: true}
 }
