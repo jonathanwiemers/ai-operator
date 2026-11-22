@@ -66,6 +66,10 @@ default:
   variables:
     GOMODCACHE: $CI_PROJECT_DIR/.cache/go-mod
     GOCACHE: $CI_PROJECT_DIR/.cache/go-build
+    # go.mod's toolchain line picks the Go patch release with the stdlib
+    # security fixes (govulncheck) without a change to mise.toml, which would
+    # rebuild the toolchain image. auto lets go download it into GOMODCACHE.
+    GOTOOLCHAIN: auto
   cache:
     key:
       files: [go.sum]
@@ -90,6 +94,18 @@ gofmt:
 vet:
   extends: .go
   variables: { MISE_TASK: vet }
+
+# Known vulnerabilities in the code the binaries reach; blocking.
+vulncheck:
+  extends: .go
+  variables: { MISE_TASK: vulncheck }
+
+# Unused Go code, the findings in the job log. Report-only while it has a
+# backlog: the merge request that brings it to zero removes allow_failure.
+deadcode:
+  extends: .go
+  variables: { MISE_TASK: deadcode }
+  allow_failure: true
 
 # The research store tests need a real Postgres; with
 # AI_TEST_REQUIRE_DATABASE they fail instead of skipping without one.

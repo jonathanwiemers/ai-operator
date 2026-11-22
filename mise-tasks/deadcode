@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#MISE description="Unused Go code (staticcheck U1000 and deadcode)"
+# A file task, not a [tasks] entry in mise.toml: the CI toolchain image bakes
+# mise.toml, and any change there rebuilds it (CI job deadcode).
+set -euo pipefail
+exec make deadcode

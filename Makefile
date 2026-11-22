@@ -62,6 +62,25 @@ build:
 ts-types: ## Generate the web UI's view types (web/src/generated) from the Go views (tygo.yaml).
 	go tool tygo generate
 
+.PHONY: vulncheck
+vulncheck: ## Report known vulnerabilities in the Go code paths and dependencies (govulncheck).
+	go tool govulncheck ./...
+
+.PHONY: deadcode
+# deadcode exits 0 even when it reports something, so any output fails the
+# target. Both tools run, so the log lists all findings. -test: code that only
+# tests reach counts as live.
+deadcode: ## Report unused Go code: staticcheck U1000 (fields, types, constants) and deadcode (unreachable functions).
+	@status=0; \
+	go tool staticcheck -checks U1000 ./... || status=1; \
+	out="$$(go tool deadcode -test ./...)" || status=1; \
+	if [ -n "$$out" ]; then echo "$$out"; status=1; fi; \
+	exit $$status
+
+.PHONY: gosec
+gosec: ## Audit the Go code for insecure patterns (gosec); not run in CI.
+	go tool gosec -quiet -exclude-generated ./...
+
 .PHONY: ui
 # ts-types first where Go is installed (the CI ui job runs in a node image;
 # the drift job checks the generated types).

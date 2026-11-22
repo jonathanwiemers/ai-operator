@@ -44,6 +44,13 @@ jobs:
         run: test -z "$(gofmt -l api cmd internal)"
       - name: vet
         run: go vet ./...
+      - name: vulncheck
+        run: make vulncheck
+      # Report-only while it has a backlog: the merge request that brings it
+      # to zero removes continue-on-error.
+      - name: deadcode
+        run: make deadcode
+        continue-on-error: true
       - name: test
         run: go test -race ./...
       - name: web UI (type-check and build)

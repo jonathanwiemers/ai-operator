@@ -81,3 +81,7 @@ git history does; otherwise "no milestone".
 ## Docs
 
 1. [Docs: a clear path from install to autopilot, in plain language](docs-revamp.spec.md) — Four user sections, contributing, specs index and a docs check. Milestone: %25 Docs: a clear path from install to autopilot, in plain language.
+
+## Codebase and CI
+
+1. [Lean codebase: no dead code, audited security, tests that check behaviour](lean-codebase.spec.md) — govulncheck, dead-code and knip gates, removal of what nothing reads, files under 1000 lines, a gosec audit and four boundary reviews, per-package coverage. In progress. Milestone: Lean codebase: dead code, unused dependencies and security findings caught by CI.

@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+#MISE description="Known vulnerabilities in reachable Go code (govulncheck)"
+# A file task, not a [tasks] entry in mise.toml: the CI toolchain image bakes
+# mise.toml, and any change there rebuilds it (CI job vulncheck).
+set -euo pipefail
+exec make vulncheck
