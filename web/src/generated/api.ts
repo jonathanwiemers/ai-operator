@@ -3188,6 +3188,240 @@ export const AutopilotItemPending: AutopilotItemState = "Pending";
 export const AutopilotItemActive: AutopilotItemState = "Active";
 export const AutopilotItemMerged: AutopilotItemState = "Merged";
 export const AutopilotItemSkipped: AutopilotItemState = "Skipped";
+/**
+ * AutopilotStatus is the queue of an autopilot milestone.
+ */
+export interface AutopilotStatus {
+  phase: AutopilotPhase;
+  /**
+   * MaxParallel is the effective limit of how many issues of this
+   * milestone may run at the same time, as of the last poll.
+   * +optional
+   */
+  maxParallel?: number /* int32 */;
+  /**
+   * Landing is the IID of the item that lands (rebase, CI, merge); at most
+   * one per milestone, 0: none.
+   * +optional
+   */
+  landing?: number /* int64 */;
+  /**
+   * TrackingIssueIID is the bot's tracking issue of the milestone.
+   * +optional
+   */
+  trackingIssueIID?: number /* int64 */;
+  /**
+   * Reason why the milestone is paused.
+   * +optional
+   */
+  pausedReason?: string;
+  /**
+   * PauseKind is the cause of the pause, for the Desk's pause card. Empty
+   * for a pause from before it was recorded.
+   * +optional
+   */
+  pauseKind?: PauseKind;
+  /**
+   * PausedFor is the active issue the pause is about. Autopilot continues
+   * by itself once that issue is merged or closed by hand, and, with
+   * ResumeWhenReady, once it passes the merge gate again (a later run
+   * fixed it).
+   * +optional
+   */
+  pausedFor?: number /* int64 */;
+  /**
+   * ResumeWhenReady: the pause is over PausedFor's run, review or CI.
+   * +optional
+   */
+  resumeWhenReady?: boolean;
+  /**
+   * MergeOverride is an owner's decision to merge one head of an issue
+   * without a full review (the `merge` command). A new head voids it.
+   * +optional
+   */
+  mergeOverride?: MergeOverride;
+  /**
+   * StartRequestedBy is the owner who set a run-next mark with the
+   * `start` command.
+   * Deprecated: the project's status.milestoneOrder ranks milestones. The
+   * operator no longer writes this field and reads it only to seed that
+   * order.
+   * +optional
+   */
+  startRequestedBy?: string;
+  /**
+   * StartRequestedAt is the time of the run-next mark (set with
+   * StartRequestedBy).
+   * Deprecated: read only to seed the project's status.milestoneOrder.
+   * +optional
+   */
+  startRequestedAt?: string;
+  /**
+   * Items in queue order: dependencies first, ties in plan order.
+   * +optional
+   */
+  items?: AutopilotItem[];
+  /**
+   * MainRedFix is the main-red issue (mainHealth.autoFix) this milestone
+   * drives through the merge gate while the default branch is red.
+   * +optional
+   */
+  mainRedFix?: AutopilotItem;
+  /**
+   * LastCommandNoteID is the newest command on the tracking issue the
+   * operator has handled.
+   * +optional
+   */
+  lastCommandNoteID?: number /* int64 */;
+  /**
+   * LastPilotCommand is the newest queue command from the pilot handled
+   * (status.pilot.commands).
+   * +optional
+   */
+  lastPilotCommand?: number /* int64 */;
+  /**
+   * LastPilotRelease is the Seq of the newest release decision of the
+   * pilot handled (the Coordinate task's status.pilot.releaseDecisions),
+   * applied or refused.
+   * +optional
+   */
+  lastPilotRelease?: number /* int64 */;
+  /**
+   * TrackingHash is the hash of the tracking issue's last rendered
+   * description, so it is only edited when it changes.
+   * +optional
+   */
+  trackingHash?: string;
+  /**
+   * CloseWaitsFor are the open issues a done milestone was last reported
+   * to wait for before autopilot closes it.
+   * +optional
+   */
+  closeWaitsFor?: number /* int64 */[];
+  /**
+   * CloseWaitsForCompanions are the companion merge requests of the
+   * milestone ("<project>!<iid>") that had not landed (merged or closed)
+   * when last reported: while there are any, autopilot is not done and does
+   * not close the milestone.
+   * +optional
+   */
+  closeWaitsForCompanions?: string[];
+  /**
+   * Budget is the milestone's budget and its spend, refreshed every poll
+   * while the milestone has a budget line.
+   * +optional
+   */
+  budget?: BudgetStatus;
+  /**
+   * StateHash is a hash of the queue's state (items, CI states, MR
+   * heads, main health, phase and pause reason); StateChangedAt is when
+   * it last changed. A pause it has not changed in for pilot.stuckAfter
+   * is assessed by the pilot.
+   * +optional
+   */
+  stateHash?: string;
+  /**
+   * +optional
+   */
+  stateChangedAt?: string;
+  /**
+   * PausedAt is when the current pause started; unset while running.
+   * +optional
+   */
+  pausedAt?: string;
+  /**
+   * ResumedBy is who ended the last pause; cleared by the next pause.
+   * +optional
+   */
+  resumedBy?: PauseResolver;
+  /**
+   * ResumedVia is how the last pause ended; set and cleared with
+   * ResumedBy. Empty for a pause that ended before it was recorded.
+   * +optional
+   */
+  resumedVia?: PauseResumeVia;
+  /**
+   * PauseRunBy is who asked for the newest run of PausedFor during the
+   * pause: PauseRunByAutopilot for the autopilot's own (a review-only run
+   * after a rebase, a re-review), else the person ("@alice") or the pilot
+   * whose command started it. A later run that ends the pause tells
+   * resumedVia from it. Cleared when the pause ends or moves to another
+   * issue.
+   * +optional
+   */
+  pauseRunBy?: string;
+  /**
+   * PauseRunHead is the pushed head of PausedFor when the pause started,
+   * then the head the newest run during the pause was asked for: a later
+   * run passing on another head took over someone's push.
+   * +optional
+   */
+  pauseRunHead?: string;
+  /**
+   * RepoNotices are the milestone's "/agent repo" lines (as written) the
+   * operator has named on the tracking issue as ignored, so each is named
+   * once. A line that is fixed or removed leaves the list.
+   * +optional
+   */
+  repoNotices?: string[];
+  /**
+   * Releases are the milestone's release decisions, oldest first (at most
+   * MaxMilestoneReleases).
+   * +optional
+   */
+  releases?: ReleaseRecord[];
+  /**
+   * SettleSyncedAt is when the operator last synced the milestone while it
+   * was settling: done, waiting only for its retrospective's follow-ups.
+   * +optional
+   */
+  settleSyncedAt?: string;
+}
+/**
+ * BudgetStatus is the budget of an autopilot milestone and what it spent,
+ * from the history database (agent_calls).
+ */
+export interface BudgetStatus {
+  /**
+   * LimitUSD is the budget (spec.budgetUSD).
+   */
+  limitUSD: string;
+  /**
+   * SpentUSD is the milestone's spend; empty while it cannot be read
+   * (no database, or the query failed).
+   * +optional
+   */
+  spentUSD?: string;
+  /**
+   * WarnedAt is when the owners were told that 80 % of the budget is
+   * spent.
+   * +optional
+   */
+  warnedAt?: string;
+}
+/**
+ * LineCount is a number of added and deleted lines.
+ */
+export interface LineCount {
+  added: number /* int64 */;
+  deleted: number /* int64 */;
+}
+/**
+ * MergedLines are the lines a merge request merged, split by the category of
+ * each file's path: generated, tests, docs, and production for the rest.
+ */
+export interface MergedLines {
+  production: LineCount;
+  tests: LineCount;
+  docs: LineCount;
+  generated: LineCount;
+  /**
+   * Partial is set when GitLab returned some file's diff without its
+   * content (collapsed or too large); those lines are not counted.
+   * +optional
+   */
+  partial?: boolean;
+}
 
 //////////
 // source: agenttask_checkpoint_types.go
@@ -5616,240 +5850,6 @@ export interface AgentTask extends metav1.TypeMeta {
 export interface AgentTaskList extends metav1.TypeMeta {
   metadata?: ListMeta;
   items: AgentTask[];
-}
-/**
- * AutopilotStatus is the queue of an autopilot milestone.
- */
-export interface AutopilotStatus {
-  phase: AutopilotPhase;
-  /**
-   * MaxParallel is the effective limit of how many issues of this
-   * milestone may run at the same time, as of the last poll.
-   * +optional
-   */
-  maxParallel?: number /* int32 */;
-  /**
-   * Landing is the IID of the item that lands (rebase, CI, merge); at most
-   * one per milestone, 0: none.
-   * +optional
-   */
-  landing?: number /* int64 */;
-  /**
-   * TrackingIssueIID is the bot's tracking issue of the milestone.
-   * +optional
-   */
-  trackingIssueIID?: number /* int64 */;
-  /**
-   * Reason why the milestone is paused.
-   * +optional
-   */
-  pausedReason?: string;
-  /**
-   * PauseKind is the cause of the pause, for the Desk's pause card. Empty
-   * for a pause from before it was recorded.
-   * +optional
-   */
-  pauseKind?: PauseKind;
-  /**
-   * PausedFor is the active issue the pause is about. Autopilot continues
-   * by itself once that issue is merged or closed by hand, and, with
-   * ResumeWhenReady, once it passes the merge gate again (a later run
-   * fixed it).
-   * +optional
-   */
-  pausedFor?: number /* int64 */;
-  /**
-   * ResumeWhenReady: the pause is over PausedFor's run, review or CI.
-   * +optional
-   */
-  resumeWhenReady?: boolean;
-  /**
-   * MergeOverride is an owner's decision to merge one head of an issue
-   * without a full review (the `merge` command). A new head voids it.
-   * +optional
-   */
-  mergeOverride?: MergeOverride;
-  /**
-   * StartRequestedBy is the owner who set a run-next mark with the
-   * `start` command.
-   * Deprecated: the project's status.milestoneOrder ranks milestones. The
-   * operator no longer writes this field and reads it only to seed that
-   * order.
-   * +optional
-   */
-  startRequestedBy?: string;
-  /**
-   * StartRequestedAt is the time of the run-next mark (set with
-   * StartRequestedBy).
-   * Deprecated: read only to seed the project's status.milestoneOrder.
-   * +optional
-   */
-  startRequestedAt?: string;
-  /**
-   * Items in queue order: dependencies first, ties in plan order.
-   * +optional
-   */
-  items?: AutopilotItem[];
-  /**
-   * MainRedFix is the main-red issue (mainHealth.autoFix) this milestone
-   * drives through the merge gate while the default branch is red.
-   * +optional
-   */
-  mainRedFix?: AutopilotItem;
-  /**
-   * LastCommandNoteID is the newest command on the tracking issue the
-   * operator has handled.
-   * +optional
-   */
-  lastCommandNoteID?: number /* int64 */;
-  /**
-   * LastPilotCommand is the newest queue command from the pilot handled
-   * (status.pilot.commands).
-   * +optional
-   */
-  lastPilotCommand?: number /* int64 */;
-  /**
-   * LastPilotRelease is the Seq of the newest release decision of the
-   * pilot handled (the Coordinate task's status.pilot.releaseDecisions),
-   * applied or refused.
-   * +optional
-   */
-  lastPilotRelease?: number /* int64 */;
-  /**
-   * TrackingHash is the hash of the tracking issue's last rendered
-   * description, so it is only edited when it changes.
-   * +optional
-   */
-  trackingHash?: string;
-  /**
-   * CloseWaitsFor are the open issues a done milestone was last reported
-   * to wait for before autopilot closes it.
-   * +optional
-   */
-  closeWaitsFor?: number /* int64 */[];
-  /**
-   * CloseWaitsForCompanions are the companion merge requests of the
-   * milestone ("<project>!<iid>") that had not landed (merged or closed)
-   * when last reported: while there are any, autopilot is not done and does
-   * not close the milestone.
-   * +optional
-   */
-  closeWaitsForCompanions?: string[];
-  /**
-   * Budget is the milestone's budget and its spend, refreshed every poll
-   * while the milestone has a budget line.
-   * +optional
-   */
-  budget?: BudgetStatus;
-  /**
-   * StateHash is a hash of the queue's state (items, CI states, MR
-   * heads, main health, phase and pause reason); StateChangedAt is when
-   * it last changed. A pause it has not changed in for pilot.stuckAfter
-   * is assessed by the pilot.
-   * +optional
-   */
-  stateHash?: string;
-  /**
-   * +optional
-   */
-  stateChangedAt?: string;
-  /**
-   * PausedAt is when the current pause started; unset while running.
-   * +optional
-   */
-  pausedAt?: string;
-  /**
-   * ResumedBy is who ended the last pause; cleared by the next pause.
-   * +optional
-   */
-  resumedBy?: PauseResolver;
-  /**
-   * ResumedVia is how the last pause ended; set and cleared with
-   * ResumedBy. Empty for a pause that ended before it was recorded.
-   * +optional
-   */
-  resumedVia?: PauseResumeVia;
-  /**
-   * PauseRunBy is who asked for the newest run of PausedFor during the
-   * pause: PauseRunByAutopilot for the autopilot's own (a review-only run
-   * after a rebase, a re-review), else the person ("@alice") or the pilot
-   * whose command started it. A later run that ends the pause tells
-   * resumedVia from it. Cleared when the pause ends or moves to another
-   * issue.
-   * +optional
-   */
-  pauseRunBy?: string;
-  /**
-   * PauseRunHead is the pushed head of PausedFor when the pause started,
-   * then the head the newest run during the pause was asked for: a later
-   * run passing on another head took over someone's push.
-   * +optional
-   */
-  pauseRunHead?: string;
-  /**
-   * RepoNotices are the milestone's "/agent repo" lines (as written) the
-   * operator has named on the tracking issue as ignored, so each is named
-   * once. A line that is fixed or removed leaves the list.
-   * +optional
-   */
-  repoNotices?: string[];
-  /**
-   * Releases are the milestone's release decisions, oldest first (at most
-   * MaxMilestoneReleases).
-   * +optional
-   */
-  releases?: ReleaseRecord[];
-  /**
-   * SettleSyncedAt is when the operator last synced the milestone while it
-   * was settling: done, waiting only for its retrospective's follow-ups.
-   * +optional
-   */
-  settleSyncedAt?: string;
-}
-/**
- * BudgetStatus is the budget of an autopilot milestone and what it spent,
- * from the history database (agent_calls).
- */
-export interface BudgetStatus {
-  /**
-   * LimitUSD is the budget (spec.budgetUSD).
-   */
-  limitUSD: string;
-  /**
-   * SpentUSD is the milestone's spend; empty while it cannot be read
-   * (no database, or the query failed).
-   * +optional
-   */
-  spentUSD?: string;
-  /**
-   * WarnedAt is when the owners were told that 80 % of the budget is
-   * spent.
-   * +optional
-   */
-  warnedAt?: string;
-}
-/**
- * LineCount is a number of added and deleted lines.
- */
-export interface LineCount {
-  added: number /* int64 */;
-  deleted: number /* int64 */;
-}
-/**
- * MergedLines are the lines a merge request merged, split by the category of
- * each file's path: generated, tests, docs, and production for the rest.
- */
-export interface MergedLines {
-  production: LineCount;
-  tests: LineCount;
-  docs: LineCount;
-  generated: LineCount;
-  /**
-   * Partial is set when GitLab returned some file's diff without its
-   * content (collapsed or too large); those lines are not counted.
-   * +optional
-   */
-  partial?: boolean;
 }
 /**
  * AutopilotItem is one issue in the queue of an autopilot milestone.
