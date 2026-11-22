@@ -2099,7 +2099,6 @@ spec:
                     - infra
                     - main-red
                     - quota
-                    - dependency
                     type: string
                   restoreLabel:
                     description: RestoreLabel is the workflow label the blocked label
@@ -4044,7 +4043,6 @@ spec:
                     - infra
                     - main-red
                     - quota
-                    - dependency
                     type: string
                   blockingFindings:
                     description: |-

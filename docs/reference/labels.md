@@ -77,7 +77,6 @@ With `agent::blocked` the operator also sets a reason label,
 | `agent-blocked::infra` | The run failed for a reason outside the agent, for example the cluster. It is retried after a while. |
 | `agent-blocked::main-red` | The default branch is red, so the issue waits. |
 | `agent-blocked::quota` | The model provider's rate limit or quota was hit. |
-| `agent-blocked::dependency` | The issue waits for another issue. |
 
 If you remove the reason label alone, the operator sets it again.
 

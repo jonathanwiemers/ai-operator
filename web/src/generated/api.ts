@@ -6083,7 +6083,7 @@ export const NeedsInputRunFailed: NeedsInputCause = "runFailed";
 export const NeedsInputAgentQuestion: NeedsInputCause = "agentQuestion";
 /**
  * BlockReason is why an issue is blocked; it is the suffix of its reason label.
- * +kubebuilder:validation:Enum=infra;main-red;quota;dependency
+ * +kubebuilder:validation:Enum=infra;main-red;quota
  */
 export type BlockReason = string;
 /**
@@ -6098,10 +6098,6 @@ export const BlockMainRed: BlockReason = "main-red";
  * BlockQuota: a usage limit defers the run.
  */
 export const BlockQuota: BlockReason = "quota";
-/**
- * BlockDependency: autopilot waits for an issue that will not be merged.
- */
-export const BlockDependency: BlockReason = "dependency";
 /**
  * BlockedStatus is an issue's block.
  */

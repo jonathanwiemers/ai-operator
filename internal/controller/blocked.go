@@ -125,7 +125,7 @@ func (r *AgentProjectReconciler) syncBlocked(ctx context.Context, gl gitlab.API,
 	// Not applied yet, or applied with a new reason (or a reason label
 	// removed by hand): the blocked label stays or comes back.
 	remove := []string{wf.ReadyLabel, wf.WorkingLabel, wf.NeedsInputLabel, wf.ReviewLabel}
-	for _, reason := range []aiv1.BlockReason{aiv1.BlockInfra, aiv1.BlockMainRed, aiv1.BlockQuota, aiv1.BlockDependency} {
+	for _, reason := range []aiv1.BlockReason{aiv1.BlockInfra, aiv1.BlockMainRed, aiv1.BlockQuota} {
 		if reason != b.Reason { // the reason of an earlier block
 			remove = append(remove, wf.BlockedReasonPrefix+string(reason))
 		}

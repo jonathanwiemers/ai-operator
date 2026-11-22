@@ -183,7 +183,7 @@ Labels and prefixes (see [Labels](labels.md) for what each label means):
 | `reviewLabel` | `agent::review` |
 | `doneLabel` | `agent::done` |
 | `blockedLabel` | `agent::blocked` |
-| `blockedReasonPrefix` | `agent-blocked::` (reasons `infra`, `main-red`, `quota`, `dependency`) |
+| `blockedReasonPrefix` | `agent-blocked::` (reasons `infra`, `main-red` and `quota`) |
 | `generatedLabel` | `ai-generated` |
 | `profileLabelPrefix` | `agent-profile::` |
 | `modelLabelPrefix` | `agent-model::` |

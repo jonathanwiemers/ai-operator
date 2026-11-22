@@ -2482,7 +2482,7 @@ const (
 )
 
 // BlockReason is why an issue is blocked; it is the suffix of its reason label.
-// +kubebuilder:validation:Enum=infra;main-red;quota;dependency
+// +kubebuilder:validation:Enum=infra;main-red;quota
 type BlockReason string
 
 const (
@@ -2492,8 +2492,6 @@ const (
 	BlockMainRed BlockReason = "main-red"
 	// BlockQuota: a usage limit defers the run.
 	BlockQuota BlockReason = "quota"
-	// BlockDependency: autopilot waits for an issue that will not be merged.
-	BlockDependency BlockReason = "dependency"
 )
 
 // BlockedStatus is an issue's block.

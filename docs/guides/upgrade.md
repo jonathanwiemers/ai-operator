@@ -77,6 +77,7 @@ read it. *Leaves in* is the first release without it.
 | `status.autopilot.passedBy` | AgentTask status field | the first release after 22 November 2026 | Nothing. The operator stopped reading and writing it when milestones got a run order; a stored value is dropped. |
 | `GET /api/v1/projects/{namespace}/{name}/plans` | Desk API route | the first release after 22 November 2026 | Nothing in manifests. A client that calls it gets 404: call `GET /api/v1/plans?project=namespace/name` instead, which returns the same plans under `plans`, last active first. |
 | `GET /api/v1/research/search` | Desk API route | the first release after 22 November 2026 | Nothing in manifests. A client that calls it gets 404, and nothing replaces it: list a research's runs with `GET /api/v1/researches/{namespace}/{name}/runs`. |
+| `agent-blocked::dependency` | GitLab label | the first release after 22 November 2026 | Remove it from your issues if you set it, and delete it from the project's labels if you created it. The operator never set it: no block has this reason, and it no longer removes the label. |
 
 Both fields belong to the [task](../concepts/glossary.md#task) of a
 [milestone](../concepts/glossary.md#milestone): `pilot` is the
