@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+#MISE description="Go tests with the race detector and a cover profile, then the per-package coverage gate"
+# A file task, not a change to [tasks.test] in mise.toml: the CI toolchain
+# image bakes mise.toml, and any change there rebuilds it (CI job test).
+set -euo pipefail
+# Fail fast, with the service log above it, when Postgres does not come up,
+# instead of a 30 s timeout in every store test.
+if [ -n "${CI:-}" ]; then
+  for i in $(seq 1 60); do
+    (echo > /dev/tcp/postgres/5432) 2>/dev/null && break
+    [ "$i" = 60 ] && { echo "postgres service is not listening on postgres:5432 after 120 s"; exit 1; }
+    sleep 2
+  done
+fi
+go test -race -coverprofile=coverage.out -covermode=atomic ./...
+# Fails when a package is more than 0.2 points below hack/coverage-baseline.txt.
+go run ./hack/coverage -profile coverage.out -baseline hack/coverage-baseline.txt

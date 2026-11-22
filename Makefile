@@ -38,6 +38,10 @@ vet:
 test:
 	go test -race -timeout 20m ./...
 
+.PHONY: coverage-baseline
+coverage-baseline: ## Rewrite hack/coverage-baseline.txt from coverage.out (the artifact of the CI test job).
+	go run ./hack/coverage -profile coverage.out -write hack/coverage-baseline.txt
+
 .PHONY: test-db
 test-db: ## Start a Postgres for the research store tests (docker, 127.0.0.1:55432).
 	docker run -d --rm --name ai-operator-test-db -p 127.0.0.1:55432:5432 \

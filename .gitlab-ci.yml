@@ -119,7 +119,10 @@ test:
       # runner ("pg_ctl: server does not shut down").
       command: ["postgres", "-c", "fsync=off", "-c", "synchronous_commit=off", "-c", "full_page_writes=off"]
   variables:
-    MISE_TASK: test
+    # go test with a cover profile, then hack/coverage against the committed
+    # baseline: fails when a package drops more than 0.2 points. A file task
+    # in mise-tasks/, as a change to mise.toml rebuilds the toolchain image.
+    MISE_TASK: test-coverage
     # Per package: under -race on a busy shared runner internal/controller
     # can pass go test's default 10m (about 7.5m on main on an agent node).
     # Set here, not in mise.toml: a change there rebuilds the toolchain image.
@@ -131,6 +134,12 @@ test:
     AI_TEST_REQUIRE_DATABASE: "1"
     # Prints the service's own log into the job log, e.g. why it did not start.
     CI_DEBUG_SERVICES: "true"
+  # The profile behind the coverage table in the log; make coverage-baseline
+  # turns it into hack/coverage-baseline.txt.
+  artifacts:
+    when: always
+    expire_in: 1 week
+    paths: [coverage.out]
 
 # web/dist/.gitkeep is committed, so go:embed compiles without the ui job's
 # output; this job checks the Go build, the ui job the web build.
