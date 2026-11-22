@@ -81,6 +81,9 @@ Both fields belong to the [task](../concepts/glossary.md#task) of a
 [pilot](../concepts/glossary.md#pilot)'s bookkeeping, `autopilot` the
 [autopilot](../concepts/glossary.md#autopilot) queue.
 
+This release removes no Helm value: the chart reads every value its values
+file lists, so your values file needs no change.
+
 ## Example: delete a removed field
 
 Say a release removes `spec.workflow.legacyLabels` from the AgentProject.
@@ -134,6 +137,36 @@ Apply it again and check that the project syncs:
 kubectl apply -f shop.yaml
 kubectl -n agents get agentprojects
 ```
+
+## Example: delete a removed Helm value
+
+Say a release removes `ui.legacyTheme` from the chart. (This name is made
+up too.) Your values file before the upgrade:
+
+```yaml
+agent:
+  namespaces: [agents]
+ui:
+  enabled: true
+  auth:
+    mode: none
+  legacyTheme: dark             # removed in the new release
+```
+
+`helm upgrade` succeeds and says nothing, but the setting no longer does
+anything. Delete the line:
+
+```yaml
+agent:
+  namespaces: [agents]
+ui:
+  enabled: true
+  auth:
+    mode: none
+```
+
+Then run the upgrade command from
+[Upgrade the chart](#upgrade-the-chart) again with the cleaned file.
 
 ## Next
 
