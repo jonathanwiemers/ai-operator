@@ -55,6 +55,11 @@ jobs:
         run: go test -race ./...
       - name: web UI (type-check and build)
         run: make ui
+      # Report-only while it has a backlog: the merge request that brings it
+      # to zero removes continue-on-error.
+      - name: knip (unused web files, exports and dependencies)
+        run: cd web && npm run knip
+        continue-on-error: true
       - name: build
         run: make build
       - name: helm lint

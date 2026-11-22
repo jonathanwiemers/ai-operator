@@ -1,0 +1,14 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    "test/*.test.mjs",
+    "e2e/**/*.ts",
+    "scripts/*.mjs",
+    "playwright.docs.config.ts"
+  ],
+  "project": ["src/**/*.{ts,vue,css}"],
+  "ignoreDependencies": ["@iconify-json/lucide"],
+  "ignoreIssues": {
+    "src/generated/**": ["exports", "types"]
+  }
+}

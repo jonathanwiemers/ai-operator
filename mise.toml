@@ -58,5 +58,9 @@ run = "make build"
 [tasks.ui]
 run = "make ui"
 
+[tasks.knip]
+description = "Unused files, exports and dependencies of the web UI (web/knip.json)"
+run = "cd web && npm ci && npm run knip"
+
 [tasks.helm-lint]
 run = "make helm-lint"
