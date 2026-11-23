@@ -6,13 +6,11 @@ import (
 	"errors"
 	"fmt"
 	"github.com/jonathanwiemers/ai-operator/internal/textutil"
-	"maps"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -20,10 +18,8 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/chatcmd"
-	"github.com/jonathanwiemers/ai-operator/internal/command"
 	"github.com/jonathanwiemers/ai-operator/internal/desklink"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
-	"github.com/jonathanwiemers/ai-operator/internal/marker"
 	"github.com/jonathanwiemers/ai-operator/internal/notify"
 )
 
@@ -55,155 +51,6 @@ var queueTools = []string{"rebase", "mergeBase", "skip", "unskip", "startAnyway"
 
 // proposalTTL is how long a proposal can be accepted.
 const proposalTTL = 24 * time.Hour
-
-// validAction checks an action against the milestone (spec task st): a
-// known tool, an issue of the milestone with a task, a kind of
-// instruction, an issue title the pilot has not opened yet, an autopilot
-// queue the command applies to.
-func validAction(a aiv1.PilotAction, st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, opened []string) error {
-	ap := st.Status.Autopilot
-	running := queueRunning(st)
-	switch {
-	case !slices.Contains(pilotTools, a.Tool) && !slices.Contains(ownerTools, a.Tool):
-		return fmt.Errorf("`%s` is not a tool of the pilot; merging, closing and pushing are not available", inertLine(a.Tool, 40))
-	case a.Tool == "raiseBudget":
-		return validRaise(a, st)
-	case a.Tool == "setRule" || a.Tool == "forgetRule":
-		return validRule(a)
-	case a.Tool == "revisit" && marker.DecisionIssue(a.Decision) == 0:
-		return fmt.Errorf("`%s` is not a decision", inertLine(a.Decision, 40))
-	case a.Tool == "revisit":
-		return nil
-	case a.Tool == "editSpec" && strings.TrimSpace(a.Spec) == "":
-		return errors.New("a spec edit needs the new text")
-	case a.Tool == "editSpec" && len(a.Spec) > maxSpec:
-		return fmt.Errorf("the new spec is over %d KiB", maxSpec>>10)
-	case a.Tool == "editSpec":
-		return nil // the milestone itself is checked in GitLab (specEdit)
-	case a.Tool == "fixFlaky" && a.IssueIID <= 0:
-		return errors.New("fixFlaky needs the flaky issue")
-	case a.Tool == "fixFlaky":
-		return nil // the issue itself is checked in GitLab (checkFlaky)
-	case a.Tool == "retryPipeline" && a.PipelineID <= 0:
-		return errors.New("retryPipeline needs the pipeline")
-	case a.Tool == "retryPipeline":
-		return nil // checked against main health (checkRetryPipeline)
-	case slices.Contains(queueTools, a.Tool) && !running:
-		return errors.New("this milestone has no autopilot queue")
-	case a.Tool == "pause" && ap.Phase == aiv1.AutopilotPaused, a.Tool == "resume" && ap.Phase != aiv1.AutopilotPaused:
-		return fmt.Errorf("autopilot is %s", strings.ToLower(string(ap.Phase)))
-	case a.Tool == "pause" || a.Tool == "resume" || a.Tool == "endMilestone":
-		return nil
-	case a.Tool == "skip" && !slices.ContainsFunc(ap.Items, func(it aiv1.AutopilotItem) bool { return it.IID == a.IssueIID && it.State != aiv1.AutopilotItemMerged }):
-		return fmt.Errorf("#%d is no planned issue that is not merged yet", a.IssueIID)
-	case a.Tool == "skip":
-		return nil
-	case a.Tool == "rebase" || a.Tool == "mergeBase":
-		return activeMR(ap, a.IssueIID)
-	case a.Tool == "unskip" || a.Tool == "startAnyway" || a.Tool == "markDone":
-		return validWayOut(a, st)
-	}
-	if a.Tool == "openIssue" {
-		switch {
-		case strings.TrimSpace(a.Title) == "":
-			return errors.New("an issue needs a title")
-		case slices.Contains(opened, titleKey(a.Title)):
-			return errors.New("the pilot opened an issue with this title before")
-		}
-		return nil
-	}
-	t := tasks[a.IssueIID]
-	switch {
-	case t == nil:
-		return fmt.Errorf("#%d is not an issue of this milestone with a task", a.IssueIID)
-	case a.Tool == "reReview" && t.Status.Run.PushedSHA == "":
-		return fmt.Errorf("#%d has no pushed head to review", a.IssueIID)
-	case a.Tool == "reReview" && t.Status.Run.FullyReviewed():
-		return fmt.Errorf("the head of #%d is already reviewed, without findings or reviewer errors", a.IssueIID)
-	case a.Tool == "instruct" && a.Text == "" && !slices.Contains(aiv1.PilotInstructKinds, a.Kind):
-		return fmt.Errorf("`%s` is not a kind of instruction", inertLine(a.Kind, 40))
-	case a.Tool == "restartRun" && !meta.IsStatusConditionTrue(t.Status.Conditions, aiv1.ConditionStalled):
-		return errors.New("the run is moving again")
-	case a.Tool == "restartRun" && t.Status.Run.Interruptions >= aiv1.MaxInterruptions:
-		// One more interruption fails the run: that is the owners' call.
-		return fmt.Errorf("the run of #%d was interrupted %d times, another restart fails it; an owner can still `restart` it", a.IssueIID, t.Status.Run.Interruptions)
-	}
-	return nil
-}
-
-// activeMR refuses rebase and mergeBase on anything but the active issue of
-// the queue (ap) with a merge request; not on the main-red fix. The tracking
-// issue's command checks the MR itself when it runs (mrCommand).
-func activeMR(ap *aiv1.AutopilotStatus, iid int64) error {
-	i := slices.IndexFunc(ap.Items, func(it aiv1.AutopilotItem) bool { return it.IID == iid })
-	switch {
-	case i < 0 || ap.Items[i].State != aiv1.AutopilotItemActive:
-		return fmt.Errorf("#%d is not the active issue of the queue", iid)
-	case ap.Items[i].MergeRequestIID == 0:
-		return fmt.Errorf("#%d has no merge request yet", iid)
-	}
-	return nil
-}
-
-// validWayOut checks unskip, startAnyway and markDone against the queue of
-// st: unskip a skipped item, startAnyway a pending item with a skipped
-// dependency, markDone a skipped or pending item (never the active or a
-// merged one: that would pass the merge gate by). Whether the issue is
-// still open is checked in GitLab (checkOpenIssue, autopilot.command).
-func validWayOut(a aiv1.PilotAction, st *aiv1.AgentTask) error {
-	if !queueRunning(st) {
-		return errors.New("this milestone has no autopilot queue")
-	}
-	items := st.Status.Autopilot.Items
-	i := slices.IndexFunc(items, func(it aiv1.AutopilotItem) bool { return it.IID == a.IssueIID })
-	if i < 0 {
-		return fmt.Errorf("#%d is not an issue of the queue", a.IssueIID)
-	}
-	state := items[i].State
-	switch a.Tool {
-	case "unskip":
-		if state != aiv1.AutopilotItemSkipped {
-			return fmt.Errorf("#%d is not skipped", a.IssueIID)
-		}
-	case "markDone":
-		if state != aiv1.AutopilotItemSkipped && state != aiv1.AutopilotItemPending {
-			return fmt.Errorf("#%d is %s; only a skipped or pending issue can be marked done", a.IssueIID, strings.ToLower(string(state)))
-		}
-	case "startAnyway":
-		if state != aiv1.AutopilotItemPending {
-			return fmt.Errorf("#%d is not pending", a.IssueIID)
-		}
-		var deps []int64
-		for _, p := range st.Status.Plan {
-			if p.IID == a.IssueIID {
-				deps = p.DependsOn
-			}
-		}
-		if !slices.ContainsFunc(items, func(it aiv1.AutopilotItem) bool {
-			return it.State == aiv1.AutopilotItemSkipped && slices.Contains(deps, it.IID)
-		}) {
-			return fmt.Errorf("#%d depends on no skipped issue", a.IssueIID)
-		}
-	}
-	return nil
-}
-
-// checkOpenIssue refuses an issue that is closed, gone or no longer in the
-// milestone of st.
-func checkOpenIssue(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask, iid int64) error {
-	is, err := gl.GetIssue(ctx, spec.GitLab.Project, iid)
-	switch {
-	case gitlab.IsNotFound(err):
-		return fmt.Errorf("#%d does not exist", iid)
-	case err != nil:
-		return fmt.Errorf("getting issue #%d: %w", iid, err)
-	case is.State != "opened":
-		return fmt.Errorf("#%d is closed", iid)
-	case is.Milestone == nil || st.Spec.Milestone == nil || is.Milestone.ID != st.Spec.Milestone.ID:
-		return fmt.Errorf("#%d is not in this milestone", iid)
-	}
-	return nil
-}
 
 // issueTasks returns the implement tasks of a milestone's issues, and
 // that of the main-red issue, which has no milestone: a main health prompt
@@ -430,16 +277,6 @@ func (r *AgentProjectReconciler) optionsPrompt(ctx context.Context, gl gitlab.AP
 		q.Context = textutil.Truncate(q.Context+"\n\n_The pilot's options were not offered: "+err.Error()+"._", aiv1.MaxPromptContext-len("…"))
 	}
 	return q
-}
-
-// checkRetryPipeline refuses to retry pipeline id unless it is the red
-// pipeline of the default branch that main health (mh) knows: the newest
-// one that finished, red after the watcher's own retry or without one.
-func checkRetryPipeline(mh *aiv1.MainHealthStatus, id int64) error {
-	if mh == nil || mh.State != aiv1.MainHealthRed || mh.PipelineID != id {
-		return fmt.Errorf("pipeline %d is not the red pipeline of the default branch", id)
-	}
-	return nil
 }
 
 // checkAction checks an action before it is put to the owners: validAction,
@@ -1090,126 +927,4 @@ func titleKey(title string) string {
 // inertLine is inert text on one line, cut to n bytes.
 func inertLine(s string, n int) string {
 	return notify.Inert(textutil.Truncate(strings.Join(strings.Fields(s), " "), n))
-}
-
-// threadAnswers handles the owners' "yes" and "no" written as replies in
-// the thread of a proposal on the tracking issue, newer than since. The
-// threads are read only when there is such an answer.
-func (r *AgentProjectReconciler) threadAnswers(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
-	st, coord *aiv1.AgentTask, tracking, since int64, notes []gitlab.Note) error {
-	if coord == nil {
-		return nil
-	}
-	bot := project.Status.BotUserID
-	var answers []gitlab.Note
-	for _, n := range notes {
-		if _, id, ok := command.PilotAnswer(n.Body); ok && id == 0 && n.ID > since && !n.System && n.Author.ID != bot {
-			answers = append(answers, n)
-		}
-	}
-	if len(answers) == 0 {
-		return nil
-	}
-	owners, err := ownerIDs(ctx, gl, st.Spec.Owners)
-	if err != nil {
-		return err
-	}
-	answers = slices.DeleteFunc(answers, func(n gitlab.Note) bool { return !owners[n.Author.ID] })
-	if len(answers) == 0 {
-		return nil
-	}
-	threads, err := gl.ListIssueDiscussions(ctx, spec.GitLab.Project, tracking)
-	if err != nil {
-		return fmt.Errorf("listing the threads of the tracking issue #%d: %w", tracking, err)
-	}
-	// Which proposal each reply answers: the thread must start with the
-	// bot's proposal.
-	proposal := map[int64]int64{}
-	for _, d := range threads {
-		if len(d.Notes) == 0 || d.Notes[0].Author.ID != bot {
-			continue
-		}
-		if m := marker.Proposal.FindStringSubmatch(d.Notes[0].Body); m != nil {
-			id, _ := strconv.ParseInt(m[1], 10, 64)
-			for _, n := range d.Notes[1:] {
-				proposal[n.ID] = id
-			}
-		}
-	}
-	for _, n := range answers {
-		id, ok := proposal[n.ID]
-		if !ok {
-			continue
-		}
-		yes, _, _ := command.PilotAnswer(n.Body)
-		reply, err := r.answerProposal(ctx, project, spec, st, coord, n.Author.Username, n.Author.ID, tracking, id, yes, false)
-		if err != nil {
-			return err
-		}
-		if reply != "" {
-			pilotReply(ctx, gl, spec, pilotNote{Note: n, issue: tracking}, reply)
-		}
-	}
-	return nil
-}
-
-// proposeTell turns an owner's "/pilot tell #N: …" into a proposal prompt
-// that passes their words on to the implementer of #N verbatim.
-func (r *AgentProjectReconciler) proposeTell(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
-	st, coord *aiv1.AgentTask, n pilotNote, iid int64, text string) (string, error) {
-	tasks, err := r.issueTasks(ctx, project, st.Spec.Milestone.IID)
-	if err != nil {
-		return "", err
-	}
-	a := aiv1.PilotAction{Tool: "instruct", IssueIID: iid, Owner: n.Author.Username, Text: textutil.Truncate(text, maxPilotMessage)}
-	if err := validAction(a, st, tasks, nil); err != nil {
-		return "Not proposed: " + err.Error() + ".", nil
-	}
-	tracking := trackingIssue(st, coord)
-	p := aiv1.PilotProposal{Summary: fmt.Sprintf("pass @%s's words on to the implementer of #%d", n.Author.Username, iid),
-		Actions: []aiv1.PilotAction{a}, State: aiv1.PilotState(st, tasks, []aiv1.PilotAction{a}), Source: fmt.Sprintf("tell/%d", n.ID)}
-	id, err := r.postProposals(ctx, gl, project, spec, st, coord, tracking, p)
-	if err != nil {
-		return "", err
-	}
-	return proposedReply(id, tracking), nil
-}
-
-// proposedReply is the reply to an owner whose command became prompt id
-// on the tracking issue ("": none).
-func proposedReply(id string, tracking int64) string {
-	if id == "" {
-		return "Not proposed: the operator would not run it now."
-	}
-	return fmt.Sprintf("%s on #%d: an owner answers it in the Desk.", id, tracking)
-}
-
-// pinnedOwners are the sorted user IDs of owners, pinned on what only they
-// answer; [0] when there are none: no user has it, not even who takes a
-// name later.
-func pinnedOwners(ctx context.Context, gl gitlab.API, owners []string) ([]int64, error) {
-	ids, err := ownerIDs(ctx, gl, owners)
-	if err != nil {
-		return nil, err
-	}
-	if len(ids) == 0 {
-		return []int64{0}, nil
-	}
-	return slices.Sorted(maps.Keys(ids)), nil
-}
-
-// ownerIDs resolves the owners' usernames to user IDs: a username can
-// change hands.
-func ownerIDs(ctx context.Context, gl gitlab.API, owners []string) (map[int64]bool, error) {
-	ids := map[int64]bool{}
-	for _, o := range owners {
-		u, err := gl.FindUser(ctx, o)
-		if err != nil {
-			return nil, fmt.Errorf("looking up owner %q: %w", o, err)
-		}
-		if u != nil {
-			ids[u.ID] = true
-		}
-	}
-	return ids, nil
 }
