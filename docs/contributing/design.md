@@ -4312,7 +4312,8 @@ own `--tone-*-bg` and `--tone-*-fg` tokens, so the look is as before. The
 | `internal/runner/handoff.go` | agent notes: the bot's handoff comment on the issue |
 | `internal/runner/decisions.go` | decisions: IDs, decision comments, revisits, superseding |
 | `internal/controller/autopilot.go` | autopilot: queue, merge gate, rebase, pause / resume / skip, tracking issue |
-| `internal/controller/interdiff.go` | autopilot: the interdiff of a rebase that changed the reviewed change, re-review instead of a pause |
+| `internal/controller/interdiff.go` | autopilot: the verdict on a rebase that changed the reviewed change, re-review instead of a pause, the MR note |
+| `internal/interdiff` | the interdiff of a rebase: the reviewed change against the rebased one per file without hunk positions, its unified-diff rendering, and whether the rebase kept the reviewed commits |
 | `internal/controller/override.go` | autopilot: an owner's `merge` without a full review |
 | `internal/controller/revisit.go` | revisits of merged issues: follow-up issues, replies |
 | `internal/marker` | hidden markers in GitLab text shared by operator and runner (tracking issue, decisions) |
