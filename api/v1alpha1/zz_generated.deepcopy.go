@@ -11,8 +11,8 @@ Licensed under the Apache License, Version 2.0.
 package v1alpha1
 
 import (
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -373,7 +373,7 @@ func (in *AgentProjectSetStatus) DeepCopyInto(out *AgentProjectSetStatus) {
 	}
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
-		*out = make([]v1.Condition, len(*in))
+		*out = make([]metav1.Condition, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
@@ -499,7 +499,7 @@ func (in *AgentProjectStatus) DeepCopyInto(out *AgentProjectStatus) {
 	}
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
-		*out = make([]v1.Condition, len(*in))
+		*out = make([]metav1.Condition, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
@@ -590,7 +590,7 @@ func (in *AgentResearchSpec) DeepCopyInto(out *AgentResearchSpec) {
 	}
 	if in.Retention != nil {
 		in, out := &in.Retention, &out.Retention
-		*out = new(v1.Duration)
+		*out = new(metav1.Duration)
 		**out = **in
 	}
 	if in.Agent != nil {
@@ -633,7 +633,7 @@ func (in *AgentResearchStatus) DeepCopyInto(out *AgentResearchStatus) {
 	}
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
-		*out = make([]v1.Condition, len(*in))
+		*out = make([]metav1.Condition, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
@@ -859,7 +859,7 @@ func (in *AgentTaskStatus) DeepCopyInto(out *AgentTaskStatus) {
 	}
 	if in.Conditions != nil {
 		in, out := &in.Conditions, &out.Conditions
-		*out = make([]v1.Condition, len(*in))
+		*out = make([]metav1.Condition, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
@@ -887,7 +887,7 @@ func (in *AgentsSpec) DeepCopyInto(out *AgentsSpec) {
 	}
 	if in.RunnerResources != nil {
 		in, out := &in.RunnerResources, &out.RunnerResources
-		*out = new(corev1.ResourceRequirements)
+		*out = new(v1.ResourceRequirements)
 		(*in).DeepCopyInto(*out)
 	}
 	out.WorkspaceSize = in.WorkspaceSize.DeepCopy()
@@ -898,7 +898,7 @@ func (in *AgentsSpec) DeepCopyInto(out *AgentsSpec) {
 	}
 	if in.Env != nil {
 		in, out := &in.Env, &out.Env
-		*out = make([]corev1.EnvVar, len(*in))
+		*out = make([]v1.EnvVar, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
@@ -912,7 +912,7 @@ func (in *AgentsSpec) DeepCopyInto(out *AgentsSpec) {
 	}
 	if in.Tolerations != nil {
 		in, out := &in.Tolerations, &out.Tolerations
-		*out = make([]corev1.Toleration, len(*in))
+		*out = make([]v1.Toleration, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
@@ -1583,7 +1583,7 @@ func (in *CrossRepoTarget) DeepCopyInto(out *CrossRepoTarget) {
 	}
 	if in.TokenSecretRef != nil {
 		in, out := &in.TokenSecretRef, &out.TokenSecretRef
-		*out = new(corev1.SecretKeySelector)
+		*out = new(v1.SecretKeySelector)
 		(*in).DeepCopyInto(*out)
 	}
 }
@@ -2477,7 +2477,7 @@ func (in *PilotSpec) DeepCopyInto(out *PilotSpec) {
 	}
 	if in.StuckAfter != nil {
 		in, out := &in.StuckAfter, &out.StuckAfter
-		*out = new(v1.Duration)
+		*out = new(metav1.Duration)
 		**out = **in
 	}
 }
@@ -2986,12 +2986,12 @@ func (in *ReleaseSpec) DeepCopyInto(out *ReleaseSpec) {
 	*out = *in
 	if in.MinInterval != nil {
 		in, out := &in.MinInterval, &out.MinInterval
-		*out = new(v1.Duration)
+		*out = new(metav1.Duration)
 		**out = **in
 	}
 	if in.MaxUnreleasedAge != nil {
 		in, out := &in.MaxUnreleasedAge, &out.MaxUnreleasedAge
-		*out = new(v1.Duration)
+		*out = new(metav1.Duration)
 		**out = **in
 	}
 }
@@ -3616,7 +3616,7 @@ func (in *WebhookSpec) DeepCopyInto(out *WebhookSpec) {
 	*out = *in
 	if in.SecretRef != nil {
 		in, out := &in.SecretRef, &out.SecretRef
-		*out = new(corev1.SecretKeySelector)
+		*out = new(v1.SecretKeySelector)
 		(*in).DeepCopyInto(*out)
 	}
 	out.FallbackInterval = in.FallbackInterval

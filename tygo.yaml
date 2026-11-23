@@ -19,6 +19,7 @@ packages:
       - agentplan_types.go
       - agentprojectset_types.go
       - agentproject_types.go
+      - agentproject_agents_types.go
       - agentresearch_types.go
       - agenttask_checkpoint_types.go
       - agenttask_autopilot_types.go
