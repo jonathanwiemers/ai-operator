@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
@@ -11,15 +12,26 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 )
 
+// failureText is a run's error for a GitLab comment. It quotes CLIs and git,
+// so: without the runner's tokens, the process's credentials and known
+// tokens (processSecrets), and without fence breakout, quick actions or
+// mentions.
+func (r *Runner) failureText(err error) string {
+	msg := textutil.Redact(err.Error(), append(processSecrets(), r.GitLabToken, r.CompanionToken)...)
+	return notify.Defuse(strings.ReplaceAll(textutil.Truncate(msg, 3000), "`", "'"))
+}
+
+// processSecrets are the credentials in the process's environment
+// (textutil.EnvSecrets): the GitLab tokens and the Cursor key in the runner
+// container, everything in development mode, where the agent runs inside.
+func processSecrets() []string { return textutil.EnvSecrets(os.Environ()) }
+
 // reportFailure tells the issue why its run failed. A run that failed for an
 // outside reason (block) leaves the labels to the operator, which blocks the
 // issue; any other moves it to needs-input.
 func (r *Runner) reportFailure(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, task *aiv1.AgentTask, out *Outcome, runErr error, block aiv1.BlockReason) {
 	wf := spec.Workflow
-	// The error quotes CLIs and git: no fence breakout, quick actions or
-	// mentions.
-	msg := notify.Defuse(strings.ReplaceAll(textutil.Truncate(runErr.Error(), 3000), "`", "'"))
-	body := fmt.Sprintf("🤖 The agent run failed:\n\n```\n%s\n```\n\n", msg)
+	body := fmt.Sprintf("🤖 The agent run failed:\n\n```\n%s\n```\n\n", r.failureText(runErr))
 	// The operator retries an infra failure once per run request.
 	retry := block == aiv1.BlockInfra && task.Spec.Source.InfraRetry != task.Spec.RunRequest
 	switch {
@@ -83,8 +95,7 @@ func (r *Runner) reportSpecFailure(ctx context.Context, gl gitlab.API, spec aiv1
 	if ap == nil || ap.TrackingIssueIID == 0 {
 		return
 	}
-	msg := notify.Defuse(strings.ReplaceAll(textutil.Truncate(runErr.Error(), 3000), "`", "'"))
-	body := fmt.Sprintf("🤖 Planning failed:\n\n```\n%s\n```\n\n", msg)
+	body := fmt.Sprintf("🤖 Planning failed:\n\n```\n%s\n```\n\n", r.failureText(runErr))
 	switch {
 	case block == aiv1.BlockInfra && task.Spec.Source.InfraRetry != task.Spec.RunRequest:
 		body += fmt.Sprintf("The cause is outside the plan, so the operator plans again at %s UTC (`lifecycle.infraRetryAfter`), once.",

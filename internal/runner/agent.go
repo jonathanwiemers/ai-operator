@@ -603,6 +603,23 @@ type AgentServer struct {
 	// Log receives one line per call (the readiness probe only at debug
 	// level). Prompts, diffs and commit messages are never logged.
 	Log logr.Logger
+	// Secrets are redacted from every response (writeJSON): the agent
+	// container's credentials, textutil.EnvSecrets of its environment.
+	Secrets []string
+}
+
+// writeJSON writes v as one JSON line with Secrets, known tokens and URL
+// credentials redacted (textutil.Redact). Errors, answers and events carry
+// what the agent and its CLIs printed, which may be a key the agent read
+// with `env`; the runner posts them to GitLab and puts them into prompts.
+// HTML is not escaped, so a secret holding <, > or & is found as it is.
+func (s *AgentServer) writeJSON(w io.Writer, v any) {
+	var b strings.Builder
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	if enc.Encode(v) == nil {
+		_, _ = io.WriteString(w, textutil.Redact(b.String(), s.Secrets...))
+	}
 }
 
 // reply is the outcome of one call: the response body, the error (already
@@ -635,7 +652,7 @@ func (s *AgentServer) Handler() http.Handler {
 			}
 			rep := fn(logr.NewContext(r.Context(), log), body)
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(rep.body)
+			s.writeJSON(w, rep.body)
 			kv := append([]any{"durationMs", time.Since(start).Milliseconds()}, rep.kv...)
 			switch {
 			case rep.err != nil:
@@ -811,16 +828,15 @@ func (s *AgentServer) handleSessionPrompt(w http.ResponseWriter, r *http.Request
 	var req promptSessionRequest
 	if err := json.Unmarshal(body, &req); err != nil {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(sessionPromptLine{Error: err.Error()})
+		s.writeJSON(w, sessionPromptLine{Error: err.Error()})
 		log.Error(err, "call failed", "durationMs", time.Since(start).Milliseconds())
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	flusher, _ := w.(http.Flusher)
-	enc := json.NewEncoder(w)
 	write := func(line sessionPromptLine) {
-		_ = enc.Encode(line)
+		s.writeJSON(w, line)
 		if flusher != nil {
 			flusher.Flush()
 		}

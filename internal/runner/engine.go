@@ -923,15 +923,16 @@ func (r *Result) Decode(v any) error {
 	return json.Unmarshal([]byte(text[start:end+1]), v)
 }
 
-// scrubEnv removes credentials that only the runner needs (GitLab token,
-// Kubernetes service discovery) from the environment of the agent CLIs.
+// scrubEnv removes credentials that only the runner needs (the GitLab tokens
+// GITLAB_TOKEN and GITLAB_COMPANION_TOKEN, Kubernetes service discovery)
+// from the environment of the agent CLIs and the workspace's git.
 // Engine credentials (CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY,
 // CURSOR_API_KEY) stay, the CLIs need them.
 func scrubEnv(env []string) []string {
 	var out []string
 	for _, kv := range env {
 		k, _, _ := strings.Cut(kv, "=")
-		if k == "GITLAB_TOKEN" || strings.HasPrefix(k, "AI_") || strings.HasPrefix(k, "KUBERNETES_") {
+		if strings.HasPrefix(k, "GITLAB_") && strings.HasSuffix(k, "TOKEN") || strings.HasPrefix(k, "AI_") || strings.HasPrefix(k, "KUBERNETES_") {
 			continue
 		}
 		out = append(out, kv)

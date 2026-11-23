@@ -169,6 +169,15 @@ All secrets are Kubernetes Secrets in your cluster. You name them in the
 Nothing is stored in GitLab, and the model never sees a secret except its
 own model credentials.
 
+The model can read those credentials in its container, for example with
+`env`, and repeat them. So the runner redacts them before text leaves the
+pod. It replaces the credentials it holds, GitLab and Anthropic tokens by
+their prefixes (`glpat-`, `sk-ant-`, …) and passwords in URLs with
+`[redacted]`. This covers the logs you see in the Desk, failure comments,
+the agent's answers and the CI logs it puts into prompts. The model can
+still push a key in the code it writes, so keep your model credentials
+scoped to this use.
+
 ## Webhook deliveries
 
 A delivery only wakes the operator to sync a project now. It counts only

@@ -9,6 +9,7 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
 	"github.com/jonathanwiemers/ai-operator/internal/naming"
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 )
 
 // Limits for what a CI fix prompt contains: enough to see the failure,
@@ -95,7 +96,8 @@ func buildCIPrompt(ctx context.Context, gl gitlab.API, glProject string, pipelin
 }
 
 // jobLogs renders the failed jobs of a pipeline with the ends of their
-// logs, which are untrusted.
+// logs, which are untrusted. They go into a prompt, so the process's
+// credentials and known tokens a job printed are redacted first.
 func jobLogs(ctx context.Context, gl gitlab.API, glProject string, pipelineID int64) (string, error) {
 	jobs, err := failedJobs(ctx, gl, glProject, pipelineID)
 	if err != nil {
@@ -111,7 +113,7 @@ func jobLogs(ctx context.Context, gl gitlab.API, glProject string, pipelineID in
 		if err != nil {
 			trace = fmt.Sprintf("(log not available: %v)", err)
 		}
-		fmt.Fprintf(&b, "\n### Job `%s` (stage %s)\n\n```text\n%s\n```\n", j.Name, j.Stage, strings.ReplaceAll(ciExcerpt(trace), "`", "'"))
+		fmt.Fprintf(&b, "\n### Job `%s` (stage %s)\n\n```text\n%s\n```\n", j.Name, j.Stage, strings.ReplaceAll(ciExcerpt(textutil.Redact(trace, processSecrets()...)), "`", "'"))
 	}
 	return b.String(), nil
 }

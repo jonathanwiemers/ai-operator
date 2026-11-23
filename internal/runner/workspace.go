@@ -36,7 +36,7 @@ func (w *Workspace) git(ctx context.Context, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "git", append([]string{"-c", "gc.autoDetach=false", "-c", "maintenance.autoDetach=false"}, args...)...) // #nosec G204 -- the fixed command git, no shell; outside branch names are checked (checkBranch) and refs follow --end-of-options (R12, lean-codebase spec)
 	cmd.WaitDelay = 10 * time.Second
 	cmd.Dir = w.Dir
-	cmd.Env = append(os.Environ(),
+	cmd.Env = append(scrubEnv(os.Environ()), // the agent controls .git/hooks: no GitLab token in development mode
 		"GIT_TERMINAL_PROMPT=0",
 		"GIT_AUTHOR_NAME="+w.AuthorName, "GIT_AUTHOR_EMAIL="+w.AuthorEmail,
 		"GIT_COMMITTER_NAME="+w.AuthorName, "GIT_COMMITTER_EMAIL="+w.AuthorEmail,

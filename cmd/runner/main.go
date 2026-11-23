@@ -40,6 +40,7 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/readgate"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 	"github.com/jonathanwiemers/ai-operator/internal/runner"
+	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 )
 
 func main() {
@@ -129,7 +130,8 @@ func stepGate(args []string, stdin io.Reader, stdout, stderr io.Writer) {
 
 // newLogger returns the logger at the level in AI_LOG_LEVEL: debug, info or
 // error, set by the operator from agents.logLevel. An invalid value is
-// ignored and the default (info) is used.
+// ignored and the default (info) is used. It redacts the process's own
+// credentials (textutil.EnvSecrets) and known tokens from every line.
 func newLogger() logr.Logger {
 	opts := zap.Options{}
 	if level := os.Getenv("AI_LOG_LEVEL"); level != "" {
@@ -140,7 +142,7 @@ func newLogger() logr.Logger {
 			fmt.Fprintf(os.Stderr, "ignoring invalid AI_LOG_LEVEL %q: %v\n", level, err)
 		}
 	}
-	return zap.New(zap.UseFlagOptions(&opts))
+	return runner.RedactLogger(zap.New(zap.UseFlagOptions(&opts)), textutil.EnvSecrets(os.Environ()))
 }
 
 // localAgent builds the agent from the environment of the current container.
@@ -172,7 +174,7 @@ func agentServer(ctx context.Context) {
 	agent := localAgent()
 	socket := mustEnv("AI_AGENT_SOCKET")
 	log.Info("agent server started", "socket", socket, "engines", len(agent.Engines))
-	if err := (&runner.AgentServer{Agent: agent, Log: log}).Serve(ctx, socket); err != nil {
+	if err := (&runner.AgentServer{Agent: agent, Log: log, Secrets: textutil.EnvSecrets(os.Environ())}).Serve(ctx, socket); err != nil {
 		log.Error(err, "agent server stopped")
 		os.Exit(1)
 	}

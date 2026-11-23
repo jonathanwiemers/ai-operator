@@ -297,9 +297,9 @@ func TestThinSeries(t *testing.T) {
 }
 
 func TestScrubEnv(t *testing.T) {
-	env := scrubEnv([]string{"GITLAB_TOKEN=x", "AI_TASK_NAME=t", "KUBERNETES_SERVICE_HOST=h", "CURSOR_API_KEY=k", "CLAUDE_CODE_OAUTH_TOKEN=o", "PATH=/bin"})
+	env := scrubEnv([]string{"GITLAB_TOKEN=x", "GITLAB_COMPANION_TOKEN=c", "AI_TASK_NAME=t", "KUBERNETES_SERVICE_HOST=h", "CURSOR_API_KEY=k", "CLAUDE_CODE_OAUTH_TOKEN=o", "PATH=/bin"})
 	joined := strings.Join(env, " ")
-	for _, gone := range []string{"GITLAB_TOKEN", "AI_TASK_NAME", "KUBERNETES_SERVICE_HOST"} {
+	for _, gone := range []string{"GITLAB_TOKEN", "GITLAB_COMPANION_TOKEN", "AI_TASK_NAME", "KUBERNETES_SERVICE_HOST"} {
 		if strings.Contains(joined, gone) {
 			t.Errorf("%s must be scrubbed", gone)
 		}
