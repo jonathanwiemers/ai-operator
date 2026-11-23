@@ -88,6 +88,56 @@ func TestPostPlanChatRefused(t *testing.T) {
 	}
 }
 
+// The first message of a new plan is its first chat message.
+func TestCreatePlanWithMessage(t *testing.T) {
+	env, owner := planChatEnv(t, "leads")
+	env.server.SetResearchWriter(env.reader)
+	code, out := env.postJSON(t, shopPlans, map[string]string{"message": "  plan refunds "})
+	if code != http.StatusCreated {
+		t.Fatalf("create: %d %v", code, out)
+	}
+	name, _ := out["name"].(string)
+	if pl := env.getPlan(t, name); len(pl.OwnerReferences) != 1 || pl.OwnerReferences[0].Name != "shop" || pl.Labels[aiv1.LabelProjectSet] != "" {
+		t.Errorf("plan: %+v", pl.ObjectMeta)
+	}
+	msgs, err := owner.PlanMessages(t.Context(), "team-a", "shop", name, 0, 0, 10)
+	if err != nil || len(msgs) != 1 || msgs[0].Body != "plan refunds" || msgs[0].Kind != "message" || msgs[0].Author != "ada@example.com" {
+		t.Errorf("plan messages = %+v, %v", msgs, err)
+	}
+}
+
+// A plan in a dormant set entry stores its first message under the child
+// name, and its chat reads and posts before the child exists.
+func TestCreatePlanStandInWithMessage(t *testing.T) {
+	owner, reader, chat := chatStores(t)
+	env, logs := standInEnv(t, "leads")
+	env.server.SetResearchStore(reader)
+	env.server.SetChatStore(chat)
+	code, out := env.postJSON(t, fooPlans, map[string]string{"message": "plan foo"})
+	if code != http.StatusCreated {
+		t.Fatalf("create: %d %v", code, out)
+	}
+	name, _ := out["name"].(string)
+	if pl := env.getPlan(t, name); len(pl.OwnerReferences) != 0 || pl.Labels[aiv1.LabelProjectSet] != "acme" || pl.Spec.ProjectRef != "tools-foo" {
+		t.Errorf("plan: %+v %+v", pl.ObjectMeta, pl.Spec)
+	}
+	if l := logs(); !strings.Contains(l, `"message"=true`) || strings.Contains(l, "plan foo") {
+		t.Errorf("audit line: %s", l)
+	}
+	msgs, err := owner.PlanMessages(t.Context(), "team-a", "tools-foo", name, 0, 0, 10)
+	if err != nil || len(msgs) != 1 || msgs[0].Body != "plan foo" {
+		t.Fatalf("plan messages = %+v, %v", msgs, err)
+	}
+	chatPath := fooPlans + "/" + name + "/chat"
+	if code, _ := env.postChat(t, chatPath, map[string]any{"body": "and bar", "clientKey": "k1"}); code != http.StatusCreated {
+		t.Errorf("post: %d", code)
+	}
+	var page ChatPage
+	if code := env.get(t, chatPath, &page); code != http.StatusOK || len(page.Messages) != 2 {
+		t.Errorf("get: %d %+v", code, page.Messages)
+	}
+}
+
 func TestPlanChatPermissions(t *testing.T) {
 	t.Run("viewer reads redacted, may not post", func(t *testing.T) {
 		env, owner := planChatEnv(t, "devs")

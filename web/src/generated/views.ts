@@ -1406,6 +1406,10 @@ export interface PlanListItem {
    * one.
    */
   milestone?: PlanMilestone;
+  /**
+   * Message is the plan's status message, e.g. why it waits or failed.
+   */
+  message?: string;
 }
 /**
  * PlanCreatedMilestone is a milestone created from one of a plan's drafts.

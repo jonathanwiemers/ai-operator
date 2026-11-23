@@ -6,9 +6,11 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/go-logr/logr/funcr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -297,5 +299,139 @@ func TestPlanItemTitle(t *testing.T) {
 		if got := s.planItem(pl, false).Title; got != c.want {
 			t.Errorf("spec %q, status %q: title %q, want %q", c.spec, c.status, got, c.want)
 		}
+	}
+	pl := &aiv1.AgentPlan{Status: aiv1.AgentPlanStatus{Phase: aiv1.AgentPlanStarting, Message: "Waiting for the project set to create the project"}}
+	if got := s.planItem(pl, false).Message; got != pl.Status.Message {
+		t.Errorf("message %q", got)
+	}
+}
+
+const fooPlans = "/api/v1/projects/team-a/tools-foo/plans"
+
+// standInEnv is setPlansEnv with the reader as the writer client and the
+// server's log in the returned slice.
+func standInEnv(t *testing.T, roles ...string) (*testEnv, func() string) {
+	t.Helper()
+	env := setPlansEnv(t, roles...)
+	env.server.SetResearchWriter(env.reader)
+	var mu sync.Mutex
+	var logs []string
+	env.server.log = funcr.New(func(prefix, args string) {
+		mu.Lock()
+		defer mu.Unlock()
+		logs = append(logs, prefix+" "+args)
+	}, funcr.Options{Verbosity: 9})
+	return env, func() string {
+		mu.Lock()
+		defer mu.Unlock()
+		return strings.Join(logs, "\n")
+	}
+}
+
+// A plan in a dormant set entry carries the set label and no owner, under
+// the child name; reading and deleting it work before the child exists.
+func TestCreatePlanStandIn(t *testing.T) {
+	env, logs := standInEnv(t, "leads")
+	code, out := env.postJSON(t, fooPlans, map[string]string{"title": "Foo"})
+	if code != http.StatusCreated {
+		t.Fatalf("create: %d %v", code, out)
+	}
+	name, _ := out["name"].(string)
+	var pl aiv1.AgentPlan
+	if err := env.reader.Get(context.Background(), client.ObjectKey{Namespace: "team-a", Name: name}, &pl); err != nil {
+		t.Fatal(err)
+	}
+	if pl.Spec.ProjectRef != "tools-foo" || pl.Labels[aiv1.LabelProjectSet] != "acme" || len(pl.OwnerReferences) != 0 || pl.Spec.Title != "Foo" {
+		t.Errorf("plan: %+v %+v", pl.ObjectMeta, pl.Spec)
+	}
+	if l := logs(); !strings.Contains(l, `"action"="plan.create"`) || !strings.Contains(l, `"set"="acme"`) || !strings.Contains(l, `"message"=false`) {
+		t.Errorf("audit line: %s", l)
+	}
+	var got PlanView
+	if code := env.get(t, fooPlans+"/"+name, &got); code != http.StatusOK || got.Project != "tools-foo" || !got.Permissions.Steer {
+		t.Errorf("get: %d %+v", code, got.PlanListItem)
+	}
+	if code := env.del(t, fooPlans+"/"+name); code != http.StatusNoContent || env.planExists(t, name) {
+		t.Errorf("delete: %d", code)
+	}
+}
+
+// Every plan endpoint but read, chat and delete waits for the set.
+func TestStandInPlanWaits(t *testing.T) {
+	env, _ := standInEnv(t, "leads")
+	env.server.estimateReads = &fakeEstimates{}
+	plan := fooPlans + "/foo-plan"
+	for _, tc := range []struct {
+		method, path string
+		body         any
+	}{
+		{http.MethodPut, plan + "/draft", map[string]any{"baseRevision": 0, "draft": "# Foo"}},
+		{http.MethodDelete, plan + "/drafts/1", nil},
+		{http.MethodPut, plan + "/drafts/order", map[string]any{"keys": []int{1}}},
+		{http.MethodPost, plan + "/budget", map[string]string{"maxBudgetUSD": "9"}},
+		{http.MethodPost, plan + "/milestone", map[string]any{}},
+		{http.MethodGet, plan + "/decisions", nil},
+		{http.MethodGet, "/api/v1/projects/team-a/tools-foo/estimate?plan=foo-plan", nil},
+	} {
+		var out ErrorResponse
+		if code := env.send(t, tc.method, tc.path, tc.body, &out); code != http.StatusConflict || out.Error != planWaiting {
+			t.Errorf("%s %s: %d %q, want 409", tc.method, tc.path, code, out.Error)
+		}
+	}
+	// 404 for an unknown plan comes first.
+	if code := env.send(t, http.MethodPost, fooPlans+"/nope/budget", map[string]string{"maxBudgetUSD": "9"}, nil); code != http.StatusNotFound {
+		t.Errorf("unknown plan: %d, want 404", code)
+	}
+}
+
+func TestCreatePlanStandInAccess(t *testing.T) {
+	// Viewing tools-foo is not steering it: 403, also on the waiting endpoints.
+	env, _ := standInEnv(t, "viewers")
+	if code, _ := env.postJSON(t, fooPlans, map[string]string{}); code != http.StatusForbidden {
+		t.Errorf("viewer create: %d, want 403", code)
+	}
+	if code := env.send(t, http.MethodPost, fooPlans+"/foo-plan/budget", map[string]string{"maxBudgetUSD": "9"}, nil); code != http.StatusForbidden {
+		t.Errorf("viewer budget: %d, want 403", code)
+	}
+	if code := env.del(t, fooPlans+"/foo-plan"); code != http.StatusForbidden || !env.planExists(t, "foo-plan") {
+		t.Errorf("viewer delete: %d, want 403", code)
+	}
+
+	// Excluded, nameTaken, unknown and another namespace's set entry: 404.
+	env, _ = standInEnv(t, "leads")
+	for _, ref := range []string{"team-a/old", "team-a/taken", "team-a/nope", "team-b/api"} {
+		if code, _ := env.postJSON(t, "/api/v1/projects/"+ref+"/plans", map[string]string{}); code != http.StatusNotFound {
+			t.Errorf("%s: %d, want 404", ref, code)
+		}
+	}
+	var list aiv1.AgentPlanList
+	if err := env.reader.List(context.Background(), &list); err != nil || len(list.Items) != 4 {
+		t.Errorf("plans: %d %v", len(list.Items), err)
+	}
+}
+
+func TestCreatePlanMessage(t *testing.T) {
+	env := planWriterEnv(t, "leads")
+	for name, msg := range map[string]string{
+		"too many runes": strings.Repeat("é", maxChatBody+1),
+		"over the bound": strings.Repeat("\x01", maxChatBody+1024), // \u0001 each
+	} {
+		if code, out := env.postJSON(t, shopPlans, map[string]string{"message": msg}); code != http.StatusBadRequest || out["field"] != "message" {
+			t.Errorf("%s: %d %v", name, code, out)
+		}
+	}
+	// No chat database: its 503, and the plan is gone again.
+	if code, out := env.postJSON(t, shopPlans, map[string]string{"message": "plan refunds"}); code != http.StatusServiceUnavailable {
+		t.Errorf("without chat store: %d %v", code, out)
+	}
+	// Over the chat rate limit: its 429, and no plan either.
+	for ok := true; ok; ok, _ = env.server.chats.Allow("ada@example.com", time.Now()) {
+	}
+	if code, out := env.postJSON(t, shopPlans, map[string]string{"message": "plan refunds"}); code != http.StatusTooManyRequests {
+		t.Errorf("over the chat limit: %d %v", code, out)
+	}
+	var list aiv1.AgentPlanList
+	if err := env.reader.List(context.Background(), &list); err != nil || len(list.Items) != 3 {
+		t.Errorf("plans: %d %v", len(list.Items), err)
 	}
 }

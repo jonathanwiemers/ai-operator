@@ -54,8 +54,12 @@ type planDecisionReader interface {
 // planDecisionHistory returns the stored history of the plan's decisions to
 // anyone who may read the plan.
 func (s *Server) planDecisionHistory(w http.ResponseWriter, r *http.Request) {
-	pl, _, ok := s.projectPlan(w, r)
+	pl, sc, ok := s.projectPlan(w, r)
 	if !ok {
+		return
+	}
+	if sc.Set != "" {
+		writeError(w, http.StatusConflict, planWaiting)
 		return
 	}
 	var st planDecisionReader = s.planDecisionReads

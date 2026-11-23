@@ -69,16 +69,19 @@ func (s *Server) estimate(w http.ResponseWriter, r *http.Request) {
 	var ok bool
 	unit, n, err := store.UnitRequirement, 0, error(nil)
 	if plan != "" {
-		var plans []aiv1.AgentPlan
-		if ap, _, plans, _, ok = s.loadPlans(w, r); !ok {
+		var sc planScope
+		if sc, ok = s.loadPlans(w, r); !ok {
 			return
-		} else if i := slices.IndexFunc(plans, func(pl aiv1.AgentPlan) bool { return pl.Name == plan }); i < 0 {
+		} else if i := slices.IndexFunc(sc.Plans, func(pl aiv1.AgentPlan) bool { return pl.Name == plan }); i < 0 {
 			notFound(w)
 			return
-		} else if d, ok := estimateDraft(w, r, &plans[i]); !ok {
+		} else if sc.Set != "" {
+			writeError(w, http.StatusConflict, planWaiting)
+			return
+		} else if d, ok := estimateDraft(w, r, &sc.Plans[i]); !ok {
 			return
 		} else {
-			n = rules.CountRequirements(d.Draft)
+			ap, n = sc.Project, rules.CountRequirements(d.Draft)
 		}
 	} else {
 		var tasks []aiv1.AgentTask

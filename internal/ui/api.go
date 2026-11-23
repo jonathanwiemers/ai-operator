@@ -195,10 +195,19 @@ func (s *Server) loadProject(w http.ResponseWriter, r *http.Request) (*aiv1.Agen
 		}
 		return nil, nil, false
 	}
-	var list aiv1.AgentTaskList
-	if err := s.reader.List(r.Context(), &list, client.InNamespace(ns)); err != nil {
+	tasks, err := s.projectTasks(r.Context(), ns, name)
+	if err != nil {
 		s.internalError(w, err)
 		return nil, nil, false
+	}
+	return &ap, tasks, true
+}
+
+// projectTasks lists the tasks of the project ns/name.
+func (s *Server) projectTasks(ctx context.Context, ns, name string) ([]aiv1.AgentTask, error) {
+	var list aiv1.AgentTaskList
+	if err := s.reader.List(ctx, &list, client.InNamespace(ns)); err != nil {
+		return nil, err
 	}
 	var tasks []aiv1.AgentTask
 	for _, t := range list.Items {
@@ -206,7 +215,7 @@ func (s *Server) loadProject(w http.ResponseWriter, r *http.Request) (*aiv1.Agen
 			tasks = append(tasks, t)
 		}
 	}
-	return &ap, tasks, true
+	return tasks, nil
 }
 
 // events streams change events (server-sent events) of the projects and

@@ -49,6 +49,8 @@ type PlanListItem struct {
 	// Milestone is the created milestone's row on the Desk, nil without
 	// one.
 	Milestone *PlanMilestone `json:"milestone,omitempty"`
+	// Message is the plan's status message, e.g. why it waits or failed.
+	Message string `json:"message,omitempty"`
 }
 
 // PlanCreatedMilestone is a milestone created from one of a plan's drafts.
@@ -113,7 +115,7 @@ func (s *Server) planItem(pl *aiv1.AgentPlan, steer bool) PlanListItem {
 		BudgetUSD: pl.BudgetUSD(s.cfg.Plan.MaxBudgetUSD), BudgetLimitUSD: s.cfg.Plan.MaxBudgetUSDLimit,
 		CreatedMilestoneIID: pl.Status.CreatedMilestoneIID, CreatedMilestoneURL: createdMilestoneURL(pl),
 		DraftsTotal: len(list), DraftsCreated: len(created), CreatedMilestones: created,
-		Permissions: PlanPermissions{Steer: steer}}
+		Permissions: PlanPermissions{Steer: steer}, Message: pl.Status.Message}
 }
 
 // createdMilestoneURL is the URL of the plan's first created milestone, from
@@ -198,40 +200,56 @@ func (s *Server) planOwner(p Principal, ap *aiv1.AgentProject, tasks []aiv1.Agen
 	return !owners
 }
 
-// loadPlans loads the project, its tasks and its plans, newest first: 404
+// planScope is what loadPlans read: the project, its tasks, its plans newest
+// first and whether the caller steers them. Set names the project set of a
+// stand-in project, an offered dormant entry without an AgentProject yet.
+type planScope struct {
+	Project *aiv1.AgentProject
+	Tasks   []aiv1.AgentTask
+	Plans   []aiv1.AgentPlan
+	Steer   bool
+	Set     string
+}
+
+// planWaiting answers the plan endpoints a stand-in project does not serve.
+const planWaiting = "waiting for the project set to create the project"
+
+// loadPlans loads the project, or its stand-in, its tasks and its plans: 404
 // without chat or a view of the project.
-func (s *Server) loadPlans(w http.ResponseWriter, r *http.Request) (*aiv1.AgentProject, []aiv1.AgentTask, []aiv1.AgentPlan, bool, bool) {
+func (s *Server) loadPlans(w http.ResponseWriter, r *http.Request) (planScope, bool) {
 	if !s.cfg.ChatEnabled() {
 		notFound(w)
-		return nil, nil, nil, false, false
+		return planScope{}, false
 	}
-	ap, tasks, ok := s.loadProject(w, r)
+	sc, ok := s.planProject(w, r)
 	if !ok {
-		return nil, nil, nil, false, false
+		return planScope{}, false
 	}
 	var list aiv1.AgentPlanList
-	if err := s.reader.List(r.Context(), &list, client.InNamespace(ap.Namespace)); err != nil {
+	if err := s.reader.List(r.Context(), &list, client.InNamespace(sc.Project.Namespace)); err != nil {
 		s.internalError(w, err)
-		return nil, nil, nil, false, false
+		return planScope{}, false
 	}
-	plans := slices.DeleteFunc(list.Items, func(pl aiv1.AgentPlan) bool { return pl.Spec.ProjectRef != ap.Name })
-	sort.SliceStable(plans, func(i, j int) bool { return plans[j].CreationTimestamp.Before(&plans[i].CreationTimestamp) })
-	return ap, tasks, plans, s.planOwner(principalOf(r), ap, tasks), true
+	sc.Plans = slices.DeleteFunc(list.Items, func(pl aiv1.AgentPlan) bool { return pl.Spec.ProjectRef != sc.Project.Name })
+	sort.SliceStable(sc.Plans, func(i, j int) bool { return sc.Plans[j].CreationTimestamp.Before(&sc.Plans[i].CreationTimestamp) })
+	sc.Steer = s.planOwner(principalOf(r), sc.Project, sc.Tasks)
+	return sc, true
 }
 
 // plan returns one plan with its draft and its milestone's row.
 func (s *Server) plan(w http.ResponseWriter, r *http.Request) {
-	ap, tasks, plans, steer, ok := s.loadPlans(w, r)
+	sc, ok := s.loadPlans(w, r)
 	if !ok {
 		return
 	}
-	pl, ok := pathPlan(w, r, plans)
+	pl, ok := pathPlan(w, r, sc.Plans)
 	if !ok {
 		return
 	}
-	v := s.planView(pl, steer)
+	ap := sc.Project
+	v := s.planView(pl, sc.Steer)
 	items := []PlanListItem{v.PlanListItem}
-	s.setPlanMilestones(r.Context(), items, map[string]*aiv1.AgentProject{ap.Namespace + "/" + ap.Name: ap}, tasks)
+	s.setPlanMilestones(r.Context(), items, map[string]*aiv1.AgentProject{ap.Namespace + "/" + ap.Name: ap}, sc.Tasks)
 	v.PlanListItem = items[0]
 	writeJSON(w, http.StatusOK, v)
 }
@@ -281,36 +299,49 @@ const (
 
 // ownPlans is loadPlans for a change: 404 without the writer client, 403
 // unless the caller steers the project's plans.
-func (s *Server) ownPlans(w http.ResponseWriter, r *http.Request) (*aiv1.AgentProject, []aiv1.AgentPlan, bool) {
-	ap, _, plans, steer, ok := s.loadPlans(w, r)
+func (s *Server) ownPlans(w http.ResponseWriter, r *http.Request) (planScope, bool) {
+	sc, ok := s.loadPlans(w, r)
 	switch {
 	case !ok:
 	case s.writer == nil:
 		notFound(w)
-	case !steer:
+	case !sc.Steer:
 		writeError(w, http.StatusForbidden, "only the project's owners change its plans")
 	default:
-		return ap, plans, true
+		return sc, true
 	}
-	return nil, nil, false
+	return planScope{}, false
 }
 
-// createPlan starts a plan of the project {"title"?}, named by the server,
-// owned by the project and stamped with its creator.
+// createPlan starts a plan of the project {"title"?, "message"?}, named by
+// the server, stamped with its creator and owned by the project, or labelled
+// with the set of a stand-in project, whose plan the set's child adopts.
+// A message is stored as the plan's first; the plan is deleted again when
+// that fails. The audit line never includes the text.
 func (s *Server) createPlan(w http.ResponseWriter, r *http.Request) {
-	ap, _, ok := s.ownPlans(w, r)
+	sc, ok := s.ownPlans(w, r)
 	if !ok {
 		return
 	}
 	var req struct {
-		Title string `json:"title"`
+		Title   string `json:"title"`
+		Message string `json:"message"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10)).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
-		badRequest(w, "invalid request")
+	// JSON escapes a byte of the message in up to 6, plus the title's room.
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 6*maxChatBody+4<<10)).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+		if tooLarge := (*http.MaxBytesError)(nil); errors.As(err, &tooLarge) {
+			fieldError(w, "message", planMessageTooLong)
+		} else {
+			badRequest(w, "invalid request")
+		}
 		return
 	}
 	if req.Title = strings.TrimSpace(req.Title); !planTitleOK(req.Title) {
 		fieldError(w, "title", fmt.Sprintf("the title must be one line of at most %d characters", maxPlanTitle))
+		return
+	}
+	if req.Message = strings.TrimSpace(req.Message); utf8.RuneCountInString(req.Message) > maxChatBody {
+		fieldError(w, "message", planMessageTooLong)
 		return
 	}
 	p := principalOf(r)
@@ -319,26 +350,47 @@ func (s *Server) createPlan(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusTooManyRequests, fmt.Sprintf("at most %d plans per hour, try again later", plansPerWindow))
 		return
 	}
+	ap := sc.Project
 	pl := &aiv1.AgentPlan{
-		ObjectMeta: metav1.ObjectMeta{Namespace: ap.Namespace, Name: planName(time.Now()), OwnerReferences: []metav1.OwnerReference{
-			{APIVersion: aiv1.GroupVersion.String(), Kind: "AgentProject", Name: ap.Name, UID: ap.UID}}},
-		Spec: aiv1.AgentPlanSpec{ProjectRef: ap.Name, Title: req.Title, CreatedBy: p.Username},
+		ObjectMeta: metav1.ObjectMeta{Namespace: ap.Namespace, Name: planName(time.Now())},
+		Spec:       aiv1.AgentPlanSpec{ProjectRef: ap.Name, Title: req.Title, CreatedBy: p.Username},
+	}
+	if sc.Set != "" {
+		pl.Labels = map[string]string{aiv1.LabelProjectSet: sc.Set}
+	} else {
+		pl.OwnerReferences = []metav1.OwnerReference{{APIVersion: aiv1.GroupVersion.String(), Kind: "AgentProject", Name: ap.Name, UID: ap.UID}}
 	}
 	if err := s.writer.Create(r.Context(), pl); err != nil {
 		s.internalError(w, err)
 		return
 	}
-	s.log.Info("audit", "action", "plan.create", "user", p.Username, "namespace", pl.Namespace, "name", pl.Name, "project", ap.Name)
+	if req.Message != "" {
+		if _, _, ok := s.insertChat(w, r, store.ChatMessage{Namespace: pl.Namespace, Project: ap.Name, Plan: pl.Name, Kind: "message", Body: req.Message}); !ok {
+			if err := s.writer.Delete(r.Context(), pl); client.IgnoreNotFound(err) != nil {
+				s.log.Error(err, "deleting the plan whose first message failed", "namespace", pl.Namespace, "name", pl.Name)
+			}
+			return
+		}
+	}
+	kv := []any{"action", "plan.create", "user", p.Username, "namespace", pl.Namespace, "name", pl.Name, "project", ap.Name}
+	if sc.Set != "" {
+		kv = append(kv, "set", sc.Set)
+	}
+	s.log.Info("audit", append(kv, "message", req.Message != "")...)
 	writeJSON(w, http.StatusCreated, s.planView(pl, true))
 }
 
+// planMessageTooLong is the field error of a first message over maxChatBody.
+const planMessageTooLong = "the message must be at most 16 KiB"
+
 // deletePlan deletes one of the project's plans; its pod and PVC follow.
 func (s *Server) deletePlan(w http.ResponseWriter, r *http.Request) {
-	ap, plans, ok := s.ownPlans(w, r)
+	sc, ok := s.ownPlans(w, r)
 	if !ok {
 		return
 	}
-	pl, ok := pathPlan(w, r, plans)
+	ap := sc.Project
+	pl, ok := pathPlan(w, r, sc.Plans)
 	if !ok {
 		return
 	}
@@ -352,13 +404,13 @@ func (s *Server) deletePlan(w http.ResponseWriter, r *http.Request) {
 
 // projectPlan is loadPlans for the plan of the request path: 404 when the
 // project has none of that name.
-func (s *Server) projectPlan(w http.ResponseWriter, r *http.Request) (*aiv1.AgentPlan, bool, bool) {
-	_, _, plans, steer, ok := s.loadPlans(w, r)
+func (s *Server) projectPlan(w http.ResponseWriter, r *http.Request) (*aiv1.AgentPlan, planScope, bool) {
+	sc, ok := s.loadPlans(w, r)
 	if !ok {
-		return nil, false, false
+		return nil, planScope{}, false
 	}
-	pl, ok := pathPlan(w, r, plans)
-	return pl, steer, ok
+	pl, ok := pathPlan(w, r, sc.Plans)
+	return pl, sc, ok
 }
 
 // pathPlan is the plan of the request path among plans, 404 without it.
@@ -374,11 +426,11 @@ func pathPlan(w http.ResponseWriter, r *http.Request, plans []aiv1.AgentPlan) (*
 // postPlanChat posts the owner's message or interrupt to a plan that has not
 // created its milestone yet. The audit line never includes the text.
 func (s *Server) postPlanChat(w http.ResponseWriter, r *http.Request) {
-	pl, steer, ok := s.projectPlan(w, r)
+	pl, sc, ok := s.projectPlan(w, r)
 	switch {
 	case !ok:
 		return
-	case !steer:
+	case !sc.Steer:
 		writeError(w, http.StatusForbidden, "only the project's owners change its plans")
 		return
 	case pl.Status.Phase == aiv1.AgentPlanCreated:
@@ -420,15 +472,17 @@ func (s *Server) getPlanChat(w http.ResponseWriter, r *http.Request) {
 
 // ownPlan is projectPlan for a change by the plan's owners, decoding the
 // request into req unless it is nil: 404 without the writer client, 403 for
-// others.
+// others, 409 on a stand-in project.
 func (s *Server) ownPlan(w http.ResponseWriter, r *http.Request, limit int64, req any) (*aiv1.AgentPlan, bool) {
-	pl, steer, ok := s.projectPlan(w, r)
+	pl, sc, ok := s.projectPlan(w, r)
 	switch {
 	case !ok:
 	case s.writer == nil:
 		notFound(w)
-	case !steer:
+	case !sc.Steer:
 		writeError(w, http.StatusForbidden, "only the project's owners change its plans")
+	case sc.Set != "":
+		writeError(w, http.StatusConflict, planWaiting)
 	case req != nil && json.NewDecoder(http.MaxBytesReader(w, r.Body, limit)).Decode(req) != nil:
 		badRequest(w, "invalid request")
 	default:

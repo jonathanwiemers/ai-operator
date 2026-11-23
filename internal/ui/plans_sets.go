@@ -3,9 +3,13 @@ package ui
 import (
 	"cmp"
 	"context"
+	"net/http"
 	"slices"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 )
@@ -68,6 +72,42 @@ func (s *Server) setEntryProjects(ctx context.Context, p Principal) ([]setEntryP
 		return cmp.Or(cmp.Compare(a.Namespace, b.Namespace), cmp.Compare(a.Name, b.Name))
 	})
 	return out, nil
+}
+
+// planProject reads the project of the request path and its tasks, like
+// loadProject, but stands in for an offered dormant set entry without an
+// AgentProject: the child name in the namespace, the set label, no tasks.
+func (s *Server) planProject(w http.ResponseWriter, r *http.Request) (planScope, bool) {
+	p, ns, name := principalOf(r), r.PathValue("namespace"), r.PathValue("name")
+	if !s.authz.CanView(p, ns, name) {
+		notFound(w)
+		return planScope{}, false
+	}
+	var ap aiv1.AgentProject
+	err := s.reader.Get(r.Context(), client.ObjectKey{Namespace: ns, Name: name}, &ap)
+	if err == nil {
+		tasks, err := s.projectTasks(r.Context(), ns, name)
+		if err != nil {
+			s.internalError(w, err)
+			return planScope{}, false
+		}
+		return planScope{Project: &ap, Tasks: tasks}, true
+	}
+	var e setEntryProject
+	ok := false
+	if apierrors.IsNotFound(err) {
+		e, ok, err = s.setEntryProject(r.Context(), p, ns, name)
+	}
+	switch {
+	case err != nil:
+		s.internalError(w, err)
+	case !ok:
+		notFound(w)
+	default:
+		return planScope{Project: &aiv1.AgentProject{ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: name,
+			Labels: map[string]string{aiv1.LabelProjectSet: e.Set}}}, Set: e.Set}, true
+	}
+	return planScope{}, false
 }
 
 // setEntryProject is the entry of setEntryProjects named ns/name, if any.
