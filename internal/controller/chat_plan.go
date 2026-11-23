@@ -86,6 +86,7 @@ func (c *Chat) dispatchPlan(ctx context.Context, s *store.Store, m store.ChatMes
 	switch {
 	case plan.Spec.ProjectRef != m.Project:
 		fail("plan belongs to another project")
+	case c.planWaiting(ctx, &plan, m, fail): // failed or left queued
 	case !c.chatEnabled(ctx, m, fail): // failed or left queued
 	case plan.Status.Phase == aiv1.AgentPlanCreated:
 		fail("the milestone was already created from this plan")
@@ -98,6 +99,26 @@ func (c *Chat) dispatchPlan(ctx context.Context, s *store.Store, m store.ChatMes
 	case c.deliverChat(ctx, s, m, &plan, &plan.Spec.ChatMessages) && c.WakePlan != nil:
 		c.WakePlan(types.NamespacedName{Namespace: m.Namespace, Name: m.Plan})
 	}
+}
+
+// planWaiting reports whether plan waits for its project set to create its
+// project. Its message m then stays queued for a later poll, or fails with
+// the plan's status message once the plan failed. A read error leaves m
+// queued too.
+func (c *Chat) planWaiting(ctx context.Context, plan *aiv1.AgentPlan, m store.ChatMessage, fail func(string)) bool {
+	if plan.Labels[aiv1.LabelProjectSet] == "" {
+		return false
+	}
+	err := c.Get(ctx, types.NamespacedName{Namespace: m.Namespace, Name: m.Project}, &aiv1.AgentProject{})
+	switch {
+	case err == nil:
+		return false
+	case !apierrors.IsNotFound(err):
+		c.Log.Error(err, "getting project for chat message", "id", m.ID, "project", m.Project)
+	case plan.Status.Phase == aiv1.AgentPlanFailed:
+		fail(cmp.Or(plan.Status.Message, "the plan failed"))
+	}
+	return true
 }
 
 // chatList reads the target ("task" or "plan") of m and the chat messages

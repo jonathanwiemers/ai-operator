@@ -341,6 +341,104 @@ func TestPlanMissingProjectFails(t *testing.T) {
 	if plan.Status.Phase != aiv1.AgentPlanFailed || plan.Status.Message != "project not found" || e.pod() != nil {
 		t.Fatalf("phase %q, message %q", plan.Status.Phase, plan.Status.Message)
 	}
+	if e.res.RequeueAfter != 0 {
+		t.Fatalf("an unlabelled plan is not retried, requeue after %s", e.res.RequeueAfter)
+	}
+}
+
+// setPlan is a plan of the project set jo-wiemers whose project shop does
+// not exist yet.
+func setPlan() *aiv1.AgentPlan {
+	plan := pendingPlan()
+	plan.Labels = map[string]string{aiv1.LabelProjectSet: "jo-wiemers"}
+	return plan
+}
+
+func testSet(entries ...aiv1.ProjectSetEntry) *aiv1.AgentProjectSet {
+	return &aiv1.AgentProjectSet{
+		ObjectMeta: metav1.ObjectMeta{Name: "jo-wiemers", Namespace: ns},
+		Spec:       aiv1.AgentProjectSetSpec{GitLab: aiv1.ProjectSetGitLab{Group: "jo.wiemers"}},
+		Status:     aiv1.AgentProjectSetStatus{Projects: entries},
+	}
+}
+
+func TestPlanWaitsForSetProject(t *testing.T) {
+	e := newPlanEnv(t, setPlan())
+	plan := e.reconcile()
+	if plan.Status.Phase != aiv1.AgentPlanStarting || plan.Status.Message != planWaitMessage {
+		t.Fatalf("phase %q, message %q; want waiting", plan.Status.Phase, plan.Status.Message)
+	}
+	if e.res.RequeueAfter != planProjectRetry || len(plan.OwnerReferences) != 0 || e.pod() != nil {
+		t.Fatalf("requeue after %s, owners %+v; want a retry in 10s, no owner, no pod", e.res.RequeueAfter, plan.OwnerReferences)
+	}
+
+	if err := e.c.Create(e.ctx, testProject()); err != nil {
+		t.Fatal(err)
+	}
+	plan = e.reconcile()
+	if refs := plan.OwnerReferences; len(refs) != 1 || refs[0].Name != "shop" {
+		t.Fatalf("the project must own the plan: %+v", refs)
+	}
+	if plan.Status.Phase != aiv1.AgentPlanStarting || plan.Status.Message != "" || e.pod() == nil {
+		t.Fatalf("phase %q, message %q; want the pod starting for the pending message", plan.Status.Phase, plan.Status.Message)
+	}
+}
+
+func TestPlanWaitingClearedWithoutMessage(t *testing.T) {
+	plan := testPlan()
+	plan.Status = aiv1.AgentPlanStatus{Phase: aiv1.AgentPlanStarting, Message: planWaitMessage}
+	e := newPlanEnv(t, testProject(), plan)
+	if plan = e.reconcile(); plan.Status.Phase != "" || plan.Status.Message != "" || e.pod() != nil {
+		t.Fatalf("phase %q, message %q; want a new plan without a pod", plan.Status.Phase, plan.Status.Message)
+	}
+}
+
+func TestPlanSetProjectTimesOut(t *testing.T) {
+	discoveryFailed := testSet(aiv1.ProjectSetEntry{Path: "jo.wiemers/shop", State: aiv1.ProjectSetDormant, Reason: "no work"})
+	discoveryFailed.Status.Conditions = []metav1.Condition{{Type: aiv1.ConditionDiscovered, Status: metav1.ConditionFalse, Reason: "GitLabError", Message: "GitLab answered 401"}}
+	for _, tc := range []struct {
+		name   string
+		set    *aiv1.AgentProjectSet // nil: no set
+		reason string
+	}{
+		{name: "entry by path", set: testSet(aiv1.ProjectSetEntry{Path: "jo.wiemers/shop", State: aiv1.ProjectSetDormant, Reason: "archived"}), reason: "archived"},
+		{name: "entry by child", set: testSet(aiv1.ProjectSetEntry{Path: "jo.wiemers/other", Child: "shop", State: aiv1.ProjectSetActive}), reason: "the entry is active"},
+		{name: "discovery failed", set: discoveryFailed, reason: "GitLab answered 401"},
+		{name: "no entry", set: testSet(), reason: "the set has no entry for it"},
+		{name: "no set", reason: "set jo-wiemers not found"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			objs := []client.Object{setPlan()}
+			if tc.set != nil {
+				objs = append(objs, tc.set)
+			}
+			e := newPlanEnv(t, objs...)
+			e.now = planT0.Add(planProjectWait - time.Second)
+			if plan := e.reconcile(); plan.Status.Phase != aiv1.AgentPlanStarting {
+				t.Fatalf("still waiting before 10 minutes: phase %q", plan.Status.Phase)
+			}
+			e.now = planT0.Add(planProjectWait)
+			plan := e.reconcile()
+			if want := "The project set did not create shop: " + tc.reason; plan.Status.Phase != aiv1.AgentPlanFailed || plan.Status.Message != want {
+				t.Fatalf("phase %q, message %q; want Failed %q", plan.Status.Phase, plan.Status.Message, want)
+			}
+			if e.res.RequeueAfter <= planProjectRetry || e.pod() != nil {
+				t.Fatalf("a failed plan waits only for its retention, requeue after %s", e.res.RequeueAfter)
+			}
+		})
+	}
+}
+
+func TestPlanWaitingPastRetentionDeleted(t *testing.T) {
+	e := newPlanEnv(t, setPlan(), testSet())
+	e.now = planT0.Add(testPlanConfig.Retention - time.Hour)
+	if plan := e.reconcile(); plan == nil || plan.Status.Phase != aiv1.AgentPlanFailed || e.res.RequeueAfter != time.Hour {
+		t.Fatalf("failed and kept until its retention, requeue after %s", e.res.RequeueAfter)
+	}
+	e.now = planT0.Add(testPlanConfig.Retention)
+	if e.reconcile() != nil {
+		t.Fatal("a waiting plan must be deleted at the retention deadline")
+	}
 }
 
 func TestPlanWake(t *testing.T) {

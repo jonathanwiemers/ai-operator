@@ -77,8 +77,7 @@ func (r *AgentPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	orig, st := plan.DeepCopy(), &plan.Status
 	var project aiv1.AgentProject
 	if err := r.Get(ctx, types.NamespacedName{Namespace: plan.Namespace, Name: plan.Spec.ProjectRef}, &project); apierrors.IsNotFound(err) {
-		st.Phase, st.Message = aiv1.AgentPlanFailed, "project not found"
-		return ctrl.Result{}, r.patchStatus(ctx, &plan, orig)
+		return r.waitForSetProject(ctx, &plan, orig)
 	} else if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -88,6 +87,14 @@ func (r *AgentPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	}
 	if !equality.Semantic.DeepEqual(plan.OwnerReferences, orig.OwnerReferences) {
 		if err := r.Update(ctx, &plan); err != nil {
+			return ctrl.Result{}, err
+		}
+		orig = plan.DeepCopy()
+	}
+	// The set created the project: the plan starts over as a new one.
+	if st.Phase == aiv1.AgentPlanStarting && st.Message == planWaitMessage {
+		st.Phase, st.Message = "", ""
+		if err := r.patchStatus(ctx, &plan, orig); err != nil {
 			return ctrl.Result{}, err
 		}
 		orig = plan.DeepCopy()

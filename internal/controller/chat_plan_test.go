@@ -163,6 +163,41 @@ func TestChatDispatchPlanIdempotent(t *testing.T) {
 	}
 }
 
+func TestChatDispatchPlanWaitsForSetProject(t *testing.T) {
+	plan := chatPlan(chatPlanName)
+	plan.Labels = map[string]string{aiv1.LabelProjectSet: "jo-wiemers"}
+	plan.Status = aiv1.AgentPlanStatus{Phase: aiv1.AgentPlanStarting, Message: planWaitMessage}
+	e, woke := newPlanChatEnv(t, plan)
+	id := e.insertPlanUser(chatPlanName, "plan a CSV export", "message", "w1")
+	e.chat.dispatchQueued(e.ctx)
+	if st, reason := e.planMsgState(id, chatPlanName); st != "queued" || reason != "" || len(*woke) != 0 {
+		t.Fatalf("state = %q %q, wakes %v; want queued while the set creates the project", st, reason, *woke)
+	}
+
+	if err := e.c.Create(e.ctx, chatProject(true)); err != nil {
+		t.Fatal(err)
+	}
+	e.chat.dispatchQueued(e.ctx)
+	if st, _ := e.planMsgState(id, chatPlanName); st != "delivered" || len(*woke) != 1 {
+		t.Fatalf("state = %q, wakes %v; want delivered once the project exists", st, *woke)
+	}
+	if msgs := e.plan(chatPlanName).Spec.ChatMessages; len(msgs) != 1 || msgs[0].ID != id {
+		t.Fatalf("plan chatMessages = %+v", msgs)
+	}
+}
+
+func TestChatDispatchFailedWaitingPlan(t *testing.T) {
+	plan := chatPlan(chatPlanName)
+	plan.Labels = map[string]string{aiv1.LabelProjectSet: "jo-wiemers"}
+	plan.Status = aiv1.AgentPlanStatus{Phase: aiv1.AgentPlanFailed, Message: "The project set did not create shop: archived"}
+	e, _ := newPlanChatEnv(t, plan)
+	id := e.insertPlanUser(chatPlanName, "plan a CSV export", "message", "f1")
+	e.chat.dispatchQueued(e.ctx)
+	if st, reason := e.planMsgState(id, chatPlanName); st != "failed" || reason != plan.Status.Message {
+		t.Fatalf("state = %q %q, want failed with the plan's message", st, reason)
+	}
+}
+
 func TestChatDispatchPlanRefused(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
