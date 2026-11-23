@@ -1,0 +1,3 @@
+internal/cursorusage 100.0
+internal/streamjson 100.0
+internal/writefail 100.0
