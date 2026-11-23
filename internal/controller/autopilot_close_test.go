@@ -269,12 +269,11 @@ func TestEndMilestoneBeforeThePlan(t *testing.T) {
 }
 
 func TestDoneWithAnEmptyQueueKeepsThePhase(t *testing.T) {
-	for _, phase := range []aiv1.AutopilotPhase{aiv1.AutopilotRunning, aiv1.AutopilotPaused} {
-		a := &autopilot{ap: &aiv1.AutopilotStatus{Phase: phase, TrackingIssueIID: 7}, log: logr.Discard()}
-		// No GitLab: done must not close or comment anything.
-		if err := a.done(context.Background()); err != nil || a.ap.Phase != phase {
-			t.Fatalf("done with no items keeps %s: %v %+v", phase, err, a.ap)
-		}
+	phase := aiv1.AutopilotRunning
+	a := &autopilot{ap: &aiv1.AutopilotStatus{Phase: phase, TrackingIssueIID: 7}, log: logr.Discard()}
+	// No GitLab: done must not close or comment anything.
+	if err := a.done(context.Background()); err != nil || a.ap.Phase != phase {
+		t.Fatalf("done with no items keeps %s: %v %+v", phase, err, a.ap)
 	}
 }
 

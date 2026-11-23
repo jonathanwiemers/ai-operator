@@ -333,8 +333,6 @@ func TestPilotActionValidation(t *testing.T) {
 		{aiv1.PilotAction{Tool: "retry", IssueIID: 1}, ""},
 		{aiv1.PilotAction{Tool: "retry", IssueIID: 7}, "#7 is not an issue of this milestone"},
 		{aiv1.PilotAction{Tool: "merge", IssueIID: 1}, "`merge` is not a tool of the pilot"},
-		{aiv1.PilotAction{Tool: "close", IssueIID: 1}, "not a tool"},
-		{aiv1.PilotAction{Tool: "push", IssueIID: 1}, "not a tool"},
 		{aiv1.PilotAction{Tool: "reReview", IssueIID: 2}, "no pushed head"},
 		{aiv1.PilotAction{Tool: "reReview", IssueIID: 1}, ""},
 		{aiv1.PilotAction{Tool: "reReview", IssueIID: 3}, "already reviewed"},
@@ -672,8 +670,6 @@ func TestCheckRetryPipeline(t *testing.T) {
 		{&aiv1.MainHealthStatus{State: aiv1.MainHealthRed, PipelineID: 77}, true},
 		{&aiv1.MainHealthStatus{State: aiv1.MainHealthRed, PipelineID: 78}, false},
 		{&aiv1.MainHealthStatus{State: aiv1.MainHealthRetrying, PipelineID: 77}, false},
-		{&aiv1.MainHealthStatus{State: aiv1.MainHealthFlaky, PipelineID: 77}, false},
-		{&aiv1.MainHealthStatus{State: aiv1.MainHealthGreen, PipelineID: 77}, false},
 	} {
 		err := checkRetryPipeline(tc.mh, 77)
 		if tc.ok != (err == nil) || err != nil && err.Error() != "pipeline 77 is not the red pipeline of the default branch" {

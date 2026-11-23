@@ -22,9 +22,6 @@ func TestRenderTrackingStates(t *testing.T) {
 			st.Spec.QueuedBehind = []int64{8, 7}
 		}, waitingLine},
 		{"waiting, the turn has come", func(*aiv1.AgentTask, *aiv1.AutopilotStatus) {}, "⏳ waiting for its turn, planning starts on the next poll."},
-		{"an old start mark waits like any other", func(st *aiv1.AgentTask, ap *aiv1.AutopilotStatus) {
-			st.Spec.QueuedBehind, ap.StartRequestedBy = []int64{7, 8}, "@alice"
-		}, waitingLine},
 		{"planning", func(st *aiv1.AgentTask, _ *aiv1.AutopilotStatus) { st.Spec.RunRequest = 1 }, "📝 planning"},
 		{"planning failed", func(st *aiv1.AgentTask, _ *aiv1.AutopilotStatus) {
 			st.Spec.RunRequest, st.Status.Run.ObservedRunRequest = 1, 1

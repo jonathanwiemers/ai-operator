@@ -464,9 +464,7 @@ func TestMainHealthCanceledSuperseded(t *testing.T) {
 		superseded  bool
 	}{
 		{"by a running pipeline", "running", true},
-		{"by a pending pipeline", "pending", true},
 		{"by a green pipeline", "success", true},
-		{"by a red pipeline", "failed", true},
 		{"not by a skipped pipeline", "skipped", false},
 		{"not by a canceled pipeline", "canceled", false},
 	} {

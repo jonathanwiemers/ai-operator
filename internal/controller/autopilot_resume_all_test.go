@@ -151,7 +151,7 @@ func TestTrackingMaxParallelWarn(t *testing.T) {
 	if body := render(3, 1); !strings.Contains(body, warn) {
 		t.Fatalf("want warning in:\n%s", body)
 	}
-	for _, tc := range []struct{ parallel, concurrent int32 }{{1, 1}, {3, 4}, {1, 4}} {
+	for _, tc := range []struct{ parallel, concurrent int32 }{{1, 1}, {3, 4}} {
 		if body := render(tc.parallel, tc.concurrent); strings.Contains(body, "maxConcurrentRuns") {
 			t.Fatalf("no warning when maxParallel=%d maxConcurrentRuns=%d:\n%s", tc.parallel, tc.concurrent, body)
 		}

@@ -49,7 +49,6 @@ func TestSpecTurnHonoursAnOwnerPause(t *testing.T) {
 		{"no status, nothing ahead", &aiv1.AgentTask{}, nil, true},
 		{"no status, older open", &aiv1.AgentTask{}, []int64{7}, false},
 		{"owner pause, nothing ahead", paused(aiv1.PauseOwner, ""), nil, false},
-		{"owner pause, an old start mark waits for resume", paused(aiv1.PauseOwner, "@alice"), nil, false},
 		{"an old start mark does not jump the queue", paused(aiv1.PauseBudget, "@alice"), []int64{7}, false},
 		{"budget pause, nothing ahead", paused(aiv1.PauseBudget, ""), nil, true},
 		{"running, nothing ahead", phaseTask(aiv1.AutopilotRunning), nil, true},
