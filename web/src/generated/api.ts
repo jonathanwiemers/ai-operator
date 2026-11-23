@@ -620,6 +620,275 @@ export const EngineClaude = "claude";
  */
 export const EngineCursor = "cursor";
 export type Engine = typeof EngineClaude | typeof EngineCursor;
+/**
+ * RoleSpec configures a single agent role.
+ */
+export interface RoleSpec {
+  /**
+   * Engine is the agent CLI used for this role. Roles can mix engines, e.g.
+   * implement with claude and review with cursor.
+   * +kubebuilder:default=claude
+   * +optional
+   */
+  engine?: Engine;
+  /**
+   * Model passed to the engine, e.g. claude-opus-5-5 or claude-sonnet-5-5
+   * for claude, "auto" for cursor. For the claude engine it defaults to
+   * claude-opus-5-5 (claude-sonnet-5-5 for reviews); cursor uses its own
+   * default.
+   * +optional
+   */
+  model?: string;
+  /**
+   * Effort level (claude engine only).
+   * +kubebuilder:validation:Enum=low;medium;high;xhigh;max
+   * +optional
+   */
+  effort?: string;
+  /**
+   * MaxBudgetUSD caps the spend of a single invocation of this role,
+   * as a decimal string, e.g. "5" or "2.50" (claude engine only).
+   * +kubebuilder:validation:Pattern=`^[0-9]+(\.[0-9]+)?$`
+   * +optional
+   */
+  maxBudgetUSD?: string;
+  /**
+   * AllowedTools overrides the tools the role may use (claude engine only;
+   * cursor reads its permissions from .cursor/cli.json).
+   * +optional
+   */
+  allowedTools?: string[];
+  /**
+   * Instructions are appended to the role's system prompt, e.g. house rules.
+   * +optional
+   */
+  instructions?: string;
+  /**
+   * Fallback is the engine and model the role runs on while its own
+   * engine is at a usage limit, instead of waiting for the reset. Without
+   * one, or while the fallback's engine is limited too, runs wait.
+   * +optional
+   */
+  fallback?: RoleFallback;
+  /**
+   * Subagents the role may delegate to, passed to claude as --agents
+   * (claude engine only; cursor roles ignore them with a warning). The
+   * default is none: claude keeps its built-in subagents.
+   * +listType=map
+   * +listMapKey=name
+   * +kubebuilder:validation:MaxItems=8
+   * +optional
+   */
+  subagents?: Subagent[];
+  /**
+   * ReadGate blocks the role's reads of big files whole and tells it to ask
+   * a subagent or read a section instead (claude engine only; cursor roles
+   * and cursor fallbacks ignore it with a warning). Unset, no gate.
+   * +optional
+   */
+  readGate?: ReadGate;
+  /**
+   * BashMaxOutputChars sets Claude Code's BASH_MAX_OUTPUT_LENGTH for the
+   * role's calls: Bash output longer than this many characters is cut
+   * before it enters the context. Unset, the variable is not set and
+   * Claude Code's own limit applies. Cursor ignores it.
+   * +kubebuilder:validation:Minimum=1000
+   * +kubebuilder:validation:Maximum=200000
+   * +optional
+   */
+  bashMaxOutputChars?: number /* int32 */;
+}
+/**
+ * DefaultReadGateLines is the ReadGate.MinLines default.
+ */
+export const DefaultReadGateLines = 350;
+/**
+ * ReadGate configures the read gate of a role, see
+ * docs/reference/agents-and-models.md#read-gate.
+ */
+export interface ReadGate {
+  /**
+   * MinLines: reads of files with more lines are blocked.
+   * +kubebuilder:default=350
+   * +kubebuilder:validation:Minimum=100
+   * +optional
+   */
+  minLines?: number /* int32 */;
+}
+/**
+ * Subagent is a custom claude subagent of a role, e.g. a read-only scout on
+ * a cheaper model for searches, lookups and log reading.
+ */
+export interface Subagent {
+  /**
+   * Name the role delegates to.
+   * +kubebuilder:validation:Pattern=`^[a-z][a-z0-9-]{0,39}$`
+   */
+  name: string;
+  /**
+   * Description tells the role when to use the subagent.
+   * +kubebuilder:validation:MinLength=1
+   */
+  description: string;
+  /**
+   * Model of the subagent, e.g. haiku or claude-haiku-5-5. Empty, it
+   * inherits the role's model.
+   * +optional
+   */
+  model?: string;
+  /**
+   * Tools the subagent may use. Empty, claude's default for subagents.
+   * +kubebuilder:validation:items:Enum=Read;Grep;Glob;WebFetch;WebSearch;Bash;Edit;Write;NotebookEdit;TodoWrite
+   * +optional
+   */
+  tools?: string[];
+  /**
+   * Prompt is the subagent's system prompt.
+   * +kubebuilder:validation:MinLength=1
+   */
+  prompt: string;
+}
+/**
+ * RoleFallback is the engine and model a role runs on while its own engine
+ * is limited. It must be another engine and an allowed model (see
+ * agents.models).
+ */
+export interface RoleFallback {
+  engine: Engine;
+  /**
+   * Model passed to the fallback engine, or its alias, e.g. sonnet.
+   * +kubebuilder:validation:MinLength=1
+   */
+  model: string;
+  /**
+   * Effort level (claude engine only).
+   * +kubebuilder:validation:Enum=low;medium;high;xhigh;max
+   * +optional
+   */
+  effort?: string;
+}
+/**
+ * ImplementSpec configures the implementing agent.
+ */
+export interface ImplementSpec extends RoleSpec {
+  /**
+   * StepSession is how a stepwise run (draft MR, workflow.stepCommits)
+   * goes on after each step: "resume" continues the same session,
+   * "fresh" starts every step after the first in a new session that gets
+   * the agent notes and the summaries of the steps before. Fresh steps
+   * carry less context, so their cost does not grow with the session,
+   * but they lose what the session remembered beyond the notes.
+   * Review-fix rounds and the next run resume the last step's session
+   * either way. Applies to the profiles too.
+   * +kubebuilder:default=resume
+   * +optional
+   */
+  stepSession?: StepSessionMode;
+  /**
+   * MaxStepLines turns on the step-size gate of stepwise runs (draft MR,
+   * workflow.stepCommits): once the uncommitted diff passes this many
+   * changed lines, a hook tells the implementer to finish its step, and
+   * the steps note asks to keep a step under it. Claude only; unset is
+   * off. A profile's maxStepLines overrides it.
+   * +kubebuilder:validation:Minimum=1
+   * +optional
+   */
+  maxStepLines?: number /* int32 */;
+  /**
+   * Conflict is the role of the calls that resolve the merge conflicts of
+   * a conflict run, e.g. a cheaper model for mostly mechanical merges. Its
+   * fields override the issue's implementer (agents.implement or the
+   * profile, with the model and effort labels); unset fields are the
+   * implementer's. Unset, the implementer resolves the conflicts in its
+   * own session. Applies to the profiles too.
+   * +optional
+   */
+  conflict?: ConflictRoleSpec;
+  /**
+   * Experiment tries settings of the implementer side by side: each issue
+   * gets one of its arms at its first implement run, by a stable hash of
+   * the project, the experiment's name and the issue's IID, and keeps it.
+   * The arm's overrides sit between the issue's labels and the project's
+   * config. The ExperimentValid condition reports cross-field problems;
+   * an invalid experiment assigns no arms. Unset, no experiment.
+   * +optional
+   */
+  experiment?: Experiment;
+}
+/**
+ * Experiment is a named set of arms, see ImplementSpec.Experiment.
+ */
+export interface Experiment {
+  /**
+   * Name of the experiment, recorded with the arm. Renaming it starts a
+   * new experiment: issues assigned under the old name run without arm.
+   * +kubebuilder:validation:Pattern=`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`
+   * +kubebuilder:validation:MaxLength=40
+   */
+  name: string;
+  /**
+   * Arms are the variants the issues are spread over. At most one arm may
+   * override nothing: the baseline.
+   * +listType=map
+   * +listMapKey=name
+   * +kubebuilder:validation:MinItems=2
+   * +kubebuilder:validation:MaxItems=4
+   */
+  arms: ExperimentArm[];
+}
+/**
+ * ExperimentArm overrides settings of the implement role for the issues
+ * assigned to it. Unset fields keep the project's config.
+ */
+export interface ExperimentArm {
+  /**
+   * Name of the arm, recorded on the task and its agent calls.
+   * +kubebuilder:validation:Pattern=`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`
+   * +kubebuilder:validation:MaxLength=40
+   */
+  name: string;
+  /**
+   * StepSession overrides agents.implement.stepSession.
+   * +optional
+   */
+  stepSession?: StepSessionMode;
+  /**
+   * Effort overrides the implementer's effort, as an effort label the
+   * planner set would. It may not be above agents.maxEffort.
+   * +kubebuilder:validation:Enum=low;medium;high;xhigh;max
+   * +optional
+   */
+  effort?: string;
+  /**
+   * Profile runs the issue on this profile instead of the one the planner
+   * picked. It must be one of the project's profiles.
+   * +kubebuilder:validation:Pattern=`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`
+   * +optional
+   */
+  profile?: string;
+}
+/**
+ * ConflictRoleSpec configures the calls that resolve merge conflicts.
+ */
+export interface ConflictRoleSpec extends RoleSpec {
+  /**
+   * FreshSession starts each conflict call in a new session with a
+   * self-contained prompt (the issue, the agent notes, the conflicting
+   * files and the MR's diff stat) instead of resuming the implementer's
+   * long session; the implementer's session stays for its later calls.
+   * false resumes the implementer's session when the engine is the same.
+   * +kubebuilder:default=true
+   * +optional
+   */
+  freshSession?: boolean;
+}
+/**
+ * StepSessionMode is how an implementer goes on after a step.
+ * +kubebuilder:validation:Enum=resume;fresh
+ */
+export type StepSessionMode = string;
+export const StepSessionResume: StepSessionMode = "resume";
+export const StepSessionFresh: StepSessionMode = "fresh";
 
 //////////
 // source: agentproject_types.go
@@ -1084,275 +1353,6 @@ export interface ReleaseSpec {
    */
   maxUnreleasedAge?: string;
 }
-/**
- * RoleSpec configures a single agent role.
- */
-export interface RoleSpec {
-  /**
-   * Engine is the agent CLI used for this role. Roles can mix engines, e.g.
-   * implement with claude and review with cursor.
-   * +kubebuilder:default=claude
-   * +optional
-   */
-  engine?: Engine;
-  /**
-   * Model passed to the engine, e.g. claude-opus-5-5 or claude-sonnet-5-5
-   * for claude, "auto" for cursor. For the claude engine it defaults to
-   * claude-opus-5-5 (claude-sonnet-5-5 for reviews); cursor uses its own
-   * default.
-   * +optional
-   */
-  model?: string;
-  /**
-   * Effort level (claude engine only).
-   * +kubebuilder:validation:Enum=low;medium;high;xhigh;max
-   * +optional
-   */
-  effort?: string;
-  /**
-   * MaxBudgetUSD caps the spend of a single invocation of this role,
-   * as a decimal string, e.g. "5" or "2.50" (claude engine only).
-   * +kubebuilder:validation:Pattern=`^[0-9]+(\.[0-9]+)?$`
-   * +optional
-   */
-  maxBudgetUSD?: string;
-  /**
-   * AllowedTools overrides the tools the role may use (claude engine only;
-   * cursor reads its permissions from .cursor/cli.json).
-   * +optional
-   */
-  allowedTools?: string[];
-  /**
-   * Instructions are appended to the role's system prompt, e.g. house rules.
-   * +optional
-   */
-  instructions?: string;
-  /**
-   * Fallback is the engine and model the role runs on while its own
-   * engine is at a usage limit, instead of waiting for the reset. Without
-   * one, or while the fallback's engine is limited too, runs wait.
-   * +optional
-   */
-  fallback?: RoleFallback;
-  /**
-   * Subagents the role may delegate to, passed to claude as --agents
-   * (claude engine only; cursor roles ignore them with a warning). The
-   * default is none: claude keeps its built-in subagents.
-   * +listType=map
-   * +listMapKey=name
-   * +kubebuilder:validation:MaxItems=8
-   * +optional
-   */
-  subagents?: Subagent[];
-  /**
-   * ReadGate blocks the role's reads of big files whole and tells it to ask
-   * a subagent or read a section instead (claude engine only; cursor roles
-   * and cursor fallbacks ignore it with a warning). Unset, no gate.
-   * +optional
-   */
-  readGate?: ReadGate;
-  /**
-   * BashMaxOutputChars sets Claude Code's BASH_MAX_OUTPUT_LENGTH for the
-   * role's calls: Bash output longer than this many characters is cut
-   * before it enters the context. Unset, the variable is not set and
-   * Claude Code's own limit applies. Cursor ignores it.
-   * +kubebuilder:validation:Minimum=1000
-   * +kubebuilder:validation:Maximum=200000
-   * +optional
-   */
-  bashMaxOutputChars?: number /* int32 */;
-}
-/**
- * DefaultReadGateLines is the ReadGate.MinLines default.
- */
-export const DefaultReadGateLines = 350;
-/**
- * ReadGate configures the read gate of a role, see
- * docs/reference/agents-and-models.md#read-gate.
- */
-export interface ReadGate {
-  /**
-   * MinLines: reads of files with more lines are blocked.
-   * +kubebuilder:default=350
-   * +kubebuilder:validation:Minimum=100
-   * +optional
-   */
-  minLines?: number /* int32 */;
-}
-/**
- * Subagent is a custom claude subagent of a role, e.g. a read-only scout on
- * a cheaper model for searches, lookups and log reading.
- */
-export interface Subagent {
-  /**
-   * Name the role delegates to.
-   * +kubebuilder:validation:Pattern=`^[a-z][a-z0-9-]{0,39}$`
-   */
-  name: string;
-  /**
-   * Description tells the role when to use the subagent.
-   * +kubebuilder:validation:MinLength=1
-   */
-  description: string;
-  /**
-   * Model of the subagent, e.g. haiku or claude-haiku-5-5. Empty, it
-   * inherits the role's model.
-   * +optional
-   */
-  model?: string;
-  /**
-   * Tools the subagent may use. Empty, claude's default for subagents.
-   * +kubebuilder:validation:items:Enum=Read;Grep;Glob;WebFetch;WebSearch;Bash;Edit;Write;NotebookEdit;TodoWrite
-   * +optional
-   */
-  tools?: string[];
-  /**
-   * Prompt is the subagent's system prompt.
-   * +kubebuilder:validation:MinLength=1
-   */
-  prompt: string;
-}
-/**
- * RoleFallback is the engine and model a role runs on while its own engine
- * is limited. It must be another engine and an allowed model (see
- * agents.models).
- */
-export interface RoleFallback {
-  engine: Engine;
-  /**
-   * Model passed to the fallback engine, or its alias, e.g. sonnet.
-   * +kubebuilder:validation:MinLength=1
-   */
-  model: string;
-  /**
-   * Effort level (claude engine only).
-   * +kubebuilder:validation:Enum=low;medium;high;xhigh;max
-   * +optional
-   */
-  effort?: string;
-}
-/**
- * ImplementSpec configures the implementing agent.
- */
-export interface ImplementSpec extends RoleSpec {
-  /**
-   * StepSession is how a stepwise run (draft MR, workflow.stepCommits)
-   * goes on after each step: "resume" continues the same session,
-   * "fresh" starts every step after the first in a new session that gets
-   * the agent notes and the summaries of the steps before. Fresh steps
-   * carry less context, so their cost does not grow with the session,
-   * but they lose what the session remembered beyond the notes.
-   * Review-fix rounds and the next run resume the last step's session
-   * either way. Applies to the profiles too.
-   * +kubebuilder:default=resume
-   * +optional
-   */
-  stepSession?: StepSessionMode;
-  /**
-   * MaxStepLines turns on the step-size gate of stepwise runs (draft MR,
-   * workflow.stepCommits): once the uncommitted diff passes this many
-   * changed lines, a hook tells the implementer to finish its step, and
-   * the steps note asks to keep a step under it. Claude only; unset is
-   * off. A profile's maxStepLines overrides it.
-   * +kubebuilder:validation:Minimum=1
-   * +optional
-   */
-  maxStepLines?: number /* int32 */;
-  /**
-   * Conflict is the role of the calls that resolve the merge conflicts of
-   * a conflict run, e.g. a cheaper model for mostly mechanical merges. Its
-   * fields override the issue's implementer (agents.implement or the
-   * profile, with the model and effort labels); unset fields are the
-   * implementer's. Unset, the implementer resolves the conflicts in its
-   * own session. Applies to the profiles too.
-   * +optional
-   */
-  conflict?: ConflictRoleSpec;
-  /**
-   * Experiment tries settings of the implementer side by side: each issue
-   * gets one of its arms at its first implement run, by a stable hash of
-   * the project, the experiment's name and the issue's IID, and keeps it.
-   * The arm's overrides sit between the issue's labels and the project's
-   * config. The ExperimentValid condition reports cross-field problems;
-   * an invalid experiment assigns no arms. Unset, no experiment.
-   * +optional
-   */
-  experiment?: Experiment;
-}
-/**
- * Experiment is a named set of arms, see ImplementSpec.Experiment.
- */
-export interface Experiment {
-  /**
-   * Name of the experiment, recorded with the arm. Renaming it starts a
-   * new experiment: issues assigned under the old name run without arm.
-   * +kubebuilder:validation:Pattern=`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`
-   * +kubebuilder:validation:MaxLength=40
-   */
-  name: string;
-  /**
-   * Arms are the variants the issues are spread over. At most one arm may
-   * override nothing: the baseline.
-   * +listType=map
-   * +listMapKey=name
-   * +kubebuilder:validation:MinItems=2
-   * +kubebuilder:validation:MaxItems=4
-   */
-  arms: ExperimentArm[];
-}
-/**
- * ExperimentArm overrides settings of the implement role for the issues
- * assigned to it. Unset fields keep the project's config.
- */
-export interface ExperimentArm {
-  /**
-   * Name of the arm, recorded on the task and its agent calls.
-   * +kubebuilder:validation:Pattern=`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`
-   * +kubebuilder:validation:MaxLength=40
-   */
-  name: string;
-  /**
-   * StepSession overrides agents.implement.stepSession.
-   * +optional
-   */
-  stepSession?: StepSessionMode;
-  /**
-   * Effort overrides the implementer's effort, as an effort label the
-   * planner set would. It may not be above agents.maxEffort.
-   * +kubebuilder:validation:Enum=low;medium;high;xhigh;max
-   * +optional
-   */
-  effort?: string;
-  /**
-   * Profile runs the issue on this profile instead of the one the planner
-   * picked. It must be one of the project's profiles.
-   * +kubebuilder:validation:Pattern=`^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`
-   * +optional
-   */
-  profile?: string;
-}
-/**
- * ConflictRoleSpec configures the calls that resolve merge conflicts.
- */
-export interface ConflictRoleSpec extends RoleSpec {
-  /**
-   * FreshSession starts each conflict call in a new session with a
-   * self-contained prompt (the issue, the agent notes, the conflicting
-   * files and the MR's diff stat) instead of resuming the implementer's
-   * long session; the implementer's session stays for its later calls.
-   * false resumes the implementer's session when the engine is the same.
-   * +kubebuilder:default=true
-   * +optional
-   */
-  freshSession?: boolean;
-}
-/**
- * StepSessionMode is how an implementer goes on after a step.
- * +kubebuilder:validation:Enum=resume;fresh
- */
-export type StepSessionMode = string;
-export const StepSessionResume: StepSessionMode = "resume";
-export const StepSessionFresh: StepSessionMode = "fresh";
 /**
  * ReviewSpec configures the review loop that runs after each implementation.
  */
