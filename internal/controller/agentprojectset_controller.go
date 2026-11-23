@@ -22,6 +22,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
@@ -74,6 +75,7 @@ func (r *AgentProjectSetReconciler) WakeSet(n types.NamespacedName) {
 // +kubebuilder:rbac:groups=ai.wiemers.me,resources=agentprojectsets/finalizers,verbs=update
 // +kubebuilder:rbac:groups=ai.wiemers.me,resources=agentprojects,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=ai.wiemers.me,resources=agenttasks,verbs=list
+// +kubebuilder:rbac:groups=ai.wiemers.me,resources=agentplans,verbs=list;watch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get
 
 func (r *AgentProjectSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -139,8 +141,14 @@ func (r *AgentProjectSetReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	for _, t := range tasks.Items {
 		counts[t.Labels[LabelProject]]++
 	}
+	var plans aiv1.AgentPlanList
+	if err := r.List(ctx, &plans, client.InNamespace(set.Namespace)); err != nil {
+		return ctrl.Result{}, err
+	}
+	planCounts := countPlans(plans.Items)
 	plan := planProjectSet(projectSetInput{
-		Set: &set, Template: tmpl, Discovery: disc, Projects: projects.Items, TaskCounts: counts, Now: now,
+		Set: &set, Template: tmpl, Discovery: disc, Projects: projects.Items,
+		TaskCounts: counts, PlanCounts: planCounts, Now: now,
 	})
 
 	existing := map[string]*aiv1.AgentProject{}
@@ -159,7 +167,7 @@ func (r *AgentProjectSetReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			plan.nameTaken(child.Name)
 		}
 	}
-	r.removeChildren(ctx, &set, &plan, existing, counts, now)
+	r.removeChildren(ctx, &set, &plan, existing, counts, planCounts, now)
 	r.syncSetHooks(ctx, &set, d, tmpl, &plan, projects.Items, now)
 	changed := milestoneChanges(&set, &plan, disc, projects.Items)
 
@@ -312,11 +320,34 @@ func (r *AgentProjectSetReconciler) patchStatus(ctx context.Context, set, orig *
 
 func (r *AgentProjectSetReconciler) now() time.Time { return nowOr(r.Now) }
 
+// planCreatedInSet passes only the creation of a plan the Desk started in a
+// set project: plan status changes must not re-run discovery.
+var planCreatedInSet = predicate.Funcs{
+	CreateFunc:  func(e event.CreateEvent) bool { return e.Object.GetLabels()[aiv1.LabelProjectSet] != "" },
+	UpdateFunc:  func(event.UpdateEvent) bool { return false },
+	DeleteFunc:  func(event.DeleteEvent) bool { return false },
+	GenericFunc: func(event.GenericEvent) bool { return false },
+}
+
+// wakeForPlan wakes the set a new plan names, so it discovers at once and
+// creates the plan's child. Plan creates are rate-limited by the Desk, so
+// it skips SendWake's limiter.
+func (r *AgentProjectSetReconciler) wakeForPlan(_ context.Context, o client.Object) []reconcile.Request {
+	name := o.GetLabels()[aiv1.LabelProjectSet]
+	if name == "" {
+		return nil
+	}
+	n := types.NamespacedName{Namespace: o.GetNamespace(), Name: name}
+	r.woken.Store(n, true)
+	return []reconcile.Request{{NamespacedName: n}}
+}
+
 // SetupWithManager registers the controller. It does not watch the children:
 // their status changes on every poll and must not re-run discovery.
 func (r *AgentProjectSetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	b := ctrl.NewControllerManagedBy(mgr).
 		For(&aiv1.AgentProjectSet{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
+		Watches(&aiv1.AgentPlan{}, handler.EnqueueRequestsFromMapFunc(r.wakeForPlan), builder.WithPredicates(planCreatedInSet)).
 		Named("agentprojectset")
 	if r.Wakes != nil {
 		b = b.WatchesRawSource(source.Channel(r.Wakes, &handler.EnqueueRequestForObject{}))

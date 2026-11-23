@@ -14,33 +14,8 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
-	"github.com/jonathanwiemers/ai-operator/internal/naming"
 	"github.com/jonathanwiemers/ai-operator/internal/projectglob"
 )
-
-// maxChildSlug is the length a child name's slug is cut to before the hash.
-const maxChildSlug = 50
-
-// projectSetChildName is the name of a set's child for a project: the slug of
-// the path below the group, cut to 50 characters plus a hash of the full path
-// when longer.
-func projectSetChildName(group, path string) string {
-	full := aiv1.NormalizeProject(path)
-	rel := full
-	if g := aiv1.NormalizeProject(group); g != "" {
-		rel = strings.TrimPrefix(full, g+"/")
-	}
-	slug := naming.Slug(rel)
-	if len(slug) <= maxChildSlug && slug != "" {
-		return slug
-	}
-	sum := sha256.Sum256([]byte(full))
-	slug = strings.Trim(slug[:min(len(slug), maxChildSlug)], "-")
-	if slug == "" {
-		slug = "project"
-	}
-	return slug + "-" + hex.EncodeToString(sum[:])[:6]
-}
 
 // projectSetInput is everything planProjectSet decides from.
 type projectSetInput struct {
@@ -53,6 +28,9 @@ type projectSetInput struct {
 	Projects []aiv1.AgentProject
 	// TaskCounts are the AgentTasks per child name in the set's namespace.
 	TaskCounts map[string]int
+	// PlanCounts are the AgentPlans per spec.projectRef in the set's
+	// namespace, without those being deleted.
+	PlanCounts map[string]int
 	Now        time.Time
 }
 
@@ -137,14 +115,21 @@ func planProjectSet(in projectSetInput) projectSetPlan {
 			plan.Entries = append(plan.Entries, e)
 			continue
 		}
-		name := projectSetChildName(spec.GitLab.Group, dp.FullPath)
+		name := aiv1.ProjectSetChildName(spec.GitLab.Group, dp.FullPath)
 		if child != nil {
 			name = child.Name
 		}
 		// A child whose milestones all settle is idle: their tasks and
 		// markers do not count, a ready issue does.
-		active := ready[path] || !onlySettling(child) && (in.TaskCounts[name] > 0 ||
+		work := ready[path] || !onlySettling(child) && (in.TaskCounts[name] > 0 ||
 			(reErr == nil && projectSetSelects(sel, titleRE, dp.Milestones)))
+		// Plans count always, settling or not: the child keeps them. Plans of
+		// an AgentProject outside the set that holds the name are its own.
+		var plans int
+		if p := byName[name]; p == nil || metav1.IsControlledBy(p, set) {
+			plans = in.PlanCounts[name]
+		}
+		active := work || plans > 0
 		now := metav1.NewTime(in.Now)
 		switch {
 		case active && child == nil:
@@ -166,6 +151,9 @@ func planProjectSet(in projectSetInput) projectSetPlan {
 			}
 		default:
 			e.State, e.Reason = aiv1.ProjectSetDormant, "no milestone with the spec marker, ready issue or task"
+		}
+		if !work && plans > 0 && e.State == aiv1.ProjectSetActive {
+			e.Reason = keptReason(0, plans, "")
 		}
 		// A dormant child is not planned: the set removes it, or revives it
 		// with the planned spec once the project is active again.
