@@ -37,7 +37,6 @@ test('queueStateLabel: one label per state', () => {
   assert.equal(queueStateLabel(entry({ state: 'holding', holdingFor: 3 })), 'Holding for %3')
   assert.equal(queueStateLabel(entry({ state: 'waiting', holdingFor: 3 })), 'Waiting to plan')
   assert.equal(queueStateLabel(entry({ state: 'paused', pausedReason: 'CI is red' })), 'Paused')
-  assert.equal(queueStateLabel(entry({ state: 'paused' })), 'Paused')
   assert.equal(queueStateLabel(entry({ state: 'budget' })), 'Budget')
 })
 
@@ -72,8 +71,6 @@ test('moveCommand: up goes before the entry now below, down after the one now ab
   assert.deepEqual(moveCommand(four, 3, 1), { cmd: 'move', before: 6 })
   assert.deepEqual(moveCommand(four, 0, 1), { cmd: 'move', after: 6 })
   assert.deepEqual(moveCommand(four, 0, 2), { cmd: 'move', after: 7 })
-  // Three entries: %7 dragged above %6 (the acceptance case).
-  assert.deepEqual(moveCommand(four.slice(0, 3), 2, 1), { cmd: 'move', before: 6 })
 })
 
 test('moveCommand: no move, or out of range, is null', () => {

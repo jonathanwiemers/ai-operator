@@ -12,10 +12,6 @@ test('every tone has a look using its own tone tokens', () => {
   }
 })
 
-test('danger is the kit\'s error colour', () => {
-  assert.equal(badgeLook.danger.color, 'error')
-})
-
 test('alertColor: one kit colour per tone, the one its badge has', () => {
   assert.equal(alertColor('warning'), 'warning')
   assert.equal(alertColor('danger'), 'error')

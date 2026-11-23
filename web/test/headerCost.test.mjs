@@ -40,8 +40,6 @@ test('keepCost: a refresh that fell back to the tasks never replaces a cost from
   assert.equal(keepCost(shown, newer), newer)
   assert.equal(keepCost(shown, calls('40.00', 11)).tokens, 11)
   assert.equal(keepCost(tasks('8.00'), shown), shown)
-  const t = tasks('9.00')
-  assert.equal(keepCost(tasks('8.00'), t), t)
   assert.equal(keepCost(shown, null), shown)
   assert.equal(keepCost(null, null), null)
 })

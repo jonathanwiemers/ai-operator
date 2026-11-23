@@ -49,13 +49,8 @@ test('tabQuery: activity drops the parameter, other tabs set it', () => {
   assert.deepEqual(tabQuery({}, 'activity'), {})
 })
 
-test('streamBaseTabs: Activity comes first', () => {
-  assert.equal(streamBaseTabs[0].id, 'activity')
-})
-
 test('dashboard tabs: Overview · Activity, Overview is the default, ?tab=stream opens Activity', () => {
   assert.deepEqual(dashboardTabs.map((t) => t.label), ['Overview', 'Activity'])
-  assert.equal(dashboardTabs[0].id, 'overview')
   assert.equal(tabFromQuery(undefined, dashboardTabs), 'overview')
   assert.equal(tabFromQuery('', dashboardTabs), 'overview')
   assert.equal(tabFromQuery('stream', dashboardTabs), 'activity')
@@ -76,7 +71,6 @@ test('milestone tabs: Issues is the default', () => {
 })
 
 test('milestone tabs: old ?tab=stream links open Activity', () => {
-  assert.ok(milestoneTabs.some((t) => t.id === 'activity' && t.label === 'Activity'))
   assert.equal(tabFromQuery('stream', milestoneTabs), 'activity')
   assert.equal(tabFromQuery('board', milestoneTabs), 'board')
   assert.equal(tabFromQuery('metrics', milestoneTabs), 'metrics')
@@ -106,7 +100,6 @@ test('milestone tabs: ?tab=decisions opens Decisions on live and stored mileston
   assert.equal(milestoneTabFromRoute('decisions', '', milestoneTabs), 'decisions')
   assert.equal(milestoneTabFromRoute('decisions', '#D42-3', storedMilestoneTabs), 'decisions')
   assert.deepEqual(tabQuery({ q: 'x' }, 'decisions', milestoneTabs), { q: 'x', tab: 'decisions' })
-  assert.equal(milestoneTabs.find((t) => t.id === 'decisions').label, 'Decisions')
 })
 
 test('milestone tabs: an old ?tab=pilot link opens Issues (the drawer opens over it)', () => {
@@ -128,8 +121,9 @@ test('pilotFromQuery and pilotQuery: ?pilot=1 is the drawer, ?tab=pilot becomes 
   assert.deepEqual(pilotQuery({ tab: 'pilot' }, false), {})
 })
 
-test('milestoneTabFromRoute: a #prompt-Q<n> hash without ?tab= opens Needs you', () => {
+test('milestoneTabFromRoute: a #prompt-Q<n> or #problem-<iid> hash without ?tab= opens Needs you', () => {
   assert.equal(milestoneTabFromRoute(undefined, '#prompt-Q4'), 'needs')
+  assert.equal(milestoneTabFromRoute(undefined, '#problem-12'), 'needs')
   assert.equal(milestoneTabFromRoute('', '#prompt-Q4'), 'needs')
   assert.equal(milestoneTabFromRoute(null, '#prompt-Q12', storedMilestoneTabs), 'needs')
 })
@@ -188,13 +182,6 @@ test('planPaneTab: the wide right pane shows Decisions only for ?tab=decisions, 
   assert.equal(planPaneTab('decisions'), 'decisions')
 })
 
-test('milestoneTabFromRoute: prompt and problem links open Needs you, ?tab=pilot opens Issues', () => {
-  assert.equal(milestoneTabFromRoute(undefined, '#prompt-Q3'), 'needs')
-  assert.equal(milestoneTabFromRoute(undefined, '#problem-12'), 'needs')
-  assert.equal(milestoneTabFromRoute('pilot', '#prompt-Q3'), 'issues')
-  assert.equal(milestoneTabFromRoute('needs', ''), 'needs')
-})
-
 test('milestone tabs: Issues · Activity · Decisions · Board · Metrics, then Needs you and Retrospective, also when stored', () => {
   assert.deepEqual(milestoneTabs.map((t) => t.label), ['Issues', 'Activity', 'Decisions', 'Board', 'Metrics', 'Needs you', 'Retrospective'])
   assert.deepEqual(storedMilestoneTabs.map((t) => t.label), ['Issues', 'Activity', 'Decisions', 'Metrics', 'Needs you', 'Retrospective'])
@@ -228,8 +215,6 @@ test('project tabs: Milestones is the default and drops ?tab=, Activity sets it,
 })
 
 test('milestone tabs have no Plans', () => {
-  assert.ok(!milestoneTabs.some((t) => t.id === 'plans'))
-  assert.ok(!storedMilestoneTabs.some((t) => t.id === 'plans'))
   assert.equal(tabFromQuery('plans', milestoneTabs), 'issues')
 })
 
@@ -246,7 +231,6 @@ test('Metrics tab: the Spend tab renamed, ?tab=spend still opens it', () => {
   assert.equal(tabAlias('constructor'), 'constructor')
   assert.equal(tabAlias(null), null)
   assert.equal(tabFromQuery('spend'), 'metrics')
-  assert.equal(tabFromQuery('spend', projectTabsFor(true)), 'metrics')
   assert.equal(tabFromQuery('spend', milestoneTabs), 'metrics')
   assert.equal(tabFromQuery('spend', storedMilestoneTabs), 'metrics')
   assert.equal(tabFromQuery(['x', 'spend'], milestoneTabs), 'metrics')

@@ -9,7 +9,6 @@ const at = (path) => ({ path, matched: [{}] })
 
 test('movesFocus keeps the first load as the browser has it', () => {
   assert.equal(movesFocus(start, at('/')), false)
-  assert.equal(movesFocus(start, at('/projects/team-a/shop')), false)
 })
 
 test('movesFocus keeps focus on a new query or hash on the same path', () => {

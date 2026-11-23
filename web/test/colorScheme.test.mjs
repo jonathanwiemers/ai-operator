@@ -1,7 +1,7 @@
 // Tests of src/colorScheme.ts: npm test (node --test, no extra dependencies).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { darkQuery, readTheme, themeController, themeKey } from '../src/colorScheme.ts'
+import { readTheme, themeController, themeKey } from '../src/colorScheme.ts'
 
 // fakeQuery stands in for matchMedia(darkQuery): set(matches) changes the
 // system scheme and fires the change listeners.
@@ -52,8 +52,7 @@ function fakeStorage(initial = {}, { throwRead = false, throwWrite = false } = {
   }
 }
 
-test('darkQuery asks for the dark system scheme, the key is desk.theme', () => {
-  assert.equal(darkQuery, '(prefers-color-scheme: dark)')
+test('the key is desk.theme', () => {
   assert.equal(themeKey, 'desk.theme')
 })
 

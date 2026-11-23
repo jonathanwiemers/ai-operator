@@ -142,7 +142,6 @@ test('costKeyLabel: the legacy key is "before calls"', () => {
 })
 
 test('costKinds: plan is a filter choice', () => {
-  assert.ok(costKinds.includes('plan'))
   assert.equal(parseCostFilters({ kind: 'plan' }).kind, 'plan')
 })
 

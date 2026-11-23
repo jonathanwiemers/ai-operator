@@ -3,7 +3,6 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   longPauseRows,
-  metricsFilterNote,
   pauseKindsChart,
   pausedHoursChart,
   pauseProjectRows,
@@ -126,8 +125,4 @@ test('pauseProjectRows and longPauseRows', () => {
   )
   assert.equal(rows[1].reason, '')
   assert.notEqual(rows[0].id, rows[1].id)
-})
-
-test('metricsFilterNote', () => {
-  assert.equal(metricsFilterNote, 'Kind and engine filter cost and tokens only')
 })

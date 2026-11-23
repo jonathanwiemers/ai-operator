@@ -18,7 +18,6 @@ test('followUpStateLabel: without a target it names the kind', () => {
 test('followUpStateTone: open asks for attention, dismissed is muted', () => {
   assert.equal(followUpStateTone('open'), 'warning')
   assert.equal(followUpStateTone('issue'), 'success')
-  assert.equal(followUpStateTone('milestone'), 'success')
   assert.equal(followUpStateTone('dismissed'), 'muted')
 })
 

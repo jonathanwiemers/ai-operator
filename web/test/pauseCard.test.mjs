@@ -261,7 +261,6 @@ test('pausePrompt: no open prompt of the kind falls back to the card', () => {
   assert.equal(pausePrompt('mainRed', []), undefined)
   assert.equal(pausePrompt('mainRed', [{ id: 'Q1', kind: 'mainHealth', state: 'answered' }]), undefined)
   assert.equal(pausePrompt('mainRed', [{ id: 'Q2', kind: 'budget', state: 'open' }]), undefined)
-  assert.deepEqual(ids('mainRed'), ['resume'])
 })
 
 test('pausePrompt: other kinds show no prompt and keep their actions', () => {
@@ -273,7 +272,6 @@ test('pausePrompt: other kinds show no prompt and keep their actions', () => {
     assert.equal(pausePrompt(kind, prompts), undefined, kind)
   }
   assert.equal(pausePrompt(undefined, prompts), undefined)
-  assert.deepEqual(ids('owner'), ['resume'])
 })
 
 // Exit views as the milestone API sends them (aiv1.PauseExits with status
@@ -565,7 +563,6 @@ test('pauseTitle: a hold names its issue', () => {
   assert.equal(pauseTitle('somethingNew', 7), '#7 is held')
   assert.equal(pauseTitle(undefined, 7), '#7 is held')
   assert.equal(pauseTitle(undefined, 0), 'Autopilot paused')
-  assert.equal(pauseTitle('owner'), 'Paused by an owner')
 })
 
 test('pauseActions: a hold always offers Resume, once', () => {

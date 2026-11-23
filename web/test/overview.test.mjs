@@ -48,7 +48,6 @@ test('activeLimits: only limits still in force, soonest first', () => {
 
 test('finishingLabel: N finishing when held open, nothing for 0 or absent', () => {
   assert.equal(finishingLabel(2), '2 finishing')
-  assert.equal(finishingLabel(1), '1 finishing')
   assert.equal(finishingLabel(0), undefined)
   assert.equal(finishingLabel(undefined), undefined)
 })

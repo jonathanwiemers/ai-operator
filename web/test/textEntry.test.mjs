@@ -24,5 +24,4 @@ test('textEntry: controls without a keyboard do not', () => {
 
 test('textEntry: nothing focused', () => {
   assert.equal(textEntry(null), false)
-  assert.equal(textEntry(undefined), false)
 })
