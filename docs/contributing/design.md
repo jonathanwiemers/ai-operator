@@ -4311,16 +4311,17 @@ own `--tone-*-bg` and `--tone-*-fg` tokens, so the look is as before. The
 | `internal/runner/steps.go` | run steps: step logging, current step, GitLab run log |
 | `internal/runner/handoff.go` | agent notes: the bot's handoff comment on the issue |
 | `internal/runner/decisions.go` | decisions: IDs, decision comments, revisits, superseding |
-| `internal/controller/autopilot.go` | autopilot: queue, merge gate, rebase, pause / resume / skip, tracking issue |
+| `internal/controller/autopilot*.go` | autopilot: the reconciler entry (`autopilot.go`), and in their own `autopilot_<part>.go` the owner commands, queue order, item gate, pause / resume / skip and holds, rebase and merge, tracking issue and milestone end |
 | `internal/controller/interdiff.go` | autopilot: the verdict on a rebase that changed the reviewed change, re-review instead of a pause, the MR note |
 | `internal/interdiff` | the interdiff of a rebase: the reviewed change against the rebased one per file without hunk positions, its unified-diff rendering, and whether the rebase kept the reviewed commits |
 | `internal/controller/override.go` | autopilot: an owner's `merge` without a full review |
 | `internal/controller/revisit.go` | revisits of merged issues: follow-up issues, replies |
+| `internal/textutil` | small text helpers shared by the operator, the runner, the history differ and the webhook receiver: rune-safe truncation, quoting untrusted markdown, and the redaction of secrets and token-shaped values (`Redact`, `EnvSecrets`) |
 | `internal/marker` | hidden markers in GitLab text shared by operator and runner (tracking issue, decisions) |
-| `internal/runner/agent.go` | `Agent` interface, agent server and client (unix socket RPC) |
+| `internal/runner/agent.go`, `agent_client.go` | `Agent` interface, agent server and client (unix socket RPC) |
 | `internal/runner/workspace.go` | agent-side checkout (local git only), including the merge of the default branch for conflicts |
 | `internal/runner/spec.go` | planning pipeline, applying the plan to GitLab, linking dependencies |
-| `internal/runner/implement.go` | implement → review → fix → push → MR pipeline; CI fix runs |
+| `internal/runner/implement*.go` | implement → review → fix → push → MR pipeline; CI fix runs. The steps and review loop, reviewers and MR helpers, commits and decisions, and the run report sit in their own `implement_<part>.go` |
 | `internal/runner/ci.go` | CI fix prompt, log excerpts |
 | `internal/controller/ci.go` | CI feedback loop: pipeline tracking, retry, fix requests, final labels |
 | `internal/controller/mainhealth.go` | main health: default branch pipelines, retry, flaky and main-red issues |
@@ -4333,7 +4334,7 @@ own `--tone-*-bg` and `--tone-*-fg` tokens, so the look is as before. The
 | `internal/streamjson` | single lines of claude's and cursor-agent's stream-json output: the event type and result flags, whether a claude message calls a tool, claude's `rate_limit_event` usage reading |
 | `internal/agentlanguage` | the language rule appended to every agent system prompt, from the agent container's `AI_AGENT_LANGUAGE` tag; no rule for an empty or unknown tag |
 | `internal/cursorusage` | the client of Cursor's undocumented usage API: whether the account behind `CURSOR_API_KEY` is in the slow pool and when its billing cycle ends, kept for ten minutes |
-| `internal/runner/prompts.go` | role prompts and JSON schemas |
+| `internal/runner/prompts.go`, `prompts_pilot.go` | role prompts and JSON schemas; the pilot prompt |
 | `internal/readgate` | the read gate (`ai-runner read-gate`): claude `PreToolUse` hook for `Read` and `Bash`, no Kubernetes imports |
 | `internal/runner/stepgate.go` | the step-size gate (`ai-runner step-gate`): claude `PostToolUse` hook for `Edit`, `Write` and `Bash`, per-session state file |
 | `internal/runner/pilot.go` | the pilot: milestone state, answers, budget |

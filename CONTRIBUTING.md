@@ -28,14 +28,26 @@ Security problems: please don't open an issue, see [SECURITY.md](SECURITY.md).
    gofmt -l .                # must print nothing
    go vet ./...
    make test
+   make deadcode             # unused Go code; must print nothing
+   make vulncheck            # known vulnerabilities in Go dependencies
    make helm-lint
    make ui                   # only when web/ changed
+   (cd web && npm run knip)  # only when web/ changed; must print nothing
    ```
 
    After changing `api/` types or kubebuilder markers run
    `make generate manifests`; after changing UI view structs run
    `make ts-types`. CI fails on stale generated files.
-4. One topic per commit, with a short subject that says what changes.
+4. Tests check behaviour. CI measures Go coverage per package against
+   `hack/coverage-baseline.txt`, and fails when a package drops more than
+   0.2 points, so delete a test only if your package's coverage stays the
+   same. A baseline line may only rise; it may drop or move only when a
+   package is deleted or code moves into a new package.
+5. `make gosec` audits the Go code for insecure patterns. It is not a CI
+   job, but keep it at zero: fix a finding or mark it with
+   `// #nosec G<nnn> -- <reason>`. A `#nosec` without a rule and a reason
+   is not accepted.
+6. One topic per commit, with a short subject that says what changes.
 
 Pull requests are reviewed here. A merged pull request is applied in the
 GitLab project with you as the commit author, and comes back to `main` with

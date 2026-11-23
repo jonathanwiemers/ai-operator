@@ -69,7 +69,10 @@ version, and delete what is gone.
 ## Removed in this release
 
 Each row is one item a release removed because nothing in the operator
-read it. *Leaves in* is the first release without it.
+read it. *Leaves in* is the first release without it. "The first release
+after 22 November 2026" means every release from then on: if the release you
+upgrade from is older and the one you upgrade to is newer, the row applies
+to you. Release dates are on the releases page.
 
 | Item | Kind | Leaves in | What to delete |
 |------|------|-----------|----------------|

@@ -17,7 +17,20 @@
   node it takes up to an hour, and CI runs it on every push. After changing
   Markdown or a `docs/….md` ref, also run `go test ./internal/docscheck/`
   (links, anchors, page caps); a change to docs only needs no other tests.
-  After changing the web UI (`web/`): `make ui` (type-check and build).
+  After changing Go code, also run `make deadcode` and `make vulncheck`;
+  both must print no finding, as their CI jobs block. After changing the web
+  UI (`web/`): `make ui` (type-check and build) and `cd web && npm run knip`
+  (unused files, exports and dependencies; blocking in CI).
+- CI measures Go statement coverage per package against
+  `hack/coverage-baseline.txt` and fails when a package drops more than 0.2
+  points. A test may be deleted only if its package's coverage stays the
+  same. A baseline line may only rise (`make coverage-baseline` from the
+  `test` job's `coverage.out`), except for a package that is deleted, or
+  code that moves to a new package: then re-measure the old and the new one.
+- `make gosec` is a one-off audit target, not a CI job: it flags the
+  operator's intended git and engine subprocess calls. Fix what it reports,
+  or justify it with `// #nosec G<nnn> -- <reason>`: every `#nosec` names a
+  rule and a reason.
 - New research-store migrations (`internal/research/store/migrations/`) are
   named by the UTC time they were created,
   `$(date -u +%Y%m%d%H%M%S)_name.sql`, never by the next number: parallel
