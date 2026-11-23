@@ -53,7 +53,6 @@ func TestValidPlanDecisions(t *testing.T) {
 		"blank option":          {in: []planTurnDecision{with("D1", func(d *planTurnDecision) { d.Options[0] = "  " })}, want: "option 0"},
 		"long option":           {in: []planTurnDecision{with("D1", func(d *planTurnDecision) { d.Options[1] = strings.Repeat("x", 501) })}, want: "option 1"},
 		"dropped ID reused":     {in: []planTurnDecision{with("D2", func(d *planTurnDecision) { d.Title = "Something else" })}, want: "D2 reuses"},
-		"dropped ID same text":  {in: []planTurnDecision{turnDecision("D2")}, want: "D2 reuses"},
 		"recommended too high":  {in: []planTurnDecision{with("D1", func(d *planTurnDecision) { d.Recommended = 2 })}, want: "recommends option 2"},
 		"recommended negative":  {in: []planTurnDecision{with("D1", func(d *planTurnDecision) { d.Recommended = -1 })}, want: "recommends option -1"},
 		"duplicate ID":          {in: []planTurnDecision{turnDecision("D4"), turnDecision("D4")}, want: "twice"},

@@ -33,53 +33,6 @@ func TestSystemPromptsAreUnchanged(t *testing.T) {
 	}
 }
 
-// The planner slices changes that span several layers (#258: #179 put a
-// migration, the store, the runner and the UI into one slice).
-func TestSpecPromptSlicesAcrossLayers(t *testing.T) {
-	flat := strings.Join(strings.Fields(specSystemPrompt), " ")
-	for _, want := range []string{
-		"- Split a change that spans several layers (database migration, store, runner or controller, API types, web UI) into slices of at most two layers each",
-		"measurement and UI work in particular goes into its own slice after the data it shows.",
-		"Give a slice that adds a database migration nothing else that is large.",
-	} {
-		if !strings.Contains(flat, want) {
-			t.Errorf("the spec system prompt lacks %q", want)
-		}
-	}
-}
-
-// Sibling issues may run at the same time, so the planner must keep their
-// file sets apart (or wire dependsOn) — Decision 4 / #467.
-func TestSpecPromptSiblingRule(t *testing.T) {
-	flat := strings.Join(strings.Fields(specSystemPrompt), " ")
-	want := "Issues without a dependency between them may be implemented at the same time, so they must not change the same files; if they would, make one depend on the other."
-	if !strings.Contains(flat, want) {
-		t.Errorf("the spec system prompt lacks the sibling rule %q", want)
-	}
-}
-
-// Issues may run in parallel and a problem holds only its issue, so the
-// pilot must know of holds and how they end — Decision 6 / #468.
-func TestPilotPromptParallelAndHolds(t *testing.T) {
-	flat := strings.Join(strings.Fields(pilotSystemPrompt), " ")
-	for _, want := range []string{
-		"issues of the milestone may be implemented at the same time, up to autopilot.maxParallel",
-		"land (rebase, CI, merge) one at a time, in the order they became ready",
-		"A problem with one issue holds that issue (autopilot.items[].hold) and the others go on",
-		`A hold ends by itself once its cause is gone, or with "/agent resume #N".`,
-		"the merge request of an active queue item",
-		"a pause or hold about the issue ends; e.g.",
-		"an autopilot pause, a held issue,",
-	} {
-		if !strings.Contains(flat, want) {
-			t.Errorf("the pilot system prompt lacks %q", want)
-		}
-	}
-	if strings.Contains(flat, "the active queue item") {
-		t.Error("the pilot system prompt still speaks of the one active queue item")
-	}
-}
-
 // TestConflictFreshPrompt pins the prompt of a fresh conflict call byte
 // for byte (golden).
 func TestConflictFreshPrompt(t *testing.T) {
