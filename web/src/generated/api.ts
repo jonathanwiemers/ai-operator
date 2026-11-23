@@ -891,6 +891,337 @@ export const StepSessionResume: StepSessionMode = "resume";
 export const StepSessionFresh: StepSessionMode = "fresh";
 
 //////////
+// source: agentproject_health_types.go
+
+/**
+ * MainHealthSpec configures the watcher of the default branch: its newest
+ * finished pipeline is checked every Interval. A red one is retried once;
+ * green after the retry is recorded as flaky, still red opens an issue.
+ */
+export interface MainHealthSpec {
+  /**
+   * Disabled turns the watcher off.
+   * +optional
+   */
+  disabled?: boolean;
+  /**
+   * Interval is how often the default branch's pipelines are checked.
+   * +kubebuilder:default="5m"
+   * +optional
+   */
+  interval?: string;
+  /**
+   * RetryFailedJobs retries the failed jobs of a red pipeline once before
+   * it counts as red.
+   * +kubebuilder:default=true
+   * +optional
+   */
+  retryFailedJobs?: boolean;
+  /**
+   * RetryCanceled retries a canceled pipeline of the default branch once
+   * when its commit has no successful pipeline of its own. Canceled again,
+   * it is reported on the open main-red issue, else on a ci::main-canceled
+   * issue, which freezes nothing. A pipeline with a newer one that is not
+   * canceled or skipped is superseded and left alone, as are pipelines up
+   * to the newest one when the switch first ran.
+   * +kubebuilder:default=true
+   * +optional
+   */
+  retryCanceled?: boolean;
+  /**
+   * Issue opens an issue for a red default branch and one per flaky job.
+   * +kubebuilder:default=true
+   * +optional
+   */
+  issue?: boolean;
+  /**
+   * FreezeAutopilot holds autopilot's merges while the default branch is
+   * red: the issue that would be merged next is blocked (main-red), and
+   * autopilot continues by itself once the branch is green.
+   * +kubebuilder:default=true
+   * +optional
+   */
+  freezeAutopilot?: boolean;
+  /**
+   * AutoFix hands the main-red issue to the agent (agent::ready), once
+   * per red episode. On autopilot, the frozen milestone merges its fix
+   * (the main-red lane); otherwise a human merges it.
+   * +optional
+   */
+  autoFix?: boolean;
+  /**
+   * AutoFixFlaky hands a flaky job's issue to the agent at its second
+   * occurrence, like the pilot's fixFlaky: into the active autopilot
+   * milestone with the lowest IID (its queue), else without a milestone
+   * (agent::ready).
+   * +optional
+   */
+  autoFixFlaky?: boolean;
+}
+/**
+ * WebhookSpec configures the deliveries of the GitLab project hook, which
+ * wake the operator to sync the project at once.
+ */
+export interface WebhookSpec {
+  /**
+   * SecretRef points to the GitLab project hook's secret token. A delivery
+   * counts only when its X-Gitlab-Token matches; without it, every delivery
+   * for this project is refused.
+   * +optional
+   */
+  secretRef?: unknown;
+  /**
+   * Enabled registers the project hook in GitLab: the operator creates or
+   * updates one hook for URL with the events it reacts to (issues, notes,
+   * merge requests, pipelines, pushes), SSL verification and SecretRef's
+   * token, and deletes that hook again when switched off. It needs the
+   * bot's Maintainer role; the WebhookRegistered condition tells how it went.
+   * +optional
+   */
+  enabled?: boolean;
+  /**
+   * URL is the public URL of the operator's /hooks/gitlab endpoint, e.g.
+   * https://ai-operator.example.com/hooks/gitlab. Needed with Enabled.
+   * +optional
+   */
+  url?: string;
+  /**
+   * FallbackInterval is how often the project is fully synced while
+   * deliveries arrive (see SilenceThreshold). In between, only the
+   * milestones are polled every pollInterval, since milestone changes
+   * cause no deliveries; a delivery syncs at once.
+   * +kubebuilder:default="10m"
+   * +optional
+   */
+  fallbackInterval?: string;
+  /**
+   * SilenceThreshold is how long after the last valid delivery the project
+   * counts as receiving deliveries. After it, or without SecretRef, every
+   * poll is a full sync again.
+   * +kubebuilder:default="30m"
+   * +optional
+   */
+  silenceThreshold?: string;
+}
+/**
+ * ConditionWebhookRegistered is the AgentProject condition that tells whether
+ * the project hook is registered (spec.webhook.enabled).
+ */
+export const ConditionWebhookRegistered = "WebhookRegistered";
+/**
+ * ConditionFallbacksValid is the AgentProject condition that tells whether
+ * every role's fallback names another engine and an allowed model: False,
+ * reason InvalidFallback, with the broken ones in the message.
+ */
+export const ConditionFallbacksValid = "FallbacksValid";
+/**
+ * ConditionWebhookDeliveries is the AgentProject condition that tells whether
+ * deliveries arrive (with spec.webhook.secretRef): True, reason Receiving,
+ * within webhook.silenceThreshold of the last valid delivery, else False,
+ * reason Silent.
+ */
+export const ConditionWebhookDeliveries = "WebhookDeliveries";
+/**
+ * WebhookStatus is the project hook the operator registered and the last
+ * delivery.
+ */
+export interface WebhookStatus {
+  /**
+   * HookID is the hook's ID in GitLab.
+   * +optional
+   */
+  hookID?: number /* int64 */;
+  /**
+   * ConfigHash is a hash of the settings last registered (URL, events, SSL
+   * verification, a hash of the secret), so a change is noticed without
+   * asking GitLab.
+   * +optional
+   */
+  configHash?: string;
+  /**
+   * CheckedAt is when the hook was last checked in GitLab.
+   * +optional
+   */
+  checkedAt?: string;
+  /**
+   * LastDeliveryTime is when the last valid delivery for this project
+   * arrived. The operator keeps it in memory: after a restart this shows
+   * the last one seen before, and the project is polled fully until the
+   * next delivery.
+   * +optional
+   */
+  lastDeliveryTime?: string;
+  /**
+   * HeartbeatTrigger is the event GitLab sends test deliveries of for
+   * this hook (push_events, issues_events or milestone_events): the first
+   * one GitLab accepted.
+   * +optional
+   */
+  heartbeatTrigger?: string;
+  /**
+   * HeartbeatTime is when the operator last asked GitLab for a test
+   * delivery, which keeps a quiet project Receiving.
+   * +optional
+   */
+  heartbeatTime?: string;
+}
+/**
+ * MainHealthState is the health of the default branch.
+ * +kubebuilder:validation:Enum=green;retrying;red;flaky
+ */
+export type MainHealthState = string;
+export const MainHealthGreen: MainHealthState = "green";
+/**
+ * MainHealthRetrying: the failed jobs of the pipeline are retried.
+ */
+export const MainHealthRetrying: MainHealthState = "retrying";
+export const MainHealthRed: MainHealthState = "red";
+/**
+ * MainHealthFlaky: the pipeline was green after its failed jobs were
+ * retried.
+ */
+export const MainHealthFlaky: MainHealthState = "flaky";
+/**
+ * MainHealthStatus is the health of the default branch, as of its newest
+ * finished pipeline.
+ */
+export interface MainHealthStatus {
+  state: MainHealthState;
+  /**
+   * +optional
+   */
+  pipelineID?: number /* int64 */;
+  /**
+   * +optional
+   */
+  sha?: string;
+  /**
+   * FailedJobs are the failing jobs of the pipeline, before a retry.
+   * +optional
+   */
+  failedJobs?: string[];
+  /**
+   * Since is when the state last changed.
+   * +optional
+   */
+  since?: string;
+  /**
+   * IssueIID is the open issue that reports the red default branch.
+   * +optional
+   */
+  issueIID?: number /* int64 */;
+  /**
+   * ReportedJobs are the failing jobs the issue reports last.
+   * +optional
+   */
+  reportedJobs?: string[];
+  /**
+   * AutoFixIssueIID is the issue handed to the agent in this red episode
+   * (mainHealth.autoFix).
+   * +optional
+   */
+  autoFixIssueIID?: number /* int64 */;
+  /**
+   * RetriedPipelineID is the pipeline whose failed jobs were retried.
+   * +optional
+   */
+  retriedPipelineID?: number /* int64 */;
+  /**
+   * RetriedJobIDs are the failed jobs of the retried pipeline, in the
+   * order of FailedJobs: the retry replaces them, so their logs are read
+   * by ID once the retry is green.
+   * +optional
+   */
+  retriedJobIDs?: number /* int64 */[];
+  /**
+   * Flaky are the jobs that passed on retry, as reported on their flaky
+   * issues (state flaky only).
+   * +optional
+   */
+  flaky?: FlakyJobReport[];
+  /**
+   * FlakyFixes are the flaky issues handed to the agent, once each: the
+   * first hand-over wins. They are not filtered by milestones.titlePattern.
+   * +optional
+   */
+  flakyFixes?: FlakyFix[];
+  /**
+   * CanceledSince is the newest finished pipeline when retryCanceled first
+   * ran: canceled pipelines up to it are not retried.
+   * +optional
+   */
+  canceledSince?: number /* int64 */;
+  /**
+   * Canceled are the last canceled pipelines handled (retryCanceled),
+   * newest first.
+   * +optional
+   */
+  canceled?: CanceledPipeline[];
+  /**
+   * CheckedAt is when the pipelines were last checked.
+   * +optional
+   */
+  checkedAt?: string;
+}
+/**
+ * CanceledPipeline is a canceled pipeline of the default branch that a newer
+ * pipeline covers (superseded), or whose commit had no successful pipeline:
+ * whether it was retried, and whether its second cancel (or a refused retry)
+ * was reported.
+ */
+export interface CanceledPipeline {
+  pipelineID: number /* int64 */;
+  sha: string;
+  /**
+   * +optional
+   */
+  retried?: boolean;
+  /**
+   * +optional
+   */
+  reported?: boolean;
+  /**
+   * +optional
+   */
+  superseded?: boolean;
+}
+/**
+ * FlakyJobReport is a job that passed on retry: its flaky issue, and what
+ * the log of its failed attempt shows. Tests and LogTail come from the job
+ * log and are untrusted data.
+ */
+export interface FlakyJobReport {
+  job: string;
+  issueIID: number /* int64 */;
+  /**
+   * Tests are the failing tests the log names.
+   * +optional
+   */
+  tests?: string[];
+  /**
+   * LogTail is the defused end of the log.
+   * +optional
+   */
+  logTail?: string;
+}
+/**
+ * FlakyFix is a flaky issue handed to the agent: into which milestone (0:
+ * none), and when.
+ */
+export interface FlakyFix {
+  issueIID: number /* int64 */;
+  /**
+   * +optional
+   */
+  milestoneIID?: number /* int64 */;
+  /**
+   * +optional
+   */
+  milestoneTitle?: string;
+  at: string;
+}
+
+//////////
 // source: agentproject_types.go
 
 /**
@@ -1570,333 +1901,6 @@ export interface CheckpointSpec {
    * +optional
    */
   maxFileBytes?: number /* int64 */;
-}
-/**
- * MainHealthSpec configures the watcher of the default branch: its newest
- * finished pipeline is checked every Interval. A red one is retried once;
- * green after the retry is recorded as flaky, still red opens an issue.
- */
-export interface MainHealthSpec {
-  /**
-   * Disabled turns the watcher off.
-   * +optional
-   */
-  disabled?: boolean;
-  /**
-   * Interval is how often the default branch's pipelines are checked.
-   * +kubebuilder:default="5m"
-   * +optional
-   */
-  interval?: string;
-  /**
-   * RetryFailedJobs retries the failed jobs of a red pipeline once before
-   * it counts as red.
-   * +kubebuilder:default=true
-   * +optional
-   */
-  retryFailedJobs?: boolean;
-  /**
-   * RetryCanceled retries a canceled pipeline of the default branch once
-   * when its commit has no successful pipeline of its own. Canceled again,
-   * it is reported on the open main-red issue, else on a ci::main-canceled
-   * issue, which freezes nothing. A pipeline with a newer one that is not
-   * canceled or skipped is superseded and left alone, as are pipelines up
-   * to the newest one when the switch first ran.
-   * +kubebuilder:default=true
-   * +optional
-   */
-  retryCanceled?: boolean;
-  /**
-   * Issue opens an issue for a red default branch and one per flaky job.
-   * +kubebuilder:default=true
-   * +optional
-   */
-  issue?: boolean;
-  /**
-   * FreezeAutopilot holds autopilot's merges while the default branch is
-   * red: the issue that would be merged next is blocked (main-red), and
-   * autopilot continues by itself once the branch is green.
-   * +kubebuilder:default=true
-   * +optional
-   */
-  freezeAutopilot?: boolean;
-  /**
-   * AutoFix hands the main-red issue to the agent (agent::ready), once
-   * per red episode. On autopilot, the frozen milestone merges its fix
-   * (the main-red lane); otherwise a human merges it.
-   * +optional
-   */
-  autoFix?: boolean;
-  /**
-   * AutoFixFlaky hands a flaky job's issue to the agent at its second
-   * occurrence, like the pilot's fixFlaky: into the active autopilot
-   * milestone with the lowest IID (its queue), else without a milestone
-   * (agent::ready).
-   * +optional
-   */
-  autoFixFlaky?: boolean;
-}
-/**
- * WebhookSpec configures the deliveries of the GitLab project hook, which
- * wake the operator to sync the project at once.
- */
-export interface WebhookSpec {
-  /**
-   * SecretRef points to the GitLab project hook's secret token. A delivery
-   * counts only when its X-Gitlab-Token matches; without it, every delivery
-   * for this project is refused.
-   * +optional
-   */
-  secretRef?: unknown;
-  /**
-   * Enabled registers the project hook in GitLab: the operator creates or
-   * updates one hook for URL with the events it reacts to (issues, notes,
-   * merge requests, pipelines, pushes), SSL verification and SecretRef's
-   * token, and deletes that hook again when switched off. It needs the
-   * bot's Maintainer role; the WebhookRegistered condition tells how it went.
-   * +optional
-   */
-  enabled?: boolean;
-  /**
-   * URL is the public URL of the operator's /hooks/gitlab endpoint, e.g.
-   * https://ai-operator.example.com/hooks/gitlab. Needed with Enabled.
-   * +optional
-   */
-  url?: string;
-  /**
-   * FallbackInterval is how often the project is fully synced while
-   * deliveries arrive (see SilenceThreshold). In between, only the
-   * milestones are polled every pollInterval, since milestone changes
-   * cause no deliveries; a delivery syncs at once.
-   * +kubebuilder:default="10m"
-   * +optional
-   */
-  fallbackInterval?: string;
-  /**
-   * SilenceThreshold is how long after the last valid delivery the project
-   * counts as receiving deliveries. After it, or without SecretRef, every
-   * poll is a full sync again.
-   * +kubebuilder:default="30m"
-   * +optional
-   */
-  silenceThreshold?: string;
-}
-/**
- * ConditionWebhookRegistered is the AgentProject condition that tells whether
- * the project hook is registered (spec.webhook.enabled).
- */
-export const ConditionWebhookRegistered = "WebhookRegistered";
-/**
- * ConditionFallbacksValid is the AgentProject condition that tells whether
- * every role's fallback names another engine and an allowed model: False,
- * reason InvalidFallback, with the broken ones in the message.
- */
-export const ConditionFallbacksValid = "FallbacksValid";
-/**
- * ConditionWebhookDeliveries is the AgentProject condition that tells whether
- * deliveries arrive (with spec.webhook.secretRef): True, reason Receiving,
- * within webhook.silenceThreshold of the last valid delivery, else False,
- * reason Silent.
- */
-export const ConditionWebhookDeliveries = "WebhookDeliveries";
-/**
- * WebhookStatus is the project hook the operator registered and the last
- * delivery.
- */
-export interface WebhookStatus {
-  /**
-   * HookID is the hook's ID in GitLab.
-   * +optional
-   */
-  hookID?: number /* int64 */;
-  /**
-   * ConfigHash is a hash of the settings last registered (URL, events, SSL
-   * verification, a hash of the secret), so a change is noticed without
-   * asking GitLab.
-   * +optional
-   */
-  configHash?: string;
-  /**
-   * CheckedAt is when the hook was last checked in GitLab.
-   * +optional
-   */
-  checkedAt?: string;
-  /**
-   * LastDeliveryTime is when the last valid delivery for this project
-   * arrived. The operator keeps it in memory: after a restart this shows
-   * the last one seen before, and the project is polled fully until the
-   * next delivery.
-   * +optional
-   */
-  lastDeliveryTime?: string;
-  /**
-   * HeartbeatTrigger is the event GitLab sends test deliveries of for
-   * this hook (push_events, issues_events or milestone_events): the first
-   * one GitLab accepted.
-   * +optional
-   */
-  heartbeatTrigger?: string;
-  /**
-   * HeartbeatTime is when the operator last asked GitLab for a test
-   * delivery, which keeps a quiet project Receiving.
-   * +optional
-   */
-  heartbeatTime?: string;
-}
-/**
- * MainHealthState is the health of the default branch.
- * +kubebuilder:validation:Enum=green;retrying;red;flaky
- */
-export type MainHealthState = string;
-export const MainHealthGreen: MainHealthState = "green";
-/**
- * MainHealthRetrying: the failed jobs of the pipeline are retried.
- */
-export const MainHealthRetrying: MainHealthState = "retrying";
-export const MainHealthRed: MainHealthState = "red";
-/**
- * MainHealthFlaky: the pipeline was green after its failed jobs were
- * retried.
- */
-export const MainHealthFlaky: MainHealthState = "flaky";
-/**
- * MainHealthStatus is the health of the default branch, as of its newest
- * finished pipeline.
- */
-export interface MainHealthStatus {
-  state: MainHealthState;
-  /**
-   * +optional
-   */
-  pipelineID?: number /* int64 */;
-  /**
-   * +optional
-   */
-  sha?: string;
-  /**
-   * FailedJobs are the failing jobs of the pipeline, before a retry.
-   * +optional
-   */
-  failedJobs?: string[];
-  /**
-   * Since is when the state last changed.
-   * +optional
-   */
-  since?: string;
-  /**
-   * IssueIID is the open issue that reports the red default branch.
-   * +optional
-   */
-  issueIID?: number /* int64 */;
-  /**
-   * ReportedJobs are the failing jobs the issue reports last.
-   * +optional
-   */
-  reportedJobs?: string[];
-  /**
-   * AutoFixIssueIID is the issue handed to the agent in this red episode
-   * (mainHealth.autoFix).
-   * +optional
-   */
-  autoFixIssueIID?: number /* int64 */;
-  /**
-   * RetriedPipelineID is the pipeline whose failed jobs were retried.
-   * +optional
-   */
-  retriedPipelineID?: number /* int64 */;
-  /**
-   * RetriedJobIDs are the failed jobs of the retried pipeline, in the
-   * order of FailedJobs: the retry replaces them, so their logs are read
-   * by ID once the retry is green.
-   * +optional
-   */
-  retriedJobIDs?: number /* int64 */[];
-  /**
-   * Flaky are the jobs that passed on retry, as reported on their flaky
-   * issues (state flaky only).
-   * +optional
-   */
-  flaky?: FlakyJobReport[];
-  /**
-   * FlakyFixes are the flaky issues handed to the agent, once each: the
-   * first hand-over wins. They are not filtered by milestones.titlePattern.
-   * +optional
-   */
-  flakyFixes?: FlakyFix[];
-  /**
-   * CanceledSince is the newest finished pipeline when retryCanceled first
-   * ran: canceled pipelines up to it are not retried.
-   * +optional
-   */
-  canceledSince?: number /* int64 */;
-  /**
-   * Canceled are the last canceled pipelines handled (retryCanceled),
-   * newest first.
-   * +optional
-   */
-  canceled?: CanceledPipeline[];
-  /**
-   * CheckedAt is when the pipelines were last checked.
-   * +optional
-   */
-  checkedAt?: string;
-}
-/**
- * CanceledPipeline is a canceled pipeline of the default branch that a newer
- * pipeline covers (superseded), or whose commit had no successful pipeline:
- * whether it was retried, and whether its second cancel (or a refused retry)
- * was reported.
- */
-export interface CanceledPipeline {
-  pipelineID: number /* int64 */;
-  sha: string;
-  /**
-   * +optional
-   */
-  retried?: boolean;
-  /**
-   * +optional
-   */
-  reported?: boolean;
-  /**
-   * +optional
-   */
-  superseded?: boolean;
-}
-/**
- * FlakyJobReport is a job that passed on retry: its flaky issue, and what
- * the log of its failed attempt shows. Tests and LogTail come from the job
- * log and are untrusted data.
- */
-export interface FlakyJobReport {
-  job: string;
-  issueIID: number /* int64 */;
-  /**
-   * Tests are the failing tests the log names.
-   * +optional
-   */
-  tests?: string[];
-  /**
-   * LogTail is the defused end of the log.
-   * +optional
-   */
-  logTail?: string;
-}
-/**
- * FlakyFix is a flaky issue handed to the agent: into which milestone (0:
- * none), and when.
- */
-export interface FlakyFix {
-  issueIID: number /* int64 */;
-  /**
-   * +optional
-   */
-  milestoneIID?: number /* int64 */;
-  /**
-   * +optional
-   */
-  milestoneTitle?: string;
-  at: string;
 }
 /**
  * NotifyEvent is a situation in which the operator needs a human.
