@@ -293,7 +293,7 @@ func (r *Runner) loadState() (state, error) {
 }
 
 func (r *Runner) saveState(s state) error {
-	if err := os.MkdirAll(filepath.Dir(r.stateFile()), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(r.stateFile()), 0o755); err != nil { // #nosec G301 -- the runner's state dir holds no secret; the pod runs every container as uid/gid 1000
 		return err
 	}
 	b, _ := json.MarshalIndent(s, "", "  ")
@@ -711,7 +711,7 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	}
 	return true, r.patchRunWithCalls(ctx, func(s *aiv1.RunStatus) {
 		if ahead >= 0 {
-			s.CommitsAhead = int32(ahead)
+			s.CommitsAhead = int32(ahead) // #nosec G115 -- git's count of the pushed branch's commits over its base, far below 2^31
 		}
 		s.ObservedRunRequest = request
 		s.CurrentStep = ""

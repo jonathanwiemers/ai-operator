@@ -63,7 +63,7 @@ var _ SessionEngine = (*ClaudeCLI)(nil)
 // starts it.
 func (c *ClaudeCLI) Start(_ context.Context, inv Invocation) (*ClaudeSession, error) {
 	bin := orDefault(c.Binary, "claude")
-	cmd := exec.Command(bin, append(slices.Clip(c.Args(inv)), "--input-format", "stream-json")...)
+	cmd := exec.Command(bin, append(slices.Clip(c.Args(inv)), "--input-format", "stream-json")...) // #nosec G204 G702 -- the binary is "claude" (only tests set Binary); model and flag values from tasks are reviewed in R12 (lean-codebase spec)
 	cmd.Dir, cmd.Env = inv.Dir, append(slices.Clip(c.Env), inv.Env...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	stdin, err := cmd.StdinPipe()
@@ -72,13 +72,13 @@ func (c *ClaudeCLI) Start(_ context.Context, inv Invocation) (*ClaudeSession, er
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		stdin.Close()
+		stdin.Close() // #nosec G104 -- cleanup on an error path; the StdoutPipe error is returned
 		return nil, err
 	}
 	errBuf := &boundWriter{max: 8 << 10}
 	cmd.Stderr = errBuf
 	if err := cmd.Start(); err != nil {
-		stdin.Close()
+		stdin.Close() // #nosec G104 -- cleanup on an error path; the Start error is returned
 		return nil, fmt.Errorf("%s failed: %w", filepath.Base(bin), err)
 	}
 	lines := make(chan []byte, 16)
@@ -261,7 +261,7 @@ func (s *ClaudeSession) perTurn(log logr.Logger, res *Result) {
 		}
 	}
 	if u != nil {
-		u.SubagentCalls = int32(d(int64(u.SubagentCalls), int64(prev.subagents)))
+		u.SubagentCalls = int32(d(int64(u.SubagentCalls), int64(prev.subagents))) // #nosec G115 -- d gives 0 or a-b with 0 <= b <= a, and a is an int32
 	}
 	if shrank {
 		log.Info("claude session totals shrank between turns, clamped to zero",

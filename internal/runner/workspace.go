@@ -33,7 +33,7 @@ func (w *Workspace) git(ctx context.Context, args ...string) (string, error) {
 	// a detached one (the default for maintenance since git 2.47) can hold
 	// the output pipes, so Run would not return. WaitDelay bounds the wait
 	// for pipes a leftover child still holds once git itself has exited.
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-c", "gc.autoDetach=false", "-c", "maintenance.autoDetach=false"}, args...)...)
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-c", "gc.autoDetach=false", "-c", "maintenance.autoDetach=false"}, args...)...) // #nosec G204 -- the fixed command git, no shell; branch names and refs from issues and CRDs are reviewed in R12 (lean-codebase spec)
 	cmd.WaitDelay = 10 * time.Second
 	cmd.Dir = w.Dir
 	cmd.Env = append(os.Environ(),
@@ -99,7 +99,7 @@ func (w *Workspace) Prepare(ctx context.Context, req PrepareRequest) error {
 	w.removeStaleLock()
 	_ = os.Remove(w.lastStatusPath())
 	if !w.exists() {
-		if err := os.MkdirAll(w.Dir, 0o755); err != nil {
+		if err := os.MkdirAll(w.Dir, 0o755); err != nil { // #nosec G301 -- the checkout, git's own mode for a work tree; the pod runs every container as uid/gid 1000
 			return err
 		}
 		if _, err := w.git(ctx, "init", "--quiet", "--initial-branch="+req.Base); err != nil {
@@ -402,7 +402,7 @@ func textLines(path string) int64 {
 	if fi, err := os.Lstat(path); err != nil || !fi.Mode().IsRegular() {
 		return 0
 	}
-	f, err := os.Open(path)
+	f, err := os.Open(path) // #nosec G304 -- a regular file of the checkout, counted in the agent container, where the model has the same rights already
 	if err != nil {
 		return 0
 	}
@@ -419,7 +419,7 @@ func textLines(path string) int64 {
 		}
 		if n > 0 {
 			lines += int64(bytes.Count(chunk, []byte{'\n'}))
-			read, last = read+int64(n), chunk[n-1]
+			read, last = read+int64(n), chunk[n-1] // #nosec G602 -- chunk is buf[:n] and n > 0 is checked above
 		}
 		if err == io.EOF {
 			break
@@ -660,7 +660,7 @@ func (w *Workspace) checkpointRefusal(ctx context.Context, req CheckpointRequest
 	current, err := w.git(ctx, "symbolic-ref", "--quiet", "--short", "HEAD")
 	if dir := w.rebaseDir(); dir != "" {
 		var name []byte
-		name, err = os.ReadFile(filepath.Join(dir, "head-name"))
+		name, err = os.ReadFile(filepath.Join(dir, "head-name")) // #nosec G304 -- git's rebase state in the checkout, read in the agent container, where the model has the same rights already
 		current = strings.TrimPrefix(strings.TrimSpace(string(name)), "refs/heads/")
 	}
 	if err != nil || current != req.Branch {

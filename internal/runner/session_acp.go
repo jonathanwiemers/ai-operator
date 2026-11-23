@@ -88,7 +88,7 @@ var _ SessionEngine = (*CursorCLI)(nil)
 // setup. The process lives until Close; inv.Prompt is ignored.
 func (c *CursorCLI) Start(_ context.Context, inv Invocation) (*CursorSession, error) {
 	bin := orDefault(c.Binary, "cursor-agent")
-	cmd := exec.Command(bin, "acp")
+	cmd := exec.Command(bin, "acp") // #nosec G204 G702 -- the binary is "cursor-agent" (only tests set Binary) and the argument is fixed
 	cmd.Dir, cmd.Env = inv.Dir, append(slices.Clip(c.Env), inv.Env...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	stdin, err := cmd.StdinPipe()
@@ -97,13 +97,13 @@ func (c *CursorCLI) Start(_ context.Context, inv Invocation) (*CursorSession, er
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		stdin.Close()
+		stdin.Close() // #nosec G104 -- cleanup on an error path; the StdoutPipe error is returned
 		return nil, err
 	}
 	errBuf := &boundWriter{max: 8 << 10}
 	cmd.Stderr = errBuf
 	if err := cmd.Start(); err != nil {
-		stdin.Close()
+		stdin.Close() // #nosec G104 -- cleanup on an error path; the Start error is returned
 		return nil, fmt.Errorf("%s failed: %w", filepath.Base(bin), err)
 	}
 	s := &CursorSession{

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
@@ -262,6 +263,9 @@ func TestLocalAgentCountsStepGateNudges(t *testing.T) {
 		{"resumed session from 1 to 3", nudgingEngine{dir, "sess", 3}, Invocation{Resume: "sess", CountLines: true}, 2, false},
 		{"fresh session", nudgingEngine{dir, "fresh", 2}, Invocation{CountLines: true}, 2, false},
 		{"resume that became a new session", nudgingEngine{dir, "other", 1}, Invocation{Resume: "sess", CountLines: true}, 1, false},
+		// The model can write the state file: a count past int32 saturates
+		// instead of wrapping to 2.
+		{"count past int32", nudgingEngine{dir, "huge", 1<<32 + 2}, Invocation{CountLines: true}, math.MaxInt32, false},
 		{"no nudge", nudgingEngine{dir, "quiet", 0}, Invocation{CountLines: true}, 0, true},
 		{"not an implementer call", nudgingEngine{dir, "review", 4}, Invocation{}, 0, true},
 	} {

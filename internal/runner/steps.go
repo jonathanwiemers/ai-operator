@@ -178,7 +178,7 @@ func (rl *runLog) finish(err error) {
 		switch {
 		case s.ended:
 		case err != nil:
-			s.fail(err)
+			s.fail(err) // #nosec G104 -- fail returns its argument, the run's error, which the caller already has
 		default:
 			s.done("")
 		}

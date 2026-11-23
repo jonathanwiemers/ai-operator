@@ -166,7 +166,7 @@ func (m *Mirror) runInput(ctx context.Context, withAuth bool, stdin string, args
 		// than 1000 bytes/s for 60s.
 		global = append(global, "-c", "http.lowSpeedLimit=1000", "-c", "http.lowSpeedTime=60")
 	}
-	cmd := exec.CommandContext(ctx, "git", append(global, args...)...)
+	cmd := exec.CommandContext(ctx, "git", append(global, args...)...) // #nosec G204 -- the fixed command git, no shell; branch names and refs from issues and CRDs are reviewed in R12 (lean-codebase spec)
 	cmd.WaitDelay = gitWaitDelay
 	cmd.Env = m.env(withAuth)
 	if stdin != "" {
@@ -190,7 +190,7 @@ func (m *Mirror) runInput(ctx context.Context, withAuth bool, stdin string, args
 // only transfer the delta.
 func (m *Mirror) Sync(ctx context.Context, url string, branches ...string) error {
 	if !m.exists() {
-		if err := os.MkdirAll(m.Dir, 0o755); err != nil {
+		if err := os.MkdirAll(m.Dir, 0o755); err != nil { // #nosec G301 -- the mirror holds no credentials (the token goes in GIT_CONFIG_* variables); the pod runs every container as uid/gid 1000
 			return err
 		}
 		if _, err := m.run(ctx, false, "init", "--quiet", "--bare"); err != nil {

@@ -52,7 +52,7 @@ func (run *implementRun) reviewLoop(ctx context.Context) error {
 				transient++
 			}
 		}
-		out.Reviewed, out.ReviewErrors, out.ReviewErrorsTransient, out.ReviewErrorKinds = true, int32(len(errs)), len(errs) > 0 && transient == len(errs), kinds
+		out.Reviewed, out.ReviewErrors, out.ReviewErrorsTransient, out.ReviewErrorKinds = true, int32(len(errs)), len(errs) > 0 && transient == len(errs), kinds // #nosec G115 -- at most one error per configured reviewer
 		run.reviewedLast, run.reviewedCompanion = true, in.companion != nil
 		// Reviewers are read-only; discard anything they touched anyway.
 		if err := r.Agent.Reset(ctx, homeTree); err != nil {
@@ -72,7 +72,7 @@ func (run *implementRun) reviewLoop(ctx context.Context) error {
 		s.done(fmt.Sprintf("%s; %d findings, %d blocking, $%.2f", summary, len(findings), len(blocking), cost),
 			"diff", summary, "findings", len(findings), "blocking", len(blocking), "reviewerErrors", len(errs), "costUSD", cost)
 		run.remaining = findings
-		out.BlockingFindings = int32(len(blocking))
+		out.BlockingFindings = int32(len(blocking)) // #nosec G115 -- the length of an in-memory slice parsed from the reviewers' bounded answers, far below 2^31
 		if len(blocking) == 0 || iter >= int(*review.MaxIterations) {
 			break
 		}

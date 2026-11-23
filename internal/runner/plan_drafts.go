@@ -106,13 +106,13 @@ func planDraftState(iid int64) string {
 // writePlanDrafts writes each draft to <root>/drafts/<key>.md: a first line
 // naming its key, title and whether it is created, then its text.
 func writePlanDrafts(root string, drafts []aiv1.PlanDraft) error {
-	if err := os.MkdirAll(filepath.Join(root, "drafts"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, "drafts"), 0o755); err != nil { // #nosec G301 -- draft text for the agent in the runner's exchange dir; the pod runs every container as uid/gid 1000
 		return err
 	}
 	var errs []error
 	for _, d := range drafts {
 		body := fmt.Sprintf("> Draft %d %q: %s. Its text starts below this line.\n\n%s\n", d.Key, d.Title, planDraftState(d.CreatedMilestoneIID), d.Draft)
-		errs = append(errs, os.WriteFile(filepath.Join(root, "drafts", fmt.Sprintf("%d.md", d.Key)), []byte(body), 0o644))
+		errs = append(errs, os.WriteFile(filepath.Join(root, "drafts", fmt.Sprintf("%d.md", d.Key)), []byte(body), 0o644)) // #nosec G306 -- draft text the agent reads, no secret; the pod runs every container as uid/gid 1000
 	}
 	return errors.Join(errs...)
 }

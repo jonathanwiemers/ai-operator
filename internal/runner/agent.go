@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/jonathanwiemers/ai-operator/internal/textutil"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -138,6 +139,11 @@ func (a *LocalAgent) countNudges(res *Result, resumed string, before int) {
 	if res.CallUsage == nil {
 		res.CallUsage = &CallUsage{}
 	}
+	// The count comes from a state file in the agent container, which the
+	// model can write: saturate instead of wrapping.
+	if n > math.MaxInt32 {
+		n = math.MaxInt32
+	}
 	res.CallUsage.StepGateNudges = int32(n)
 }
 
@@ -213,7 +219,7 @@ func (a *LocalAgent) prepareInvocation(ctx context.Context, engine aiv1.Engine, 
 		}
 		inv.AddDirs = []string{w.Dir}
 	}
-	if err := os.MkdirAll(a.Workspace.Dir, 0o755); err != nil {
+	if err := os.MkdirAll(a.Workspace.Dir, 0o755); err != nil { // #nosec G301 -- the checkout, git's own mode for a work tree; the pod runs every container as uid/gid 1000
 		return err
 	}
 	inv.Dir = a.Workspace.Dir
@@ -327,7 +333,7 @@ func perRunToolchains(ctx context.Context, name string) ([]string, error) {
 	var env []string
 	for _, v := range [][2]string{{"MISE_DATA_DIR", "mise"}, {"RUSTUP_HOME", "rustup"}, {"CARGO_HOME", "cargo"}} {
 		dir := filepath.Join(root, name, v[1])
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := os.MkdirAll(dir, 0o755); err != nil { // #nosec G301 -- per-run toolchain installs, no secret; the pod runs every container as uid/gid 1000
 			return nil, err
 		}
 		env = append(env, v[0]+"="+dir)
@@ -845,10 +851,11 @@ func (s *AgentServer) Serve(ctx context.Context, socket string) error {
 		return err
 	}
 	if err := os.Chmod(socket, 0o600); err != nil {
-		ln.Close()
+		ln.Close() // #nosec G104 -- cleanup on an error path; the Chmod error is returned
 		return err
 	}
 	srv := &http.Server{Handler: s.Handler(), ReadHeaderTimeout: 10 * time.Second}
+	// #nosec G118 -- the shutdown starts once ctx is done, so it needs a context of its own, bounded by its timeout
 	go func() {
 		<-ctx.Done()
 		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)

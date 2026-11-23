@@ -193,13 +193,14 @@ func (r *Runner) saveCheckpoint(ctx context.Context, reason string, res *Result,
 		paths[i] = f.Path
 	}
 	at := metav1.Time{Time: r.now()}
+	step, files := int32(cut.step), int32(cp.Files) // #nosec G115 -- the run's step number and the file count of one checkpoint commit, far below 2^31
 	if err := r.patchRun(ctx, func(st *aiv1.RunStatus) {
-		st.Checkpoint = &aiv1.CheckpointStatus{SHA: r.checkpointHead, Branch: cut.branch, Reason: reason, Run: runNo, Step: int32(cut.step),
-			Files: int32(cp.Files), Added: cp.Added, Deleted: cp.Deleted, Skipped: paths, At: at}
+		st.Checkpoint = &aiv1.CheckpointStatus{SHA: r.checkpointHead, Branch: cut.branch, Reason: reason, Run: runNo, Step: step,
+			Files: files, Added: cp.Added, Deleted: cp.Deleted, Skipped: paths, At: at}
 		st.UncommittedLines = 0
 		if noCall {
-			aiv1.AppendRunCheckpoint(st, aiv1.RunCheckpoint{Reason: reason, SHA: r.checkpointHead, Run: runNo, Step: int32(cut.step),
-				Files: int32(cp.Files), Added: cp.Added, Deleted: cp.Deleted, At: at})
+			aiv1.AppendRunCheckpoint(st, aiv1.RunCheckpoint{Reason: reason, SHA: r.checkpointHead, Run: runNo, Step: step,
+				Files: files, Added: cp.Added, Deleted: cp.Deleted, At: at})
 		}
 	}); err != nil {
 		r.log().Error(err, "recording the checkpoint")

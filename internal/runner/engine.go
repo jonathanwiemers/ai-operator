@@ -412,7 +412,7 @@ func (c *CursorCLI) Run(ctx context.Context, inv Invocation) (*Result, error) {
 		if dir == "" {
 			dir = filepath.Join(filepath.Dir(inv.Dir), ".ai-operator", "prompts")
 		}
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := os.MkdirAll(dir, 0o755); err != nil { // #nosec G301 G703 -- the runner's own prompt dir next to the workspace (or PromptDir from its config); the pod runs every container as uid/gid 1000
 			return nil, err
 		}
 		f, err := os.CreateTemp(dir, "prompt-*.md")
@@ -421,10 +421,10 @@ func (c *CursorCLI) Run(ctx context.Context, inv Invocation) (*Result, error) {
 		}
 		defer os.Remove(f.Name())
 		if _, err := f.WriteString(prompt); err != nil {
-			f.Close()
+			f.Close() // #nosec G104 -- cleanup on an error path; the write error is returned
 			return nil, err
 		}
-		f.Close()
+		f.Close() // #nosec G104 -- the unbuffered write's error is checked above; closing a regular file loses no data
 		prompt = fmt.Sprintf("Your full task is in the file %s. Read it completely and follow it exactly.", f.Name())
 	}
 	return runCLI(ctx, orDefault(c.Binary, "cursor-agent"), c.Args(inv, prompt), inv.Dir, append(slices.Clip(c.Env), inv.Env...), "", true)
@@ -539,6 +539,7 @@ func (t *turnReader) track(line []byte) {
 			t.subagents = map[string]bool{}
 		}
 		t.subagents[id] = true
+		// #nosec G115 -- an index into the call's in-memory turn series, far below 2^31
 		if turn := int32(len(t.series) - 1); turn >= 0 && !slices.Contains(t.subTurns, turn) {
 			t.subTurns = append(t.subTurns, turn)
 		}
@@ -679,7 +680,7 @@ func (t *turnReader) addCallUsage(res *Result) {
 	u.ToolResults = maps.Clone(t.toolResults)
 	u.ContextSeries, u.SubagentTurns = thinSeries(t.series, t.subTurns, maxContextPoints)
 	if u.SubagentCalls == 0 {
-		u.SubagentCalls = int32(len(t.subagents))
+		u.SubagentCalls = int32(len(t.subagents)) // #nosec G115 -- the size of the call's in-memory set of subagent IDs, far below 2^31
 	}
 	u.ReadGateBlocks = t.gateBlocks
 }
@@ -699,7 +700,7 @@ func thinSeries(series []int64, turns []int32, max int) ([]int64, []int32) {
 	}
 	var mapped []int32
 	for _, i := range turns {
-		k := int32((2*int(i)*(max-1) + n - 1) / (2 * (n - 1)))
+		k := int32((2*int(i)*(max-1) + n - 1) / (2 * (n - 1))) // #nosec G115 -- i < n, so k < max, the number of kept points
 		if !slices.Contains(mapped, k) {
 			mapped = append(mapped, k)
 		}
@@ -714,7 +715,7 @@ var answerGrace = 60 * time.Second
 // runCLI runs an agent CLI. With stream, its output is a line per event: each
 // is logged (see logEvent); it keeps the answer and adds up the usage (addUsage).
 func runCLI(ctx context.Context, bin string, args []string, dir string, env []string, stdin string, stream bool) (*Result, error) {
-	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd := exec.CommandContext(ctx, bin, args...) // #nosec G204 G702 -- bin is "claude" or "cursor-agent" (only tests set Binary), no shell; model and flag values from tasks are reviewed in R12 (lean-codebase spec)
 	cmd.Dir = dir
 	cmd.Env = env
 	cmd.Stdin = strings.NewReader(stdin)

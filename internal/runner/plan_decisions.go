@@ -161,6 +161,7 @@ func mergePlanDecisions(prev []aiv1.PlanDecision, seq int32, in []planTurnDecisi
 // signed off; otherwise the version and who-fields stay and only why is
 // taken.
 func nextPlanDecision(old *aiv1.PlanDecision, d planTurnDecision, now time.Time) aiv1.PlanDecision {
+	// #nosec G115 -- validPlanDecisions, which plan.go calls before mergePlanDecisions, keeps Recommended below the at most 5 options
 	next := aiv1.PlanDecision{ID: d.ID, Title: d.Title, Question: d.Question, Options: d.Options,
 		Recommended: int32(d.Recommended), Why: d.Why, State: aiv1.PlanDecisionState(d.State)}
 	if old != nil && old.Title == next.Title && old.Question == next.Question && slices.Equal(old.Options, next.Options) &&

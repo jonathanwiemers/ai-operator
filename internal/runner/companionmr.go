@@ -155,7 +155,7 @@ func (run *implementRun) pushCompanion(ctx context.Context) error {
 	if err != nil {
 		// The push is recorded; the next run opens the merge request.
 		rec.MRIID, rec.MRURL = 0, ""
-		run.recordCompanion(ctx, &rec)
+		run.recordCompanion(ctx, &rec) // #nosec G104 -- best effort: the run fails with err either way, and without the record the next run pushes again and finds or opens the merge request by branch
 		return err
 	}
 	rec.MRIID, rec.MRURL = mr.IID, mr.WebURL

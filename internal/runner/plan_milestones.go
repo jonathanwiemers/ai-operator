@@ -68,7 +68,7 @@ func (p *PlanRun) writePlanFiles(ctx context.Context, projectRef, project string
 	} else {
 		// Without the autopilot state every file would say "no autopilot":
 		// none is better than a wrong one.
-		err = cmp.Or(os.MkdirAll(filepath.Join(dir, planContextDir), 0o755), err)
+		err = cmp.Or(os.MkdirAll(filepath.Join(dir, planContextDir), 0o755), err) // #nosec G301 -- milestone text for the agent in the runner's exchange dir; the pod runs every container as uid/gid 1000
 	}
 	if err != nil {
 		p.Log.Info("plan turn with incomplete milestone files", "error", err.Error())
@@ -95,7 +95,7 @@ func writePlanMilestones(ctx context.Context, dir string, gl planGitLab, project
 	if err := os.RemoveAll(root); err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(filepath.Join(root, "milestones"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(root, "milestones"), 0o755); err != nil { // #nosec G301 -- milestone text for the agent in the runner's exchange dir; the pod runs every container as uid/gid 1000
 		return nil, err
 	}
 	open, err := gl.ListMilestones(ctx, project)
@@ -132,7 +132,7 @@ func writePlanMilestones(ctx context.Context, dir string, gl planGitLab, project
 		if err != nil {
 			errs = append(errs, fmt.Errorf("issues of %%%d: %w", m.IID, err))
 		}
-		if err := os.WriteFile(filepath.Join(dir, info.Path), []byte(planMilestoneFile(info, m, issues, specs[m.IID], err)), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, info.Path), []byte(planMilestoneFile(info, m, issues, specs[m.IID], err)), 0o644); err != nil { // #nosec G306 -- milestone text the agent reads, no secret; the pod runs every container as uid/gid 1000
 			errs = append(errs, err)
 			return
 		}
@@ -275,7 +275,7 @@ func planMilestoneFile(info planMilestoneInfo, m gitlab.Milestone, issues []gitl
 // git: a /.plan-context/ line in .git/info/exclude, once.
 func planExclude(dir string) error {
 	path := filepath.Join(dir, ".git", "info", "exclude")
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) // #nosec G304 -- .git/info/exclude of the workspace, read in the agent container, where the model has the same rights already
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
@@ -288,8 +288,8 @@ func planExclude(dir string) error {
 	if len(b) > 0 && b[len(b)-1] != '\n' {
 		b = append(b, '\n')
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil { // #nosec G301 -- git's own mode for .git/info; the pod runs every container as uid/gid 1000
 		return err
 	}
-	return os.WriteFile(path, append(b, line+"\n"...), 0o644)
+	return os.WriteFile(path, append(b, line+"\n"...), 0o644) // #nosec G306 G703 -- .git/info/exclude of the workspace, written in the agent container, where the model has the same rights already; no secret, git's own mode
 }

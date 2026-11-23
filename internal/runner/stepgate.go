@@ -148,7 +148,7 @@ func stepGatePath(stateDir, sessionID string) string {
 // readStepGateState reads the state file; a missing file is a new session.
 func readStepGateState(path string) (stepGateState, error) {
 	var state stepGateState
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- stepGatePath of a session ID that matched stepGateSessionID, which has no path separator
 	if errors.Is(err, os.ErrNotExist) {
 		return state, nil
 	}
