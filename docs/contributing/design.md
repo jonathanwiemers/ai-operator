@@ -4330,6 +4330,9 @@ own `--tone-*-bg` and `--tone-*-fg` tokens, so the look is as before. The
 | `internal/history` | the factory's history: AgentTask status diffs and mirrored GitLab comments, written to the research database in batches |
 | `internal/controller/pilot_spec.go`, `pilot_followups.go`, `followup_of.go`, `pilot_draft.go`, `internal/runner/pilot_retro.go`, `pilot_draft.go` | the pilot's spec edits (`editSpec`), the retrospective's `create 1 2`, the `followup-of` line's settling, the retrospective run, the follow-up draft |
 | `internal/runner/engine.go` | `Engine` interface, `ClaudeCLI`, `CursorCLI` |
+| `internal/streamjson` | single lines of claude's and cursor-agent's stream-json output: the event type and result flags, whether a claude message calls a tool, claude's `rate_limit_event` usage reading |
+| `internal/agentlanguage` | the language rule appended to every agent system prompt, from the agent container's `AI_AGENT_LANGUAGE` tag; no rule for an empty or unknown tag |
+| `internal/cursorusage` | the client of Cursor's undocumented usage API: whether the account behind `CURSOR_API_KEY` is in the slow pool and when its billing cycle ends, kept for ten minutes |
 | `internal/runner/prompts.go` | role prompts and JSON schemas |
 | `internal/readgate` | the read gate (`ai-runner read-gate`): claude `PreToolUse` hook for `Read` and `Bash`, no Kubernetes imports |
 | `internal/runner/stepgate.go` | the step-size gate (`ai-runner step-gate`): claude `PostToolUse` hook for `Edit`, `Write` and `Bash`, per-session state file |

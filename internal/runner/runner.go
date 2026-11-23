@@ -30,6 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/cursorusage"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 )
 
@@ -66,7 +67,7 @@ type Runner struct {
 	Now              func() time.Time
 	// Cursor reads Cursor's usage (CURSOR_API_KEY), so cursor roles with a
 	// fallback skip the slow pool; nil: never checked.
-	Cursor *CursorUsage
+	Cursor *cursorusage.CursorUsage
 
 	// projectStatus is the project's status at the start of the current
 	// run; it carries the project-wide usage limits.

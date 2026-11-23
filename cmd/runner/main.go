@@ -35,6 +35,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/cursorusage"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/readgate"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
@@ -224,7 +225,7 @@ func runRunner(ctx context.Context) {
 			n, _ := strconv.ParseInt(os.Getenv("AI_AGENT_MEMORY_BYTES"), 10, 64)
 			return n
 		}(),
-		Cursor: runner.NewCursorUsage(os.Getenv("CURSOR_API_KEY")),
+		Cursor: cursorusage.NewCursorUsage(os.Getenv("CURSOR_API_KEY")),
 		Log:    log,
 	}
 	log.Info("runner started", "task", r.TaskName)

@@ -153,7 +153,7 @@ func (r *Runner) nearLimit(ctx context.Context, role aiv1.RoleSpec) *UsageLimitE
 		return nil
 	}
 	if role.Engine == aiv1.EngineCursor {
-		slow, reset, err := r.Cursor.slowPool(ctx, r.now())
+		slow, reset, err := r.Cursor.SlowPool(ctx, r.now())
 		if err != nil {
 			r.log().Info("could not read Cursor's usage", "error", err.Error())
 		}

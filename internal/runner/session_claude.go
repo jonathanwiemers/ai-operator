@@ -18,6 +18,8 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+
+	"github.com/jonathanwiemers/ai-operator/internal/streamjson"
 )
 
 var _ Session = (*ClaudeSession)(nil)
@@ -154,7 +156,7 @@ func (s *ClaudeSession) Prompt(ctx context.Context, text string, fn func(Event))
 				s.settle()
 				return nil, fmt.Errorf("%s failed: %s", filepath.Base(s.bin), tail(s.errBuf.String(), 2000))
 			}
-			ev := parseEvent(line)
+			ev := streamjson.ParseEvent(line)
 			if ev.Type == "system" && ev.Subtype == "init" {
 				s.rememberID(line)
 			}

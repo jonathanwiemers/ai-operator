@@ -1,4 +1,7 @@
-package runner
+// Package cursorusage owns the client of Cursor's undocumented usage API:
+// whether the account behind an API key is served from the slow pool, and
+// when its billing cycle ends.
+package cursorusage
 
 import (
 	"bytes"
@@ -16,8 +19,8 @@ import (
 // the CLI and the dashboard call.
 const cursorAPI = "https://api2.cursor.sh"
 
-// cursorRecheck is how long a slow-pool answer is kept.
-const cursorRecheck = 10 * time.Minute
+// CursorRecheck is how long a slow-pool answer is kept.
+const CursorRecheck = 10 * time.Minute
 
 // CursorUsage tells whether Cursor serves the account from its slow pool:
 // past the plan's usage every request waits seconds, and no error says so.
@@ -40,16 +43,16 @@ func NewCursorUsage(key string) *CursorUsage {
 	return &CursorUsage{Base: cursorAPI, Key: key, Client: &http.Client{Timeout: 10 * time.Second}}
 }
 
-// slowPool reports whether the account is in the slow pool and when its
-// billing cycle ends (zero if unknown). Answers are kept for cursorRecheck;
+// SlowPool reports whether the account is in the slow pool and when its
+// billing cycle ends (zero if unknown). Answers are kept for CursorRecheck;
 // err is set only on the call that failed to ask.
-func (c *CursorUsage) slowPool(ctx context.Context, now time.Time) (slow bool, reset time.Time, err error) {
+func (c *CursorUsage) SlowPool(ctx context.Context, now time.Time) (slow bool, reset time.Time, err error) {
 	if c == nil {
 		return false, time.Time{}, nil
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if !c.checked.IsZero() && now.Sub(c.checked) < cursorRecheck {
+	if !c.checked.IsZero() && now.Sub(c.checked) < CursorRecheck {
 		return c.slow, c.reset, nil
 	}
 	c.checked, c.slow, c.reset = now, false, time.Time{}

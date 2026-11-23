@@ -271,16 +271,6 @@ echo '{"type":"result","subtype":"success","is_error":false,"result":"ok","sessi
 	}
 }
 
-func TestUsageReadingWithoutWindows(t *testing.T) {
-	u := usageReading([]byte(`{"type":"rate_limit_event","rate_limit_info":{"status":"rejected"}}`))
-	if u == nil || u.Status != "rejected" || len(u.Windows) != 0 {
-		t.Fatalf("expected the status alone, got %+v", u)
-	}
-	if u := usageReading([]byte(`{"type":"rate_limit_event"}`)); u != nil {
-		t.Fatalf("an event without info gives no reading, got %+v", u)
-	}
-}
-
 // TestSubagentLinesAreLinked replays a stream with a subagent: the Agent
 // tool_use logs its id, the subagent's lines log it as parent, with their
 // model and, once per message, their tokens.

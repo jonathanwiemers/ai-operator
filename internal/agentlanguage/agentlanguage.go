@@ -1,4 +1,7 @@
-package runner
+// Package agentlanguage owns the language rule of the agents: the line
+// appended to every system prompt that makes the agent write in the
+// language of the agent container's AI_AGENT_LANGUAGE tag.
+package agentlanguage
 
 import (
 	"golang.org/x/text/language"
@@ -28,9 +31,9 @@ func languageRule(tag string) string {
 		"and error messages as they are."
 }
 
-// withLanguageRule appends the rule of tag to system, after a blank line
+// WithLanguageRule appends the rule of tag to system, after a blank line
 // unless system is empty; without a rule it returns system unchanged.
-func withLanguageRule(system, tag string) string {
+func WithLanguageRule(system, tag string) string {
 	rule := languageRule(tag)
 	switch {
 	case rule == "":

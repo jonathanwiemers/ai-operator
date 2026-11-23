@@ -19,6 +19,7 @@ import (
 	"github.com/go-logr/logr"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/agentlanguage"
 	"github.com/jonathanwiemers/ai-operator/internal/naming"
 )
 
@@ -80,7 +81,7 @@ type LocalAgent struct {
 	StepGateDir string
 	// Language is the language tag every call writes in (AI_AGENT_LANGUAGE,
 	// the operator's --agent-language): prepareInvocation appends its rule
-	// (languageRule) to the system prompt. Empty: no rule.
+	// (agentlanguage.WithLanguageRule) to the system prompt. Empty: no rule.
 	Language string
 
 	mu      sync.Mutex
@@ -226,7 +227,7 @@ func (a *LocalAgent) prepareInvocation(ctx context.Context, engine aiv1.Engine, 
 		env = append(env, fmt.Sprintf("BASH_MAX_OUTPUT_LENGTH=%d", inv.BashMaxOutputChars))
 	}
 	// Last, so the chart setting wins over the project's instructions.
-	inv.SystemPrompt = withLanguageRule(inv.SystemPrompt, a.Language)
+	inv.SystemPrompt = agentlanguage.WithLanguageRule(inv.SystemPrompt, a.Language)
 	inv.Env = env
 	return nil
 }

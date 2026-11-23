@@ -10,11 +10,12 @@ import (
 	"time"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/cursorusage"
 )
 
 // fakeCursorAPI answers like api2.cursor.sh for the key "key"; requests
 // counts the calls.
-func fakeCursorAPI(t *testing.T, slow bool, requests *atomic.Int32) *CursorUsage {
+func fakeCursorAPI(t *testing.T, slow bool, requests *atomic.Int32) *cursorusage.CursorUsage {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
@@ -38,7 +39,7 @@ func fakeCursorAPI(t *testing.T, slow bool, requests *atomic.Int32) *CursorUsage
 		}
 	}))
 	t.Cleanup(srv.Close)
-	c := NewCursorUsage("key")
+	c := cursorusage.NewCursorUsage("key")
 	c.Base = srv.URL
 	return c
 }
@@ -64,7 +65,7 @@ func TestSlowPoolIsASoftLimitForCursorRolesWithAFallback(t *testing.T) {
 
 	// Parallel reviewers and later calls reuse the answer for a while.
 	n := requests.Load()
-	now = now.Add(cursorRecheck - time.Second)
+	now = now.Add(cursorusage.CursorRecheck - time.Second)
 	if r.nearLimit(context.Background(), cursorReview(sonnetFallback())) == nil || requests.Load() != n {
 		t.Fatalf("a fresh answer is kept: %d requests after %d", requests.Load(), n)
 	}
@@ -100,7 +101,7 @@ func TestCursorOutsideTheSlowPoolOrUnreadableRunsOnCursor(t *testing.T) {
 	badKey.Key = "revoked"
 	for name, r := range map[string]*Runner{
 		"rejected key": {Now: time.Now, Cursor: badKey},
-		"no key":       {Now: time.Now, Cursor: NewCursorUsage("")},
+		"no key":       {Now: time.Now, Cursor: cursorusage.NewCursorUsage("")},
 	} {
 		if lim := r.nearLimit(context.Background(), cursorReview(sonnetFallback())); lim != nil {
 			t.Errorf("%s: unknown usage must not route around cursor, got %+v", name, lim)

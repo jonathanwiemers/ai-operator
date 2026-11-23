@@ -21,6 +21,7 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/readgate"
+	"github.com/jonathanwiemers/ai-operator/internal/streamjson"
 )
 
 // Invocation is one headless call of an agent CLI. It is engine neutral; each
@@ -470,7 +471,7 @@ func (t *turnReader) flush() {
 // consume handles one non-empty stream-json line. It reports whether the
 // line was the turn's result.
 func (t *turnReader) consume(line []byte) bool {
-	switch ev := parseEvent(line); ev.Type {
+	switch ev := streamjson.ParseEvent(line); ev.Type {
 	case "assistant":
 		t.track(line)
 		t.countTools(line, false)
@@ -480,7 +481,7 @@ func (t *turnReader) consume(line []byte) bool {
 			}
 		}
 		t.held = append(t.held, line)
-		if callsTool(line) {
+		if streamjson.CallsTool(line) {
 			// A claude message that calls a tool is no answer.
 			t.flush()
 		}
@@ -495,7 +496,7 @@ func (t *turnReader) consume(line []byte) bool {
 			logEvent(t.log, line, nil)
 		}
 	case "rate_limit_event":
-		if u := usageReading(line); u != nil {
+		if u := streamjson.UsageReading(line); u != nil {
 			t.usage = u
 		}
 	case "result":
