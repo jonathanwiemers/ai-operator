@@ -46,7 +46,7 @@ func SetRetryBackoff(d time.Duration) (restore func()) {
 // backoffAfter is the wait after the attempt-th attempt: exponential, with jitter.
 func backoffAfter(attempt int) time.Duration {
 	b := retryBackoff << (attempt - 1)
-	return b + time.Duration(rand.Int64N(int64(b)/2+1))
+	return b + time.Duration(rand.Int64N(int64(b)/2+1)) // #nosec G404 -- the jitter only spreads retries out, it needs no unpredictability
 }
 
 // retryWait says whether a failed attempt is retried, and after how long;

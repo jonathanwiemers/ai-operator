@@ -70,7 +70,7 @@ func (e Experiment) Arm(name string) (ExperimentArm, bool) {
 // count. The same inputs always give the same arm. e must have arms.
 func ArmFor(project string, e Experiment, iid int64) ExperimentArm {
 	h := fnv.New64a()
-	h.Write([]byte(NormalizeProject(project) + "\n" + e.Name + "\n" + strconv.FormatInt(iid, 10)))
+	h.Write([]byte(NormalizeProject(project) + "\n" + e.Name + "\n" + strconv.FormatInt(iid, 10))) // #nosec G104 -- a hash.Hash's Write never returns an error (package hash doc)
 	return e.Arms[mix64(h.Sum64())%uint64(len(e.Arms))]
 }
 

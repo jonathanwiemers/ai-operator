@@ -74,7 +74,7 @@ func (s *Store) migrate(ctx context.Context, fsys fs.FS, g Grants) error {
 	// A lock left behind by a failed unlock ends with the connection.
 	defer func() {
 		if _, err := conn.Exec(context.WithoutCancel(ctx), "SELECT pg_advisory_unlock($1)", migrateLock); err != nil {
-			conn.Conn().Close(context.WithoutCancel(ctx))
+			conn.Conn().Close(context.WithoutCancel(ctx)) // #nosec G104 -- best effort after a failed unlock: closing ends the session's advisory lock, and the migration's own result stands
 		}
 	}()
 	if _, err := conn.Exec(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (

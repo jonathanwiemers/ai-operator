@@ -27,7 +27,7 @@ func Parallel(description, prefix string) (int32, error) {
 	if err != nil || n < 1 || n > MaxParallelLine {
 		return 0, fmt.Errorf("write `%s parallel <n>`, e.g. `%s parallel 2` (1 to %d)", prefix, prefix, MaxParallelLine)
 	}
-	return int32(n), nil
+	return int32(n), nil // #nosec G109 -- n is checked to be 1 to MaxParallelLine above
 }
 
 // SetParallel sets the parallel line of a description to n: the first

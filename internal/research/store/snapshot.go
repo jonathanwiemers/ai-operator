@@ -196,7 +196,7 @@ func (s *Store) SaveMilestone(ctx context.Context, m MilestoneSnapshot, expiresA
 		for range b.Len() {
 			tag, err := br.Exec()
 			if err != nil {
-				br.Close()
+				br.Close() // #nosec G104 -- the Exec error is returned and the transaction rolls back; a Close error after it adds nothing
 				return err
 			}
 			changed = changed || tag.RowsAffected() > 0
@@ -224,7 +224,7 @@ func (s *Store) CloseMilestone(ctx context.Context, p ProjectKey, iid int64, at,
 func (s *Store) TakeFollowUps(ctx context.Context, p ProjectKey, source int64, numbers []int, target int64, expiresAt time.Time) (bool, error) {
 	nums := make([]int32, 0, len(numbers))
 	for _, n := range numbers {
-		nums = append(nums, int32(n))
+		nums = append(nums, int32(n)) // #nosec G115 -- follow-up numbers are 1 to 9, checked by rules.FollowUpOf and matched against the source's follow-ups
 	}
 	tag, err := s.pool.Exec(ctx, `UPDATE desk_follow_ups
 		SET state = 'milestone', target_iid = $5, expires_at = $6

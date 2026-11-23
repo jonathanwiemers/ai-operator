@@ -68,7 +68,7 @@ func run(ctx context.Context, adminURL, seed string) error {
 		return err
 	}
 	if seed != "" {
-		sql, err := os.ReadFile(seed)
+		sql, err := os.ReadFile(seed) // #nosec G304 -- the seed file named on this dev tool's command line
 		if err != nil {
 			return err
 		}

@@ -170,7 +170,7 @@ type setting struct {
 	set func(s *aiv1.AgentProjectSpec, v int)
 }
 
-func i32(v int) *int32 { n := int32(v); return &n }
+func i32(v int) *int32 { n := int32(v); return &n } // #nosec G115 -- parseSwitch accepts 0 to the setting's max (at most 5), and only an active rule, one that parsed, is applied
 
 // switches are the settings a rule may switch. Budgets and limits, the
 // merge gate, the freeze, the owners and the pilot's autonomy are none of

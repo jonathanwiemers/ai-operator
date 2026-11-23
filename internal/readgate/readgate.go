@@ -187,7 +187,7 @@ func bigFile(path string, minLines int) (size int64, over bool, err error) {
 // with a fixed buffer and stops at max+1 newlines, so a big file costs no
 // more than a small one. A last line without a newline counts.
 func overLines(path string, max int) (bool, error) {
-	f, err := os.Open(path)
+	f, err := os.Open(path) // #nosec G304 -- the file the agent is about to read itself, in its own container; the hook only counts its newlines
 	if err != nil {
 		return false, err
 	}
@@ -198,7 +198,7 @@ func overLines(path string, max int) (bool, error) {
 		n, err := f.Read(buf)
 		if n > 0 {
 			lines += bytes.Count(buf[:n], []byte{'\n'})
-			last = buf[n-1]
+			last = buf[n-1] // #nosec G602 -- inside n > 0, so n-1 indexes buf
 			if lines > max {
 				return true, nil
 			}

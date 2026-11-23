@@ -702,7 +702,7 @@ func StoreCall(c aiv1.AgentCall) store.Call {
 		CostSource: c.CostSource, Turns: c.Turns, DurationMS: c.DurationMS,
 		SubagentCalls: c.SubagentCalls, ReadGateBlocks: c.ReadGateBlocks, ContextSeries: c.ContextSeries, SubagentTurns: c.SubagentTurns,
 		Checkpoint: c.Checkpoint, CheckpointSHA: c.CheckpointSHA, LinesAdded: c.LinesAdded, LinesDeleted: c.LinesDeleted,
-		StepGateNudges: c.StepGateNudges, TokenBasis: int16(c.TokenBasis),
+		StepGateNudges: c.StepGateNudges, TokenBasis: int16(c.TokenBasis), // #nosec G115 -- TokenBasis is 0 or aiv1.TokenBasisModels (1), the only values the runner writes
 		Arm: c.Arm, StepSession: c.StepSession, BaseContextTokens: c.BaseContextTokens}
 	if len(c.ToolResults) > 0 {
 		call.ToolResults = make(map[string]store.ToolResultUsage, len(c.ToolResults))

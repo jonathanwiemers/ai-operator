@@ -70,7 +70,7 @@ func main() {
 		case "init-workspace":
 			// Create the PVC sub-paths of the runner and agent containers.
 			for _, dir := range os.Args[2:] {
-				if err := os.MkdirAll(dir, 0o700); err != nil {
+				if err := os.MkdirAll(dir, 0o700); err != nil { // #nosec G703 -- the init container's args, fixed in the pod spec the operator builds
 					ctrl.Log.Error(err, "creating workspace directory", "dir", dir)
 					os.Exit(1)
 				}
@@ -198,7 +198,7 @@ func runRunner(ctx context.Context) {
 		log.Info("AI_AGENT_SOCKET not set: running the agent in-process (development mode)")
 		agent = localAgent()
 	}
-	if err := os.MkdirAll(exchange, 0o755); err != nil {
+	if err := os.MkdirAll(exchange, 0o755); err != nil { // #nosec G301 -- the exchange dir holds the agent socket and git bundles in transit, shared with the agent container; the pod runs every container as uid/gid 1000
 		log.Error(err, "creating exchange directory")
 		os.Exit(1)
 	}

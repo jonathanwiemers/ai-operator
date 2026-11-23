@@ -65,10 +65,10 @@ func tlsFor(mode, host string) (*tls.Config, error) {
 	case "", "require":
 		// Encrypted, not verified: Zalando's default certificates are
 		// self-signed.
-		return &tls.Config{InsecureSkipVerify: true}, nil
+		return &tls.Config{InsecureSkipVerify: true}, nil // #nosec G402 -- sslMode require is encrypted but unverified, as in libpq; verify-ca and verify-full check the certificate
 	case "verify-ca":
 		// verifyChain checks the chain; only the host name is skipped.
-		return &tls.Config{InsecureSkipVerify: true, VerifyPeerCertificate: verifyChain}, nil
+		return &tls.Config{InsecureSkipVerify: true, VerifyPeerCertificate: verifyChain}, nil // #nosec G402 G123 -- verify-ca skips only the host name, as in libpq, and verifyChain checks the chain; pgx sets no ClientSessionCache, so no session resumes past the check
 	case "verify-full":
 		return &tls.Config{ServerName: host}, nil
 	}

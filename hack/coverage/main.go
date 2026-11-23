@@ -93,7 +93,7 @@ func run(args []string, stdout, stderr io.Writer) int {
 
 // moduleFromGoMod returns the module path of a go.mod file.
 func moduleFromGoMod(name string) (string, error) {
-	data, err := os.ReadFile(name)
+	data, err := os.ReadFile(name) // #nosec G304 -- ./go.mod of the checkout this dev tool runs in
 	if err != nil {
 		return "", fmt.Errorf("module path: %w (set -module)", err)
 	}
@@ -201,7 +201,7 @@ func packageName(importPath, module string) string {
 // readBaseline reads `package percent` lines; a missing file is an empty
 // baseline, so every package is new.
 func readBaseline(name string) (map[string]int, error) {
-	data, err := os.ReadFile(name)
+	data, err := os.ReadFile(name) // #nosec G304 -- the baseline file named by this dev tool's -baseline flag
 	if errors.Is(err, fs.ErrNotExist) {
 		return map[string]int{}, nil
 	}
@@ -233,7 +233,7 @@ func writeBaseline(name string, now map[string]int) error {
 	for _, pkg := range sortedKeys(now) {
 		fmt.Fprintf(&b, "%s %s\n", pkg, fmtTenths(now[pkg]))
 	}
-	return os.WriteFile(name, []byte(b.String()), 0o644)
+	return os.WriteFile(name, []byte(b.String()), 0o644) // #nosec G306 -- the baseline is committed to the repository, not secret
 }
 
 const (

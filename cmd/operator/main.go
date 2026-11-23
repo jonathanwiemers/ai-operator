@@ -271,7 +271,7 @@ func main() {
 			DefaultAgentLogLevel: aiv1.LogLevel(agentLogLevel),
 			AgentLanguage:        agentLanguage,
 			Candidates:           candidates,
-			MaxUsagePercent:      int32(maxUsagePercent),
+			MaxUsagePercent:      int32(maxUsagePercent), // #nosec G115 -- checked to be 1 to 100 above, where the research database is set up
 			HistoryRetention:     historyRetention,
 			Pricing:              prices,
 		}).SetupWithManager(mgr); err != nil {

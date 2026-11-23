@@ -29,7 +29,7 @@ type Table struct {
 // Load reads the pricing file at path, strictly: unknown keys and negative
 // prices are errors.
 func Load(path string) (*Table, error) {
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) // #nosec G304 -- the operator's --pricing-file flag, set by the cluster admin
 	if err != nil {
 		return nil, err
 	}
