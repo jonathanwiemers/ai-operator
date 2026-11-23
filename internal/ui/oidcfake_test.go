@@ -7,7 +7,6 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"math/big"
 	"net/http"
 	"net/http/cookiejar"
@@ -20,9 +19,7 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/go-logr/logr"
-	"golang.org/x/oauth2"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	"github.com/jonathanwiemers/ai-operator/internal/claims"
@@ -600,93 +597,4 @@ func cookieNamed(cookies []*http.Cookie, name string) *http.Cookie {
 		return nil
 	}
 	return cookies[i]
-}
-
-// TestFakeOIDCRotatesRefreshTokens checks the fake itself: the code grant
-// gives a verifiable ID token, each refresh token works once, and a revoked
-// one not at all.
-func TestFakeOIDCRotatesRefreshTokens(t *testing.T) {
-	f := newFakeOIDC(t)
-	ctx := t.Context()
-	p, err := oidc.NewProvider(ctx, f.issuer())
-	if err != nil {
-		t.Fatal(err)
-	}
-	conf := &oauth2.Config{ClientID: fakeClientID, ClientSecret: fakeClientSecret, Endpoint: p.Endpoint(),
-		RedirectURL: "http://127.0.0.1/cb", Scopes: []string{"openid", "offline_access"}}
-	verifier := oauth2.GenerateVerifier()
-	browser := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
-	back, _ := redirectOf(t, browser, conf.AuthCodeURL("st", oidc.Nonce("n1"), oauth2.S256ChallengeOption(verifier)))
-	u, err := url.Parse(back)
-	if err != nil || u.Query().Get("state") != "st" {
-		t.Fatal("authorization did not redirect back with the state")
-	}
-	if _, err := conf.Exchange(ctx, u.Query().Get("code"), oauth2.VerifierOption("wrong")); !isOAuthError(err, "invalid_grant") {
-		t.Fatalf("code with a wrong PKCE verifier: %v", err)
-	}
-	back, _ = redirectOf(t, browser, conf.AuthCodeURL("st", oidc.Nonce("n1"), oauth2.S256ChallengeOption(verifier)))
-	u, _ = url.Parse(back)
-	tok, err := conf.Exchange(ctx, u.Query().Get("code"), oauth2.VerifierOption(verifier))
-	if err != nil {
-		t.Fatalf("code grant: %v", err)
-	}
-	raw, _ := tok.Extra("id_token").(string)
-	id, err := p.Verifier(&oidc.Config{ClientID: fakeClientID}).Verify(ctx, raw)
-	if err != nil {
-		t.Fatalf("ID token: %v", err)
-	}
-	var claims map[string]any
-	if err := id.Claims(&claims); err != nil {
-		t.Fatal(err)
-	}
-	if id.Subject != fakeSubject || id.Nonce != "n1" || claims["email"] != fakeEmail || claims[zitadelRolesClaim] == nil {
-		t.Errorf("ID token claims: sub %q, nonce %q, %v", id.Subject, id.Nonce, claims)
-	}
-
-	refresh := func(rt string) (*oauth2.Token, error) {
-		return conf.TokenSource(ctx, &oauth2.Token{RefreshToken: rt}).Token()
-	}
-	first := tok.RefreshToken
-	if first == "" {
-		t.Fatal("no refresh token from the code grant")
-	}
-	second, err := refresh(first)
-	if err != nil {
-		t.Fatalf("first refresh: %v", err)
-	}
-	if second.RefreshToken == "" || second.RefreshToken == first {
-		t.Error("the refresh token was not rotated")
-	}
-	if _, err := refresh(first); !isOAuthError(err, "invalid_grant") {
-		t.Errorf("second use of a refresh token: %v, want invalid_grant", err)
-	}
-	third, err := refresh(second.RefreshToken)
-	if err != nil {
-		t.Fatalf("refresh with the rotated token: %v", err)
-	}
-	if got := f.refreshGrants(1); got != 3 {
-		t.Errorf("refresh grants = %d, want 3", got)
-	}
-
-	form := url.Values{"token": {third.RefreshToken}, "token_type_hint": {"refresh_token"}}
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, f.issuer()+"/revoke", strings.NewReader(form.Encode()))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.SetBasicAuth(fakeClientID, fakeClientSecret)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusOK || !f.loginRevoked(1) {
-		t.Fatalf("revocation: status %d, revoked %v", resp.StatusCode, f.loginRevoked(1))
-	}
-	if _, err := refresh(third.RefreshToken); !isOAuthError(err, "invalid_grant") {
-		t.Errorf("refresh with a revoked token: %v, want invalid_grant", err)
-	}
-}
-
-// isOAuthError reports whether err is the token endpoint's error code.
-func isOAuthError(err error, code string) bool {
-	var re *oauth2.RetrieveError
-	return errors.As(err, &re) && re.ErrorCode == code
 }

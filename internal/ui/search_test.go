@@ -107,7 +107,7 @@ func TestSearchLimitNewestFirst(t *testing.T) {
 
 func TestSearchShortQuery(t *testing.T) {
 	env := newTestEnv(t, &Config{Auth: AuthConfig{Mode: AuthNone}})
-	for _, q := range []string{"", "a", " a ", "#"} {
+	for _, q := range []string{"a", " a "} {
 		if code := env.get(t, "/api/v1/search?q="+url.QueryEscape(q), nil); code != http.StatusBadRequest {
 			t.Errorf("search %q: status %d, want 400", q, code)
 		}

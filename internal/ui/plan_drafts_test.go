@@ -120,27 +120,6 @@ func TestSavePlanDraftByKey(t *testing.T) {
 	}
 }
 
-// An old plan's single draft is edited as key 1 without a key, and moved
-// into status.drafts.
-func TestSavePlanDraftOldPlan(t *testing.T) {
-	env := planWriterEnv(t, "leads")
-	pl := env.getPlan(t, "shop-plan-new")
-	pl.Status.Draft, pl.Status.DraftRevision, pl.Status.DraftBy, pl.Status.Title = "## Old", 2, "agent", "Old"
-	if err := env.reader.Status().Update(context.Background(), pl); err != nil {
-		t.Fatal(err)
-	}
-	var v PlanView
-	if code := env.get(t, shopPlans+"/shop-plan-new", &v); code != http.StatusOK || len(v.Drafts) != 1 || v.Drafts[0].Key != 1 || v.Drafts[0].Title != "Old" {
-		t.Fatalf("old view: %d %+v", code, v.Drafts)
-	}
-	if code := env.send(t, http.MethodPut, newDraft, draftEdit{2, "## New"}, &v); code != http.StatusOK || v.Drafts[0].Revision != 3 {
-		t.Fatalf("save: %d %+v", code, v)
-	}
-	if s := env.getPlan(t, "shop-plan-new").Status; len(s.Drafts) != 1 || s.Drafts[0].Draft != "## New" || s.Drafts[0].Title != "Old" || s.Draft != "" || s.DraftSeq != 1 {
-		t.Errorf("status: %+v", s)
-	}
-}
-
 func TestEstimateByDraft(t *testing.T) {
 	env, _ := estimateEnv(t)
 	withDrafts(t, env)

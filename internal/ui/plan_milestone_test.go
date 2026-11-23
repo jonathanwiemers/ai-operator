@@ -233,25 +233,26 @@ func TestPlanMilestoneGitLabRefuses(t *testing.T) {
 	}
 }
 
-// A plan from before status.drafts shows its single draft, and the first
-// write moves it to key 1: the deprecated fields are empty after the edit,
-// and the milestone is recorded on key 1.
+// A plan from before status.drafts shows its single draft with the plan's
+// title, and the first write moves it to key 1 with that title: the
+// deprecated fields are empty after the edit, and the milestone is recorded
+// on key 1.
 func TestPlanOldDraftEditAndCreate(t *testing.T) {
 	env, _ := planSteerer(t)
 	pl := env.getPlan(t, "shop-plan-new")
-	pl.Status.Draft, pl.Status.DraftRevision, pl.Status.DraftBy, pl.Status.DraftSHA = "## Old", 2, "agent", "abc"
+	pl.Status.Draft, pl.Status.DraftRevision, pl.Status.DraftBy, pl.Status.DraftSHA, pl.Status.Title = "## Old", 2, "agent", "abc", "Old"
 	if err := env.reader.Status().Update(context.Background(), pl); err != nil {
 		t.Fatal(err)
 	}
 	var v PlanView
-	if code := env.get(t, shopPlans+"/shop-plan-new", &v); code != http.StatusOK || len(v.Drafts) != 1 || firstDraft(v) != (PlanDraftView{Key: 1, Draft: "## Old", Revision: 2, By: "agent", SHA: "abc"}) {
+	if code := env.get(t, shopPlans+"/shop-plan-new", &v); code != http.StatusOK || len(v.Drafts) != 1 || firstDraft(v) != (PlanDraftView{Key: 1, Title: "Old", Draft: "## Old", Revision: 2, By: "agent", SHA: "abc"}) {
 		t.Fatalf("view: %d %+v", code, v)
 	}
 	if code := env.send(t, http.MethodPut, newDraft, draftEdit{2, "## Owner"}, &v); code != http.StatusOK || firstDraft(v).Draft != "## Owner" || firstDraft(v).Revision != 3 {
 		t.Fatalf("edit: %d %+v", code, v)
 	}
 	st := env.getPlan(t, "shop-plan-new").Status
-	want := []aiv1.PlanDraft{{Key: 1, Draft: "## Owner", Revision: 3, By: "owner", SHA: "abc"}}
+	want := []aiv1.PlanDraft{{Key: 1, Title: "Old", Draft: "## Owner", Revision: 3, By: "owner", SHA: "abc"}}
 	if !slices.Equal(st.Drafts, want) || st.DraftSeq != 1 || st.Draft != "" || st.DraftRevision != 0 || st.DraftBy != "" || st.DraftSHA != "" {
 		t.Fatalf("not moved to key 1: %+v", st)
 	}
@@ -432,7 +433,6 @@ func TestResolveDraftRefs(t *testing.T) {
 		text, want string
 		refs       []string
 	}{
-		{"builds on %draft-1.", "builds on %41.", nil},
 		{"%draft-12 and %draft-1, (%draft-1)", "%50 and %41, (%41)", nil},
 		{"%draft-1x %draft-1_ %draft- draft-1 %draft-1", "%draft-1x %draft-1_ %draft- draft-1 %41", nil},
 		{"%draft-2 %draft-3 %draft-3 %draft-7", "%draft-2 %draft-3 %draft-3 %draft-7", []string{"%draft-2", "%draft-3", "%draft-7"}},

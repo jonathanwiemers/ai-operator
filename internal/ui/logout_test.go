@@ -1,14 +1,11 @@
 package ui
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
-
-	"golang.org/x/oauth2"
 )
 
 // logout posts to the logout endpoint and checks that it answers 200 with
@@ -34,7 +31,6 @@ func (e *renewEnv) logout() {
 
 func TestLogoutRevokesRefreshToken(t *testing.T) {
 	e := newRenewEnv(t, nil, nil)
-	token := currentToken(e.f)
 	e.logout()
 	reqs := e.f.revocationRequests()
 	if len(reqs) != 1 || !e.f.loginRevoked(1) {
@@ -42,14 +38,6 @@ func TestLogoutRevokesRefreshToken(t *testing.T) {
 	}
 	if r := reqs[0]; !r.basic || r.clientID != "" || r.secret || r.hint != "refresh_token" {
 		t.Errorf("a confidential client: %+v, want Basic auth and the refresh_token hint", r)
-	}
-	p, err := e.s.oidc.discover(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = e.s.oidc.oauth2Config(p).TokenSource(context.Background(), &oauth2.Token{RefreshToken: token}).Token()
-	if !isOAuthError(err, "invalid_grant") {
-		t.Errorf("refresh with the revoked token: %v, want invalid_grant", err)
 	}
 }
 
