@@ -1,6 +1,7 @@
 package webhook
 
 import (
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -356,4 +357,93 @@ func TestHeartbeatWakesNothing(t *testing.T) {
 	}
 	// The next one is a real delivery.
 	e.expect(t, e.deliver(http.MethodPost, payload("group/app"), goodToken), http.StatusAccepted, app)
+}
+
+// readCounter counts the reads of a request body.
+type readCounter struct {
+	r     io.Reader
+	reads int
+}
+
+func (c *readCounter) Read(p []byte) (int, error) {
+	c.reads++
+	return c.r.Read(p)
+}
+
+func TestBodyIsNotReadWithoutAValidToken(t *testing.T) {
+	for _, c := range []struct {
+		name   string
+		header []string // nil: no X-Gitlab-Token header
+	}{
+		{"missing header", nil},
+		{"empty header", []string{""}},
+		{"wrong token", []string{otherTok}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			e := standard(t)
+			// Over the cap: read, it would answer 413 and not 401.
+			body := &readCounter{r: strings.NewReader(payload("group/app") + strings.Repeat(" ", MaxBody))}
+			req := httptest.NewRequest(http.MethodPost, Path, body)
+			if c.header != nil {
+				req.Header["X-Gitlab-Token"] = c.header
+			}
+			rec := httptest.NewRecorder()
+			e.receiver.ServeHTTP(rec, req)
+			e.expect(t, rec, http.StatusUnauthorized)
+			if body.reads != 0 {
+				t.Errorf("the body was read %d times before the token was checked", body.reads)
+			}
+		})
+	}
+}
+
+func TestSecretWithoutTheKeyIsRefused(t *testing.T) {
+	s := secret("team", "app-hook", "")
+	s.Data = map[string][]byte{"other": []byte(goodToken)}
+	e := newEnv(t, project("team", "app", "group/app", "app-hook"), s)
+	e.expect(t, e.deliver(http.MethodPost, payload("group/app"), goodToken), http.StatusUnauthorized)
+}
+
+func TestTokenOfAnotherProjectIsRefused(t *testing.T) {
+	// Each project's token wakes only that project, whatever the body names.
+	e := standard(t, project("team", "other", "group/other", "other-hook"), secret("team", "other-hook", otherTok))
+	e.expect(t, e.deliver(http.MethodPost, payload("group/other"), goodToken), http.StatusUnauthorized)
+	e.expect(t, e.deliver(http.MethodPost, payload("group/app"), otherTok), http.StatusUnauthorized)
+	if _, ok := e.deliveries.Last(app); ok {
+		t.Error("a refused delivery was recorded")
+	}
+}
+
+func TestTokenOfAnotherSetIsRefused(t *testing.T) {
+	var sets []types.NamespacedName
+	e := newEnv(t,
+		projectSet(t, "team", "jo", "jo-hook", "group/one"), secret("team", "jo-hook", goodToken),
+		projectSet(t, "team", "kim", "kim-hook", "group/two"), secret("team", "kim-hook", otherTok),
+		// The set's secret is read from the set's namespace only.
+		projectSet(t, "elsewhere", "lee", "lee-hook", "group/three"), secret("team", "lee-hook", goodToken),
+	).withSets(&sets)
+	e.expect(t, e.deliver(http.MethodPost, payload("group/two"), goodToken), http.StatusUnauthorized)
+	e.expect(t, e.deliver(http.MethodPost, payload("group/three"), goodToken), http.StatusUnauthorized)
+	if len(sets) != 0 {
+		t.Fatalf("sets woken %v", sets)
+	}
+}
+
+func TestReplayedDeliveryOnlyWakesAgain(t *testing.T) {
+	// There is no delivery ID to deduplicate on: a replay is one more wake,
+	// which the Waker coalesces, and the note's time is taken again.
+	// Commands are deduplicated by GitLab's note IDs, not by deliveries.
+	e := standard(t)
+	body := `{"object_kind":"note","project":{"path_with_namespace":"group/app"},"object_attributes":{"noteable_type":"Issue"},"issue":{"iid":7}}`
+	for range 2 {
+		if rec := e.deliver(http.MethodPost, body, goodToken); rec.Code != http.StatusAccepted {
+			t.Fatalf("status = %d", rec.Code)
+		}
+	}
+	if !slices.Equal(e.woken, []types.NamespacedName{app, app}) {
+		t.Errorf("woken = %v, want app twice", e.woken)
+	}
+	if _, ok := e.deliveries.NoteAt(app, 7); !ok {
+		t.Error("the note was not recorded")
+	}
 }

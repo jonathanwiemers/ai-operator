@@ -5,6 +5,7 @@
 package webhook
 
 import (
+	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/json"
@@ -90,6 +91,20 @@ func (r *Receiver) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	token := req.Header.Get("X-Gitlab-Token")
+	projects, sets, err := r.owners(req.Context(), token, log)
+	if err != nil {
+		log.Error(err, "Webhook delivery failed: listing AgentProjects")
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	// The token is checked before the body is read, so a sender without a
+	// valid one cannot make the operator buffer a body.
+	if len(projects) == 0 && len(sets) == 0 {
+		log.Info("Webhook delivery refused: the token matches no webhook secret", "tokenSent", token != "")
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 	body, err := io.ReadAll(http.MaxBytesReader(w, req.Body, MaxBody))
 	if err != nil {
 		var tooBig *http.MaxBytesError
@@ -116,22 +131,10 @@ func (r *Receiver) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	noteIID := noteIssue(body)
 	log = log.WithValues("project", textutil.Truncate(path, 256))
 
-	var projects aiv1.AgentProjectList
-	if err := r.Reader.List(req.Context(), &projects); err != nil {
-		log.Error(err, "Webhook delivery failed: listing AgentProjects")
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-	token := req.Header.Get("X-Gitlab-Token")
 	var woken []string
-	known, heartbeats := false, 0
-	for i := range projects.Items {
-		p := &projects.Items[i]
+	heartbeats := 0
+	for _, p := range projects {
 		if !strings.EqualFold(p.Spec.GitLab.Project, path) {
-			continue
-		}
-		known = true
-		if !r.tokenMatches(req, p, p.Namespace, p.Spec.Webhook.SecretRef, token, log) {
 			continue
 		}
 		name := types.NamespacedName{Namespace: p.Namespace, Name: p.Name}
@@ -160,40 +163,64 @@ func (r *Receiver) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		w.WriteHeader(http.StatusAccepted)
 		return
 	}
-	if sets := r.wakeSets(req, path, token, log); len(sets) > 0 {
+	if sets := r.wakeSets(sets, path); len(sets) > 0 {
 		sw.result = "set"
 		log.Info("Webhook delivery accepted for project sets", "woken", sets)
 		w.WriteHeader(http.StatusAccepted)
 		return
 	}
-	// Unknown projects get the same answer as bad tokens, so nobody can
-	// probe which projects are served.
-	log.Info("Webhook delivery refused: unknown project or wrong token", "known", known, "tokenSent", token != "")
+	// The token belongs to another project. Unknown projects get the same
+	// answer as bad tokens, so nobody can probe which projects are served.
+	log.Info("Webhook delivery refused: unknown project or wrong token")
 	http.Error(w, "unauthorized", http.StatusUnauthorized)
 }
 
-// wakeSets wakes every AgentProjectSet that registered a hook on path and
-// whose template's webhook secret matches token, and returns their names.
-func (r *Receiver) wakeSets(req *http.Request, path, token string, log logr.Logger) []string {
+// owners returns the AgentProjects, and the AgentProjectSets when WakeSet is
+// set, whose webhook secret matches token. A delivery may only wake these,
+// and only those of them on the project its body names.
+func (r *Receiver) owners(ctx context.Context, token string, log logr.Logger) ([]*aiv1.AgentProject, []*aiv1.AgentProjectSet, error) {
+	if token == "" {
+		return nil, nil, nil
+	}
+	var list aiv1.AgentProjectList
+	if err := r.Reader.List(ctx, &list); err != nil {
+		return nil, nil, err
+	}
+	var projects []*aiv1.AgentProject
+	for i := range list.Items {
+		p := &list.Items[i]
+		if r.tokenMatches(ctx, p, p.Namespace, p.Spec.Webhook.SecretRef, token, log) {
+			projects = append(projects, p)
+		}
+	}
 	if r.WakeSet == nil {
-		return nil
+		return projects, nil, nil
 	}
-	var sets aiv1.AgentProjectSetList
-	if err := r.Reader.List(req.Context(), &sets); err != nil {
+	var setList aiv1.AgentProjectSetList
+	if err := r.Reader.List(ctx, &setList); err != nil {
 		log.Error(err, "Listing AgentProjectSets failed")
-		return nil
+		return projects, nil, nil
 	}
+	var sets []*aiv1.AgentProjectSet
+	for i := range setList.Items {
+		set := &setList.Items[i]
+		tmpl, err := set.Spec.DecodeTemplate()
+		if err == nil && r.tokenMatches(ctx, set, set.Namespace, tmpl.Webhook.SecretRef, token, log) {
+			sets = append(sets, set)
+		}
+	}
+	return projects, sets, nil
+}
+
+// wakeSets wakes every set of sets that registered a hook on path, and
+// returns their names.
+func (r *Receiver) wakeSets(sets []*aiv1.AgentProjectSet, path string) []string {
 	var woken []string
-	for i := range sets.Items {
-		set := &sets.Items[i]
+	for _, set := range sets {
 		hooked := slices.ContainsFunc(set.Status.Projects, func(e aiv1.ProjectSetEntry) bool {
 			return e.HookID != 0 && strings.EqualFold(e.Path, path)
 		})
 		if !hooked {
-			continue
-		}
-		tmpl, err := set.Spec.DecodeTemplate()
-		if err != nil || !r.tokenMatches(req, set, set.Namespace, tmpl.Webhook.SecretRef, token, log) {
 			continue
 		}
 		name := types.NamespacedName{Namespace: set.Namespace, Name: set.Name}
@@ -228,14 +255,15 @@ func noteIssue(body []byte) int64 {
 }
 
 // tokenMatches compares the token with the webhook secret ref in namespace
-// in constant time. No secret, or an empty one, matches no token.
-func (r *Receiver) tokenMatches(req *http.Request, owner client.Object, namespace string, ref *corev1.SecretKeySelector, token string, log logr.Logger) bool {
+// in constant time. No secret, or an empty one, matches no token. It runs for
+// every owner on every delivery, so an unreadable secret logs at V(1) only.
+func (r *Receiver) tokenMatches(ctx context.Context, owner client.Object, namespace string, ref *corev1.SecretKeySelector, token string, log logr.Logger) bool {
 	if ref == nil || token == "" {
 		return false
 	}
 	var secret corev1.Secret
-	if err := r.Reader.Get(req.Context(), types.NamespacedName{Namespace: namespace, Name: ref.Name}, &secret); err != nil {
-		log.Info("Webhook secret unreadable", "owner", namespace+"/"+owner.GetName(), "error", err.Error())
+	if err := r.Reader.Get(ctx, types.NamespacedName{Namespace: namespace, Name: ref.Name}, &secret); err != nil {
+		log.V(1).Info("Webhook secret unreadable", "owner", namespace+"/"+owner.GetName(), "error", err.Error())
 		return false
 	}
 	want := strings.TrimSpace(string(secret.Data[ref.Key]))

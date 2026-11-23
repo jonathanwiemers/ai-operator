@@ -151,6 +151,22 @@ All secrets are Kubernetes Secrets in your cluster. You name them in the
 Nothing is stored in GitLab, and the model never sees a secret except its
 own model credentials.
 
+## Webhook deliveries
+
+A delivery only wakes the operator to sync a project now. It counts only
+when its `X-Gitlab-Token` matches the webhook secret of an `AgentProject`, or
+of an `AgentProjectSet` with a hook on that project, and when that project
+is the one the delivery names. The token is compared in constant time.
+
+- A delivery with a wrong, missing or empty token gets `401` before its body
+  is read. So does every delivery to a project without a webhook secret, or
+  with a missing or empty one.
+- A body over 1 MiB gets `413`.
+- A repeated delivery only wakes another sync. Commands are read from GitLab
+  and run once per comment, however often a delivery arrives.
+
+The projects of one `AgentProjectSet` share the set's webhook secret.
+
 ## Research runs
 
 Researches read web pages, which may carry instructions too. A research pod
