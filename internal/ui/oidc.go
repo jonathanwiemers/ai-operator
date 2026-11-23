@@ -240,7 +240,7 @@ func (o *oidcClient) revoke(ctx context.Context, token string) {
 		}
 		var resp *http.Response
 		if resp, err = http.DefaultClient.Do(req); err == nil {
-			resp.Body.Close()
+			resp.Body.Close() // #nosec G104 -- the body is not read; best-effort revocation, the status is logged below
 			if resp.StatusCode != http.StatusOK {
 				o.log.Info("the provider did not revoke the refresh token", "status", resp.StatusCode)
 			}

@@ -37,13 +37,13 @@ const (
 // config file (a ConfigMap).
 const (
 	EnvSessionKey         = "AI_OPERATOR_UI_SESSION_KEY"
-	EnvClientSecret       = "AI_OPERATOR_UI_OIDC_CLIENT_SECRET"
-	EnvGitLabClientSecret = "AI_OPERATOR_UI_GITLAB_CLIENT_SECRET"
-	EnvGitLabToken        = "AI_OPERATOR_UI_GITLAB_TOKEN"
+	EnvClientSecret       = "AI_OPERATOR_UI_OIDC_CLIENT_SECRET"   // #nosec G101 -- the name of the environment variable, not its value
+	EnvGitLabClientSecret = "AI_OPERATOR_UI_GITLAB_CLIENT_SECRET" // #nosec G101 -- the name of the environment variable, not its value
+	EnvGitLabToken        = "AI_OPERATOR_UI_GITLAB_TOKEN"         // #nosec G101 -- the name of the environment variable, not its value
 	EnvResearchDBUser     = "AI_OPERATOR_UI_RESEARCH_DB_USER"
-	EnvResearchDBPassword = "AI_OPERATOR_UI_RESEARCH_DB_PASSWORD"
+	EnvResearchDBPassword = "AI_OPERATOR_UI_RESEARCH_DB_PASSWORD" // #nosec G101 -- the name of the environment variable, not its value
 	EnvChatDBUser         = "AI_OPERATOR_UI_CHAT_DB_USER"
-	EnvChatDBPassword     = "AI_OPERATOR_UI_CHAT_DB_PASSWORD"
+	EnvChatDBPassword     = "AI_OPERATOR_UI_CHAT_DB_PASSWORD" // #nosec G101 -- the name of the environment variable, not its value
 )
 
 // Config is the UI's configuration file.
@@ -238,7 +238,7 @@ func (d *Duration) UnmarshalJSON(b []byte) error {
 // LoadConfig reads the config file and the secrets from the environment,
 // applies defaults and validates the result for the given listen address.
 func LoadConfig(file, bindAddress string) (*Config, error) {
-	b, err := os.ReadFile(file)
+	b, err := os.ReadFile(file) // #nosec G304 -- the path is the --config flag the Deployment sets, not request input
 	if err != nil {
 		return nil, err
 	}
@@ -458,9 +458,12 @@ func (c *Config) validateChat() []error {
 	return errs
 }
 
-// Secure reports whether cookies are sent over https only.
+// Secure reports whether cookies are sent over https only. The scheme is
+// compared as url.Parse lowercases it, the way Validate accepts it, so
+// HTTPS://… is secure too.
 func (c *Config) Secure() bool {
-	return strings.HasPrefix(c.ExternalURL, "https://")
+	u, err := url.Parse(c.ExternalURL)
+	return err == nil && u.Scheme == "https"
 }
 
 func isLoopback(host string) bool {

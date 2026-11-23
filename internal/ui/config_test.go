@@ -40,6 +40,23 @@ authorization:
 	}
 }
 
+// Validate accepts an https externalURL in any case (url.Parse lowercases the
+// scheme), so Secure must too: otherwise the session cookies of a public Desk
+// lose their Secure flag and __Host- prefix.
+func TestConfigSecure(t *testing.T) {
+	for url, want := range map[string]bool{
+		"https://ai.example.com": true,
+		"HTTPS://ai.example.com": true,
+		"Https://ai.example.com": true,
+		"http://localhost:9080":  false,
+		"":                       false,
+	} {
+		if got := (&Config{ExternalURL: url}).Secure(); got != want {
+			t.Errorf("Secure() for %q = %v, want %v", url, got, want)
+		}
+	}
+}
+
 func TestLoadConfigRejectsUnknownFields(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(file, []byte("auth:\n  mode: none\n  sesionTTL: 1h\n"), 0o600); err != nil {

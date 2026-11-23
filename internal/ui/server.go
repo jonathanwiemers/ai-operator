@@ -291,6 +291,7 @@ func (s *Server) app(w http.ResponseWriter, r *http.Request) {
 				// File names carry a content hash.
 				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 			}
+			// #nosec G703 -- name is path.Clean'ed and read from the embedded app's fs.FS, which rejects ".." and absolute names
 			http.ServeFileFS(w, r, s.static, name)
 			return
 		}

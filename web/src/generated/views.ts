@@ -121,7 +121,7 @@ export const CompanionChipDraft = "draft";
  * CompanionChipWaitingRelease: the home change is merged; the companion
  * waits for its release, a rebase or its pipeline.
  */
-export const CompanionChipWaitingRelease = "waiting for release";
+export const CompanionChipWaitingRelease = "waiting for release"; // #nosec G101 -- a status label shown in the Desk, not a credential
 /**
  * CompanionChipReady: it can be merged (by autopilot or the owners).
  */

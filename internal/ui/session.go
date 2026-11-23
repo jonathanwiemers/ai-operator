@@ -171,7 +171,7 @@ func (s *Sessions) Login(w http.ResponseWriter, r *http.Request) (*LoginState, b
 
 // Clear deletes a cookie.
 func (s *Sessions) Clear(w http.ResponseWriter, name string) {
-	c := s.cookie(name, "", time.Unix(0, 0))
+	c := s.cookie(name, "", time.Unix(0, 0)) // #nosec G124 -- HttpOnly and SameSite are always set; Secure is off only for an http externalURL, which Validate allows on loopback alone
 	c.MaxAge = -1
 	http.SetCookie(w, c)
 }
@@ -192,7 +192,7 @@ func (s *Sessions) write(w http.ResponseWriter, name string, v any, exp time.Tim
 	if len(value) > maxCookieSize {
 		return errors.New("the session does not fit into a cookie; return fewer roles from oidc.claims.roles")
 	}
-	c := s.cookie(name, value, exp)
+	c := s.cookie(name, value, exp) // #nosec G124 -- HttpOnly and SameSite are always set; Secure is off only for an http externalURL, which Validate allows on loopback alone
 	c.MaxAge = int(exp.Sub(s.now()).Seconds())
 	http.SetCookie(w, c)
 	return nil
@@ -216,6 +216,7 @@ func (s *Sessions) read(r *http.Request, name string, v any) bool {
 }
 
 func (s *Sessions) cookie(name, value string, exp time.Time) *http.Cookie {
+	// #nosec G124 -- HttpOnly and SameSite are always set; Secure is off only for an http externalURL, which Validate allows on loopback alone
 	return &http.Cookie{
 		Name:     name,
 		Value:    value,

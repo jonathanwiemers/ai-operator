@@ -311,7 +311,7 @@ func (s *Server) followContainer(ctx context.Context, ns, pod, container, run st
 					select {
 					case out <- e:
 					case <-ctx.Done():
-						rc.Close()
+						rc.Close() // #nosec G104 -- the client left; a close error of the log stream changes nothing
 						return true
 					}
 				}
@@ -320,7 +320,7 @@ func (s *Server) followContainer(ctx context.Context, ns, pod, container, run st
 				break
 			}
 		}
-		rc.Close()
+		rc.Close() // #nosec G104 -- the stream is read to its end or failed; it is reopened below
 		select {
 		case <-ctx.Done():
 			return true
