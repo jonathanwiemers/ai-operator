@@ -162,7 +162,7 @@ func (r *AgentProjectReconciler) addFromAnswer(ctx context.Context, st *aiv1.Age
 				continue
 			}
 			options := slices.DeleteFunc(slices.Clone(q.Options), func(x aiv1.PromptOption) bool { return x.FromAnswer })
-			o.ID = string(rune('A' + len(options)))
+			o.ID = string(rune('A' + len(options))) // #nosec G115 -- a stored prompt has at most 5 options (the CRD's MaxItems), so the rune is at most 'F'
 			p := *q
 			p.Options = append(options, o)
 			if err := p.Validate(); err != nil {

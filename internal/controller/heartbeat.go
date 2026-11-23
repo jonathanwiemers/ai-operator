@@ -46,8 +46,8 @@ func jitter(key string, span time.Duration) time.Duration {
 		return 0
 	}
 	h := fnv.New64a()
-	h.Write([]byte(key))
-	return time.Duration(h.Sum64() % uint64(span))
+	h.Write([]byte(key))                           // #nosec G104 -- a hash.Hash's Write never returns an error (package hash doc)
+	return time.Duration(h.Sum64() % uint64(span)) // #nosec G115 -- span > 0 is checked above, so the remainder is below span and fits int64
 }
 
 // heartbeat asks GitLab for a test delivery to the project's hook, which

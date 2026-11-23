@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -401,6 +402,23 @@ func TestProjectSetReconcileTooComplex(t *testing.T) {
 	}
 	if len(e.children()) != 1 {
 		t.Error("a too complex discovery must still apply its children")
+	}
+}
+
+// GitLab's complexity score is an int: one past the int32 range must not
+// wrap to a small score that hides a too complex discovery.
+func TestProjectSetReconcileComplexityBeyondInt32(t *testing.T) {
+	e := newSetEnv(t, nil)
+	e.disc.disc = &gitlab.GroupDiscovery{
+		Projects:   []gitlab.DiscoveredProject{activeProject("jo.wiemers/shop")},
+		Complexity: gitlab.QueryComplexity{Score: 1<<32 + 1, Limit: 1<<32 + 250},
+	}
+	e.reconcile()
+	if c := e.set().Status.Complexity; c == nil || c.Score != math.MaxInt32 || c.Limit != math.MaxInt32 {
+		t.Errorf("complexity = %+v, want both saturated at %d", c, math.MaxInt32)
+	}
+	if c := setCondition(t, e.set(), aiv1.ConditionReady); c.Status != metav1.ConditionFalse || c.Reason != aiv1.ReasonTooComplex {
+		t.Errorf("Ready = %+v, want too complex", c)
 	}
 }
 

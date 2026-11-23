@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"math"
 	"strings"
 	"sync"
 	"time"
@@ -166,7 +167,7 @@ func (r *AgentProjectSetReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	set.Status.Projects = plan.Entries
 	set.Status.Counts = plan.Counts
 	set.Status.DroppedTargets = plan.Dropped
-	set.Status.Complexity = &aiv1.ProjectSetComplexity{Score: int32(disc.Complexity.Score), Limit: int32(disc.Complexity.Limit)}
+	set.Status.Complexity = &aiv1.ProjectSetComplexity{Score: clampInt32(disc.Complexity.Score), Limit: clampInt32(disc.Complexity.Limit)}
 	set.Status.LastDiscoveryTime = &stamp
 	set.Status.ObservedGeneration = set.Generation
 	setProjectSetCondition(&set, aiv1.ConditionDiscovered, true, "Discovered",
@@ -271,6 +272,19 @@ func (p *projectSetPlan) nameTaken(name string) {
 		}
 	}
 	p.Counts = projectSetCounts(p.Entries)
+}
+
+// clampInt32 converts an int GitLab sent into the int32 of a status field.
+// It saturates instead of wrapping, so a score past the range still reads
+// as too complex.
+func clampInt32(v int) int32 {
+	switch {
+	case v > math.MaxInt32:
+		return math.MaxInt32
+	case v < math.MinInt32:
+		return math.MinInt32
+	}
+	return int32(v)
 }
 
 // setProjectSetReady sets Ready from the last discovery's complexity.

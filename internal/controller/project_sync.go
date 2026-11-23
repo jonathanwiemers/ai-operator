@@ -479,7 +479,7 @@ func (ph cleanupPhase) run(ctx context.Context) error {
 			return err
 		}
 	}
-	project.Status.ActiveTasks = int32(len(keep))
+	project.Status.ActiveTasks = int32(len(keep)) // #nosec G115 -- counts one project's AgentTasks listed from the API server, far below 2^31
 	project.Status.EngineUsage = engineUsage(project.Status.EngineUsage, tasks.Items)
 	var researches []aiv1.AgentResearch
 	if r.Research {

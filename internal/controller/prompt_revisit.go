@@ -106,7 +106,8 @@ func revisitPrompt(st *aiv1.AgentTask, iid int64, id, section string) aiv1.Promp
 		if len(options) > maxRevisitAlternatives {
 			break
 		}
-		options = append(options, aiv1.PromptOption{ID: string(rune('A' + len(options))), Label: "Switch to " + inertLine(alt, 150),
+		letter := string(rune('A' + len(options))) // #nosec G115 -- the loop stops at maxRevisitAlternatives+1 options, so the rune is at most 'D'
+		options = append(options, aiv1.PromptOption{ID: letter, Label: "Switch to " + inertLine(alt, 150),
 			Detail:  fmt.Sprintf("A follow-up issue of the milestone changes %s to it.", id),
 			Actions: []aiv1.PilotAction{{Tool: "revisit", Decision: id, Note: "Choose instead: " + alt}}})
 	}
