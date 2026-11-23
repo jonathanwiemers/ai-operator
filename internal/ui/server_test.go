@@ -29,6 +29,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/claims"
 )
 
 // fakeIdP is a minimal OpenID provider: discovery, keys, token, userinfo.
@@ -249,7 +250,7 @@ func oidcConfig(rules ...Rule) *Config {
 	return &Config{
 		OIDC: OIDCConfig{
 			ClientID: "ui-client",
-			Claims:   Claims{Roles: `claims["urn:zitadel:iam:org:project:roles"]`},
+			Claims:   claims.Claims{Roles: `claims["urn:zitadel:iam:org:project:roles"]`},
 		},
 		Authorization: AuthorizationConfig{Rules: rules},
 		SessionKey:    strings.Repeat("s", 32),

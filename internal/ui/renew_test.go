@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/go-logr/logr/funcr"
+
+	"github.com/jonathanwiemers/ai-operator/internal/claims"
 )
 
 // renewLogin logs in through f and returns the UI, the login's refresh
@@ -155,7 +157,7 @@ func TestRedeemRefused(t *testing.T) {
 		{name: "subject changed", sw: func(sw *fakeOIDCSwitches) { sw.subject = "user-2" }},
 		{name: "nonce changed", sw: func(sw *fakeOIDCSwitches) { sw.nonce = "other-nonce" }},
 		{name: "claim mapping fails", after: func(t *testing.T, s *Server) {
-			m, err := NewClaimMapper(Claims{Username: s.cfg.OIDC.Claims.Username, Roles: "42"})
+			m, err := claims.NewClaimMapper(claims.Claims{Username: s.cfg.OIDC.Claims.Username, Roles: "42"})
 			if err != nil {
 				t.Fatal(err)
 			}

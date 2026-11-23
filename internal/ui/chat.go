@@ -77,7 +77,7 @@ func (s *Server) postChat(w http.ResponseWriter, r *http.Request) {
 // author and expiry; false after an error response.
 func (s *Server) insertChat(w http.ResponseWriter, r *http.Request, m store.ChatMessage) (int64, bool, bool) {
 	p := principalOf(r)
-	if ok, _ := s.chats.allow(p.Username, time.Now()); !ok {
+	if ok, _ := s.chats.Allow(p.Username, time.Now()); !ok {
 		writeError(w, http.StatusTooManyRequests, "too many chat messages, try again in a minute")
 		return 0, false, false
 	}

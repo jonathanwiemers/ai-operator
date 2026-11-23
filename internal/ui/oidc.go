@@ -12,6 +12,8 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/go-logr/logr"
 	"golang.org/x/oauth2"
+
+	"github.com/jonathanwiemers/ai-operator/internal/claims"
 )
 
 // Paths of the login flow.
@@ -26,7 +28,7 @@ const (
 type oidcClient struct {
 	cfg      *Config
 	sessions *Sessions
-	claims   *ClaimMapper
+	claims   *claims.ClaimMapper
 	log      logr.Logger
 
 	mu       sync.Mutex

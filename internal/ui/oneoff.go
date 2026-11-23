@@ -179,7 +179,7 @@ func (s *Server) createResearch(w http.ResponseWriter, r *http.Request) {
 		}
 		req.Agent = &a
 	}
-	if ok, wait := s.creates.allow(p.Username, time.Now()); !ok {
+	if ok, wait := s.creates.Allow(p.Username, time.Now()); !ok {
 		w.Header().Set("Retry-After", strconv.Itoa(int((wait+time.Second-1)/time.Second)))
 		writeError(w, http.StatusTooManyRequests, fmt.Sprintf("at most %d researches per hour, try again later", createsPerWindow))
 		return

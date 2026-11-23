@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/go-logr/logr/funcr"
+
+	"github.com/jonathanwiemers/ai-operator/internal/claims"
 )
 
 // renewEnv is a UI logged in through the fake provider, with a clock the
@@ -208,7 +210,7 @@ func TestAuthedEndsLogin(t *testing.T) {
 			return e.s.cfg.Auth.RenewAfter.Duration + time.Second
 		}},
 		{name: "claims no longer map", log: "claim mapping", after: func(e *renewEnv) time.Duration {
-			m, err := NewClaimMapper(Claims{Username: e.s.cfg.OIDC.Claims.Username, Roles: "42"})
+			m, err := claims.NewClaimMapper(claims.Claims{Username: e.s.cfg.OIDC.Claims.Username, Roles: "42"})
 			if err != nil {
 				e.t.Fatal(err)
 			}

@@ -128,7 +128,7 @@ func (s *Server) writingGitLab(w http.ResponseWriter, r *http.Request, ap *aiv1.
 	if !ok {
 		return nil, nil, false
 	}
-	if ok, _ := s.notes.allow(principalOf(r).Username, time.Now()); !ok {
+	if ok, _ := s.notes.Allow(principalOf(r).Username, time.Now()); !ok {
 		writeError(w, http.StatusTooManyRequests, "too many requests, try again in a minute")
 		return nil, nil, false
 	}

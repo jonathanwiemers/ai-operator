@@ -353,25 +353,6 @@ func TestCreateRateLimit(t *testing.T) {
 	}
 }
 
-func TestRateLimiter(t *testing.T) {
-	l := newRateLimiter(2, time.Hour)
-	t0 := time.Date(2026, 10, 29, 7, 0, 0, 0, time.UTC)
-	for _, at := range []time.Duration{0, 10 * time.Minute} {
-		if ok, _ := l.allow("ada", t0.Add(at)); !ok {
-			t.Fatalf("at %v refused", at)
-		}
-	}
-	if ok, wait := l.allow("ada", t0.Add(30*time.Minute)); ok || wait != 30*time.Minute {
-		t.Errorf("third: %v, wait %v", ok, wait)
-	}
-	if ok, _ := l.allow("bob", t0.Add(30*time.Minute)); !ok {
-		t.Error("bob has his own limit")
-	}
-	if ok, _ := l.allow("ada", t0.Add(time.Hour)); !ok {
-		t.Error("the first left the window")
-	}
-}
-
 func TestOneOffCrossOrigin(t *testing.T) {
 	env := oneOffEnv(t, oidcConfig(oneOffRules...))
 	loginWithRoles(t, env, "writers")

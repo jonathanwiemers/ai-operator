@@ -24,6 +24,8 @@ import (
 	"github.com/go-logr/logr"
 	"golang.org/x/oauth2"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	"github.com/jonathanwiemers/ai-operator/internal/claims"
 )
 
 // The fake provider's client and user.
@@ -526,7 +528,7 @@ func newOIDCTestServer(t *testing.T, f *fakeOIDC, mutate func(*Config)) (*Server
 		OIDC: OIDCConfig{
 			IssuerURL: f.issuer(),
 			ClientID:  fakeClientID,
-			Claims:    Claims{Roles: `claims["` + zitadelRolesClaim + `"]`},
+			Claims:    claims.Claims{Roles: `claims["` + zitadelRolesClaim + `"]`},
 		},
 		SessionKey:   strings.Repeat("k", 32),
 		ClientSecret: fakeClientSecret,

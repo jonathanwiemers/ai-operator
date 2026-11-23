@@ -4355,7 +4355,9 @@ own `--tone-*-bg` and `--tone-*-fg` tokens, so the look is as before. The
 | `internal/runner/companion*.go` | the companion mirror and checkout, the path check, the companion push and merge request, the combined reviewer diff |
 | `internal/controller/companion_gate.go`, `companions.go`, `companions_merge.go`, `companions_queue.go` | the companion in the home merge gate, landing by rule, who merges, the queue rule |
 | `internal/e2e` | end-to-end tests over the exported operator, runner and UI APIs: fake Kubernetes, `gitlabfake.Projects` with local bare git remotes, a scripted engine and a fake clock, stepped poll by poll (a companion milestone with and without `merge`, a path violation) |
-| `internal/ui` | web UI server: OIDC login, CEL claim mapping, access rules, session cookies, JSON API, change events |
+| `internal/ui` | web UI server: OIDC login, access rules, session cookies, JSON API, change events |
+| `internal/claims` | the config's `oidc.claims` CEL expressions and their defaults, compiled and evaluated over a login's claims into a user name and sorted roles |
+| `internal/ratelimit` | the per-user sliding-window limiter in front of the Desk's comments, chats and task and plan creations |
 | `cmd/ui`, `web/` | web UI binary; the Vue app (`web/src`), embedded from `web/dist/app`. `web/src/client.ts` is the only API caller, `web/src/ui` holds the kit's own components, `components/Markdown.vue` is the one markdown wrapper, `web/e2e` the Playwright checks and `web/test` the unit and conventions checks (see [web-ui.md](web-ui.md#ui-kit)) |
 | `charts/ai-operator` | Helm chart (CRDs and operator RBAC are copied in by `make manifests`) |
 | `.gitlab-ci.yml`, `mise.toml`, `mise.lock` | the GitLab pipeline (MRs and `main`); the Go, Node and Helm pins the agent installs and CI will run on |

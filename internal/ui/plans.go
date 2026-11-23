@@ -314,7 +314,7 @@ func (s *Server) createPlan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p := principalOf(r)
-	if ok, wait := s.planCreates.allow(p.Username, time.Now()); !ok {
+	if ok, wait := s.planCreates.Allow(p.Username, time.Now()); !ok {
 		w.Header().Set("Retry-After", strconv.Itoa(int((wait+time.Second-1)/time.Second)))
 		writeError(w, http.StatusTooManyRequests, fmt.Sprintf("at most %d plans per hour, try again later", plansPerWindow))
 		return

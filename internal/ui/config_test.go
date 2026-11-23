@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jonathanwiemers/ai-operator/internal/claims"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 )
 
@@ -34,7 +35,7 @@ authorization:
 	if cfg.ExternalURL != "https://ai.example.com" || !cfg.Secure() {
 		t.Errorf("externalURL = %q", cfg.ExternalURL)
 	}
-	if cfg.OIDC.Claims.Username != DefaultUsernameExpr || cfg.OIDC.Claims.Roles != DefaultRolesExpr {
+	if cfg.OIDC.Claims.Username != claims.DefaultUsernameExpr || cfg.OIDC.Claims.Roles != claims.DefaultRolesExpr {
 		t.Errorf("claim defaults: %+v", cfg.OIDC.Claims)
 	}
 }

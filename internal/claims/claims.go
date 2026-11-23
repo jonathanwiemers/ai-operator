@@ -1,4 +1,7 @@
-package ui
+// Package claims owns the Desk's claim mapping: the CEL expressions of the
+// OIDC config's claims section and their evaluation over a login's claims
+// into a user name and roles.
+package claims
 
 import (
 	"fmt"
@@ -9,6 +12,23 @@ import (
 	"cel.dev/cel-go/common/types/ref"
 	"cel.dev/cel-go/common/types/traits"
 )
+
+// Default claim mappings: the email (or the subject) as user name, the
+// "groups" claim as roles.
+const (
+	DefaultUsernameExpr = `has(claims.email) ? claims.email : claims.sub`
+	DefaultRolesExpr    = `has(claims.groups) ? claims.groups : []`
+)
+
+// Claims are CEL expressions over the token's claims (variable "claims",
+// the ID token's claims plus those only the userinfo endpoint returns).
+type Claims struct {
+	// Username must evaluate to a string.
+	Username string `json:"username"`
+	// Roles must evaluate to a list of strings, a string, or a map whose
+	// keys are the roles (as Zitadel's role claims are).
+	Roles string `json:"roles"`
+}
 
 // ClaimMapper turns the claims of a login into a user name and roles.
 type ClaimMapper struct {

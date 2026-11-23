@@ -16,8 +16,10 @@ import (
 	"github.com/go-logr/logr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	"github.com/jonathanwiemers/ai-operator/internal/claims"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/history"
+	"github.com/jonathanwiemers/ai-operator/internal/ratelimit"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 )
 
@@ -45,7 +47,7 @@ type Server struct {
 	// notes rate-limits the comments users post, creates the one-off
 	// researches they start, planCreates the plans; chats rate-limits Desk
 	// chat posts.
-	notes, creates, planCreates, chats *rateLimiter
+	notes, creates, planCreates, chats *ratelimit.RateLimiter
 	// writer creates and deletes one-off researches and plans; nil without
 	// research.allowCreate and the Desk chat.
 	writer client.Client
@@ -103,14 +105,14 @@ func (s *Server) SetLogSource(l LogSource) { s.logs = l }
 // the built single page app.
 func NewServer(cfg *Config, reader client.Reader, hub *Hub, static fs.FS, log logr.Logger) (*Server, error) {
 	s := &Server{cfg: cfg, reader: reader, hub: hub, authz: NewAuthorizer(cfg), log: log, streams: map[string]int{},
-		notes: newRateLimiter(notesPerWindow, notesWindow), creates: newRateLimiter(createsPerWindow, createsWindow),
-		planCreates: newRateLimiter(plansPerWindow, createsWindow),
-		chats:       newRateLimiter(notesPerWindow, notesWindow), historyRetention: history.DefaultRetention}
+		notes: ratelimit.NewRateLimiter(notesPerWindow, notesWindow), creates: ratelimit.NewRateLimiter(createsPerWindow, createsWindow),
+		planCreates: ratelimit.NewRateLimiter(plansPerWindow, createsWindow),
+		chats:       ratelimit.NewRateLimiter(notesPerWindow, notesWindow), historyRetention: history.DefaultRetention}
 	if _, err := fs.Stat(static, "index.html"); err == nil {
 		s.static = static
 	}
 	if cfg.Auth.Mode == AuthOIDC {
-		claims, err := NewClaimMapper(cfg.OIDC.Claims)
+		claims, err := claims.NewClaimMapper(cfg.OIDC.Claims)
 		if err != nil {
 			return nil, err
 		}

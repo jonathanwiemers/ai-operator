@@ -18,6 +18,7 @@ import (
 	"sigs.k8s.io/yaml"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/claims"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 )
 
@@ -43,13 +44,6 @@ const (
 	EnvResearchDBPassword = "AI_OPERATOR_UI_RESEARCH_DB_PASSWORD"
 	EnvChatDBUser         = "AI_OPERATOR_UI_CHAT_DB_USER"
 	EnvChatDBPassword     = "AI_OPERATOR_UI_CHAT_DB_PASSWORD"
-)
-
-// Default claim mappings: the email (or the subject) as user name, the
-// "groups" claim as roles.
-const (
-	DefaultUsernameExpr = `has(claims.email) ? claims.email : claims.sub`
-	DefaultRolesExpr    = `has(claims.groups) ? claims.groups : []`
 )
 
 // Config is the UI's configuration file.
@@ -173,20 +167,10 @@ type AuthConfig struct {
 
 // OIDCConfig is the OpenID Connect client.
 type OIDCConfig struct {
-	IssuerURL string   `json:"issuerURL"`
-	ClientID  string   `json:"clientID"`
-	Scopes    []string `json:"scopes"`
-	Claims    Claims   `json:"claims"`
-}
-
-// Claims are CEL expressions over the token's claims (variable "claims",
-// the ID token's claims plus those only the userinfo endpoint returns).
-type Claims struct {
-	// Username must evaluate to a string.
-	Username string `json:"username"`
-	// Roles must evaluate to a list of strings, a string, or a map whose
-	// keys are the roles (as Zitadel's role claims are).
-	Roles string `json:"roles"`
+	IssuerURL string        `json:"issuerURL"`
+	ClientID  string        `json:"clientID"`
+	Scopes    []string      `json:"scopes"`
+	Claims    claims.Claims `json:"claims"`
 }
 
 // AuthorizationConfig grants access to projects by role.
@@ -295,10 +279,10 @@ func (c *Config) Default() {
 		c.OIDC.Scopes = []string{"openid", "profile", "email", "offline_access"}
 	}
 	if c.OIDC.Claims.Username == "" {
-		c.OIDC.Claims.Username = DefaultUsernameExpr
+		c.OIDC.Claims.Username = claims.DefaultUsernameExpr
 	}
 	if c.OIDC.Claims.Roles == "" {
-		c.OIDC.Claims.Roles = DefaultRolesExpr
+		c.OIDC.Claims.Roles = claims.DefaultRolesExpr
 	}
 	c.ExternalURL = strings.TrimSuffix(c.ExternalURL, "/")
 	c.GitLab.URL = strings.TrimSuffix(c.GitLab.URL, "/")

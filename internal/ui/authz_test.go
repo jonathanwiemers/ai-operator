@@ -68,3 +68,39 @@ func TestAuthorizerResearch(t *testing.T) {
 		t.Error("research rules must grant no projects")
 	}
 }
+
+func TestAuthorizer(t *testing.T) {
+	cfg := &Config{
+		Auth: AuthConfig{Mode: AuthOIDC},
+		Authorization: AuthorizationConfig{Rules: []Rule{
+			{Roles: []string{"admin"}},
+			{Roles: []string{"shop-devs"}, Projects: []string{"team-a/shop"}},
+			{Roles: []string{"*"}, Projects: []string{"public/*"}},
+		}},
+	}
+	a := NewAuthorizer(cfg)
+	cases := []struct {
+		roles   []string
+		ns, prj string
+		want    bool
+	}{
+		{[]string{"admin"}, "team-a", "shop", true},
+		{[]string{"admin"}, "team-b", "x", true},
+		{[]string{"shop-devs"}, "team-a", "shop", true},
+		{[]string{"shop-devs"}, "team-a", "billing", false},
+		{nil, "team-a", "shop", false},
+		{nil, "public", "docs", true},
+		{[]string{"other"}, "team-b", "x", false},
+	}
+	for _, tc := range cases {
+		if got := a.CanView(Principal{Roles: tc.roles}, tc.ns, tc.prj); got != tc.want {
+			t.Errorf("CanView(%v, %s/%s) = %v, want %v", tc.roles, tc.ns, tc.prj, got, tc.want)
+		}
+	}
+	if !NewAuthorizer(&Config{Auth: AuthConfig{Mode: AuthNone}}).CanView(Principal{}, "x", "y") {
+		t.Error("auth mode none must show everything")
+	}
+	if NewAuthorizer(&Config{Auth: AuthConfig{Mode: AuthOIDC}}).CanView(Principal{Roles: []string{"admin"}}, "x", "y") {
+		t.Error("no rules must show nothing")
+	}
+}

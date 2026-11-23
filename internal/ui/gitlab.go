@@ -472,7 +472,7 @@ func readNote(w http.ResponseWriter, r *http.Request) (noteRequest, bool) {
 // the user's rate limit, and answers with the note.
 func (s *Server) createNote(w http.ResponseWriter, r *http.Request, ap *aiv1.AgentProject, gl gitlab.API, tok *GitLabToken, target *ThreadPart, body string) {
 	p := principalOf(r)
-	if ok, _ := s.notes.allow(p.Username, time.Now()); !ok {
+	if ok, _ := s.notes.Allow(p.Username, time.Now()); !ok {
 		writeError(w, http.StatusTooManyRequests, "too many comments, try again in a minute")
 		return
 	}

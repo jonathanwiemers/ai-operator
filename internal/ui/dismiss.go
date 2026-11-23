@@ -62,7 +62,7 @@ func (s *Server) dismissFollowUps(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "your GitLab account is not among the milestone's owners")
 		return
 	}
-	if ok, _ := s.notes.allow(p.Username, time.Now()); !ok {
+	if ok, _ := s.notes.Allow(p.Username, time.Now()); !ok {
 		writeError(w, http.StatusTooManyRequests, "too many requests, try again in a minute")
 		return
 	}
