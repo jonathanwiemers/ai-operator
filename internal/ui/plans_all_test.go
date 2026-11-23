@@ -7,8 +7,11 @@ import (
 	"testing"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
@@ -158,7 +161,7 @@ func TestAllPlans(t *testing.T) {
 	if names := planNames(got.Plans); !slices.Equal(names, []string{"team-a/shop/shop-plan-old", "team-a/blog/blog-plan", "team-a/shop/shop-plan-new"}) {
 		t.Errorf("plans = %v", names)
 	}
-	wantProjects := []PlanProject{{Namespace: "team-a", Name: "blog", Steer: true}, {Namespace: "team-a", Name: "shop"}}
+	wantProjects := []PlanProject{{Namespace: "team-a", Name: "blog", Path: "acme/blog", Steer: true}, {Namespace: "team-a", Name: "shop", Path: "acme/shop"}}
 	if !slices.Equal(got.Projects, wantProjects) {
 		t.Errorf("projects = %+v", got.Projects)
 	}
@@ -211,5 +214,182 @@ func TestAllPlansNeedChat(t *testing.T) {
 	env := allPlansEnv(t, false, "leads")
 	if code := env.get(t, "/api/v1/plans", nil); code != http.StatusNotFound {
 		t.Errorf("without chat: %d, want 404", code)
+	}
+}
+
+// setPlansEnv is allPlansEnv with the set acme in team-a (group acme): the
+// active child web, the dormant entries tools/foo (child tools-foo, with the
+// plan foo-plan), legacy (its name held by an unrelated AgentProject) and
+// secret, an excluded and a nameTaken entry. The set hidden in team-b has a
+// dormant entry. viewers see team-a, mixed sees team-a and steers tools-foo
+// only, narrow sees the set but not secret, setless sees tools-foo but not
+// the set.
+func setPlansEnv(t *testing.T, roles ...string) *testEnv {
+	t.Helper()
+	cfg := withChat(oidcConfig(
+		Rule{Roles: []string{"leads"}, Projects: []string{"team-a/*"}, Steer: true},
+		Rule{Roles: []string{"viewers", "mixed"}, Projects: []string{"team-a/*"}},
+		Rule{Roles: []string{"mixed"}, Projects: []string{"team-a/tools-foo"}, Steer: true},
+		Rule{Roles: []string{"narrow"}, Projects: []string{"team-a/acme", "team-a/tools-foo", "team-a/shop"}, Steer: true},
+		Rule{Roles: []string{"setless"}, Projects: []string{"team-a/tools-foo"}, Steer: true},
+	))
+	env := newTestEnv(t, cfg)
+	addPlans(t, env)
+	at := metav1.NewTime(time.Date(2026, 11, 10, 13, 0, 0, 0, time.UTC))
+	objects := []client.Object{
+		&aiv1.AgentProject{ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "web", Labels: map[string]string{aiv1.LabelProjectSet: "acme"}},
+			Spec: aiv1.AgentProjectSpec{GitLab: aiv1.GitLabSpec{URL: "https://gitlab.example.com", Project: "acme/web"}}},
+		&aiv1.AgentProject{ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "legacy"},
+			Spec: aiv1.AgentProjectSpec{GitLab: aiv1.GitLabSpec{URL: "https://gitlab.example.com", Project: "other/legacy"}}},
+		&aiv1.AgentPlan{ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "foo-plan", CreationTimestamp: at,
+			Labels: map[string]string{aiv1.LabelProjectSet: "acme"}},
+			Spec: aiv1.AgentPlanSpec{ProjectRef: "tools-foo", CreatedBy: "ada@example.com"}},
+		&aiv1.AgentProjectSet{ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "acme"},
+			Spec: aiv1.AgentProjectSetSpec{GitLab: aiv1.ProjectSetGitLab{Group: "acme"}},
+			Status: aiv1.AgentProjectSetStatus{Projects: []aiv1.ProjectSetEntry{
+				{Path: "acme/web", State: aiv1.ProjectSetActive, Child: "web"},
+				{Path: "acme/tools/foo", State: aiv1.ProjectSetDormant},
+				{Path: "acme/legacy", State: aiv1.ProjectSetDormant},
+				{Path: "acme/secret", State: aiv1.ProjectSetDormant},
+				{Path: "acme/old", State: aiv1.ProjectSetExcluded, Reason: "archived"},
+				{Path: "acme/taken", State: aiv1.ProjectSetNameTaken},
+			}}},
+		&aiv1.AgentProjectSet{ObjectMeta: metav1.ObjectMeta{Namespace: "team-b", Name: "hidden"},
+			Spec:   aiv1.AgentProjectSetSpec{GitLab: aiv1.ProjectSetGitLab{Group: "beta"}},
+			Status: aiv1.AgentProjectSetStatus{Projects: []aiv1.ProjectSetEntry{{Path: "beta/api", State: aiv1.ProjectSetDormant}}}},
+	}
+	for _, o := range objects {
+		if err := env.reader.Create(context.Background(), o); err != nil {
+			t.Fatal(err)
+		}
+	}
+	env.idp.user = map[string]any{"sub": "u1", "email": "ada@example.com"}
+	grants := map[string]any{}
+	for _, r := range roles {
+		grants[r] = map[string]any{}
+	}
+	env.idp.info = map[string]any{"urn:zitadel:iam:org:project:roles": grants}
+	env.login(t, "/")
+	return env
+}
+
+var fooProject = PlanProject{Namespace: "team-a", Name: "tools-foo", Path: "acme/tools/foo", Set: "acme", Dormant: true}
+
+func TestAllPlansSetProjects(t *testing.T) {
+	if name := aiv1.ProjectSetChildName("acme", "acme/tools/foo"); name != "tools-foo" {
+		t.Fatalf("child name %q", name)
+	}
+	steerFoo := fooProject
+	steerFoo.Steer = true
+	for _, tc := range []struct {
+		role  string
+		want  []PlanProject
+		plans []string
+	}{
+		// The active child by its AgentProject; neither the excluded and
+		// nameTaken entries, legacy (name held), nor team-b's set.
+		{"leads", []PlanProject{
+			{Namespace: "team-a", Name: "legacy", Path: "other/legacy", Steer: true},
+			{Namespace: "team-a", Name: "secret", Path: "acme/secret", Set: "acme", Dormant: true, Steer: true},
+			{Namespace: "team-a", Name: "shop", Path: "acme/shop", Steer: true},
+			steerFoo,
+			{Namespace: "team-a", Name: "web", Path: "acme/web", Set: "acme", Steer: true},
+		}, []string{"team-a/tools-foo/foo-plan", "team-a/shop/shop-plan-old", "team-a/shop/shop-plan-new"}},
+		{"viewers", []PlanProject{
+			{Namespace: "team-a", Name: "legacy", Path: "other/legacy"},
+			{Namespace: "team-a", Name: "secret", Path: "acme/secret", Set: "acme", Dormant: true},
+			{Namespace: "team-a", Name: "shop", Path: "acme/shop"},
+			fooProject,
+			{Namespace: "team-a", Name: "web", Path: "acme/web", Set: "acme"},
+		}, []string{"team-a/tools-foo/foo-plan", "team-a/shop/shop-plan-old", "team-a/shop/shop-plan-new"}},
+		// Steer follows CanSteer on the child name.
+		{"mixed", []PlanProject{
+			{Namespace: "team-a", Name: "legacy", Path: "other/legacy"},
+			{Namespace: "team-a", Name: "secret", Path: "acme/secret", Set: "acme", Dormant: true},
+			{Namespace: "team-a", Name: "shop", Path: "acme/shop"},
+			steerFoo,
+			{Namespace: "team-a", Name: "web", Path: "acme/web", Set: "acme"},
+		}, []string{"team-a/tools-foo/foo-plan", "team-a/shop/shop-plan-old", "team-a/shop/shop-plan-new"}},
+		// secret's child name is not visible.
+		{"narrow", []PlanProject{{Namespace: "team-a", Name: "shop", Path: "acme/shop", Steer: true}, steerFoo},
+			[]string{"team-a/tools-foo/foo-plan", "team-a/shop/shop-plan-old", "team-a/shop/shop-plan-new"}},
+		// The set is not visible, so neither are its entries.
+		{"setless", []PlanProject{}, nil},
+	} {
+		t.Run(tc.role, func(t *testing.T) {
+			env := setPlansEnv(t, tc.role)
+			var got PlanOverview
+			if code := env.get(t, "/api/v1/plans", &got); code != http.StatusOK {
+				t.Fatalf("status %d", code)
+			}
+			if !slices.Equal(got.Projects, tc.want) {
+				t.Errorf("projects = %+v", got.Projects)
+			}
+			if names := planNames(got.Plans); !slices.Equal(names, tc.plans) {
+				t.Errorf("plans = %v", names)
+			}
+		})
+	}
+}
+
+func TestAllPlansSetProjectFilter(t *testing.T) {
+	env := setPlansEnv(t, "mixed")
+	var got PlanOverview
+	if code := env.get(t, "/api/v1/plans?project=team-a/tools-foo", &got); code != http.StatusOK {
+		t.Fatalf("status %d", code)
+	}
+	steerFoo := fooProject
+	steerFoo.Steer = true
+	if names := planNames(got.Plans); !slices.Equal(names, []string{"team-a/tools-foo/foo-plan"}) ||
+		!slices.Equal(got.Projects, []PlanProject{steerFoo}) || !got.Plans[0].Permissions.Steer {
+		t.Errorf("tools-foo only: %v %+v", names, got.Projects)
+	}
+	got = PlanOverview{}
+	if code := env.get(t, "/api/v1/plans?project=team-a/web", &got); code != http.StatusOK ||
+		!slices.Equal(got.Projects, []PlanProject{{Namespace: "team-a", Name: "web", Path: "acme/web", Set: "acme"}}) {
+		t.Errorf("web: %d %+v", code, got.Projects)
+	}
+	for _, ref := range []string{"team-a/legacy-x", "team-a/old", "team-a/taken", "team-b/api"} {
+		if code := env.get(t, "/api/v1/plans?project="+ref, nil); code != http.StatusNotFound {
+			t.Errorf("%s: status %d, want 404", ref, code)
+		}
+	}
+}
+
+func TestSetEntryProject(t *testing.T) {
+	env := setPlansEnv(t, "viewers")
+	p := Principal{Username: "ada@example.com", Roles: []string{"viewers"}}
+	ctx := context.Background()
+	if e, ok, err := env.server.setEntryProject(ctx, p, "team-a", "tools-foo"); err != nil || !ok ||
+		e != (setEntryProject{Set: "acme", Namespace: "team-a", Name: "tools-foo", Path: "acme/tools/foo"}) {
+		t.Errorf("tools-foo: %+v %v %v", e, ok, err)
+	}
+	for _, name := range []string{"web", "legacy", "old", "taken"} {
+		if _, ok, err := env.server.setEntryProject(ctx, p, "team-a", name); err != nil || ok {
+			t.Errorf("%s: offered (%v, %v)", name, ok, err)
+		}
+	}
+}
+
+func TestAllPlansWithoutSetCRD(t *testing.T) {
+	env := allPlansEnv(t, true, "leads")
+	env.server.reader = interceptor.NewClient(env.reader.(client.WithWatch), interceptor.Funcs{
+		List: func(ctx context.Context, c client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+			if _, ok := list.(*aiv1.AgentProjectSetList); ok {
+				return &meta.NoKindMatchError{GroupKind: schema.GroupKind{Group: aiv1.GroupVersion.Group, Kind: "AgentProjectSet"}}
+			}
+			return c.List(ctx, list, opts...)
+		},
+	})
+	var got PlanOverview
+	if code := env.get(t, "/api/v1/plans", &got); code != http.StatusOK {
+		t.Fatalf("status %d", code)
+	}
+	want := []PlanProject{{Namespace: "team-a", Name: "blog", Path: "acme/blog", Steer: true}, {Namespace: "team-a", Name: "shop", Path: "acme/shop", Steer: true}}
+	if !slices.Equal(got.Projects, want) || len(got.Plans) != 3 {
+		t.Errorf("projects = %+v, %d plans", got.Projects, len(got.Plans))
+	}
+	if code := env.get(t, "/api/v1/plans?project=team-a/nope", nil); code != http.StatusNotFound {
+		t.Errorf("unknown project: %d", code)
 	}
 }

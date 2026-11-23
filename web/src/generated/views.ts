@@ -1478,12 +1478,19 @@ export interface PlanOverview {
   projects: PlanProject[];
 }
 /**
- * PlanProject is a project of the plan lists. Steer: the caller may create
- * and steer its plans.
+ * PlanProject is a project of the plan lists: an AgentProject, or a dormant
+ * entry of a project set under the child name the set would give it. Path is
+ * the GitLab path. Set is the project set of a set's child or of a dormant
+ * entry, empty for an AgentProject no set owns. Dormant: a set entry without
+ * a child; the set creates it for the entry's first plan. Steer: the caller
+ * may create and steer its plans.
  */
 export interface PlanProject {
   namespace: string;
   name: string;
+  path: string;
+  set?: string;
+  dormant?: boolean;
   steer: boolean;
 }
 

@@ -49,5 +49,5 @@ const shopPlans: PlanListItem[] = [
 
 export const shopPlanOverview: PlanOverview = {
   plans: shopPlans,
-  projects: [{ namespace: 'team-a', name: 'shop', steer: true }],
+  projects: [{ namespace: 'team-a', name: 'shop', path: 'team-a/shop', steer: true }],
 }
