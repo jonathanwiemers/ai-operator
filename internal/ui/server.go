@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"net"
 	"net/http"
@@ -111,6 +112,11 @@ func NewServer(cfg *Config, reader client.Reader, hub *Hub, static fs.FS, log lo
 	if _, err := fs.Stat(static, "index.html"); err == nil {
 		s.static = static
 	}
+	// Only auth mode none serves without login: an empty or unknown mode
+	// (a config that skipped Default and Validate) is refused, not anonymous.
+	if cfg.Auth.Mode != AuthNone && cfg.Auth.Mode != AuthOIDC {
+		return nil, fmt.Errorf("auth.mode must be oidc or none, not %q", cfg.Auth.Mode)
+	}
 	if cfg.Auth.Mode == AuthOIDC {
 		claims, err := claims.NewClaimMapper(cfg.OIDC.Claims)
 		if err != nil {
@@ -134,6 +140,96 @@ func NewServer(cfg *Config, reader client.Reader, hub *Hub, static fs.FS, log lo
 	return s, nil
 }
 
+// route is an API route: its pattern ("METHOD /path") and its handler,
+// wrapped in authed, researchHandler or writeHandler.
+type route struct {
+	pattern string
+	handler http.Handler
+}
+
+// routes lists the routes that need a login. Each handler checks the
+// Authorizer for the project or research in its path; the route test walks
+// this list, so register new routes here, not in Handler.
+func (s *Server) routes() []route {
+	var rs []route
+	if s.gitlab != nil && s.gitlab.oauth() {
+		rs = []route{
+			{"GET " + pathGitLabLogin, s.authed(s.gitlab.login)},
+			{"GET " + pathGitLabCallback, s.authed(s.gitlab.callback(s))},
+			{"POST " + pathGitLabLogout, s.authed(s.gitlab.logout)},
+		}
+	}
+	rs = append(rs, []route{
+		{"GET /api/v1/gitlab", s.authed(s.gitlabStatus)},
+		{"GET /api/v1/projects/{namespace}/{name}/tasks/{task}/thread", s.authed(s.thread)},
+		{"POST /api/v1/projects/{namespace}/{name}/tasks/{task}/notes", s.authed(s.postNote)},
+		{"GET /api/v1/me", s.authed(s.me)},
+		{"GET /api/v1/about", s.authed(s.about)},
+		{"GET /api/v1/features", s.authed(s.features)},
+		{"GET /api/v1/projects", s.authed(s.projects)},
+		{"GET /api/v1/projectsets", s.authed(s.projectSets)},
+		{"GET /api/v1/projects/{namespace}/{name}", s.authed(s.project)},
+		{"GET /api/v1/projects/{namespace}/{name}/tasks/{task}", s.authed(s.task)},
+		{"GET /api/v1/milestones", s.authed(s.milestones)},
+		{"GET /api/v1/search", s.authed(s.search)},
+		{"GET /api/v1/overview", s.authed(s.overview)},
+		{"GET /api/v1/projects/{namespace}/{name}/milestones/{iid}", s.authed(s.milestone)},
+		{"GET /api/v1/projects/{namespace}/{name}/milestones/{iid}/issues/{issue}", s.authed(s.issue)},
+		{"GET /api/v1/projects/{namespace}/{name}/milestones/{iid}/thread", s.authed(s.milestoneThread)},
+		{"GET /api/v1/projects/{namespace}/{name}/milestones/{iid}/problems", s.authed(s.problems)},
+		{"GET /api/v1/projects/{namespace}/{name}/milestones/{iid}/problems/{id}", s.authed(s.problemThread)},
+		{"POST /api/v1/projects/{namespace}/{name}/milestones/{iid}/notes", s.authed(s.postMilestoneNote)},
+		{"POST /api/v1/projects/{namespace}/{name}/milestones/{iid}/followup", s.authed(s.createFollowUp)},
+		{"POST /api/v1/projects/{namespace}/{name}/milestones/{iid}/followups/dismiss", s.authed(s.dismissFollowUps)},
+		{"POST /api/v1/projects/{namespace}/{name}/milestones/{iid}/issues/{issue}/close", s.authed(s.closeHoldingIssue)},
+		{"GET /api/v1/plans", s.authed(s.allPlans)},
+		{"GET /api/v1/projects/{namespace}/{name}/plans/{plan}", s.authed(s.plan)},
+		{"POST /api/v1/projects/{namespace}/{name}/plans", s.authed(s.createPlan)},
+		{"DELETE /api/v1/projects/{namespace}/{name}/plans/{plan}", s.authed(s.deletePlan)},
+		{"PUT /api/v1/projects/{namespace}/{name}/plans/{plan}/draft", s.authed(s.savePlanDraft)},
+		{"DELETE /api/v1/projects/{namespace}/{name}/plans/{plan}/drafts/{key}", s.authed(s.removePlanDraft)},
+		{"PUT /api/v1/projects/{namespace}/{name}/plans/{plan}/drafts/order", s.authed(s.orderPlanDrafts)},
+		{"POST /api/v1/projects/{namespace}/{name}/plans/{plan}/budget", s.authed(s.raisePlanBudget)},
+		{"POST /api/v1/projects/{namespace}/{name}/plans/{plan}/milestone", s.authed(s.createPlanMilestone)},
+		{"GET /api/v1/projects/{namespace}/{name}/plans/{plan}/chat", s.authed(s.getPlanChat)},
+		{"POST /api/v1/projects/{namespace}/{name}/plans/{plan}/chat", s.authed(s.postPlanChat)},
+		{"GET /api/v1/projects/{namespace}/{name}/plans/{plan}/decisions", s.authed(s.planDecisionHistory)},
+		{"GET /api/v1/projects/{namespace}/{name}/tasks/{task}/transcript", s.authed(s.transcript)},
+		{"GET /api/v1/projects/{namespace}/{name}/tasks/{task}/logs", s.authed(s.rawLogs)},
+		{"GET /api/v1/projects/{namespace}/{name}/tasks/{task}/chat", s.authed(s.getChat)},
+		{"POST /api/v1/projects/{namespace}/{name}/tasks/{task}/chat", s.authed(s.postChat)},
+		{"POST /api/v1/projects/{namespace}/{name}/tasks/{task}/warm", s.authed(s.warmTask)},
+		{"GET /api/v1/events", s.authed(s.events)},
+		{"GET /api/v1/stream", s.authed(s.stream)},
+		{"GET /api/v1/inbox", s.authed(s.inbox)},
+		{"GET /api/v1/projects/{namespace}/{name}/history", s.authed(s.history)},
+		{"GET /api/v1/projects/{namespace}/{name}/estimate", s.authed(s.estimate)},
+		{"GET /api/v1/projects/{namespace}/{name}/decisions", s.authed(s.decisions)},
+		{"GET /api/v1/spend", s.authed(s.spend)},
+		{"GET /api/v1/costs", s.authed(s.costs)},
+		{"GET /api/v1/costs/top", s.authed(s.costsTop)},
+		{"GET /api/v1/costs/metrics", s.authed(s.costsMetrics)},
+		{"GET /api/v1/metrics/code", s.authed(s.metricsCode)},
+		{"GET /api/v1/metrics/flow", s.authed(s.metricsFlow)},
+		{"GET /api/v1/metrics/pauses", s.authed(s.metricsPauses)},
+		{"GET /api/v1/timeline", s.authed(s.timeline)},
+	}...)
+	if s.cfg.Research.Enabled() {
+		rs = append(rs, []route{
+			{"GET /api/v1/researches", s.researchHandler(s.researches)},
+			{"GET /api/v1/researches/{namespace}/{name}", s.researchHandler(s.researchDetail)},
+			{"GET /api/v1/researches/{namespace}/{name}/runs", s.researchHandler(s.researchRuns)},
+			{"GET /api/v1/researches/{namespace}/{name}/runs/{id}", s.researchHandler(s.researchRun)},
+		}...)
+	}
+	// Always registered, so they answer 404 (not 405) without allowCreate.
+	return append(rs, []route{
+		{"GET /api/v1/research/form", s.writeHandler(s.researchForm)},
+		{"POST /api/v1/researches", s.writeHandler(s.createResearch)},
+		{"DELETE /api/v1/researches/{namespace}/{name}", s.writeHandler(s.deleteResearch)},
+	}...)
+}
+
 // Handler returns the HTTP handler.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
@@ -142,74 +238,9 @@ func (s *Server) Handler() http.Handler {
 		mux.HandleFunc("GET "+pathCallback, s.oidc.callback)
 		mux.HandleFunc("POST "+pathLogout, s.oidc.logout)
 	}
-	if s.gitlab != nil && s.gitlab.oauth() {
-		mux.Handle("GET "+pathGitLabLogin, s.authed(s.gitlab.login))
-		mux.Handle("GET "+pathGitLabCallback, s.authed(s.gitlab.callback(s)))
-		mux.Handle("POST "+pathGitLabLogout, s.authed(s.gitlab.logout))
+	for _, rt := range s.routes() {
+		mux.Handle(rt.pattern, rt.handler)
 	}
-	mux.Handle("GET /api/v1/gitlab", s.authed(s.gitlabStatus))
-	mux.Handle("GET /api/v1/projects/{namespace}/{name}/tasks/{task}/thread", s.authed(s.thread))
-	mux.Handle("POST /api/v1/projects/{namespace}/{name}/tasks/{task}/notes", s.authed(s.postNote))
-	mux.Handle("GET /api/v1/me", s.authed(s.me))
-	mux.Handle("GET /api/v1/about", s.authed(s.about))
-	mux.Handle("GET /api/v1/features", s.authed(s.features))
-	mux.Handle("GET /api/v1/projects", s.authed(s.projects))
-	mux.Handle("GET /api/v1/projectsets", s.authed(s.projectSets))
-	mux.Handle("GET /api/v1/projects/{namespace}/{name}", s.authed(s.project))
-	mux.Handle("GET /api/v1/projects/{namespace}/{name}/tasks/{task}", s.authed(s.task))
-	mux.Handle("GET /api/v1/milestones", s.authed(s.milestones))
-	mux.Handle("GET /api/v1/search", s.authed(s.search))
-	mux.Handle("GET /api/v1/overview", s.authed(s.overview))
-	mux.Handle("GET /api/v1/projects/{namespace}/{name}/milestones/{iid}", s.authed(s.milestone))
-	mux.Handle("GET /api/v1/projects/{namespace}/{name}/milestones/{iid}/issues/{issue}", s.authed(s.issue))
-	mux.Handle("GET /api/v1/projects/{namespace}/{name}/milestones/{iid}/thread", s.authed(s.milestoneThread))
-	mux.Handle("GET /api/v1/projects/{namespace}/{name}/milestones/{iid}/problems", s.authed(s.problems))
-	mux.Handle("GET /api/v1/projects/{namespace}/{name}/milestones/{iid}/problems/{id}", s.authed(s.problemThread))
-	mux.Handle("POST /api/v1/projects/{namespace}/{name}/milestones/{iid}/notes", s.authed(s.postMilestoneNote))
-	mux.Handle("POST /api/v1/projects/{namespace}/{name}/milestones/{iid}/followup", s.authed(s.createFollowUp))
-	mux.Handle("POST /api/v1/projects/{namespace}/{name}/milestones/{iid}/followups/dismiss", s.authed(s.dismissFollowUps))
-	mux.Handle("POST /api/v1/projects/{namespace}/{name}/milestones/{iid}/issues/{issue}/close", s.authed(s.closeHoldingIssue))
-	mux.Handle("GET /api/v1/plans", s.authed(s.allPlans))
-	mux.Handle("GET /api/v1/projects/{namespace}/{name}/plans/{plan}", s.authed(s.plan))
-	mux.Handle("POST /api/v1/projects/{namespace}/{name}/plans", s.authed(s.createPlan))
-	mux.Handle("DELETE /api/v1/projects/{namespace}/{name}/plans/{plan}", s.authed(s.deletePlan))
-	mux.Handle("PUT /api/v1/projects/{namespace}/{name}/plans/{plan}/draft", s.authed(s.savePlanDraft))
-	mux.Handle("DELETE /api/v1/projects/{namespace}/{name}/plans/{plan}/drafts/{key}", s.authed(s.removePlanDraft))
-	mux.Handle("PUT /api/v1/projects/{namespace}/{name}/plans/{plan}/drafts/order", s.authed(s.orderPlanDrafts))
-	mux.Handle("POST /api/v1/projects/{namespace}/{name}/plans/{plan}/budget", s.authed(s.raisePlanBudget))
-	mux.Handle("POST /api/v1/projects/{namespace}/{name}/plans/{plan}/milestone", s.authed(s.createPlanMilestone))
-	mux.Handle("GET /api/v1/projects/{namespace}/{name}/plans/{plan}/chat", s.authed(s.getPlanChat))
-	mux.Handle("POST /api/v1/projects/{namespace}/{name}/plans/{plan}/chat", s.authed(s.postPlanChat))
-	mux.Handle("GET /api/v1/projects/{namespace}/{name}/plans/{plan}/decisions", s.authed(s.planDecisionHistory))
-	mux.Handle("GET /api/v1/projects/{namespace}/{name}/tasks/{task}/transcript", s.authed(s.transcript))
-	mux.Handle("GET /api/v1/projects/{namespace}/{name}/tasks/{task}/logs", s.authed(s.rawLogs))
-	mux.Handle("GET /api/v1/projects/{namespace}/{name}/tasks/{task}/chat", s.authed(s.getChat))
-	mux.Handle("POST /api/v1/projects/{namespace}/{name}/tasks/{task}/chat", s.authed(s.postChat))
-	mux.Handle("POST /api/v1/projects/{namespace}/{name}/tasks/{task}/warm", s.authed(s.warmTask))
-	mux.Handle("GET /api/v1/events", s.authed(s.events))
-	mux.Handle("GET /api/v1/stream", s.authed(s.stream))
-	mux.Handle("GET /api/v1/inbox", s.authed(s.inbox))
-	mux.Handle("GET /api/v1/projects/{namespace}/{name}/history", s.authed(s.history))
-	mux.Handle("GET /api/v1/projects/{namespace}/{name}/estimate", s.authed(s.estimate))
-	mux.Handle("GET /api/v1/projects/{namespace}/{name}/decisions", s.authed(s.decisions))
-	mux.Handle("GET /api/v1/spend", s.authed(s.spend))
-	mux.Handle("GET /api/v1/costs", s.authed(s.costs))
-	mux.Handle("GET /api/v1/costs/top", s.authed(s.costsTop))
-	mux.Handle("GET /api/v1/costs/metrics", s.authed(s.costsMetrics))
-	mux.Handle("GET /api/v1/metrics/code", s.authed(s.metricsCode))
-	mux.Handle("GET /api/v1/metrics/flow", s.authed(s.metricsFlow))
-	mux.Handle("GET /api/v1/metrics/pauses", s.authed(s.metricsPauses))
-	mux.Handle("GET /api/v1/timeline", s.authed(s.timeline))
-	if s.cfg.Research.Enabled() {
-		mux.Handle("GET /api/v1/researches", s.researchHandler(s.researches))
-		mux.Handle("GET /api/v1/researches/{namespace}/{name}", s.researchHandler(s.researchDetail))
-		mux.Handle("GET /api/v1/researches/{namespace}/{name}/runs", s.researchHandler(s.researchRuns))
-		mux.Handle("GET /api/v1/researches/{namespace}/{name}/runs/{id}", s.researchHandler(s.researchRun))
-	}
-	// Always registered, so they answer 404 (not 405) without allowCreate.
-	mux.Handle("GET /api/v1/research/form", s.writeHandler(s.researchForm))
-	mux.Handle("POST /api/v1/researches", s.writeHandler(s.createResearch))
-	mux.Handle("DELETE /api/v1/researches/{namespace}/{name}", s.writeHandler(s.deleteResearch))
 	mux.HandleFunc("GET /api/", func(w http.ResponseWriter, _ *http.Request) { notFound(w) })
 	mux.HandleFunc("GET /oauth2/", func(w http.ResponseWriter, _ *http.Request) { notFound(w) })
 	mux.HandleFunc("GET /", s.app)
@@ -235,7 +266,7 @@ const (
 // fails, both cookies are cleared.
 func (s *Server) authed(h http.HandlerFunc) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if s.sessions == nil {
+		if s.cfg.Auth.Mode == AuthNone {
 			ctx := context.WithValue(r.Context(), principalKey, Principal{Username: "anonymous"})
 			h(w, r.WithContext(ctx))
 			return

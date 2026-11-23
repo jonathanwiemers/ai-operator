@@ -103,11 +103,14 @@ download and run what the network allows, as it can run your build.
 The [Desk](glossary.md#desk) is optional and runs apart from the operator.
 
 - **Login.** You log in with OpenID Connect at your own identity provider.
-  Without a login set up, the Desk only listens on localhost inside its
-  pod, and you reach it with `kubectl port-forward`.
+  The Desk serves without login only when you set `auth.mode: none`. Then
+  it only listens on localhost inside its pod, and you reach it with
+  `kubectl port-forward`. An unknown or broken auth setting stops the Desk
+  from starting; it never falls back to no login.
 - **Rules.** Access rules map the roles your identity provider gives you to
   projects. You see only the projects a rule grants you; without a rule you
-  see nothing. What you may do beyond looking, such as reading transcripts,
+  see nothing. A project set you may see lists only the projects you may see.
+  What you may do beyond looking, such as reading transcripts,
   chatting or steering, is granted per rule too. Answering a milestone's
   prompts also needs your Desk login among its
   [owners](glossary.md#owner) (`/agent owner-subjects`).

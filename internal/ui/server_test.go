@@ -504,6 +504,23 @@ func TestAuthNone(t *testing.T) {
 	}
 }
 
+// Anonymous access needs auth mode none: a config that skipped Default and
+// Validate, with an empty or unknown mode, must not serve without login.
+func TestNewServerRefusesUnknownAuthMode(t *testing.T) {
+	for _, mode := range []AuthMode{"", "basic"} {
+		cfg := &Config{Auth: AuthConfig{Mode: mode}}
+		if s, err := NewServer(cfg, nil, NewHub(), fstest.MapFS{}, logr.Discard()); err == nil || s != nil {
+			t.Errorf("auth mode %q: server %v, error %v", mode, s, err)
+		}
+	}
+	cfg := oidcConfig()
+	cfg.OIDC.Claims.Roles = "claims[" // does not compile
+	cfg.Default()
+	if _, err := NewServer(cfg, nil, NewHub(), fstest.MapFS{}, logr.Discard()); err == nil {
+		t.Error("oidc with a broken roles claim must fail, not fall back to anonymous")
+	}
+}
+
 func TestApp(t *testing.T) {
 	env := newTestEnv(t, &Config{Auth: AuthConfig{Mode: AuthNone}})
 	for path, want := range map[string]string{

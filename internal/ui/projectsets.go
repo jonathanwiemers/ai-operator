@@ -2,6 +2,7 @@ package ui
 
 import (
 	"net/http"
+	"slices"
 	"sort"
 
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -66,7 +67,13 @@ func (s *Server) projectSets(w http.ResponseWriter, r *http.Request) {
 		if !s.authz.CanView(p, set.Namespace, set.Name) {
 			continue
 		}
-		out = append(out, summarizeSet(set))
+		sum := summarizeSet(set)
+		// The set's name grants the set, not its children: keep the
+		// entries of the projects the user may see.
+		sum.Projects = slices.DeleteFunc(sum.Projects, func(e aiv1.ProjectSetEntry) bool {
+			return e.Child != "" && !s.authz.CanView(p, set.Namespace, e.Child)
+		})
+		out = append(out, sum)
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Namespace != out[j].Namespace {
