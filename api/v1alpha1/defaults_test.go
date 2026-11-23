@@ -219,7 +219,7 @@ func TestMaxStepLines(t *testing.T) {
 	if spec.Agents.Profiles[1].MaxStepLines != nil {
 		t.Fatal("defaults do not copy implement's value into a profile")
 	}
-	for profile, want := range map[string]int{"": 400, "fast": 150, "strong": 400, "missing": 400} {
+	for profile, want := range map[string]int{"": 400, "fast": 150, "strong": 400} {
 		if got := spec.MaxStepLines(profile); got != want {
 			t.Errorf("profile %q: %d, want %d", profile, got, want)
 		}

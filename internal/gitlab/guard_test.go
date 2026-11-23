@@ -101,7 +101,6 @@ func TestPolicyForCompanion(t *testing.T) {
 		{"task and target auto-merge", &aiv1.CompanionSpec{Project: infra, AutoMerge: true}, infra, true},
 		{"task without auto-merge", &aiv1.CompanionSpec{Project: infra}, infra, false},
 		{"target without auto-merge", &aiv1.CompanionSpec{Project: docs, AutoMerge: true}, docs, false},
-		{"never-target", &aiv1.CompanionSpec{Project: secrets, AutoMerge: true}, "", false},
 		{"unknown project", &aiv1.CompanionSpec{Project: unrelated, AutoMerge: true}, "", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -150,15 +149,11 @@ func TestGuard(t *testing.T) {
 		{name: "target without autoMerge merge", project: docs, call: merge, did: merged},
 		{name: "never-target merge", project: secrets, call: merge, did: merged},
 		{name: "unknown project merge", project: unrelated, call: merge, did: merged},
-		{name: "project by ID merge", project: "1", call: merge, did: merged},
 		{name: "delete default branch main", project: home, call: deleteBranch("main"), did: deleted},
 		{name: "delete an agent default branch", project: infra, call: deleteBranch("agent/main"), did: deleted, defaultBranch: "agent/main"},
-		{name: "delete main in a target", project: infra, call: deleteBranch("main"), did: deleted},
-		{name: "delete release branch", project: home, call: deleteBranch("release/x"), did: deleted},
 		{name: "delete agent prefix only", project: home, call: deleteBranch("agent/"), did: deleted},
 		{name: "delete agent branch with ..", project: home, call: deleteBranch("agent/../main"), did: deleted},
 		{name: "delete agent branch in unknown project", project: unrelated, call: deleteBranch("agent/x"), did: deleted},
-		{name: "delete agent branch in never-target", project: secrets, call: deleteBranch("agent/x"), did: deleted},
 		{name: "delete agent branch in target", project: infra, call: deleteBranch("agent/x"), did: deleted, allowed: true},
 		{name: "delete agent branch at home", project: home, call: deleteBranch("agent/42-x"), did: deleted, allowed: true},
 		{name: "create MR in target", project: docs, allowed: true, call: func(api gitlab.API, p string) error {

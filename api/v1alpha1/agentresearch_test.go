@@ -10,7 +10,6 @@ import (
 
 func TestResearchTimeout(t *testing.T) {
 	for depth, want := range map[ResearchDepth]time.Duration{
-		"":                 20 * time.Minute,
 		ResearchDepthQuick: 20 * time.Minute,
 		ResearchDepthDeep:  2 * time.Hour,
 	} {

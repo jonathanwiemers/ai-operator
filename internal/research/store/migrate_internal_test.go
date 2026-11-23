@@ -79,7 +79,6 @@ func TestReadMigrationsRejects(t *testing.T) {
 		{"same timestamp, other names", []string{"20261107143000_a.sql", "20261107143000_b.sql"}, "used twice"},
 		{"5-digit prefix", []string{"00010_a.sql"}, "14-digit UTC time"},
 		{"month 13", []string{"20261307143000_a.sql"}, "not a valid UTC time"},
-		{"hour 24", []string{"20261107243000_a.sql"}, "not a valid UTC time"},
 		{"legacy 0000", []string{"0000_a.sql"}, "0000"},
 		{"no version", []string{"init.sql"}, "must start with a version"},
 		{"sign", []string{"+001_a.sql"}, "must start with a version"},

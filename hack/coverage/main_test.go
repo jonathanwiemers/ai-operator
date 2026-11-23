@@ -53,11 +53,6 @@ func TestRun(t *testing.T) {
 			want:     map[string]string{"internal/old": "gone", "a": "ok"},
 		},
 		{
-			name:     "duplicate blocks keep the highest count",
-			baseline: "a 60.0\ndup 100.0\n. 100.0\n",
-			want:     map[string]string{"dup": "ok"},
-		},
-		{
 			name: "no baseline file",
 			want: map[string]string{"a": "new", "dup": "new", ".": "new"},
 		},

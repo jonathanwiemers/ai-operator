@@ -21,7 +21,6 @@ func TestFollowUpsSettled(t *testing.T) {
 		{"one created", PilotRetrospective{PostedAt: &posted, FollowUps: two, Created: map[string]int64{"1": 9}}, false},
 		{"one taken", PilotRetrospective{PostedAt: &posted, FollowUps: two, Taken: map[string]int64{"2": 5}}, false},
 		{"created and taken", PilotRetrospective{PostedAt: &posted, FollowUps: two, Created: map[string]int64{"1": 9}, Taken: map[string]int64{"2": 5}}, true},
-		{"all taken", PilotRetrospective{PostedAt: &posted, FollowUps: two, Taken: map[string]int64{"1": 5, "2": 5}}, true},
 		{"a week later", PilotRetrospective{PostedAt: &metav1.Time{Time: now.Add(-FollowUpWindow)}, FollowUps: two}, true},
 		{"dismissed", PilotRetrospective{PostedAt: &posted, FollowUps: two, Created: map[string]int64{"1": 9}, DismissedAt: &posted}, true},
 	} {

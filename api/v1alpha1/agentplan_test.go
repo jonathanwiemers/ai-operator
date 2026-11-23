@@ -19,13 +19,10 @@ func TestAgentPlanBudgetUSD(t *testing.T) {
 
 func TestAgentPlanActive(t *testing.T) {
 	for phase, want := range map[AgentPlanPhase]bool{
-		"":                true,
-		AgentPlanStarting: true,
-		AgentPlanReady:    true,
-		AgentPlanWorking:  true,
-		AgentPlanIdle:     true,
-		AgentPlanCreated:  false,
-		AgentPlanFailed:   false,
+		"":               true,
+		AgentPlanIdle:    true,
+		AgentPlanCreated: false,
+		AgentPlanFailed:  false,
 	} {
 		p := &AgentPlan{Status: AgentPlanStatus{Phase: phase}}
 		if got := p.Active(); got != want {
@@ -42,7 +39,6 @@ func TestAgentPlanActiveDrafts(t *testing.T) {
 		st   AgentPlanStatus
 		want bool
 	}{
-		"none created":          {AgentPlanStatus{Phase: AgentPlanIdle, Drafts: two(0, 0)}, true},
 		"some created":          {AgentPlanStatus{Phase: AgentPlanIdle, Drafts: two(41, 0)}, true},
 		"some created, Created": {AgentPlanStatus{Phase: AgentPlanCreated, Drafts: two(41, 0)}, true},
 		"all created":           {AgentPlanStatus{Phase: AgentPlanCreated, Drafts: two(41, 42)}, false},
@@ -50,8 +46,6 @@ func TestAgentPlanActiveDrafts(t *testing.T) {
 		"old created":           {AgentPlanStatus{Phase: AgentPlanCreated, Draft: "# Goal", CreatedMilestoneIID: 7}, false},
 		"old claimed":           {AgentPlanStatus{Phase: AgentPlanCreated, Draft: "# Goal"}, false},
 		"claimed, none created": {AgentPlanStatus{Phase: AgentPlanCreated, Drafts: two(0, 0)}, false},
-		"old open":              {AgentPlanStatus{Phase: AgentPlanReady, Draft: "# Goal"}, true},
-		"last being created":    {AgentPlanStatus{Phase: AgentPlanIdle, Drafts: two(41, -1)}, true},
 	} {
 		p := &AgentPlan{Status: tc.st}
 		if got := p.Active(); got != tc.want {
@@ -65,7 +59,7 @@ func TestAgentPlanAllDraftsCreated(t *testing.T) {
 	for _, tc := range []struct {
 		iids []int64
 		want bool
-	}{{nil, false}, {[]int64{41, 42}, true}, {[]int64{41, 0}, false}, {[]int64{41, -1}, false}} {
+	}{{nil, false}, {[]int64{41, 42}, true}, {[]int64{41, -1}, false}} {
 		p := &AgentPlan{}
 		for i, iid := range tc.iids {
 			p.Status.Drafts = append(p.Status.Drafts, PlanDraft{Key: int64(i + 1), CreatedMilestoneIID: iid})

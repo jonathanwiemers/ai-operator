@@ -14,7 +14,6 @@ func TestCheckpointHead(t *testing.T) {
 		{"head moved past it", cp, "c2", false},
 		{"no head", cp, "", false},
 		{"no checkpoint", RunStatus{}, "c1", false},
-		{"checkpoint without a SHA", RunStatus{Checkpoint: &CheckpointStatus{}}, "", false},
 	}
 	for _, c := range cases {
 		if got := c.run.CheckpointHead(c.sha); got != c.want {

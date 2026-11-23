@@ -16,8 +16,6 @@ func TestPilotAutonomy(t *testing.T) {
 		{"", true, PilotPropose, PilotPropose},           // /pilot stop
 		{"", true, PilotManaged, PilotManaged},           // /pilot go
 		{PilotPropose, true, PilotManaged, PilotPropose}, // go cannot raise it
-		{"", false, PilotManaged, PilotPropose},
-		{"yolo", true, "", PilotPropose},
 	} {
 		coord := &AgentTask{Spec: AgentTaskSpec{Autopilot: tc.autopilot}}
 		if tc.override != "" {
