@@ -62,8 +62,11 @@ var _ SessionEngine = (*ClaudeCLI)(nil)
 // The context does not bound the process: a session outlives the call that
 // starts it.
 func (c *ClaudeCLI) Start(_ context.Context, inv Invocation) (*ClaudeSession, error) {
+	if err := checkEngineArgs(inv); err != nil {
+		return nil, err
+	}
 	bin := orDefault(c.Binary, "claude")
-	cmd := exec.Command(bin, append(slices.Clip(c.Args(inv)), "--input-format", "stream-json")...) // #nosec G204 G702 -- the binary is "claude" (only tests set Binary); model and flag values from tasks are reviewed in R12 (lean-codebase spec)
+	cmd := exec.Command(bin, append(slices.Clip(c.Args(inv)), "--input-format", "stream-json")...) // #nosec G204 G702 -- the binary is "claude" (only tests set Binary); model, effort, session ID and tools are checked first (checkEngineArgs, R12 of the lean-codebase spec)
 	cmd.Dir, cmd.Env = inv.Dir, append(slices.Clip(c.Env), inv.Env...)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	stdin, err := cmd.StdinPipe()

@@ -166,7 +166,7 @@ func (m *Mirror) runInput(ctx context.Context, withAuth bool, stdin string, args
 		// than 1000 bytes/s for 60s.
 		global = append(global, "-c", "http.lowSpeedLimit=1000", "-c", "http.lowSpeedTime=60")
 	}
-	cmd := exec.CommandContext(ctx, "git", append(global, args...)...) // #nosec G204 -- the fixed command git, no shell; branch names and refs from issues and CRDs are reviewed in R12 (lean-codebase spec)
+	cmd := exec.CommandContext(ctx, "git", append(global, args...)...) // #nosec G204 -- the fixed command git, no shell; outside branch names are checked (checkBranch) and refs follow --end-of-options (R12, lean-codebase spec)
 	cmd.WaitDelay = gitWaitDelay
 	cmd.Env = m.env(withAuth)
 	if stdin != "" {
@@ -189,6 +189,11 @@ func (m *Mirror) runInput(ctx context.Context, withAuth bool, stdin string, args
 // are fetched; the mirror stays on the persistent volume, so follow-up runs
 // only transfer the delta.
 func (m *Mirror) Sync(ctx context.Context, url string, branches ...string) error {
+	// Every branch of a run enters the mirror here: refuse the names git
+	// could read as an option or a ref expression (R12).
+	if err := checkBranches(branches...); err != nil {
+		return err
+	}
 	if !m.exists() {
 		if err := os.MkdirAll(m.Dir, 0o755); err != nil { // #nosec G301 -- the mirror holds no credentials (the token goes in GIT_CONFIG_* variables); the pod runs every container as uid/gid 1000
 			return err
@@ -208,7 +213,7 @@ func (m *Mirror) Sync(ctx context.Context, url string, branches ...string) error
 	for _, b := range branches {
 		heads = append(heads, "refs/heads/"+b)
 	}
-	out, err := m.runRemote(ctx, lsRemoteTimeout, append([]string{"ls-remote", "origin"}, heads...)...)
+	out, err := m.runRemote(ctx, lsRemoteTimeout, append([]string{"ls-remote", "--end-of-options", "origin"}, heads...)...)
 	if err != nil {
 		return err
 	}
@@ -222,7 +227,7 @@ func (m *Mirror) Sync(ctx context.Context, url string, branches ...string) error
 		}
 	}
 	if len(refspecs) > 0 {
-		if _, err := m.runRemote(ctx, fetchTimeout, append([]string{"fetch", "--quiet", "--no-tags", "origin"}, refspecs...)...); err != nil {
+		if _, err := m.runRemote(ctx, fetchTimeout, append([]string{"fetch", "--quiet", "--no-tags", "--end-of-options", "origin"}, refspecs...)...); err != nil {
 			return err
 		}
 	}
@@ -244,7 +249,7 @@ func (m *Mirror) exists() bool {
 }
 
 func (m *Mirror) resolve(ctx context.Context, ref string) (string, bool) {
-	sha, err := m.run(ctx, false, "rev-parse", "--verify", "--quiet", ref+"^{commit}")
+	sha, err := m.run(ctx, false, "rev-parse", "--verify", "--quiet", "--end-of-options", ref+"^{commit}")
 	return sha, err == nil
 }
 
@@ -285,7 +290,7 @@ func (m *Mirror) Bundle(ctx context.Context, path string, known map[string]strin
 		}
 	}
 	args := append(append([]string{}, include...), exclude...)
-	count, err := m.run(ctx, false, append([]string{"rev-list", "--count"}, args...)...)
+	count, err := m.run(ctx, false, append([]string{"rev-list", "--count", "--end-of-options"}, args...)...)
 	if err != nil {
 		return nil, false, err
 	}
@@ -293,7 +298,7 @@ func (m *Mirror) Bundle(ctx context.Context, path string, known map[string]strin
 		return refs, false, nil
 	}
 	_ = os.Remove(path)
-	if _, err := m.run(ctx, false, append([]string{"bundle", "create", "--quiet", path}, args...)...); err != nil {
+	if _, err := m.run(ctx, false, append([]string{"bundle", "create", "--quiet", path, "--end-of-options"}, args...)...); err != nil {
 		return nil, false, err
 	}
 	return refs, true, nil
@@ -301,8 +306,11 @@ func (m *Mirror) Bundle(ctx context.Context, path string, known map[string]strin
 
 // Import fetches refs/heads/<branch> from a bundle produced by the workspace.
 func (m *Mirror) Import(ctx context.Context, path, branch string) error {
+	if err := checkBranch(branch); err != nil {
+		return err
+	}
 	ref := "refs/heads/" + branch
-	_, err := m.run(ctx, false, "fetch", "--quiet", "--no-tags", path, "+"+ref+":"+ref)
+	_, err := m.run(ctx, false, "fetch", "--quiet", "--no-tags", "--end-of-options", path, "+"+ref+":"+ref)
 	return err
 }
 
@@ -322,21 +330,29 @@ func (m *Mirror) push(ctx context.Context, src, dst string, skipCI bool) error {
 		return err
 	}
 	return retryOneOff(ctx, m.Log, "push "+dst, gitTransient, func() error {
-		return m.pushArgs(ctx, skipCI, src+":"+dst)
+		return m.pushArgs(ctx, skipCI, "", src+":"+dst)
 	})
 }
 
-// pushArgs runs git push origin args, with ci.skip if skipCI and without
-// it where the remote takes no push options.
-func (m *Mirror) pushArgs(ctx context.Context, skipCI bool, args ...string) error {
+// pushArgs runs git push origin refspec, with the option lease unless it is
+// "", with ci.skip if skipCI and without it where the remote takes no push
+// options.
+func (m *Mirror) pushArgs(ctx context.Context, skipCI bool, lease, refspec string) error {
+	push := func(opts ...string) error {
+		args := append([]string{"push", "--quiet"}, opts...)
+		if lease != "" {
+			args = append(args, lease)
+		}
+		_, err := m.runRemote(ctx, pushTimeout, append(args, "--end-of-options", "origin", refspec)...)
+		return err
+	}
 	if skipCI {
-		_, err := m.runRemote(ctx, pushTimeout, append([]string{"push", "--quiet", "-o", "ci.skip", "origin"}, args...)...)
+		err := push("-o", "ci.skip")
 		if err == nil || !strings.Contains(err.Error(), "push options") {
 			return err
 		}
 	}
-	_, err := m.runRemote(ctx, pushTimeout, append([]string{"push", "--quiet", "origin"}, args...)...)
-	return err
+	return push()
 }
 
 // ErrLeaseRejected is the error of PushWithLease when the branch on the
@@ -362,7 +378,7 @@ func (m *Mirror) PushWithLease(ctx context.Context, branch, expect string, skipC
 	if !fullSHA.MatchString(expect) {
 		return refuse("the lease is not a commit ID")
 	}
-	out, err := m.run(ctx, false, "log", "--first-parent", "--format="+checkpointLogFormat, expect, "^"+ref)
+	out, err := m.run(ctx, false, "log", "--first-parent", "--format="+checkpointLogFormat, "--end-of-options", expect, "^"+ref)
 	if err != nil {
 		return refuse("the commits the push would remove are unknown: " + err.Error())
 	}
@@ -380,6 +396,9 @@ func (m *Mirror) PushWithLease(ctx context.Context, branch, expect string, skipC
 // origin/<base>, so a merge request can be opened before the agent changed
 // anything. The push skips CI (ci.skip): there is nothing to check yet.
 func (m *Mirror) StartBranch(ctx context.Context, branch, base, message string) (string, error) {
+	if err := checkBranches(branch, base); err != nil {
+		return "", err
+	}
 	baseRef := "refs/remotes/origin/" + base
 	name, email := m.AuthorName, m.AuthorEmail
 	if name == "" {
@@ -412,7 +431,7 @@ func (m *Mirror) CommitsAhead(ctx context.Context, base, branch string) (int, er
 	if _, ok := m.resolve(ctx, "refs/heads/"+branch); ok {
 		head = "refs/heads/" + branch
 	}
-	out, err := m.run(ctx, false, "rev-list", "--count", "refs/remotes/origin/"+base+".."+head)
+	out, err := m.run(ctx, false, "rev-list", "--count", "--end-of-options", "refs/remotes/origin/"+base+".."+head)
 	if err != nil {
 		return 0, err
 	}
@@ -423,7 +442,7 @@ func (m *Mirror) CommitsAhead(ctx context.Context, base, branch string) (int, er
 // branched off origin/<base>. git diff --quiet exits non-zero on changes; any
 // other error counts as a change too.
 func (m *Mirror) HasChanges(ctx context.Context, base, head string) bool {
-	_, err := m.run(ctx, false, "diff", "--quiet", "refs/remotes/origin/"+base+"..."+head)
+	_, err := m.run(ctx, false, "diff", "--quiet", "--end-of-options", "refs/remotes/origin/"+base+"..."+head)
 	return err != nil
 }
 
@@ -432,7 +451,7 @@ var pinFiles = []string{".mise.toml", "mise.toml", ".tool-versions", "rust-toolc
 
 // PinFiles returns the toolchain pin files at the root of origin/<base>.
 func (m *Mirror) PinFiles(ctx context.Context, base string) []string {
-	out, err := m.run(ctx, false, append([]string{"ls-tree", "--name-only", "refs/remotes/origin/" + base, "--"}, pinFiles...)...)
+	out, err := m.run(ctx, false, append([]string{"ls-tree", "--name-only", "--end-of-options", "refs/remotes/origin/" + base, "--"}, pinFiles...)...)
 	if err != nil || out == "" {
 		return nil
 	}
@@ -443,7 +462,7 @@ func (m *Mirror) PinFiles(ctx context.Context, base string) []string {
 // (adds, edits or deletes) compared with where it branched off origin/<base>.
 // A branch that does not exist yet changes nothing.
 func (m *Mirror) ChangedPins(ctx context.Context, base, branch string) []string {
-	out, err := m.run(ctx, false, append([]string{"diff", "--name-only",
+	out, err := m.run(ctx, false, append([]string{"diff", "--name-only", "--end-of-options",
 		"refs/remotes/origin/" + base + "...refs/remotes/origin/" + branch, "--"}, pinFiles...)...)
 	if err != nil || out == "" {
 		return nil

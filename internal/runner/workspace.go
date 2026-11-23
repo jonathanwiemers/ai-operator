@@ -33,7 +33,7 @@ func (w *Workspace) git(ctx context.Context, args ...string) (string, error) {
 	// a detached one (the default for maintenance since git 2.47) can hold
 	// the output pipes, so Run would not return. WaitDelay bounds the wait
 	// for pipes a leftover child still holds once git itself has exited.
-	cmd := exec.CommandContext(ctx, "git", append([]string{"-c", "gc.autoDetach=false", "-c", "maintenance.autoDetach=false"}, args...)...) // #nosec G204 -- the fixed command git, no shell; branch names and refs from issues and CRDs are reviewed in R12 (lean-codebase spec)
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-c", "gc.autoDetach=false", "-c", "maintenance.autoDetach=false"}, args...)...) // #nosec G204 -- the fixed command git, no shell; outside branch names are checked (checkBranch) and refs follow --end-of-options (R12, lean-codebase spec)
 	cmd.WaitDelay = 10 * time.Second
 	cmd.Dir = w.Dir
 	cmd.Env = append(os.Environ(),
@@ -56,7 +56,7 @@ func (w *Workspace) exists() bool {
 }
 
 func (w *Workspace) hasRef(ctx context.Context, ref string) bool {
-	_, err := w.git(ctx, "rev-parse", "--verify", "--quiet", ref+"^{commit}")
+	_, err := w.git(ctx, "rev-parse", "--verify", "--quiet", "--end-of-options", ref+"^{commit}")
 	return err == nil
 }
 
@@ -96,6 +96,11 @@ type PrepareRequest struct {
 // origin/<branch> if it exists (so human pushes are picked up) or on
 // origin/<base>. Leftovers of an interrupted run are discarded.
 func (w *Workspace) Prepare(ctx context.Context, req PrepareRequest) error {
+	// init and checkout -B take the names bare: refuse what git could read
+	// as an option or a ref expression (R12).
+	if err := checkBranches(req.Branch, req.Base); err != nil {
+		return err
+	}
 	w.removeStaleLock()
 	_ = os.Remove(w.lastStatusPath())
 	if !w.exists() {
@@ -137,7 +142,7 @@ func (w *Workspace) Prepare(ctx context.Context, req PrepareRequest) error {
 	if _, ok := req.Refs["refs/remotes/origin/"+req.Branch]; ok {
 		start = "refs/remotes/origin/" + req.Branch
 	}
-	if _, err := w.git(ctx, "checkout", "--quiet", "--force", "-B", req.Branch, start); err != nil {
+	if _, err := w.git(ctx, "checkout", "--quiet", "--force", "-B", req.Branch, start, "--"); err != nil {
 		return err
 	}
 	return w.Reset(ctx)
@@ -324,6 +329,9 @@ type UnfoldRequest struct {
 // becomes a normal commit on the checkpoint. The index and the work tree
 // stay as they are. It returns the new HEAD.
 func (w *Workspace) Unfold(ctx context.Context, req UnfoldRequest) (string, error) {
+	if !fullSHA.MatchString(req.Fold) || !fullSHA.MatchString(req.Tip) {
+		return "", fmt.Errorf("the fold %q and the checkpoint %q must be commit IDs", req.Fold, req.Tip)
+	}
 	_, errFold := w.git(ctx, "merge-base", "--is-ancestor", req.Fold, "HEAD")
 	keep, errKeep := w.git(ctx, "rev-parse", "--verify", "--quiet", req.Fold+"^1")
 	if _, err := w.git(ctx, "merge-base", "--is-ancestor", keep, req.Tip); errFold != nil || errKeep != nil || err != nil {
@@ -356,10 +364,10 @@ func (w *Workspace) Unfold(ctx context.Context, req UnfoldRequest) (string, erro
 // Diff returns the diff of HEAD against the merge base with origin/<base> and
 // a short stat of it.
 func (w *Workspace) Diff(ctx context.Context, base string) (diff, stat string, err error) {
-	if diff, err = w.git(ctx, "diff", "--no-color", "--no-ext-diff", "origin/"+base+"...HEAD"); err != nil {
+	if diff, err = w.git(ctx, "diff", "--no-color", "--no-ext-diff", "--end-of-options", "origin/"+base+"...HEAD"); err != nil {
 		return "", "", err
 	}
-	stat, err = w.git(ctx, "diff", "--stat", "--no-ext-diff", "origin/"+base+"...HEAD")
+	stat, err = w.git(ctx, "diff", "--stat", "--no-ext-diff", "--end-of-options", "origin/"+base+"...HEAD")
 	return diff, stat, err
 }
 
@@ -443,7 +451,7 @@ func (w *Workspace) Bundle(ctx context.Context, branch, base, path string) (bool
 			args = append(args, "^"+ref)
 		}
 	}
-	count, err := w.git(ctx, append([]string{"rev-list", "--count"}, args...)...)
+	count, err := w.git(ctx, append([]string{"rev-list", "--count", "--end-of-options"}, args...)...)
 	if err != nil {
 		return false, err
 	}
@@ -451,7 +459,7 @@ func (w *Workspace) Bundle(ctx context.Context, branch, base, path string) (bool
 		return false, nil
 	}
 	_ = os.Remove(path)
-	_, err = w.git(ctx, append([]string{"bundle", "create", "--quiet", path}, args...)...)
+	_, err = w.git(ctx, append([]string{"bundle", "create", "--quiet", path, "--end-of-options"}, args...)...)
 	return err == nil, err
 }
 
@@ -472,14 +480,14 @@ type MergeResult struct {
 // conflict markers in the files, for the agent to resolve.
 func (w *Workspace) MergeBase(ctx context.Context, base, message string) (MergeResult, error) {
 	upstream := "refs/remotes/origin/" + base
-	if _, err := w.git(ctx, "merge-base", "--is-ancestor", upstream, "HEAD"); err == nil {
+	if _, err := w.git(ctx, "merge-base", "--is-ancestor", "--end-of-options", upstream, "HEAD"); err == nil {
 		return MergeResult{UpToDate: true}, nil
 	}
 	from, err := w.git(ctx, "rev-parse", "HEAD")
 	if err != nil {
 		return MergeResult{}, err
 	}
-	_, err = w.git(ctx, "merge", "--no-ff", "--no-verify", "--no-edit", "-m", message, upstream)
+	_, err = w.git(ctx, "merge", "--no-ff", "--no-verify", "--no-edit", "-m", message, "--end-of-options", upstream)
 	if err == nil {
 		return MergeResult{Merged: true, From: from}, nil
 	}
@@ -511,6 +519,9 @@ type FinishMerge struct {
 // that is not fully resolved is never committed. If the agent concluded the
 // merge itself, HEAD must contain origin/<base>.
 func (w *Workspace) FinishMerge(ctx context.Context, req FinishMerge) (MergeResult, error) {
+	if !fullSHA.MatchString(req.From) {
+		return MergeResult{}, fmt.Errorf("the commit before the merge %q is not a commit ID", req.From)
+	}
 	back := func(files []string, cause error) (MergeResult, error) {
 		if _, err := w.git(ctx, "reset", "--quiet", "--hard", req.From); err != nil {
 			return MergeResult{}, err
@@ -528,7 +539,7 @@ func (w *Workspace) FinishMerge(ctx context.Context, req FinishMerge) (MergeResu
 	}
 	if !w.hasRef(ctx, "MERGE_HEAD") {
 		// The agent concluded the merge itself, or aborted it.
-		if _, err := w.git(ctx, "merge-base", "--is-ancestor", "refs/remotes/origin/"+req.Base, "HEAD"); err != nil {
+		if _, err := w.git(ctx, "merge-base", "--is-ancestor", "--end-of-options", "refs/remotes/origin/"+req.Base, "HEAD"); err != nil {
 			return back(req.Files, nil)
 		}
 		return MergeResult{Merged: true, From: req.From}, nil
@@ -668,7 +679,7 @@ func (w *Workspace) checkpointRefusal(ctx context.Context, req CheckpointRequest
 	}
 	if req.Expect != "" {
 		// A missing object fails like a commit that is not an ancestor.
-		if _, err := w.git(ctx, "merge-base", "--is-ancestor", req.Expect, "refs/heads/"+req.Branch); err != nil {
+		if _, err := w.git(ctx, "merge-base", "--is-ancestor", "--end-of-options", req.Expect, "refs/heads/"+req.Branch); err != nil {
 			return fmt.Sprintf("%s does not descend from the last pushed commit %s", req.Branch, req.Expect)
 		}
 	}

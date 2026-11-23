@@ -297,6 +297,9 @@ func (c *ClaudeCLI) Args(inv Invocation) []string {
 // (sinceLastResult): after --resume, modelUsage and total_cost_usd also
 // carry the session's earlier calls.
 func (c *ClaudeCLI) Run(ctx context.Context, inv Invocation) (*Result, error) {
+	if err := checkEngineArgs(inv); err != nil {
+		return nil, err
+	}
 	res, err := runCLI(ctx, orDefault(c.Binary, "claude"), c.Args(inv), inv.Dir, append(slices.Clip(c.Env), inv.Env...), inv.Prompt, true)
 	if res != nil {
 		sinceLastResult(res)
@@ -385,7 +388,7 @@ func (c *CursorCLI) Args(inv Invocation, prompt string) []string {
 	if inv.Resume != "" {
 		args = append(args, "--resume", inv.Resume)
 	}
-	return append(args, prompt)
+	return append(args, promptOperand(prompt))
 }
 
 // Prompt folds the role instructions and the output format into the prompt.
@@ -406,6 +409,9 @@ func (c *CursorCLI) Prompt(inv Invocation) string {
 
 // Run executes the invocation.
 func (c *CursorCLI) Run(ctx context.Context, inv Invocation) (*Result, error) {
+	if err := checkEngineArgs(inv); err != nil {
+		return nil, err
+	}
 	prompt := c.Prompt(inv)
 	if len(prompt) > maxArgPrompt {
 		dir := c.PromptDir
@@ -715,7 +721,7 @@ var answerGrace = 60 * time.Second
 // runCLI runs an agent CLI. With stream, its output is a line per event: each
 // is logged (see logEvent); it keeps the answer and adds up the usage (addUsage).
 func runCLI(ctx context.Context, bin string, args []string, dir string, env []string, stdin string, stream bool) (*Result, error) {
-	cmd := exec.CommandContext(ctx, bin, args...) // #nosec G204 G702 -- bin is "claude" or "cursor-agent" (only tests set Binary), no shell; model and flag values from tasks are reviewed in R12 (lean-codebase spec)
+	cmd := exec.CommandContext(ctx, bin, args...) // #nosec G204 G702 -- bin is "claude" or "cursor-agent" (only tests set Binary), no shell; model, effort, session ID and tools are checked first (checkEngineArgs, R12 of the lean-codebase spec)
 	cmd.Dir = dir
 	cmd.Env = env
 	cmd.Stdin = strings.NewReader(stdin)

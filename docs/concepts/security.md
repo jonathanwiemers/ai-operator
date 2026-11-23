@@ -77,6 +77,21 @@ operator, which checks each one before it runs it.
 Still use a GitLab account with as few rights as possible, and protect the
 default branch. Autopilot needs the right to merge into it.
 
+## Names that could become options
+
+Branch names, models and session IDs end up on the command lines of git and
+the engines. The runner refuses a value that git or the engine could read as
+an option, before anything runs:
+
+- A branch name, including your default branch, must be one git accepts
+  (`git check-ref-format --branch`) and must not start with `-`. A run on
+  such a branch fails, and the error names the branch.
+- A model, an effort or a session ID must start with a letter or a digit and
+  hold no spaces. A role whose `model` is set to something like
+  `--dangerously-skip-permissions` fails its runs
+  ([agents and models](../reference/agents-and-models.md)). Allowed and
+  denied tools must not start with `-`.
+
 ## The network
 
 The pods run without root and without extra privileges. The chart can add a
