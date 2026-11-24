@@ -279,3 +279,8 @@ follow-up issue), and requirements without an issue and why.
   `docs/contributing/web-ui.md`, the API table in
   `docs/contributing/design.md`, `docs/reference/desk-api.md` and the user
   guides (`desk.md`, `write-a-milestone.md`, `steer-from-the-desk.md`).
+- 2026-11-24 #759: steer. *Plan milestone* and its inline project picker
+  in `PlanList.vue` (R11, Decision 14) are replaced by *New plan* in the
+  rail, on `/plans` and on the Plans tab, which opens the New plan page
+  `/plans/new` with a required first message, also for dormant set
+  projects. See [plan-anywhere](plan-anywhere.spec.md).

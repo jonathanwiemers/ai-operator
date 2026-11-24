@@ -115,9 +115,9 @@ their own. Scheduled researches are managed with `kubectl`.
 
 ![Desk overview with running, paused and done milestones, their progress, cost and tokens](../assets/screenshots/dashboard.webp)
 
-- **The rail** on the left has *Inbox*, *Overview*, *Metrics* (cost, code,
-  flow and pauses across projects, see [The Metrics page](budgets-and-spend.md#the-metrics-page);
-  old `/costs` links open it), *Plans* (with Desk chat), your projects with a status dot
+- **The rail** on the left starts with [New plan](write-a-milestone.md#draft-it-in-the-desk)
+  (with Desk chat; an icon when collapsed), then *Inbox*, *Overview*, *Metrics* (cost, code, flow and pauses across
+  projects, see [The Metrics page](budgets-and-spend.md#the-metrics-page); old `/costs` links open it), *Plans*, your projects with a status dot
   (running, needs you, idle), a count of what needs you, the counts of active and
   [settling](../concepts/glossary.md#settling) milestones, the researches, and how much
   of each [engine's](../concepts/glossary.md#engine) usage window is used, with
@@ -206,7 +206,7 @@ and *Plans* with Desk chat. It opens on *Milestones*:
 - **Board**: one board per milestone, plus the issues without one.
 - **Metrics**: what the project's agent calls cost, with its lines of code.
 - **Plans**: the project's [plans](write-a-milestone.md#draft-it-in-the-desk)
-  and, for an owner, *Plan milestone*; a [plan's decisions](write-a-milestone.md#answer-the-agents-decisions) have a wizard.
+  and *New plan* for this project; a [plan's decisions](write-a-milestone.md#answer-the-agents-decisions) have a wizard.
 
 ![A project page with its event feed and a run that asks a question, beside the needs-you panel](../assets/screenshots/project-stream.webp)
 

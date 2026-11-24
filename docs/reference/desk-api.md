@@ -133,9 +133,9 @@ exists in GitLab.
 
 | Method and path | Purpose | Needs |
 |-----------------|---------|-------|
-| `GET /api/v1/plans` | The plans of every project you may see, last active first, and those projects with whether you may start plans in them. `?project=namespace/name` narrows both to one project. | see, Desk chat |
+| `GET /api/v1/plans` | The plans of every project you may see, last active first, and those projects, plus the dormant projects of your sets, with whether you may start plans in them. `?project=namespace/name` narrows both to one project. | see, Desk chat |
 | `GET /api/v1/projects/{namespace}/{name}/plans/{plan}` | One plan with its drafts. | see, Desk chat |
-| `POST /api/v1/projects/{namespace}/{name}/plans` | Start a plan, with an optional `{"title": "…"}`. | `steer`, Desk chat |
+| `POST /api/v1/projects/{namespace}/{name}/plans` | Start a plan with `{"message": "…", "title": "…"}`. `message` is required and becomes the plan's first chat message; `title` is optional. | `steer`, Desk chat |
 | `DELETE /api/v1/projects/{namespace}/{name}/plans/{plan}` | Delete a plan. | `steer`, Desk chat |
 | `PUT /api/v1/projects/{namespace}/{name}/plans/{plan}/draft` | Save your edit of the draft `key`. | `steer`, Desk chat |
 | `DELETE /api/v1/projects/{namespace}/{name}/plans/{plan}/drafts/{key}` | Remove a draft that has no milestone. | `steer`, Desk chat |
@@ -148,6 +148,24 @@ exists in GitLab.
 
 On plans, `steer` also needs you to be an owner subject
 of the project's milestones, when any of them names owner subjects.
+
+```sh
+curl -sS -X POST -b "$COOKIE" -H 'Content-Type: application/json' \
+  "$DESK/api/v1/projects/agents/tools-foo/plans" \
+  -d '{"message":"Add a CSV export to the Metrics page"}'
+```
+
+Without `message` the answer is `400` with `field: message`. The projects
+of `GET /api/v1/plans` have `namespace`, `name`, `path` (the GitLab path),
+`set` (the [project set](../concepts/glossary.md#project-set), empty for
+an AgentProject of its own), `dormant` and `steer`. A dormant entry
+(`dormant: true`) has no AgentProject yet: address it by the name its child
+will get, and the plan endpoints work as for any project. A plan has
+`message`, its status message, such as "Waiting for the project set to
+create the project". Until the set creates the project, only `GET` plan,
+`GET` and `POST` chat, `DELETE` plan and `POST …/plans` work; every other
+plan endpoint answers `409` with "waiting for the project set to create
+the project".
 
 ### Plan drafts
 

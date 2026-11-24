@@ -61,14 +61,26 @@ Entry states:
 
 | State | Meaning |
 |-------|---------|
-| `active` | The project has work and a child. |
-| `dormant` | No spec-marker milestone, ready issue or task. The child, if any, goes after `dormantAfter`. A project whose only open milestones are settling (`activeMilestones` 0, `settlingMilestones` above 0 on the child) counts as idle: only a ready issue makes it active. |
+| `active` | The project has work and a child. An AgentPlan whose `spec.projectRef` names the child counts as work, also when the child does not exist yet. |
+| `dormant` | No spec-marker milestone, ready issue, task or plan. The child, if any, goes after `dormantAfter`. A project whose only open milestones are settling (`activeMilestones` 0, `settlingMilestones` above 0 on the child) counts as idle: only a ready issue or a plan makes it active. |
 | `excluded` | `exclude` matches, the project is archived, or `include` no longer matches a project that has a child. |
 | `explicit` | An AgentProject the set does not own watches it, named in the reason. |
 | `nameTaken` | The child's name belongs to an object the set does not own. |
 
 A reason such as `removing: waiting for the project hook to be deleted` or
 `kept: 1 open task` says what the set does with a child it would remove.
+The set never removes a child that has an open task or a plan; a plan
+counts until it is deleted by hand or by the operator's plan retention. The
+`kept:` reason names both, followed by why the set would remove the child:
+
+- `kept: 1 plan`: an active entry whose only work is its plan.
+- `kept: 1 open task, 2 plans`
+- `kept: 2 plans; not matched by include`
+- `kept: 2 open tasks, 1 plan; no work for 168h`
+
+An AgentPlan created by the Desk for a dormant entry carries the label
+`ai.wiemers.me/project-set` with the set's name. Its creation wakes the set,
+which discovers at once instead of waiting for `pollInterval`.
 
 ## Conditions
 

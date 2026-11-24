@@ -1356,14 +1356,30 @@ project page the milestone shows by title with its `%N` muted beside it
 (`milestoneName.ts`, from the project's milestones); `/plans` has no
 titles and shows `%N`. The
 bar's value, max and accessible name come from `progressBar` in
-`milestoneRows.ts`, shared with `MilestoneRow.vue`. *Plan milestone* in `PlanList.vue` shows when
+`milestoneRows.ts`, shared with `MilestoneRow.vue`. *New plan* in
+`PlanList.vue` is a link, put into the host's header actions, shown when
 `planStartProjects` (`planStart.ts`: the `steer` projects, sorted) is not
-empty, also on an empty list: one project starts an untitled plan
-(`createPlan`) and opens it, two or more open an inline picker of buttons
-that wraps on phones. It reads *…* while busy, shows errors in a banner,
-and a 403 hides it until the list reloads. Entry points: *Plans* in
-`RailNav.vue` (below *Metrics*), the project's Plans tab, and *Plans* /
-*Plan milestone* in the ⌘K Pages group (`searchItems.ts`). *Delete* on
+empty, also on an empty list. It goes to `planNewTo(project)`: `plan-new`,
+with `?project=namespace/name` on a project's Plans tab. Entry points:
+*New plan* at the top of the rail, *Plans* in `RailNav.vue` (below
+*Metrics*), the project's Plans tab, and *Plans* / *Plan milestone* in the
+⌘K Pages group (`searchItems.ts`). The plan page shows the plan's
+`message` (`PlanListItem.message`) below the header while the phase is
+`Starting` or `Failed`, such as the wait for a project set.
+
+The New plan page (`views/PlanNew.vue`, route `plan-new` at `/plans/new`,
+its own chunk, header *New plan*) loads `GET /api/v1/plans` and offers a
+`USelectMenu` built by `planStartGroups` and `planStartMenuItems` in
+`planStart.ts` (node tests in `test/planStart.test.mjs`): *Projects* first
+(the `steer` AgentProjects), then one group per set by name with its
+`dormant` entries by `path`, described *dormant, starts with the plan*;
+empty groups are left out and a project shows once. `?project=` preselects
+an offered project and is ignored otherwise. The message is a `UTextarea`
+(required, capped at 16384 characters with a counter), the title a
+`UInput`. *Start plan* calls `createPlan(namespace, name, {title,
+message})` and pushes the `plans` route of the new plan; a 400 shows on
+its field, other errors in a `UAlert`. With nothing offered, a `UEmpty`
+says you may not start plans in any project. *Delete* on
 the plan page returns to the project's Plans tab. Chat is `PlanChat.vue` (Desk chat parts);
 the draft is `PlanDraft.vue` with Edit / Preview, Save, the newer-draft
 diff (`planDraft.ts`) and `PlanCreateDialog.vue` (Spec / Autopilot, estimate
@@ -2275,7 +2291,11 @@ header, has an `<h1>` or no `<UPageHeader`.
 
 The rail (`components/RailNav.vue`) is a vertical `UNavigationMenu` in
 three groups, built by `src/railItems.ts` (unit-tested in
-`test/railItems.test.mjs`): the pages (Inbox with its count as a badge in
+`test/railItems.test.mjs`). Above the menu sits *New plan*
+(`railNewPlan`, `null` without the `plans` feature): a `UButton` to
+`/plans/new` with the plus icon, the label when open, and the icon in a
+`UTooltip` with an `aria-label` when collapsed; it emits `navigate` like
+the links, so it closes the phone sheet. The groups: the pages (Inbox with its count as a badge in
 the danger tone, none at 0; Overview; Metrics; Plans), *Projects* and
 *Research*. Every link's active state comes from the route's path: a
 project or research stays lit on the pages below it. A project shows its

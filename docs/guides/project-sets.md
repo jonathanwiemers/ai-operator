@@ -70,28 +70,36 @@ child, and the set's status names it.
 
 A project is **active** while it has work for the agents: an active milestone
 whose description holds the template's spec marker, an issue with the ready
-label, or an AgentTask of its child.
+label, an AgentTask of its child, or a
+[plan](write-a-milestone.md#draft-it-in-the-desk) in it.
 Only active projects get a child. Any other matched project is
 [dormant](../concepts/glossary.md#dormant-project).
 
 A project whose only open milestones are settling counts as idle. Settling
 means the autopilot is done and only waits for the retrospective's
 follow-ups. Its tasks and spec markers do not keep it active, a ready issue
-does. Its child keeps its tasks, so it is not removed while the milestone
+or a plan does. Its child keeps its tasks, so it is not removed while the milestone
 settles. During that time the child syncs on a delivery, on a wake from the
 set and every 15 minutes, or every `webhook.fallbackInterval` if that is
 longer.
 
 A child that has had no work for `dormantAfter` and has no AgentTask is
 removed. The set first switches the child's webhook off, waits until GitLab's
-hook is gone, and only then deletes the child. A child with a task stays, and
-a project that turns active again gets its child back on the next poll. A
+hook is gone, and only then deletes the child. A child with a task or a plan
+stays, so its plans are never deleted with it. Once the last plan is deleted,
+by you or by its retention, `dormantAfter` counts as before. A project that
+turns active again gets its child back on the next poll. A
 child whose project leaves the set's scope (an edited `include` or
 `exclude`, an archived project) is removed without the wait.
 
 An `/agent` comment on an issue in a project without a child is not seen.
 Label the issue with the ready label, or add a milestone with the spec
 marker, and the project turns active within one poll.
+
+To plan in a dormant project, start a plan in the Desk and pick the project
+under its set. The new plan wakes the set, which creates the child within
+seconds; the plan waits for it, see
+[Pick the project](write-a-milestone.md#pick-the-project).
 
 ## Explicit AgentProjects win
 

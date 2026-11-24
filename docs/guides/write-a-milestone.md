@@ -17,19 +17,42 @@ With Desk chat on, an owner of the project can plan a milestone with an
 agent that reads the project's default branch, its milestones and its
 issues:
 
-1. Open the project's *Plans* tab and click *Plan milestone*. Or open
-   *Plans* in the rail, click *Plan milestone* and pick the project; with
-   one project you own, there is nothing to pick.
-2. Tell the agent what you want in the chat on the left. It writes the
-   draft on the right, and you can edit the draft yourself with *Edit* and
-   *Save*. The next chat turn sees your edit.
-3. Click *Create milestone*. The dialog shows the title, the final draft,
+1. Click **New plan** at the top of the rail, from any page. *New plan* on
+   *Plans* and on a project's *Plans* tab opens the same page, the tab with
+   its project picked.
+2. Pick the project, write what you want to plan, for example "Add a CSV
+   export to the Metrics page", add a title if you like, and click
+   **Start plan**. The plan opens with your message first in the chat, and
+   the agent answers it.
+3. Go on in the chat on the left. The agent writes the draft on the right,
+   and you can edit the draft yourself with *Edit* and *Save*. The next chat
+   turn sees your edit.
+4. Click *Create milestone*. The dialog shows the title, the final draft,
    the switches *Spec* and *Autopilot*, the `/agent` lines it adds (with the
    project's owners) and an estimate of the cost.
 
 The operator then creates the milestone in GitLab with your GitLab login.
 A plan has its own budget; the chart values are in the
 [chart README](../../charts/ai-operator/README.md#plan).
+
+### Pick the project
+
+The picker offers only projects you may steer, and you can type to search
+it. *Projects* lists the projects with their own
+[AgentProject](../concepts/glossary.md#agentproject), set children
+included. Then each [project set](../concepts/glossary.md#project-set) has
+a group with its [dormant projects](../concepts/glossary.md#dormant-project)
+by GitLab path, marked *dormant, starts with the plan*. Excluded, explicit
+and `nameTaken` projects are not offered. With nothing to offer, the page
+says you may not start plans in any project.
+
+A plan in a dormant project wakes its set, which creates the project's
+AgentProject within seconds. Until then the plan says *Waiting for the
+project set to create the project*, and the agent answers once the project
+is there. If the set has not created it after 10 minutes, the plan fails
+with "The project set did not create *name*: *reason*". The project stays
+active while it has a plan, see
+[Project sets](project-sets.md#active-and-dormant).
 
 ### Draft a series of milestones
 
