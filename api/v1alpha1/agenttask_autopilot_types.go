@@ -573,7 +573,7 @@ type DecisionRef struct {
 }
 
 // NeedsInputCause is why an issue got the needs-input label.
-// +kubebuilder:validation:Enum=ciRed;runFailed;agentQuestion
+// +kubebuilder:validation:Enum=ciRed;runFailed;agentQuestion;nothingPushed
 type NeedsInputCause string
 
 const (
@@ -583,6 +583,9 @@ const (
 	NeedsInputRunFailed NeedsInputCause = "runFailed"
 	// NeedsInputAgentQuestion: the agent asked (status.run.questions).
 	NeedsInputAgentQuestion NeedsInputCause = "agentQuestion"
+	// NeedsInputNothingPushed: the run succeeded but its merge request has
+	// no pushed head, so the issue stays out of review.
+	NeedsInputNothingPushed NeedsInputCause = "nothingPushed"
 )
 
 // BlockReason is why an issue is blocked; it is the suffix of its reason label.

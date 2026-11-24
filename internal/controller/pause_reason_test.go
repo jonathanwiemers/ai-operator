@@ -134,6 +134,9 @@ func TestAutopilotPauseNamesTheNeedsInputCause(t *testing.T) {
 			s.Run.NeedsInputCause, s.Run.NeedsInputURL = aiv1.NeedsInputAgentQuestion, testNoteURL
 			s.Run.Questions = []aiv1.QuestionDraft{{Question: "REST or gRPC?"}}
 		}, "#1 needs input: the agent asks: REST or gRPC? (" + testNoteURL + ")"},
+		{"nothingPushed", func(s *aiv1.AgentTaskStatus) {
+			s.Run.NeedsInputCause, s.Run.NeedsInputURL, s.Run.PushedSHA = aiv1.NeedsInputNothingPushed, testNoteURL, ""
+		}, "#1 needs input: the run pushed no commits to the merge request (" + testNoteURL + ")"},
 		{"no cause, from an older release", func(s *aiv1.AgentTaskStatus) {},
 			"#1 needs input (see its last comments): CI is still red, the run failed or the agent asked a question"},
 	} {

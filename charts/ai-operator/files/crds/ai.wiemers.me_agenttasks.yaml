@@ -4499,12 +4499,13 @@ spec:
                     - ciRed
                     - runFailed
                     - agentQuestion
+                    - nothingPushed
                     type: string
                   needsInputURL:
                     description: |-
                       NeedsInputURL is the comment NeedsInputCause links to: the failure
                       note on the issue (runFailed) or the report on the merge request
-                      (agentQuestion). ciRed leaves it empty and links to
+                      (agentQuestion, nothingPushed). ciRed leaves it empty and links to
                       status.ci.pipelineURL.
                     type: string
                   observedRunRequest:

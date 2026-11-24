@@ -506,7 +506,13 @@ stateDiagram-v2
 
 Whoever sets the needs-input label first writes why in
 `status.run.needsInputCause`: `ciRed` (`finishCI`, the details are in
-`status.ci`), `runFailed` or `agentQuestion` (the runner).
+`status.ci`), `runFailed`, `agentQuestion` or `nothingPushed` (the
+runner). `nothingPushed` is a succeeded run whose merge request has no
+pushed head at all: no push in this run, none recorded before, no companion
+push, and a checkpoint counts as none. It would otherwise go to review,
+where the merge gate finds no head and pauses as `config`. That pause stays
+for a review label a human sets by hand. A later run that changes nothing
+on a pushed head still goes to review.
 `status.run.needsInputURL` links to the runner's failure note on the issue
 or its report on the merge request. Status first, then the label, so the
 operator never sees the label without its cause. A run or CI loop that ends

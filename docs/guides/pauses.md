@@ -175,7 +175,11 @@ An issue is in `agent::needs-input`. The reason names the cause:
   `test` (pipeline link)";
 - "#12 needs input: the run failed: <error> (link)". A usage limit names
   the engine and its reset time in UTC;
-- "#12 needs input: the agent asks: <question> (link to the report)".
+- "#12 needs input: the agent asks: <question> (link to the report)";
+- "#12 needs input: the run pushed no commits to the merge request (link
+  to the report)". The run succeeded, but its merge request has no pushed
+  commit yet, so the issue stays out of review. Comment what to change, or
+  close the issue.
 
 It ends by itself once a later run passes the merge gate. The pilot
 classifies the cause and proposes a retry or an instruction, or runs it when

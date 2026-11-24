@@ -659,7 +659,7 @@ type RunStatus struct {
 
 	// NeedsInputURL is the comment NeedsInputCause links to: the failure
 	// note on the issue (runFailed) or the report on the merge request
-	// (agentQuestion). ciRed leaves it empty and links to
+	// (agentQuestion, nothingPushed). ciRed leaves it empty and links to
 	// status.ci.pipelineURL.
 	// +optional
 	NeedsInputURL string `json:"needsInputURL,omitempty"`

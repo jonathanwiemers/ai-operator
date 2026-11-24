@@ -172,6 +172,8 @@ func TestCause(t *testing.T) {
 		{"agentQuestion", aiv1.RunStatus{NeedsInputCause: aiv1.NeedsInputAgentQuestion, Summary: "s",
 			Questions: []aiv1.QuestionDraft{{Question: "Which DB?"}}}, nil, "the agent asks: Which DB?"},
 		{"agentQuestion from summary", aiv1.RunStatus{NeedsInputCause: aiv1.NeedsInputAgentQuestion, Summary: "Which DB?"}, nil, "the agent asks: Which DB?"},
+		{"nothingPushed", aiv1.RunStatus{NeedsInputCause: aiv1.NeedsInputNothingPushed, Summary: "Nothing to do."}, nil,
+			"the run pushed no commits to the merge request"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			task := &aiv1.AgentTask{Status: aiv1.AgentTaskStatus{Run: tc.run, CI: tc.ci}}

@@ -36,6 +36,8 @@ func Cause(task *aiv1.AgentTask) string {
 			q = run.Questions[0].Question
 		}
 		return "the agent asks: " + OneLine(q, maxCauseQuote)
+	case aiv1.NeedsInputNothingPushed:
+		return "the run pushed no commits to the merge request"
 	}
 	return ""
 }

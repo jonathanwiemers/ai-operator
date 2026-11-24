@@ -3661,7 +3661,7 @@ export interface DecisionRef {
 }
 /**
  * NeedsInputCause is why an issue got the needs-input label.
- * +kubebuilder:validation:Enum=ciRed;runFailed;agentQuestion
+ * +kubebuilder:validation:Enum=ciRed;runFailed;agentQuestion;nothingPushed
  */
 export type NeedsInputCause = string;
 /**
@@ -3676,6 +3676,11 @@ export const NeedsInputRunFailed: NeedsInputCause = "runFailed";
  * NeedsInputAgentQuestion: the agent asked (status.run.questions).
  */
 export const NeedsInputAgentQuestion: NeedsInputCause = "agentQuestion";
+/**
+ * NeedsInputNothingPushed: the run succeeded but its merge request has
+ * no pushed head, so the issue stays out of review.
+ */
+export const NeedsInputNothingPushed: NeedsInputCause = "nothingPushed";
 /**
  * BlockReason is why an issue is blocked; it is the suffix of its reason label.
  * +kubebuilder:validation:Enum=infra;main-red;quota
@@ -5921,7 +5926,7 @@ export interface RunStatus {
   /**
    * NeedsInputURL is the comment NeedsInputCause links to: the failure
    * note on the issue (runFailed) or the report on the merge request
-   * (agentQuestion). ciRed leaves it empty and links to
+   * (agentQuestion, nothingPushed). ciRed leaves it empty and links to
    * status.ci.pipelineURL.
    * +optional
    */

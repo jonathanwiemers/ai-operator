@@ -464,8 +464,16 @@ func TestEarlierCheckpointHeadStaysADraft(t *testing.T) {
 	if len(e.gl.MRPipelines)+len(e.gl.BranchPipelines) != 0 {
 		t.Fatalf("no pipeline for a checkpoint: MR %v, branch %v", e.gl.MRPipelines, e.gl.BranchPipelines)
 	}
-	if _, res := e.stepResult("request review"); res != "none requested: the head is a checkpoint" {
-		t.Fatalf("request review step: %q (%v)", res, stepNames(e.r.run))
+	// Without a pushed head before it, the checkpoint keeps the issue out of
+	// review.
+	if run.NeedsInputCause != aiv1.NeedsInputNothingPushed || !slices.Equal(e.gl.Labels(42), []string{"agent::needs-input"}) {
+		t.Fatalf("a checkpoint is no pushed head: %s, %v", run.NeedsInputCause, e.gl.Labels(42))
+	}
+	if _, res := e.stepResult("request review"); res != "" {
+		t.Fatalf("nobody is asked to review a checkpoint: %q", res)
+	}
+	if notes := e.gl.IssueNotes[42]; len(notes) == 0 || !strings.Contains(notes[len(notes)-1].Body, "its head is a checkpoint") {
+		t.Fatalf("the issue says why it stays out of review: %v", notes)
 	}
 	if notes := e.gl.MRNotes[1]; strings.Contains(notes[len(notes)-1].Body, "cc @alice") {
 		t.Fatalf("nobody is asked to review a checkpoint: %s", notes[len(notes)-1].Body)
