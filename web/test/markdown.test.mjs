@@ -148,6 +148,43 @@ test('inline: no href anywhere in the output', async () => {
   assert.equal(out, 'a and b &lt;https://c.example&gt;')
 })
 
+// UTC times in text show as local <time> elements (src/localTime.ts); code
+// keeps them as written. The label depends on the zone and locale of the run,
+// so the checks match the element's parts.
+const limitNow = Date.parse('2026-11-21T13:00:00Z')
+const timeRe = /<time datetime="2026-11-21T14:05:00\.000Z" title="[^"]+ · 2026-11-21 14:05 UTC as written">[^<]+<\/time>/
+
+async function mdAt(src) {
+  const html = await renderToString(createSSRApp({ render: () => h('div', renderMarkdown(src, link, 0, limitNow)) }))
+  return html.replace(/^<div>|<\/div>$/g, '').replaceAll('<!--[-->', '').replaceAll('<!--]-->', '')
+}
+
+test('times: a UTC time in a paragraph is a local <time>', async () => {
+  const html = await mdAt('⏳ `claude` reached its usage limit (until 2026-11-21 14:05 UTC).')
+  assert.match(html, new RegExp(`^<p>⏳ <code>claude</code> reached its usage limit \\(until ${timeRe.source}\\)\\.</p>$`))
+  assert.doesNotMatch(html, />2026-11-21 14:05 UTC</)
+})
+
+test('times: in emphasis, lists, tables and link labels, not in hrefs', async () => {
+  const html = await mdAt('- **2026-11-21 14:05 UTC**\n\n| a |\n|---|\n| 2026-11-21 14:05 UTC |\n\n[at 2026-11-21 14:05 UTC](https://a.example/2026-11-21%2014:05%20UTC)')
+  assert.equal(html.match(new RegExp(timeRe.source, 'g'))?.length, 3)
+  assert.match(html, /href="https:\/\/a\.example\/2026-11-21%2014:05%20UTC"/)
+})
+
+test('times: code spans, <code>, <kbd> and fenced code keep the text as written', async () => {
+  const html = await mdAt('`2026-11-21 14:05 UTC` <code>2026-11-21 14:05 UTC</code> <kbd>2026-11-21 14:05 UTC</kbd>\n\n```\n2026-11-21 14:05 UTC\n```')
+  assert.equal(
+    html,
+    '<p><code>2026-11-21 14:05 UTC</code> <code>2026-11-21 14:05 UTC</code> <kbd>2026-11-21 14:05 UTC</kbd></p><pre><code>2026-11-21 14:05 UTC</code></pre>',
+  )
+})
+
+test('times: renderInline converts too, but not its code spans', async () => {
+  const html = await renderToString(createSSRApp({ render: () => h('span', renderInline('until 2026-11-21 14:05 UTC, `2026-11-21 14:05 UTC`', limitNow)) }))
+  assert.match(html, timeRe)
+  assert.match(html, /<code>2026-11-21 14:05 UTC<\/code>/)
+})
+
 test('inline: links inside a row render no anchor', async () => {
   const html = await renderToString(
     createSSRApp({ render: () => h('a', { href: '/tasks/1' }, [h('span', renderInline('see [MR](https://x)'))]) }),
