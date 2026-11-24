@@ -1,8 +1,8 @@
 # Project sets: per-project settings inside the set, no Kustomize patches
 
 Status: R1–R5 implemented in this repository; the infra companions R6 and
-R7 are still to come. This file was rebuilt, not copied: see the
-[Steering log](#steering-log).
+R7 are written down but not applied. This file was rebuilt, not copied: see
+the [Steering log](#steering-log).
 
 ## Goal
 
@@ -169,3 +169,30 @@ AgentProjects. `infra-cluster` runs with `release.mode: Auto`.
   poll (`named in spec.projects` after it); their `ownerReferences` name
   the set as controller; and `kubectl -n agents get agentproject
   infra-cluster -o jsonpath='{.spec.release.mode}'` prints `Off`.
+- R7 (#767): not applied yet, and no infra MR exists. R6 was not applied
+  in infra either, and this issue has no owner comment confirming the
+  adoption and no companion label `agent-repo::jo.wiemers/infra/cluster`.
+  Do the cleanup only after R6's infra MR is merged and the owner has run
+  the checks under R6 above and confirmed them on #767; a comment that
+  reports a problem also means: change nothing. The change, in one infra
+  MR, in the same directory as R6:
+  - before editing, check in the cluster that each manifest to remove
+    carries `kustomize.toolkit.fluxcd.io/prune: disabled`
+    (`kubectl -n agents get agentproject <name> -o
+    jsonpath='{.metadata.annotations}'`); never remove one without it;
+  - remove the manifests of `bloop`, `ai-operator` and every other
+    AgentProject R6 annotated with `ai.wiemers.me/project-set:
+    jo-wiemers`, and their entries in `kustomization.yaml`; the objects
+    stay, owned by the set;
+  - remove the defaults carrier, the `replacements` and the per-project
+    patches; the set's `template` holds the defaults inline, and every
+    value a patch set lives in that project's `spec.projects` entry;
+  - leave every other explicit AgentProject as it is, and name each one in
+    the MR with the reason it stays (not in the group `jo.wiemers`, or not
+    annotated by R6);
+  - check with `kustomize build` and the infra CI, then, after the rollout,
+    that `kubectl -n agents get agentproject` still lists `bloop` and
+    `ai-operator`.
+
+  What remains explicit is known only after R6's infra MR; record it here
+  when the cleanup lands.
