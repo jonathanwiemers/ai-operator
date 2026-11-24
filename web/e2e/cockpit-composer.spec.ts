@@ -12,6 +12,7 @@ import type { MilestoneView, StreamEvent } from '../src/types'
 import { answer, now } from './fixtures'
 import { ago } from './fixtures/clock'
 import { paymentsMilestone } from './fixtures/stream'
+import { journeyAt } from './journey'
 
 const milestonePath = '/projects/team-a/shop/milestones/14'
 
@@ -69,7 +70,7 @@ const withPerms = (perms: Partial<NonNullable<MilestoneView['permissions']>>): M
   permissions: { ...paymentsMilestone.permissions!, ...perms },
 })
 
-test('with the chat grant: the pilot line and the chat to the pilot, no Ask pilot and no drawer@1280', async ({ page, baseURL }) => {
+test('with the chat grant: the pilot line and the chat to the pilot, no Ask pilot and no drawer@1280', journeyAt(1280), async ({ page, baseURL }) => {
   const { problems } = await open(page, baseURL, milestonePath)
   await expect(current(page)).toHaveText(/^Cockpit/)
   await expect(composer(page)).toHaveAttribute('aria-label', 'Message the pilot')

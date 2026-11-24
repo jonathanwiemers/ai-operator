@@ -14,6 +14,7 @@ does under the hood is in [Desk behaviour in detail](#desk-behaviour-in-detail).
 make ts-types  # web/src/generated/*.ts from the Go views (tygo.yaml)
 make ui        # ts-types (with Go) + npm ci + tests + type-check + build into web/dist/app (embedded by go build) + bundle budget
 make ui-e2e    # make ui, then the browser checks (see Checks)
+make ui-e2e-journey  # make ui, then only the journey set (see Checks)
 make run-ui    # UI without login on http://127.0.0.1:9080, against your kubeconfig
 cd web && npm run dev   # live reload on http://localhost:5173, API proxied to :9080
 ```
@@ -165,9 +166,21 @@ kubectl -n research-dev patch agentresearch q-… --subresource=status --type=me
 Playwright checks the built Desk in Chromium (`web/e2e`). It runs every
 route at 375×812, 768×1024 and 1280×800 px.
 
+The checks come in two sets:
+
+- **Journey set**: the critical user journeys at 1280 px, about 25 checks
+  tagged `@journey` with `journeyAt(width)` from `web/e2e/journey.ts`. The CI
+  `web` job runs it on merge requests that change the web UI. A check joins
+  when its failure would block the owner's daily loop, not for coverage.
+- **Full set**: every check at every width. CI runs it when a merge request
+  changes `web/e2e` or `web/playwright.config.ts`, on pipelines started by
+  hand, and with `FORCE_CI_ALL=true` or `[ci-all]` in the commit message.
+
 ```sh
 make ui-e2e                  # make ui, install Chromium, npm run e2e
+make ui-e2e-journey          # make ui, install Chromium, npm run e2e:journey
 cd web && npm run e2e        # against the current web/dist/app
+cd web && npm run e2e:journey   # the journey set only
 cd web && npx playwright test -g inbox   # one route
 ```
 
@@ -267,9 +280,10 @@ How it works:
   The HTML report is in `web/e2e-results/report`, and traces of failed
   checks are in `web/e2e-results/output`.
 
-  In CI the `ui-e2e` job keeps `web/e2e-results/` for two weeks, also when
+  In CI the `web` job keeps `web/e2e-results/` for two weeks, also when
   it fails ("Desk screenshots" on the merge request). UI merge requests
-  link the 375 px and 1280 px screenshots.
+  link the 375 px and 1280 px screenshots; the journey set takes 1280 px
+  only, so take the 375 px ones with `make ui-e2e` or a `[ci-all]` push.
 
 ### Docs screenshots
 
@@ -300,7 +314,7 @@ in `web/dist/app/assets`. Only `App.vue` (the shell) and `SignIn.vue` are in
 the initial bundle, with what they import.
 
 `make ui` runs `npm run budget` (`web/scripts/bundle-budget.mjs`) after the
-build, so the CI `ui` job enforces it. It prints
+build, so the CI `web` job enforces it. It prints
 `initial: X kB (JS a, CSS b), cap: C kB` and fails above `capKB` in
 `web/bundle-budget.json`.
 

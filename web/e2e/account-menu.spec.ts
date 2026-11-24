@@ -5,6 +5,7 @@
 // Run with npm run e2e (built UI, Chromium).
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Page } from '@playwright/test'
+import { journeyAt } from './journey'
 import type { Me, ProjectSummary } from '../src/types'
 import { answer, now } from './fixtures'
 import { projects } from './fixtures/rail'
@@ -81,7 +82,7 @@ test('each usage meter says when its window resets, muted once past@1280', async
 // The account button is in the tab order and opens the menu by keyboard;
 // with OIDC the menu shows the login, its roles and lifetime, Appearance,
 // the version and Sign out; Escape closes it and focus returns.
-test('the account menu opens by keyboard and shows the login and Sign out@1280', async ({ page, baseURL }) => {
+test('the account menu opens by keyboard and shows the login and Sign out@1280', journeyAt(1280), async ({ page, baseURL }) => {
   const { problems } = await open(page, baseURL)
   const button = page.locator('[data-account-button]')
   await expect(button).toHaveAttribute('aria-label', /^Account, jo, (Live|Offline)$/)

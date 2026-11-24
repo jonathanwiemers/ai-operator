@@ -9,6 +9,7 @@
 // Chromium).
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Page } from '@playwright/test'
+import { journeyAt } from './journey'
 import { answer, now } from './fixtures'
 
 const milestonePath = '/projects/team-a/shop/milestones/14'
@@ -84,7 +85,7 @@ async function axe(page: Page, include: string) {
   return results.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`)
 }
 
-test('the panel is a column beside the Cockpit, each view opens from the switch@1280', async ({ page, baseURL }) => {
+test('the panel is a column beside the Cockpit, each view opens from the switch@1280', journeyAt(1280), async ({ page, baseURL }) => {
   const problems = await open(page, baseURL, milestonePath, 1280)
   await expect(panel(page)).toBeVisible()
   await expect(page.locator('main [data-panel-open]')).toHaveCount(0)

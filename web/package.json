@@ -10,6 +10,7 @@
     "test": "node --test",
     "budget": "node scripts/bundle-budget.mjs",
     "e2e": "tsc -p e2e/tsconfig.json && playwright test",
+    "e2e:journey": "tsc -p e2e/tsconfig.json && playwright test --grep @journey",
     "knip": "knip"
   },
   "dependencies": {

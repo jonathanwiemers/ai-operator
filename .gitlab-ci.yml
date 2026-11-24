@@ -1,5 +1,5 @@
-# The checks of .github/workflows/ci.yml, in few jobs (check, test, ui, knip,
-# ui-e2e; docs/specs/ci-time-reduction.spec.md), and the release
+# The checks of .github/workflows/ci.yml, in few jobs (check, test, web;
+# docs/specs/ci-time-reduction.spec.md), and the release
 # job, the GitLab counterpart of .github/workflows/release.yml: on a release
 # tag it publishes the images and the chart to registry.gitlab.com and adds
 # the install section to the GitLab release (docs/contributing/releasing.md).
@@ -87,20 +87,11 @@ default:
       changes: *go-test-paths
     - if: $CI_PIPELINE_SOURCE =~ /^(web|api)$/
 
-.web-rules:
-  rules:
-    - if: $CI_COMMIT_TAG
-      when: never
-    - if: $FORCE_CI_ALL == "true" || $CI_COMMIT_MESSAGE =~ /\[ci-all\]/i
-    - if: $CI_PIPELINE_SOURCE =~ /^(merge_request_event|push)$/
-      changes: *web-paths
-    - if: $CI_PIPELINE_SOURCE =~ /^(web|api)$/
-
 .go:
   extends: [.check, .mise-task]
   # The multiarch runner (infra/cluster gitlab-runner) prefers native arm64 (mac-ci-arm) and
   # falls back to amd64 nodes when the Mac is off. The toolchain image and postgres are
-  # multi-arch; the release job (amd64 images) and ui-e2e (Chromium) stay on the default runner.
+  # multi-arch; the release job (amd64 images) and web (Chromium) stay on the default runner.
   tags: [multiarch]
   variables:
     GOMODCACHE: $CI_PROJECT_DIR/.cache/go-mod
@@ -157,56 +148,58 @@ test:
     expire_in: 1 week
     paths: [coverage.out]
 
-# make ui also regenerates the UI types (ts-types), so it shares the Go cache.
-ui:
-  extends: [.go, .web-rules]
-  variables:
-    MISE_TASK: ui
-    npm_config_cache: $CI_PROJECT_DIR/.cache/npm
-  cache:
-    - key:
-        files: [go.sum]
-        prefix: ui
-      paths: [.cache/go-mod, .cache/go-build]
-    - key:
-        files: [web/package-lock.json]
-      paths: [.cache/npm]
+# The web UI in one job (docs/contributing/web-ui.md "Checks"): npm ci once,
+# then unit tests, build, bundle budget, knip (unused files, exports and
+# dependencies; blocking) and the browser checks of the built Desk with the
+# server's CSP and a mocked API. The generated view types are checked by the
+# drift step of check, so this job needs no Go.
+# Browser checks come in two sets (web/e2e/journey.ts):
+#   - journey: the critical user journeys at 1280 px (`--grep @journey`), on
+#     merge requests and main pushes that change the web UI;
+#   - full: every check at 375, 768 and 1280 px, when the checks themselves
+#     change (web/e2e, the Playwright config), and on web/api pipelines.
+# The Playwright image is on mcr.microsoft.com, which the Dependency Proxy
+# does not serve, so the node image installs Chromium and its libraries.
+.e2e-paths: &e2e-paths
+  - web/e2e/**/*
+  - web/playwright.config.ts
+  - .gitlab-ci.yml
 
-# Unused files, exports and dependencies of the web UI (web/knip.json):
-# blocking, a new unused export fails the pipeline.
-knip:
-  extends: [.check, .mise-task, .web-rules]
-  variables:
-    MISE_TASK: knip
-    npm_config_cache: $CI_PROJECT_DIR/.cache/npm
-  cache:
-    key:
-      files: [web/package-lock.json]
-      prefix: knip
-    paths: [.cache/npm]
-
-# Browser checks of the built Desk (docs/contributing/web-ui.md "Checks"): every route at
-# 375, 768 and 1280 px with the server's CSP and a mocked API. The
-# Playwright image is on mcr.microsoft.com, which the Dependency Proxy does
-# not serve, so the node image installs Chromium and its libraries.
-ui-e2e:
-  extends: [.check, .web-rules]
+web:
+  extends: .check
   image: ${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}/node:22-bookworm
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - if: $FORCE_CI_ALL == "true" || $CI_COMMIT_MESSAGE =~ /\[ci-all\]/i
+      variables: { E2E_SET: full }
+    - if: $CI_PIPELINE_SOURCE =~ /^(web|api)$/
+      variables: { E2E_SET: full }
+    - if: $CI_PIPELINE_SOURCE =~ /^(merge_request_event|push)$/
+      changes: *e2e-paths
+      variables: { E2E_SET: full }
+    - if: $CI_PIPELINE_SOURCE =~ /^(merge_request_event|push)$/
+      changes: *web-paths
+      variables: { E2E_SET: journey }
   variables:
     npm_config_cache: $CI_PROJECT_DIR/.cache/npm
     PLAYWRIGHT_BROWSERS_PATH: $CI_PROJECT_DIR/.cache/ms-playwright
   cache:
     key:
       files: [web/package-lock.json]
-      prefix: ui-e2e
+      prefix: web
     paths: [.cache/npm, .cache/ms-playwright]
   before_script:
     - cd web
   script:
     - npm ci
-    - npx playwright install --with-deps chromium
+    - npm test
     - npm run build
-    - npm run e2e
+    - npm run budget
+    - npm run knip
+    - npx playwright install --with-deps chromium
+    - echo "Browser checks, $E2E_SET set"
+    - if [ "$E2E_SET" = journey ]; then npm run e2e:journey; else npm run e2e; fi
   artifacts:
     when: always
     expire_in: 2 weeks

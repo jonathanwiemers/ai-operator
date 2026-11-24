@@ -101,14 +101,14 @@ Measure the install share in the first MR and pick.
     Budget: ≤ 25 tests, ≤ 3 min run. Candidates (final pick in MR 2): Desk loads and signs
     in again after expiry (`sign in again`), overview cards, inbox → answer a prompt card
     (`needs-you`, `prompt-card`), composer sends a chat message, milestone page tabs and
-    decisions, pilot drawer, search palette, axe check of the top-level routes. A test joins
+    decisions, pilot composer, search palette, axe check of the top-level routes. A test joins
     the set when its failure would block the owner's daily loop, not for coverage.
   - **Full set** (nightly, `web`/`api` runs, and MRs that change `web/e2e/**` or
     `web/playwright.config.ts` so a new or changed spec is proven before merge): every spec,
     every width.
-  - Widths: the journey set runs at 1280 only (`E2E_WIDTHS` env read by the specs that loop
-    widths: account-menu, cockpit, inbox-handled, and the a11y/overflow sweeps); the full set
-    runs 375/768/1280. `known-a11y`/`known-overflow` keys stay unchanged.
+  - Widths: the journey set runs at 1280 only (`journeyAt(width)` in `web/e2e/journey.ts`
+    tags only the 1280 iteration of a width loop); the full set runs 375/768/1280.
+    `known-a11y`/`known-overflow` keys stay unchanged.
   - `npm run e2e:journey` / `make ui-e2e-journey` for the same set locally.
 
 ### 5.6 Test pruning (D, follow-up MR)
@@ -165,7 +165,7 @@ Order 1 → 2 → 3; 4 independent after 3.
 | # | Title | MR | Status |
 |---|---|---|---|
 | 1 | ci: one check job and path gates for test, ui, knip and e2e | [!801](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/801) | open |
-| 2 | | | |
+| 2 | ci: one web job with a journey and a full browser-check set | [!802](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/802) | open |
 | 3 | | | |
 | 4 | | | |
 
@@ -174,3 +174,9 @@ Order 1 → 2 → 3; 4 independent after 3.
 - 2026-11-24: created from CI timing brainstorm; owner chose bundles A–D.
 - 2026-11-24: owner steer: keep e2e, split into a journey set (MRs) and the full set
   (nightly + MRs touching the specs) instead of only cutting widths (§5.5).
+- 2026-11-24 (MR 2): journey set = 24 checks at 1280 (14 s locally), picked from sign in
+  again, overview, inbox, composer, decisions, search, skip link, Cockpit, Needs you, prompt
+  card, pilot composer (was pilot drawer, removed on main), handled inbox, milestone panel, account menu, project queue. Widths by
+  tag (`journeyAt`) instead of an `E2E_WIDTHS` env: no spec reads env, and `--grep` alone
+  picks the set. Chromium still installs in the job (`--with-deps`); baking it into an image
+  (§5.2) waits for the timings of the first runs.

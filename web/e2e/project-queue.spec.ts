@@ -5,6 +5,7 @@
 // Run with npm run e2e (built UI, Chromium).
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Page } from '@playwright/test'
+import { journeyAt } from './journey'
 import { answer, now } from './fixtures'
 import { cost } from './fixtures/clock'
 import { shopDetail } from './fixtures/stream'
@@ -140,7 +141,7 @@ test('dragging %7 above %6 sends move before %6 and stays pending until the sync
 })
 
 for (const width of [375, 1280]) {
-  test(`the row menu moves %7 up by keyboard and keeps the focus on it@${width}`, async ({ page, baseURL }) => {
+  test(`the row menu moves %7 up by keyboard and keeps the focus on it@${width}`, journeyAt(width), async ({ page, baseURL }) => {
     const server = three()
     await open(page, baseURL, server, width)
     const menu = queue(page).getByRole('button', { name: 'Move %7' })

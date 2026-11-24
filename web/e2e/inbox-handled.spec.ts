@@ -3,6 +3,7 @@
 // their labels, a row opens its problem on the milestone's Needs you tab,
 // and Open keeps the open items. Run with npm run e2e (built UI, Chromium).
 import { expect, test, type Page } from '@playwright/test'
+import { journeyAt } from './journey'
 import { answer } from './fixtures'
 import { inbox } from './fixtures/rail'
 
@@ -77,7 +78,7 @@ for (const size of widths) {
     expect(problems).toEqual([])
   })
 
-  test(`a row opens the milestone's Cockpit at the problem@${size.width}`, async ({ page, baseURL }) => {
+  test(`a row opens the milestone's Cockpit at the problem@${size.width}`, journeyAt(size.width), async ({ page, baseURL }) => {
     const problems = await open(page, baseURL, '/inbox?view=handled', size)
     await handledRows(page).nth(0).getByRole('link').click()
     await expect(page).toHaveURL(/\/projects\/team-a\/shop\/milestones\/14\/problems\/issue-281$/)

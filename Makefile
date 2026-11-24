@@ -86,7 +86,7 @@ gosec: ## Audit the Go code for insecure patterns (gosec); not run in CI.
 	go tool gosec -quiet -exclude-generated ./...
 
 .PHONY: ui
-# ts-types first where Go is installed (the CI ui job runs in a node image;
+# ts-types first where Go is installed (the CI web job runs in a node image;
 # the drift step of the check job checks the generated types).
 ui: ## Test, type-check and build the web UI into web/dist/app (embedded by go build), check the bundle budget.
 	if command -v go >/dev/null; then $(MAKE) ts-types; fi
@@ -94,9 +94,13 @@ ui: ## Test, type-check and build the web UI into web/dist/app (embedded by go b
 
 .PHONY: ui-e2e
 # The browser's system libraries come with `npx playwright install-deps
-# chromium` (root), as in the CI ui-e2e job.
-ui-e2e: ui ## Check the built web UI in Chromium at phone, tablet and desktop width (docs/contributing/web-ui.md "Checks").
+# chromium` (root), as in the CI web job.
+ui-e2e: ui ## Check the built web UI in Chromium at phone, tablet and desktop width: the full set (docs/contributing/web-ui.md "Checks").
 	cd web && npx playwright install chromium && npm run e2e
+
+.PHONY: ui-e2e-journey
+ui-e2e-journey: ui ## Only the critical user journeys at 1280 px, the set merge requests run (web/e2e/journey.ts).
+	cd web && npx playwright install chromium && npm run e2e:journey
 
 .PHONY: docs-screenshots
 docs-screenshots: ui ## Render the Desk screenshots of the docs from the browser checks' fake data into docs/assets/screenshots (needs cwebp; docs/contributing/web-ui.md "Docs screenshots").

@@ -5,6 +5,7 @@
 // (#279, #280). Run with npm run e2e (built UI, Chromium).
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Page } from '@playwright/test'
+import { journeyAt } from './journey'
 import { answer, now } from './fixtures'
 import { ago } from './fixtures/clock'
 import type { StreamEvent, StreamKind } from '../src/types'
@@ -103,7 +104,7 @@ const row = (page: Page, iid: number) =>
   pinned(page).locator(`[data-problem="issue-${iid}"], [data-problem="${1000 + iid}"], [data-problem="${2000 + iid}"]`)
 
 for (const width of [375, 1280]) {
-  test(`the milestone opens on the Cockpit: pinned cards first, then the stream with closed groups@${width}`, async ({ page, baseURL }) => {
+  test(`the milestone opens on the Cockpit: pinned cards first, then the stream with closed groups@${width}`, journeyAt(width), async ({ page, baseURL }) => {
     const { problems } = await open(page, baseURL, milestonePath, width)
     await expect(view(page).getByRole('link', { name: /^Cockpit/ })).toHaveAttribute('aria-current', 'page')
     await expect(row(page, 281)).toBeVisible()
@@ -181,7 +182,7 @@ for (const width of [375, 1280]) {
     ['the problem route', `${milestonePath}/problems/issue-281`],
     ['a #problem- link', `${milestonePath}#problem-281`],
   ] as const) {
-    test(`${name} opens the Cockpit at its card@${width}`, async ({ page, baseURL }) => {
+    test(`${name} opens the Cockpit at its card@${width}`, journeyAt(width), async ({ page, baseURL }) => {
       const { problems } = await open(page, baseURL, path, width)
       await expect(page).toHaveURL(/\/milestones\/14\/problems\/issue-281$/)
       await expect(view(page).getByRole('link', { name: /^Cockpit/ })).toHaveAttribute('aria-current', 'page')

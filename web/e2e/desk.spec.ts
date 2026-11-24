@@ -4,6 +4,7 @@
 import { join } from 'node:path'
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Page } from '@playwright/test'
+import { journeyAt } from './journey'
 import { answer, now } from './fixtures'
 import { inbox, withSet, withSetProjects } from './fixtures/rail'
 import { features } from './fixtures/session'
@@ -24,6 +25,9 @@ const widths = [
   { width: 768, height: 1024 },
   { width: 1280, height: 800 },
 ]
+
+// Route checks in the journey set (./journey.ts): the Desk's two daily pages.
+const journeyRoutes = new Set(['overview@1180', 'inbox@1280'])
 
 // The overflow check of the dashboard, project, milestone, task and issue
 // routes runs at each width's lower edge (phone, tablet from 760 px, desktop
@@ -434,7 +438,7 @@ for (const route of routes) {
   const desktop = sizes[sizes.length - 1]!
   for (const size of sizes) {
     const id = `${route.name}@${size.width}`
-    test(id, async ({ page, baseURL }, testInfo) => {
+    test(id, journeyRoutes.has(id) ? { tag: ['@journey'] } : {}, async ({ page, baseURL }, testInfo) => {
       const known = knownOverflow[id]
       test.fail(known !== undefined, `known overflow: ${known}`)
 
@@ -598,7 +602,7 @@ test.describe('sign in again', () => {
     return { problems, seen }
   }
 
-  test('a 401 goes to the login with the current route@1280', async ({ page, baseURL }) => {
+  test('a 401 goes to the login with the current route@1280', journeyAt(1280), async ({ page, baseURL }) => {
     const { problems, seen } = await open(page, baseURL, path)
     await page.waitForURL((u) => u.pathname === '/oauth2/login')
     expect(new URL(page.url()).searchParams.get('return')).toBe(path)
@@ -633,7 +637,7 @@ test.describe('sign in again', () => {
     { route: 'task-chat', composer: '.composer.chat', text: 'Half a thought for the agent' },
     { route: 'stream-project-activity', composer: '.composer.note', text: 'A note not sent yet' },
   ]) {
-    test(`unsent text in ${c.composer} survives the sign-in@1280`, async ({ page, baseURL }) => {
+    test(`unsent text in ${c.composer} survives the sign-in@1280`, journeyAt(1280), async ({ page, baseURL }) => {
       const route = routes.find((r) => r.name === c.route)!
       const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
       const seen = { logins: 0, back: '' }
@@ -2690,7 +2694,7 @@ test.describe('landmarks and route focus', () => {
   }
 
   for (const size of sizes) {
-    test(`the first Tab focuses Skip to content, Enter moves to main@${size.width}`, async ({ page, baseURL }) => {
+    test(`the first Tab focuses Skip to content, Enter moves to main@${size.width}`, journeyAt(size.width), async ({ page, baseURL }) => {
       const problems = await load(page, baseURL, overview, size)
       const url = page.url()
       await page.keyboard.press('Tab')
@@ -3089,7 +3093,7 @@ test.describe('composer', () => {
   for (const size of [widths[0]!, widths[2]!]) {
     const phone = size.width < 760
 
-    test(`task chat sends a message@${size.width}`, async ({ page, baseURL }, testInfo) => {
+    test(`task chat sends a message@${size.width}`, journeyAt(size.width), async ({ page, baseURL }, testInfo) => {
       const { route, problems } = await open(page, baseURL, 'task-chat', size)
       const posts = await capture(page, /\/api\/v1\/projects\/team-a\/shop\/tasks\/[^/]+\/chat$/, { id: 99 })
       await page.goto(route.path)
@@ -3148,7 +3152,7 @@ test.describe('composer', () => {
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })
 
-    test(`project stream posts a note@${size.width}`, async ({ page, baseURL }, testInfo) => {
+    test(`project stream posts a note@${size.width}`, journeyAt(size.width), async ({ page, baseURL }, testInfo) => {
       const { route, problems } = await open(page, baseURL, 'stream-project-activity', size)
       const posts = await capture(page, /\/api\/v1\/projects\/team-a\/shop\/(milestones\/\d+|tasks\/[^/]+)\/notes$/, {})
       await page.goto(route.path)
@@ -3507,7 +3511,7 @@ test.describe('milestone rows', () => {
 // at least 44 px at every width.
 test.describe('overview cards', () => {
   for (const size of widths) {
-    test(`working now columns@${size.width}`, async ({ page, baseURL }, testInfo) => {
+    test(`working now columns@${size.width}`, journeyAt(size.width), async ({ page, baseURL }, testInfo) => {
       const route = routes.find((r) => r.name === 'overview')!
       const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
       await page.setViewportSize(size)
@@ -3679,7 +3683,7 @@ test.describe('milestone decisions', () => {
   for (const size of widths) {
     const phone = size.width < 760
 
-    test(`cards, search and state chips@${size.width}`, async ({ page, baseURL }, testInfo) => {
+    test(`cards, search and state chips@${size.width}`, journeyAt(size.width), async ({ page, baseURL }, testInfo) => {
       const problems = await open(page, baseURL, size)
       const main = page.locator('main')
       const cards = main.locator('[data-decision]')
@@ -5019,7 +5023,7 @@ test.describe('search palette', () => {
 
   // The visible buttons: rail header on desktop, top bar on phones.
   for (const [width, name] of [[1280, /^Search \(/], [375, 'Search']] as const) {
-    test(`the search button opens the palette@${width}`, async ({ page, baseURL }) => {
+    test(`the search button opens the palette@${width}`, journeyAt(width), async ({ page, baseURL }) => {
       const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
       await page.setViewportSize({ width, height: width === 375 ? 812 : 800 })
       await watch(page, new URL(baseURL ?? '').origin, problems)

@@ -20,8 +20,10 @@
   After changing Go code, also run `make deadcode` and `make vulncheck`;
   both must print no finding, as the CI `check` job blocks on them
   (`mise run check` runs all its steps locally). After changing the web
-  UI (`web/`): `make ui` (type-check and build) and `cd web && npm run knip`
-  (unused files, exports and dependencies; blocking in CI).
+  UI (`web/`): `make ui` (type-check and build), `cd web && npm run knip`
+  (unused files, exports and dependencies; blocking in CI) and `make
+  ui-e2e-journey` (the browser checks merge requests run; a new check of
+  a daily journey gets `journeyAt` from `web/e2e/journey.ts`).
 - CI measures Go statement coverage per package against
   `hack/coverage-baseline.txt` and fails when a package drops more than 0.2
   points. A test may be deleted only if its package's coverage stays the

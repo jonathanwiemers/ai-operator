@@ -3,6 +3,7 @@
 // Run with npm run e2e (built UI, Chromium).
 import { join } from 'node:path'
 import { expect, test, type Page } from '@playwright/test'
+import { journeyAt } from './journey'
 import { answer, answerProblems, now } from './fixtures'
 import { incident558, incident558Dirty, incidentError } from './fixtures/problem'
 import { paymentsMilestone } from './fixtures/stream'
@@ -113,7 +114,7 @@ const pilotPOST = async (page: Page, posts: unknown[]) => {
 }
 
 for (const size of widths) {
-  test(`a prompt link redirects to its problem thread in the Cockpit@${size.width}`, async ({ page, baseURL }) => {
+  test(`a prompt link redirects to its problem thread in the Cockpit@${size.width}`, journeyAt(size.width), async ({ page, baseURL }) => {
     const problems = await open(page, baseURL, `${milestonePath}#prompt-Q3`, size)
     await expect(page).toHaveURL(/\/milestones\/14\/problems\/issue-0$/)
     await expect(tab(page, /^Cockpit/)).toHaveAttribute('aria-current', 'page')
@@ -175,7 +176,7 @@ for (const size of widths) {
     expect(problems).toEqual([])
   })
 
-  test(`composer posts problem: #558 and shows sent@${size.width}`, async ({ page, baseURL }) => {
+  test(`composer posts problem: #558 and shows sent@${size.width}`, journeyAt(size.width), async ({ page, baseURL }) => {
     const warms: string[] = [], posts: unknown[] = []
     const problems = await open(page, baseURL, `${milestonePath}?tab=needs`, size, { milestone: incident558, warms })
     await pilotPOST(page, posts)
@@ -207,7 +208,7 @@ for (const size of widths) {
 
   // Decision 7: Needs you is listed only while something needs you, with
   // the count as its badge; Issues keeps the compact pause card as the way in.
-  test(`Needs you: hidden while running, shown with a badge when paused@${size.width}`, async ({ page, baseURL }) => {
+  test(`Needs you: hidden while running, shown with a badge when paused@${size.width}`, journeyAt(size.width), async ({ page, baseURL }) => {
     // The page opens on the Cockpit, with Issues as a tab of its own.
     // quiet has a retrospective; without it the row is the five tabs.
     let problems = await open(page, baseURL, milestonePath, size, { milestone: { ...quiet, retrospective: undefined } })

@@ -1,6 +1,7 @@
 // The prompt card in the problem thread bar after an answer, and the
 // pilot drawer's one-line prompt rows. Run with npm run e2e (built UI, Chromium).
 import { expect, test, type Page } from '@playwright/test'
+import { journeyAt } from './journey'
 import { answer, now } from './fixtures'
 import { refundsPrompt } from './fixtures/task'
 
@@ -74,7 +75,7 @@ const clean = { unknownAPI: [], otherOrigin: [], pageErrors: [] }
 const command = (cmd: Record<string, string>) => ({ body: JSON.stringify(cmd), clientKey: expect.any(String), kind: 'command' })
 
 for (const size of widths) {
-  test(`a click hides the buttons and shows sending@${size.width}`, async ({ page, baseURL }) => {
+  test(`a click hides the buttons and shows sending@${size.width}`, journeyAt(size.width), async ({ page, baseURL }) => {
     const { problems, posts } = await open(page, baseURL, needsTab, size)
     const card = page.locator(`#prompt-${refundsPrompt.id}`)
     await card.getByRole('button', { name: 'Refuse above one capture', exact: true }).click()
@@ -100,7 +101,7 @@ for (const size of widths) {
     expect(problems).toEqual(clean)
   })
 
-  test(`the answer shows as the owner's message in the thread@${size.width}`, async ({ page, baseURL }) => {
+  test(`the answer shows as the owner's message in the thread@${size.width}`, journeyAt(size.width), async ({ page, baseURL }) => {
     const { problems, posts } = await open(page, baseURL, needsTab, size)
     const card = page.locator(`#prompt-${refundsPrompt.id}`)
     await card.getByRole('button', { name: 'Refuse above one capture', exact: true }).click()
