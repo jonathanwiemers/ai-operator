@@ -218,9 +218,15 @@ reason. That needs no answer from you. See
 
 ## Your words to the agent
 
-`/pilot tell #12: use the v2 API` puts a prompt to pass your words to #12's
-implementer as they are. After "Do it" the implementer gets them with its
-next run, as "instruction from @you via pilot", and the issue shows them.
+`/pilot tell #12: use the v2 API` passes your words to #12's implementer as
+they are, at once: you wrote them, so there is no prompt to accept. If #12
+runs, its running implementer gets them mid-run. Otherwise they go into its
+next run, as "instruction from @you via pilot". The reply says which, and
+the tracking issue and #12 show it.
+
+In the Desk chat to the pilot, "tell #12 to use the v2 API" does the same:
+the pilot passes on your words exactly as you wrote them, without an
+Accept. If it would change them, nothing is passed on.
 
 ## Standing rules
 

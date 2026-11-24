@@ -802,7 +802,12 @@ once an owner answers yes. The actions:
   install-toolchains (install the tools pinned on the default branch, run
   the failing job's command and apply its output) or rerun (finish what is
   unfinished, fix what is broken); your note reaches the implementer as a
-  hint, never as an instruction;
+  hint, never as an instruction; an owner's own words (their "/pilot tell
+  #N: …" or Desk chat) are an instruct with their text, which only the
+  operator or the owner's chat turn sets: on a running issue
+  (issues[].running) they reach its implementer at once, mid-run, and go
+  into its next run otherwise; issues[].running.waitingOwnerMessages are
+  the ones not delivered yet;
 - openIssue, with a title and a body: a new issue, not handed to the agent,
   for a problem outside the milestone's issues (e.g. the agent image);
 - fixFlaky, issue N: the flaky issue (ci::flaky) of a flaky event goes to

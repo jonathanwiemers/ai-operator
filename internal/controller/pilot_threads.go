@@ -75,9 +75,11 @@ func (r *AgentProjectReconciler) threadAnswers(ctx context.Context, gl gitlab.AP
 	return nil
 }
 
-// proposeTell turns an owner's "/pilot tell #N: …" into a proposal prompt
-// that passes their words on to the implementer of #N verbatim.
-func (r *AgentProjectReconciler) proposeTell(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
+// tell passes an owner's "/pilot tell #N: …" on to the implementer of #N
+// verbatim, accepted by that owner: the owner is the author of their own
+// words, so it needs no Accept. It runs at the end of the poll as every
+// accepted proposal does (runAccepted), and the reply says where it goes.
+func (r *AgentProjectReconciler) tell(ctx context.Context, project *aiv1.AgentProject,
 	st, coord *aiv1.AgentTask, n pilotNote, iid int64, text string) (string, error) {
 	tasks, err := r.issueTasks(ctx, project, st.Spec.Milestone.IID)
 	if err != nil {
@@ -85,16 +87,23 @@ func (r *AgentProjectReconciler) proposeTell(ctx context.Context, gl gitlab.API,
 	}
 	a := aiv1.PilotAction{Tool: "instruct", IssueIID: iid, Owner: n.Author.Username, Text: textutil.Truncate(text, maxPilotMessage)}
 	if err := validAction(a, st, tasks, nil); err != nil {
-		return "Not proposed: " + err.Error() + ".", nil
+		return "Not passed on: " + err.Error() + ".", nil
 	}
-	tracking := trackingIssue(st, coord)
 	p := aiv1.PilotProposal{Summary: fmt.Sprintf("pass @%s's words on to the implementer of #%d", n.Author.Username, iid),
-		Actions: []aiv1.PilotAction{a}, State: aiv1.PilotState(st, tasks, []aiv1.PilotAction{a}), Source: fmt.Sprintf("tell/%d", n.ID)}
-	id, err := r.postProposals(ctx, gl, project, spec, st, coord, tracking, p)
-	if err != nil {
+		Actions: []aiv1.PilotAction{a}, State: aiv1.PilotState(st, tasks, []aiv1.PilotAction{a}), Source: fmt.Sprintf("tell/%d", n.ID),
+		AcceptedBy: n.Author.Username, Trigger: iid}
+	if err := r.patchProposals(ctx, coord, func(ps *aiv1.PilotStatus) {
+		// Once per note, also when the poll that took it is run again.
+		if !slices.ContainsFunc(ps.Accepted, func(q aiv1.PilotProposal) bool { return q.Source == p.Source }) {
+			ps.Accepted = append(ps.Accepted, p)
+		}
+	}); err != nil {
 		return "", err
 	}
-	return proposedReply(id, tracking), nil
+	if t := tasks[iid]; t != nil && runInProgress(t) {
+		return fmt.Sprintf("Passed on to #%d's running implementer; I'll say here when it is delivered.", iid), nil
+	}
+	return fmt.Sprintf("Queued for #%d's next run.", iid), nil
 }
 
 // proposedReply is the reply to an owner whose command became prompt id

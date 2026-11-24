@@ -245,7 +245,7 @@ func (r *AgentProjectReconciler) routePilot(ctx context.Context, gl gitlab.API, 
 		case answer:
 			reply, err = r.answerProposal(ctx, project, spec, st, coord, n.Author.Username, n.Author.ID, n.issue, id, yes, false)
 		case tell:
-			reply, err = r.proposeTell(ctx, gl, project, spec, st, coord, n, iid, text)
+			reply, err = r.tell(ctx, project, st, coord, n, iid, text)
 		case list:
 			reply = listRules(spec, st)
 		case forget:

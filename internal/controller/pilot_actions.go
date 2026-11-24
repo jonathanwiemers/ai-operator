@@ -78,7 +78,7 @@ func (r *AgentProjectReconciler) issueTasks(ctx context.Context, project *aiv1.A
 }
 
 // postProposals puts the proposals of the pilot's runs and extra (the
-// operator's own, from "/pilot tell") to the owners as proposal prompts on
+// operator's own, from "/pilot forget") to the owners as proposal prompts on
 // the milestone's spec task st; their comments go on the tracking issue.
 // What a managing pilot runs on its own (manage) is audited there instead.
 // A proposal without an action the operator would run, or made on a state
@@ -190,7 +190,8 @@ func (r *AgentProjectReconciler) postProposals(ctx context.Context, gl gitlab.AP
 }
 
 // chatAccepted is the owner whose "problem: #<Trigger> …" asked for chat proposal p,
-// all on that issue or the milestone, in a state that holds; else why not.
+// all on that issue or the milestone, in a state that holds, or whose own
+// words p passes on (ownWords); else why not.
 func chatAccepted(st, coord *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, p aiv1.PilotProposal) (by, why string) {
 	i := slices.IndexFunc(coord.Spec.Source.ChatMessages, func(m aiv1.ChatMessage) bool { return m.ID == p.ChatMessageID })
 	if i < 0 {
@@ -201,16 +202,35 @@ func chatAccepted(st, coord *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, p 
 	switch {
 	case !slices.Contains(coord.Spec.OwnerSubjects, m.Author):
 		return "", "its author is no owner"
+	case ownWords(m, p) && aiv1.PilotState(st, tasks, p.Actions) != p.State:
+		return "", "the milestone's state changed"
+	case ownWords(m, p):
+		return cmp.Or(m.AuthorName, m.Author), ""
 	case p.Trigger <= 0 || !ok || rest != "" && strings.ContainsRune("0123456789", rune(rest[0])):
 		return "", "the message is not about the proposal's issue"
 	case len(p.Actions) == 0 || len(p.Options) > 0 || slices.ContainsFunc(p.Actions, func(a aiv1.PilotAction) bool {
-		return a.IssueIID != 0 && a.IssueIID != p.Trigger || !slices.Contains(chatTools, a.Tool)
+		// Words in an owner's name run only as ownWords.
+		return a.IssueIID != 0 && a.IssueIID != p.Trigger || !slices.Contains(chatTools, a.Tool) || a.Owner != "" || a.Text != ""
 	}):
 		return "", "an action is on another issue or needs an owner's Accept"
 	case aiv1.PilotState(st, tasks, p.Actions) != p.State:
 		return "", "the milestone's state changed"
 	}
 	return cmp.Or(m.AuthorName, m.Author), ""
+}
+
+// ownWords: chat proposal p passes on the words of message m's author
+// verbatim, and nothing else: one instruct on its Trigger, by that author,
+// whose text is a non-empty part of the message as written. The pilot
+// cannot put its own words in an owner's name.
+func ownWords(m aiv1.ChatMessage, p aiv1.PilotProposal) bool {
+	if len(p.Actions) != 1 || len(p.Options) > 0 {
+		return false
+	}
+	a := p.Actions[0]
+	text := strings.TrimSpace(a.Text)
+	return a.Tool == "instruct" && a.Kind == "" && a.Note == "" && a.Owner == m.Author && a.IssueIID > 0 && a.IssueIID == p.Trigger &&
+		text != "" && strings.Contains(strings.TrimSpace(m.Text), text)
 }
 
 // proposalPrompt is the prompt of proposal p: A runs those of its actions
@@ -612,6 +632,8 @@ func (r *AgentProjectReconciler) runAccepted(ctx context.Context, gl gitlab.API,
 		head := fmt.Sprintf("Proposal P%d accepted", p.ID)
 		if p.ChatMessageID != 0 {
 			head = "Asked for in the Desk chat"
+		} else if strings.HasPrefix(p.Source, "tell/") {
+			head = "Told with `/pilot tell`"
 		}
 		fmt.Fprintf(&b, "🧭 %s by `@%s`:", head, p.AcceptedBy)
 		var lines []string

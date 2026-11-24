@@ -216,7 +216,7 @@ the pilot. On a milestone without owners, anyone may ask it questions.
 | Comment | Effect |
 |---------|--------|
 | `/pilot <question>` | The pilot answers where you asked. Example: `/pilot why are we paused?`. It may add a proposal, which goes to the owners as a prompt ("Do it" or "Do nothing"). |
-| `/pilot tell #12: <words>` | Proposes passing your words on to #12's implementer, as your instruction. |
+| `/pilot tell #12: <words>` | Passes your words on to #12's implementer at once, as your instruction, without a prompt. If #12 runs, they reach its running implementer; else they go into its next run. The reply says which. |
 | `/pilot fix the flaky test #340` | Like any question. The pilot may propose handing the flaky-test issue to the agent in this milestone. |
 | `/pilot <spec change>` | Example: `/pilot drop the CSV export from the spec`. The pilot may propose a new spec, shown as a diff. After an owner's yes, the operator writes the description, keeps its `/agent` lines, and the milestone is re-planned. An owner always has to say yes. |
 | `/pilot stop` | The pilot only proposes from now on, until `/pilot go`. A kill switch, kept over restarts. |

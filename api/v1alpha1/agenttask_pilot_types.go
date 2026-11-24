@@ -56,7 +56,9 @@ type PilotAction struct {
 	// +optional
 	Title string `json:"title,omitempty"`
 	// Owner and Text: an owner's own words for the implementer ("/pilot
-	// tell #N: …"). Only the operator sets them.
+	// tell #N: …", or quoted from their Desk chat message). Only the
+	// operator and a chat turn set them; the operator runs a chat turn's
+	// only when the text stands in the owner's message as written.
 	// +optional
 	Owner string `json:"owner,omitempty"`
 	// +optional

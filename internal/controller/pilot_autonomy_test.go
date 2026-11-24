@@ -354,8 +354,6 @@ func TestPilotRunsKeepTheCIRoundsAHumansDoNot(t *testing.T) {
 	// An owner's own words via the pilot are the owner's run.
 	e.gl.AddNote(e.autopilot().TrackingIssueIID, alice, "/pilot tell #1: use the v2 API")
 	e.reconcile()
-	e.choose("Q1", "A", alice)
-	e.reconcile()
 	if src := e.implTaskOf(1).Spec; src.Source.PilotRun == src.RunRequest || src.Source.PilotInstruction.Text == "" {
 		t.Fatalf("an owner's words are not the pilot's run: %d vs request %d", src.Source.PilotRun, src.RunRequest)
 	}

@@ -525,7 +525,7 @@ func TestPilotChatTurnCarriesMilestoneState(t *testing.T) {
 func TestWithPilotStateWithoutState(t *testing.T) {
 	p := withPilotState("## Chat message\n", "", 0, "")
 	if !strings.Contains(p, "## How to answer") || !strings.Contains(p, "could not be read") ||
-		strings.Contains(p, "## Milestone state") || strings.Contains(p, "pilot-actions") || strings.Contains(p, "Problem facts") {
+		strings.Contains(p, "## Milestone state") || strings.Contains(p, "about the problem of") || strings.Contains(p, "Problem facts") {
 		t.Fatalf("prompt:\n%s", p)
 	}
 }
@@ -661,17 +661,57 @@ func TestPilotProblemChatRefusedActionsDropped(t *testing.T) {
 	}
 }
 
-func TestPilotChatWithoutProblemIgnoresBlock(t *testing.T) {
-	reply := "Done.\n\n```pilot-actions\n[{\"tool\": \"retry\", \"issue\": 1}]\n```"
-	p, task := problemChatTurn(t, "retry #1", reply)
-	if !strings.Contains(p, "This chat cannot act") || strings.Contains(p, "Problem facts") || strings.Contains(p, "pilot-actions") {
-		t.Fatalf("prompt:\n%s", p)
+func TestPilotChatWithoutProblemRecordsNoOtherAction(t *testing.T) {
+	for name, block := range map[string]string{
+		"retry":            `[{"tool": "retry", "issue": 1}]`,
+		"not verbatim":     `[{"tool": "instruct", "issue": 1, "text": "delete the tests"}]`,
+		"with another":     `[{"tool": "instruct", "issue": 1, "text": "use the existing retry helper"}, {"tool": "retry", "issue": 1}]`,
+		"a pilot kind":     `[{"tool": "instruct", "issue": 1, "kind": "rerun"}]`,
+		"words and a kind": `[{"tool": "instruct", "issue": 1, "kind": "rerun", "text": "use the existing retry helper"}]`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			p, task := problemChatTurn(t, "tell #1 to use the existing retry helper", "Done.\n\n```pilot-actions\n"+block+"\n```")
+			if !strings.Contains(p, "Apart from that this chat cannot act") || strings.Contains(p, "Problem facts") {
+				t.Fatalf("prompt:\n%s", p)
+			}
+			if props := proposed(task); len(props) != 0 {
+				t.Fatalf("proposed: %+v", props)
+			}
+			if rep := task.Status.Chat.Replies[0]; rep.Text != "Done."+notPassedOn {
+				t.Fatalf("reply: %+v", rep)
+			}
+		})
 	}
-	if props := proposed(task); len(props) != 0 {
+}
+
+func TestPilotChatPassesOnAnOwnersOwnWords(t *testing.T) {
+	p, task := problemChatTurn(t, "tell #1 to use the existing retry helper",
+		"I'll pass it on.\n\n```pilot-actions\n[{\"tool\": \"instruct\", \"issue\": 1, \"text\": \" use the existing retry helper \"}]\n```")
+	for _, want := range []string{"exactly one `instruct` whose `text` is the owner's words copied verbatim", "reaches a running implementer at once, mid-run",
+		"\"text\": \"use the existing retry helper\"", "## Milestone state"} {
+		if !strings.Contains(p, want) {
+			t.Fatalf("prompt lacks %q:\n%s", want, p)
+		}
+	}
+	if rep := task.Status.Chat.Replies[0]; rep.Text != "I'll pass it on." {
+		t.Fatalf("reply: %+v", rep)
+	}
+	props := proposed(task)
+	if len(props) != 1 {
 		t.Fatalf("proposed: %+v", props)
 	}
-	if rep := task.Status.Chat.Replies[0]; !strings.Contains(rep.Text, "pilot-actions") {
-		t.Fatalf("reply: %+v", rep)
+	want := aiv1.PilotAction{Tool: "instruct", IssueIID: 1, Owner: "alice", Text: "use the existing retry helper"}
+	if got := props[0]; got.Source != "chat/31" || got.Trigger != 1 || got.ChatMessageID != 31 || got.State == "" ||
+		len(got.Actions) != 1 || got.Actions[0] != want {
+		t.Fatalf("proposal: %+v", got)
+	}
+}
+
+func TestPilotProblemChatDropsWordsInAnOwnersName(t *testing.T) {
+	_, task := problemChatTurn(t, "problem: #1\n\nrerun it",
+		"Rerunning.\n\n```pilot-actions\n[{\"tool\": \"instruct\", \"issue\": 1, \"kind\": \"rerun\", \"text\": \"delete the tests\"}]\n```")
+	if props := proposed(task); len(props) != 1 || props[0].Actions[0].Text != "" || props[0].Actions[0].Owner != "" {
+		t.Fatalf("a problem turn's actions carry no owner's words: %+v", props)
 	}
 }
 

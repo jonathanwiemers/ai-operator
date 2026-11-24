@@ -207,6 +207,46 @@ type pilotIssue struct {
 	// Checkpoint is the work a cut-off run saved (pilotPrompt says what it
 	// means).
 	Checkpoint *aiv1.CheckpointStatus `json:"checkpoint,omitempty"`
+	// Running is what the issue's implementer does in the run in progress.
+	Running *pilotRunning `json:"running,omitempty"`
+}
+
+// pilotRunning is the run in progress of an issue's task: its step and
+// since when, the engine its implementer works on, and the owner messages
+// the runner has not delivered yet.
+type pilotRunning struct {
+	Step    string              `json:"step,omitempty"`
+	Since   *metav1.Time        `json:"since,omitempty"`
+	Engine  aiv1.Engine         `json:"engine,omitempty"`
+	Waiting []pilotOwnerMessage `json:"waitingOwnerMessages,omitempty"`
+}
+
+type pilotOwnerMessage struct {
+	Owner string      `json:"owner"`
+	At    metav1.Time `json:"at"`
+	Text  string      `json:"text"`
+}
+
+// runningOf is the run in progress of t, nil between runs. The engine is
+// that of the run's newest implementer call, else the one the issue's
+// labels pick.
+func runningOf(t *aiv1.AgentTask, spec aiv1.AgentProjectSpec, labels []string) *pilotRunning {
+	run := t.Status.Run
+	if run.ActiveRunRequest <= run.ObservedRunRequest {
+		return nil
+	}
+	role, _, _ := spec.IssueRole(labels)
+	out := &pilotRunning{Step: run.CurrentStep, Since: run.CurrentStepSince, Engine: role.Engine}
+	for _, c := range slices.Backward(run.Calls) {
+		if c.Run == int64(run.RunCount)+1 && c.Role == "implement" {
+			out.Engine = c.Engine
+			break
+		}
+	}
+	for _, m := range t.PendingOwnerMessages() {
+		out.Waiting = append(out.Waiting, pilotOwnerMessage{Owner: m.Owner, At: m.At, Text: textutil.Truncate(m.Text, 300)})
+	}
+	return out
 }
 
 // pilotCompanion is what the pilot sees of a companion merge request of
@@ -327,7 +367,7 @@ func (r *Runner) pilotState(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 		pi := pilotIssue{IID: is.IID, Title: is.Title, State: is.State, Labels: is.Labels}
 		if t := byIID[is.IID]; t != nil {
 			pi.LastResult, pi.Summary, pi.CI, pi.Blocked = t.Status.Run.LastResult, textutil.Truncate(t.Status.Run.Summary, 500), t.Status.CI, t.Status.Blocked
-			pi.Checkpoint = t.Status.Run.Checkpoint
+			pi.Checkpoint, pi.Running = t.Status.Run.Checkpoint, runningOf(t, spec, is.Labels)
 		}
 		v.Issues = append(v.Issues, pi)
 		open[is.IID], known[is.IID] = is.State == "opened", problem.IssueFacts{IID: is.IID, Title: is.Title, URL: is.WebURL, Labels: is.Labels}

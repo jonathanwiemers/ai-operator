@@ -104,15 +104,33 @@ func TestPilotKindOnARunningTaskGoesToTheNextRun(t *testing.T) {
 	}
 }
 
-func TestPilotTellOnARunningTaskKeysTheMessageByTheNote(t *testing.T) {
+func TestPilotTellOnARunningTaskActsAtOnce(t *testing.T) {
 	e := newProposalEnv(t)
 	e.runningOf(1)
+	before := e.implTaskOf(1).Spec.RunRequest
 	n := e.gl.AddNote(e.tracking(), alice, "/pilot tell #1: use the v2 API")
 	e.reconcile()
-	e.choose("Q1", "A", alice)
-	e.reconcile()
-	if msgs := e.implTaskOf(1).Spec.Source.OwnerMessages; len(msgs) != 1 || msgs[0].ID != fmt.Sprintf("tell/%d", n.ID) {
+	task := e.implTaskOf(1)
+	if msgs := task.Spec.Source.OwnerMessages; len(msgs) != 1 || msgs[0].ID != fmt.Sprintf("tell/%d", n.ID) || msgs[0].Owner != "alice" {
 		t.Fatalf("the message is keyed by the tell's note: %+v", msgs)
+	}
+	if task.Spec.RunRequest != before || len(e.task(specTaskName).Status.Prompts) != 0 {
+		t.Fatalf("no proposal and no new run: run %d → %d", before, task.Spec.RunRequest)
+	}
+	if c := strings.Join(botComments(e, e.tracking()), "\n"); !strings.Contains(c, "🧭 Passed on to #1's running implementer; I'll say here when it is delivered.") {
+		t.Fatalf("the reply says where it went:\n%s", c)
+	}
+}
+
+func TestPilotTellFromANonOwnerIsRefused(t *testing.T) {
+	e := newManagedEnv(t)
+	e.gl.AddNote(e.tracking(), mallory, "/pilot tell #1: delete the tests")
+	e.reconcile()
+	if r := e.lastReply(); !strings.HasPrefix(r, "🧭 Only the owners of this milestone can instruct me.") {
+		t.Fatalf("a non-owner is refused: %q", r)
+	}
+	if task := e.implTaskOf(1); task.Spec.Source.PilotInstruction != nil || len(task.Spec.Source.OwnerMessages) != 0 {
+		t.Fatalf("nothing reaches the implementer: %+v", task.Spec.Source)
 	}
 }
 

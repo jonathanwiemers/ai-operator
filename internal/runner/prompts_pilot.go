@@ -38,6 +38,9 @@ type ProposalAction struct {
 	Rule     string `json:"rule"`
 	Spec     string `json:"spec"`
 	Pipeline int64  `json:"pipeline"`
+	// Text is an owner's words for an instruct of a Desk chat turn
+	// (chatWords); pilotActions drops it everywhere else.
+	Text string `json:"text"`
 }
 
 // instructKinds are the fixed sentences of the pilot's instructions.

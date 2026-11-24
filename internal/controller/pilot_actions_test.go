@@ -490,36 +490,53 @@ func TestPilotYesCountsOnlyFromAnOwnerInTheThread(t *testing.T) {
 	}
 }
 
-func TestPilotTellPassesTheOwnersWordsOn(t *testing.T) {
+func TestPilotTellPassesTheOwnersWordsOnAtOnce(t *testing.T) {
+	// Even a pilot that only proposes: the owner is the author of their words.
 	e := newProposalEnv(t)
 	tracking := e.tracking()
 	e.gl.AddNote(tracking, alice, "/pilot tell #1: use the v2 API")
 	e.reconcile()
-	if r := strings.Join(botComments(e, tracking), "\n"); !strings.Contains(r, fmt.Sprintf("🧭 Q1 on #%d: an owner answers it in the Desk.", tracking)) {
-		t.Fatalf("the instruction is put as a prompt: %q", r)
+	c := strings.Join(botComments(e, tracking), "\n")
+	if !strings.Contains(c, "🧭 Queued for #1's next run.") || len(e.task(specTaskName).Status.Prompts) != 0 {
+		t.Fatalf("no prompt, and the reply says where it went:\n%s", c)
 	}
-	if p := e.prompt(specTaskName, "Q1"); p.Source.Kind != aiv1.PromptProposal || p.Options[0].Actions[0].Owner != "alice" {
-		t.Fatalf("a proposal prompt with alice's words: %+v", p)
+	if !strings.Contains(c, "🧭 Told with `/pilot tell` by `@alice`:\n- **instruct** #1") {
+		t.Fatalf("the outcome is on the tracking issue as for every accepted action:\n%s", c)
 	}
-	if e.implTaskOf(1).Spec.Source.PilotInstruction != nil {
-		t.Fatal("nothing runs without an answer")
-	}
-	e.choose("Q1", "A", alice)
-	e.reconcile()
 	pi := e.implTaskOf(1).Spec.Source.PilotInstruction
 	if pi == nil || pi.Owner != "alice" || pi.Text != "use the v2 API" || pi.Kind != "" {
 		t.Fatalf("the owner's words reach the implementer as theirs: %+v", pi)
 	}
-	if c := botComments(e, 1); len(c) == 0 || !strings.Contains(c[len(c)-1], "instruction from `@alice` via pilot: use the v2 API") {
+	if c := botComments(e, 1); len(c) == 0 || !strings.Contains(c[len(c)-1], "told by `@alice` with `/pilot tell`") ||
+		!strings.Contains(c[len(c)-1], "instruction from `@alice` via pilot: use the v2 API") {
 		t.Fatalf("the issue shows the instruction: %q", c)
+	}
+	if acted := e.pilot().Status.Pilot.Acted; len(acted) != 1 || acted[0].By != "alice" || !acted[0].Ran {
+		t.Fatalf("one pilot.acted entry by alice: %+v", acted)
+	}
+	// Taken once: the next poll runs nothing again.
+	runs := e.implTaskOf(1).Spec.RunRequest
+	e.reconcile()
+	if e.implTaskOf(1).Spec.RunRequest != runs || len(e.pilot().Status.Pilot.Acted) != 1 {
+		t.Fatal("a tell runs once")
+	}
+}
+
+func TestPilotTellOfAnInvalidIssueIsRefused(t *testing.T) {
+	e := newProposalEnv(t)
+	e.gl.AddNote(e.tracking(), alice, "/pilot tell #99: use the v2 API")
+	e.reconcile()
+	if r := e.lastReply(); !strings.HasPrefix(r, "🧭 Not passed on: ") {
+		t.Fatalf("an issue outside the milestone is refused: %q", r)
+	}
+	if ps := e.pilot().Status.Pilot; ps != nil && len(ps.Acted) != 0 {
+		t.Fatalf("nothing acted: %+v", ps.Acted)
 	}
 }
 
 func TestPilotTellIsBounded(t *testing.T) {
 	e := newProposalEnv(t)
 	e.gl.AddNote(e.tracking(), alice, "/pilot tell #1: "+strings.Repeat("x", 3*maxPilotMessage))
-	e.reconcile()
-	e.choose("Q1", "A", alice)
 	e.reconcile()
 	if pi := e.implTaskOf(1).Spec.Source.PilotInstruction; pi == nil || len(pi.Text) > maxPilotMessage+len("…") {
 		t.Fatalf("an owner's words are cut like any message: %v", pi != nil)

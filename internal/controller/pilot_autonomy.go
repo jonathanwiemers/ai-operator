@@ -190,6 +190,8 @@ func proposalHow(p aiv1.PilotProposal) string {
 		return fmt.Sprintf("prompt %s, answered by `@%s`", p.Prompt, p.AcceptedBy)
 	case p.ChatMessageID != 0:
 		return fmt.Sprintf("asked for in the Desk chat by `@%s`", p.AcceptedBy)
+	case strings.HasPrefix(p.Source, "tell/"):
+		return fmt.Sprintf("told by `@%s` with `/pilot tell`", p.AcceptedBy)
 	}
 	return fmt.Sprintf("proposal P%d, accepted by `@%s`", p.ID, p.AcceptedBy)
 }

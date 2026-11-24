@@ -2899,15 +2899,16 @@ counted interventions; more tools are later steps of
   "Do nothing", and `pilotState` over A's actions. The prompt mirror
   posts it on the tracking issue, also one about an issue; the mention
   follows `quiet` (a run that pinged the owners itself, or the operator's
-  own `/pilot tell` and `/pilot forget`, mention nobody). A proposal with
+  own `/pilot forget`, mention nobody). A proposal with
   no action it would run, or whose `state` no longer matches, is not put;
   one whose source has a prompt already is not put again, so the prompt
   is written first and `status.pilot.proposed` cleared after, and a
   conflict on that patch only repeats the next poll.
   `status.pilot.lastProposal` no longer counts.
   Owner and verbatim text of an action are cleared on proposals
-  from a run: only `/pilot tell #N: …`, which the operator handles without
-  a model call, sets them. Both writers use optimistic locking on the
+  from a run: only `/pilot tell #N: …`, which the operator accepts as its
+  owner without a model call, and a Desk chat turn's single `instruct`
+  whose text stands verbatim in the owner's message (`ownWords`) keep them. Both writers use optimistic locking on the
   status (the runner retries on a conflict, the operator tries again next
   poll), so no proposal is lost or put twice.
 * **Rejected writes.** A status patch of the pilot (runner: proposals,

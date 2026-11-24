@@ -200,7 +200,8 @@ func (r *Runner) chatTurn(ctx context.Context, task *aiv1.AgentTask, project *ai
 	}
 	var problemIID int64
 	var stateOf stateFunc
-	if task.Spec.Type == aiv1.TaskTypeCoordinate && task.Spec.Milestone != nil {
+	pilotTurn := task.Spec.Type == aiv1.TaskTypeCoordinate && task.Spec.Milestone != nil
+	if pilotTurn {
 		// The pilot answers from the milestone as it is now, not as its
 		// session last saw it. Read before the interrupt watcher starts, so an
 		// interrupt cannot cancel a prompt that has not started yet.
@@ -252,7 +253,7 @@ func (r *Runner) chatTurn(ctx context.Context, task *aiv1.AgentTask, project *ai
 	var call *aiv1.AgentCall
 	var block string
 	if res != nil {
-		if text = res.Text; problemIID != 0 {
+		if text = res.Text; pilotTurn {
 			text, block = cutPilotActions(text)
 		}
 		// A turn belongs to the task's latest run, whose session it talks to.
@@ -532,14 +533,20 @@ func buildChatPrompt(m aiv1.ChatMessage, resend bool) string {
 }
 
 // withPilotState appends the milestone's state to a pilot chat turn, and
-// what the pilot may do from the chat: answer, not act; a turn about the
-// problem of issue problem gets its facts and may ask for actions.
+// what the pilot may do from the chat: answer, and pass an owner's own
+// words on to an implementer; a turn about the problem of issue problem
+// gets its facts and may ask for actions.
 func withPilotState(prompt, state string, problem int64, facts string) string {
 	var b strings.Builder
 	b.WriteString(prompt)
 	b.WriteString("\n## How to answer\n\nAnswer from the milestone state below and what you know from your session. ")
 	if problem == 0 {
-		b.WriteString("This chat cannot act: to change something, name the Desk command (retry, review, pause, resume, skip, accept or reject a proposal) " +
+		b.WriteString("When the owner asks you to tell an issue's implementer something, end your reply with a fenced `pilot-actions` JSON block " +
+			"holding exactly one `instruct` whose `text` is the owner's words copied verbatim from their message, e.g.\n\n" +
+			"```pilot-actions\n[{\"tool\": \"instruct\", \"issue\": 712, \"text\": \"use the existing retry helper\"}]\n```\n\n" +
+			"Never add words of your own to that text: the operator passes it on only when it stands in the message as written. " +
+			"It reaches a running implementer at once, mid-run, and goes into the issue's next run otherwise. " +
+			"Apart from that this chat cannot act: to change something, name the Desk command (retry, review, pause, resume, skip, accept or reject a proposal) " +
 			"or the proposal you would make; never claim you did it. Say so when the state does not tell.\n")
 	} else {
 		fmt.Fprintf(&b, "The message is about the problem of #%d; its problem facts below are the operator's own record and outrank guesses. "+
@@ -581,16 +588,28 @@ func cutPilotActions(text string) (string, string) {
 	return text, ""
 }
 
-// chatProposal records the actions of a problem turn's pilot-actions block
+// notPassedOn is the reply's note on a block of a turn about no problem
+// that is not an owner's own words for one implementer.
+const notPassedOn = "\n\n_Not passed on: outside a problem, the pilot passes on only your own words, quoted as you wrote them, to one issue's implementer._"
+
+// chatProposal records the actions of a pilot turn's pilot-actions block
 // (a JSON list, or an object with "actions") as a proposal for issue iid,
 // tied to the owner's message msg, with the state it was made on; the
-// operator checks the message and its author before it runs. A malformed
-// block is dropped. It returns the refusals and failures, for the reply.
+// operator checks the message and its author before it runs. A turn about
+// no problem (iid 0) records only msg's author's own words for one
+// implementer (chatWords), in their name. A malformed block is dropped. It
+// returns the refusals and failures, for the reply.
 func (r *Runner) chatProposal(ctx context.Context, task *aiv1.AgentTask, msg aiv1.ChatMessage, iid int64, block string, stateOf stateFunc) string {
 	p := &ProposalAnswer{}
 	if err := json.Unmarshal([]byte(block), &p.Actions); err != nil && json.Unmarshal([]byte(block), p) != nil {
 		r.Log.Info("dropping a malformed pilot-actions block", "messageID", msg.ID, "error", err.Error())
 		return ""
+	}
+	words := iid == 0
+	if words {
+		if iid = chatWords(msg.Text, p.Actions); iid == 0 {
+			return notPassedOn
+		}
 	}
 	refused := rejectActions(p, true)
 	if len(p.Actions) == 0 || len(task.Spec.Owners) == 0 || stateOf == nil {
@@ -598,6 +617,10 @@ func (r *Runner) chatProposal(ctx context.Context, task *aiv1.AgentTask, msg aiv
 	}
 	prop := aiv1.PilotProposal{Source: fmt.Sprintf("chat/%d", msg.ID), Trigger: iid, ChatMessageID: msg.ID, Actions: pilotActions(p.Actions),
 		Why: fmt.Sprintf("@%s asked in the chat: %s", msg.Author, textutil.Truncate(msg.Text, 300))}
+	if words {
+		// Cut, not truncated: the operator finds the text in the message.
+		prop.Actions[0].Owner, prop.Actions[0].Text = msg.Author, textutil.Cut(strings.TrimSpace(p.Actions[0].Text), aiv1.MaxOwnerMessageText)
+	}
 	var what []string
 	for _, a := range prop.Actions {
 		what = append(what, strings.TrimSuffix(fmt.Sprintf("%s #%d", a.Tool, a.IssueIID), " #0"))
@@ -610,6 +633,21 @@ func (r *Runner) chatProposal(ctx context.Context, task *aiv1.AgentTask, msg aiv
 		return refused + "\n\n_The pilot's proposal could not be recorded._"
 	}
 	return refused
+}
+
+// chatWords is the issue whose implementer the owner's message text asks to
+// be told their own words: actions are exactly one instruct whose text
+// stands in text as written; else 0. The operator checks it again.
+func chatWords(text string, actions []ProposalAction) int64 {
+	if len(actions) != 1 {
+		return 0
+	}
+	a := actions[0]
+	w := strings.TrimSpace(a.Text)
+	if a.Tool != "instruct" || a.Issue <= 0 || a.Kind != "" || a.Note != "" || w == "" || !strings.Contains(text, w) {
+		return 0
+	}
+	return a.Issue
 }
 
 func sessionIDFromEvent(ev Event) string {
