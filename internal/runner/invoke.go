@@ -59,13 +59,20 @@ func (r *Runner) invokeOn(ctx context.Context, role aiv1.RoleSpec, inv Invocatio
 		return nil, &UsageLimitError{Engine: role.Engine, ResetAt: lim.Until.Time, Message: "project-wide limit: " + lim.Message}
 	}
 	redialed, retried := false, false
+	// A call stopped for owner messages goes on as a resumed call: last is
+	// the call that ran last, resumed the messages it took and stoppedCost
+	// what the stopped calls cost.
+	last, resumed, stoppedCost := inv, []aiv1.OwnerMessage(nil), 0.0
 	run := func(inv Invocation) (*Result, error) {
 		for {
+			last = inv
 			r.markInFlight(inv)
 			start := r.now()
 			stopMessages := r.watchOwnerMessages(ctx, inv)
 			res, err := r.Agent.Run(ctx, role.Engine, inv)
-			stopMessages()
+			stoppedFor := stopMessages()
+			// No error, so neither a limit nor a checkpoint below.
+			stopped := err == nil && res != nil && res.Stopped && stoppedFor != nil
 			lost := r.agentLost(ctx, err, start)
 			cpReason := ""
 			if lost == nil {
@@ -103,7 +110,19 @@ func (r *Runner) invokeOn(ctx context.Context, role aiv1.RoleSpec, inv Invocatio
 				if cpSHA != "" {
 					c.Checkpoint, c.CheckpointSHA = cpReason, cpSHA
 				}
+				c.StoppedForMessage = stopped
 				r.recordCall(ctx, c)
+			}
+			if stopped {
+				// Not a failure: the workspace stays as it is, the step goes on.
+				res.Engine, res.Model = role.Engine, inv.Model
+				r.recordUsage(ctx, role.Engine, res.Usage)
+				r.rememberSession(res)
+				stoppedCost += res.CostUSD
+				var took []aiv1.OwnerMessage
+				inv, took = r.resumeAfterStop(ctx, inv, res.SessionID, fullPrompt, stoppedFor)
+				resumed = append(resumed, took...)
+				continue
 			}
 			switch {
 			case lost == nil:
@@ -134,16 +153,22 @@ func (r *Runner) invokeOn(ctx context.Context, role aiv1.RoleSpec, inv Invocatio
 	}
 	if inv.Resume == "" {
 		inv.Prompt = fullPrompt
-		return run(inv)
 	}
 	res, err := run(inv)
-	if !retriedFresh(inv, res, err) {
-		return res, err
+	if retriedFresh(last, res, err) {
+		r.log().Info("could not resume session, starting fresh", "session", last.Resume, "error", err.Error())
+		inv.Resume = ""
+		inv.Prompt = fullPrompt
+		if len(resumed) > 0 {
+			inv.Prompt += "\n\n" + ownerMessagesPrompt(resumed)
+		}
+		res, err = run(inv)
 	}
-	r.log().Info("could not resume session, starting fresh", "session", inv.Resume, "error", err.Error())
-	inv.Resume = ""
-	inv.Prompt = fullPrompt
-	return run(inv)
+	if res != nil {
+		// The step's result: the stopped calls' cost adds up with it.
+		res.CostUSD += stoppedCost
+	}
+	return res, err
 }
 
 // toolchainsRunName turns a run ID ("<task>#<request>") into the name of its

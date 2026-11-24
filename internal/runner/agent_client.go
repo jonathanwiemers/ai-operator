@@ -113,6 +113,15 @@ func (c *AgentClient) Message(ctx context.Context, req MessageRequest) (MessageR
 	return resp.MessageResult, remoteErr(resp.Error)
 }
 
+// Stop stops the agent's call in flight gracefully (LocalAgent.Stop).
+func (c *AgentClient) Stop(ctx context.Context) error {
+	var resp errorResponse
+	if err := c.call(ctx, "stop", nil, &resp); err != nil {
+		return err
+	}
+	return remoteErr(resp.Error)
+}
+
 func (c *AgentClient) OpenSession(ctx context.Context, engine aiv1.Engine, inv Invocation) (string, error) {
 	var resp openSessionResponse
 	if err := c.call(ctx, "session/open", openSessionRequest{Engine: engine, Invocation: inv}, &resp); err != nil {

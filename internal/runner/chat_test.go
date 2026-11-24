@@ -115,6 +115,7 @@ func (a *chatAgent) PlanContext(context.Context, string) error                  
 func (a *chatAgent) Message(context.Context, MessageRequest) (MessageResult, error) {
 	return MessageResult{}, errNoStreamCall
 }
+func (a *chatAgent) Stop(context.Context) error                                   { return errNoRunningCall }
 func (a *chatAgent) Diff(context.Context, string, string) (string, string, error) { return "", "", nil }
 func (a *chatAgent) Reset(context.Context, string) error                          { return nil }
 func (a *chatAgent) MergeBase(context.Context, MergeRequest) (MergeResult, error) {

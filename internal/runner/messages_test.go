@@ -265,14 +265,41 @@ func waitStarted(ctx context.Context, t *testing.T, args string) {
 	}
 }
 
-func TestMessageWithoutReplayStaysPending(t *testing.T) {
+func TestNoReplayFallsBackToStopAndResume(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	old := messageWait
 	messageWait = 300 * time.Millisecond
 	t.Cleanup(func() { messageWait = old })
 	args := filepath.Join(t.TempDir(), "args")
-	r, k8s := messageEnv(t, fakeClaudeStream(t, "FAKE_CLAUDE_WORK=2", "FAKE_CLAUDE_NO_REPLAY=1", "FAKE_CLAUDE_ARGS="+args), time.Now())
+	r, k8s := messageEnv(t, fakeClaudeStream(t, "FAKE_CLAUDE_WORK=3", "FAKE_CLAUDE_NO_REPLAY=1", "FAKE_CLAUDE_SIGINT=1", "FAKE_CLAUDE_ARGS="+args), time.Now())
+	done := streamCall(ctx, r)
+	waitStarted(ctx, t, args)
+	addOwnerMessages(t, k8s, ownerMessage("tell/1", time.Now()))
+	res := <-done
+	if res.Structured == nil || res.SessionID != "fake-session" || res.CostUSD != 0.25 {
+		t.Fatalf("the resumed call's result is the step's: %+v", res)
+	}
+	if a, _ := os.ReadFile(args); !strings.Contains(string(a), "--resume fake-session") || !strings.Contains(string(a), "--input-format stream-json") {
+		t.Fatalf("the same session resumes, with stream input: %s", a)
+	}
+	run := messageTaskNow(t, k8s).Status.Run
+	if len(run.Calls) != 2 || !run.Calls[0].StoppedForMessage || run.Calls[1].StoppedForMessage || run.Calls[0].Checkpoint != "" {
+		t.Fatalf("a stopped call without a checkpoint, then the resumed call: %+v", run.Calls)
+	}
+	if d := messageTaskNow(t, k8s).Delivery("tell/1"); d == nil || d.How != aiv1.DeliveryResume || d.Call != run.Calls[1].Seq {
+		t.Fatalf("without a replay the message is delivered by resume into the resumed call: %+v", run.DeliveredMessages)
+	}
+	if run.Interruptions != 0 || r.run.midRunLeft() != aiv1.MaxMidRunDeliveries-1 {
+		t.Fatalf("a stop for a message is no interruption and counts in the cap: %+v", run)
+	}
+}
+
+func TestResultBeforeReplayStaysPending(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	args := filepath.Join(t.TempDir(), "args")
+	r, k8s := messageEnv(t, fakeClaudeStream(t, "FAKE_CLAUDE_WORK=1", "FAKE_CLAUDE_NO_REPLAY=1", "FAKE_CLAUDE_SIGINT=1", "FAKE_CLAUDE_ARGS="+args), time.Now())
 	done := streamCall(ctx, r)
 	waitStarted(ctx, t, args)
 	addOwnerMessages(t, k8s, ownerMessage("tell/1", time.Now()))
@@ -281,7 +308,10 @@ func TestMessageWithoutReplayStaysPending(t *testing.T) {
 		t.Fatalf("the message is written into the call once, not again: %d", n)
 	}
 	task := messageTaskNow(t, k8s)
+	if len(task.Status.Run.Calls) != 1 || task.Status.Run.Calls[0].StoppedForMessage {
+		t.Fatalf("a call that answered first is not stopped: %+v", task.Status.Run.Calls)
+	}
 	if len(task.Status.Run.DeliveredMessages) != 0 || len(task.PendingOwnerMessages()) != 1 || r.run.midRunLeft() != aiv1.MaxMidRunDeliveries {
-		t.Fatalf("without a replay it stays pending for the next implementer call: %+v", task.Status.Run)
+		t.Fatalf("it stays pending for the next implementer call: %+v", task.Status.Run)
 	}
 }

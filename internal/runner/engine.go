@@ -115,8 +115,11 @@ type Result struct {
 	// figure (an ACP usage_update cost in USD); claude always reports one.
 	CostReported bool
 	IsError      bool
-	Text         string
-	Structured   json.RawMessage
+	// Stopped: the call was stopped (Agent.Stop) before it answered; the
+	// result is partial, with the session ID seen so far.
+	Stopped    bool
+	Text       string
+	Structured json.RawMessage
 	// Usage is the engine's last report on its usage windows during the
 	// call (claude's rate_limit_event); nil if it sent none.
 	Usage *aiv1.EngineUsage
@@ -746,6 +749,7 @@ func runCLI(ctx context.Context, bin string, args []string, dir string, env []st
 	cmd.Dir = dir
 	cmd.Env = env
 	var in *liveInput
+	rc, _ := ctx.Value(runningKey{}).(*runningCall)
 	if stream && streamInput {
 		w, err := cmd.StdinPipe()
 		if err != nil {
@@ -771,6 +775,11 @@ func runCLI(ctx context.Context, bin string, args []string, dir string, env []st
 			return nil, fmt.Errorf("%s failed: %w", filepath.Base(bin), err)
 		}
 		if in != nil {
+			rc.started(cmd.Process, in.close) // a stopped CLI takes no more input
+		} else {
+			rc.started(cmd.Process, nil)
+		}
+		if in != nil {
 			in.start(ctx, tr, stdin)
 		}
 		var stopped atomic.Bool
@@ -778,7 +787,10 @@ func runCLI(ctx context.Context, bin string, args []string, dir string, env []st
 		rd := bufio.NewReader(pipe)
 		for {
 			line, err := rd.ReadBytes('\n')
-			if line = bytes.TrimSpace(line); len(line) > 0 && tr.consume(line) {
+			line = bytes.TrimSpace(line)
+			isResult := len(line) > 0 && tr.consume(line)
+			rc.line(line, isResult)
+			if isResult {
 				if in != nil {
 					in.close() // the answer is in: the CLI may exit
 				}
@@ -807,6 +819,9 @@ func runCLI(ctx context.Context, bin string, args []string, dir string, env []st
 			tr.log.Info("agent kept running after it answered", "grace", answerGrace.String())
 			cmd.WaitDelay = time.Second // a grandchild may still hold stderr
 		}
+		if _, stop := rc.stopped(); stop {
+			cmd.WaitDelay = time.Second // so may a tool call the stop cut off
+		}
 		// No result: the stream ended early, the messages are no answer.
 		tr.flush()
 		runErr = cmd.Wait()
@@ -816,6 +831,9 @@ func runCLI(ctx context.Context, bin string, args []string, dir string, env []st
 		stdout.Write(tr.result)
 		if answer != nil && !last.IsError { // an error after the answer fails the run
 			answer.CostUSD, last = last.CostUSD, answer
+		}
+		if session, stop := rc.stopped(); stop && (last == nil || last.IsError) {
+			return stoppedResult(last, usage, tr, session), nil
 		}
 	} else {
 		cmd.Stdout = &stdout

@@ -66,6 +66,10 @@ type Agent interface {
 	// (Invocation.StreamInput) and says whether its replay showed up; an
 	// error without such a call.
 	Message(ctx context.Context, req MessageRequest) (MessageResult, error)
+	// Stop sends SIGINT to the call in flight (Run): Run then returns a
+	// partial Result with Stopped and the session ID seen so far, without an
+	// error. An error when no call runs or it answered already.
+	Stop(ctx context.Context) error
 }
 
 // LocalAgent implements Agent in-process. The agent server wraps it; the
@@ -93,9 +97,11 @@ type LocalAgent struct {
 	session Session
 	sessEng aiv1.Engine
 
-	// live is the stream-input call in flight, for Message.
-	liveMu sync.Mutex
-	live   *liveInput
+	// live is the stream-input call in flight, for Message; running is the
+	// call in flight on any engine, for Stop.
+	liveMu  sync.Mutex
+	live    *liveInput
+	running *runningCall
 }
 
 var _ Agent = (*LocalAgent)(nil)
@@ -126,7 +132,10 @@ func (a *LocalAgent) Run(ctx context.Context, engine aiv1.Engine, inv Invocation
 		ctx = context.WithValue(ctx, liveInputKey{}, a.setLive)
 		defer a.setLive(nil)
 	}
-	res, err := eng.Run(ctx, inv)
+	rc := &runningCall{}
+	a.setRunning(rc)
+	defer a.setRunning(nil)
+	res, err := eng.Run(context.WithValue(ctx, runningKey{}, rc), inv)
 	if inv.CountLines && !inv.ReadOnly && res != nil && a.Workspace.exists() {
 		a.countLines(ctx, res)
 	}
@@ -712,6 +721,10 @@ func (s *AgentServer) Handler() http.Handler {
 		res, err := s.Agent.Message(ctx, req)
 		return reply{messageResponse{MessageResult: res, Error: errString(err)}, err,
 			[]any{"message", req.ID, "bytes", len(req.Text), "delivered", res.Delivered, "reason", res.Reason}}
+	})
+	handle("stop", func(ctx context.Context, _ []byte) reply {
+		err := s.Agent.Stop(ctx)
+		return reply{errorResponse{Error: errString(err)}, err, nil}
 	})
 	handle("refs", func(ctx context.Context, body []byte) reply {
 		var req repoRequest

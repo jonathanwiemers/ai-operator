@@ -13,9 +13,11 @@ import (
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 )
 
-// Owner messages (spec.source.ownerMessages) reach the implementer in two
+// Owner messages (spec.source.ownerMessages) reach the implementer in three
 // ways, each recorded in status.run.deliveredMessages before it counts:
 //   - into a running claude implementer call (stream), by watchOwnerMessages;
+//   - into a running call that cannot take them (cursor, or claude without a
+//     replay): it is stopped and invokeOn resumes it with them (resume);
 //   - into the prompt of the next implementer call (promptOwnerMessages), as
 //     resume when the message came during this run, else as nextRun.
 //
@@ -106,21 +108,27 @@ func withOwnerMessages(section string, inv Invocation, fullPrompt string) (Invoc
 	return inv, fullPrompt
 }
 
-// watchOwnerMessages delivers owner messages into the stream-input call inv
-// while it runs (Agent.Message). The returned func stops the watcher and
-// waits for it; call it when the call returns.
-func (r *Runner) watchOwnerMessages(ctx context.Context, inv Invocation) func() {
-	if !inv.StreamInput || r.run == nil {
-		return func() {}
+// watchOwnerMessages delivers owner messages into the implementer call inv
+// while it runs: a stream-input call takes them in (Agent.Message); any other
+// call, or one that did not take them, is stopped (Agent.Stop) so invokeOn
+// resumes it with them. The returned func stops the watcher, waits for it
+// and returns the messages the call was stopped for (nil: no stop); call it
+// when the call returns.
+func (r *Runner) watchOwnerMessages(ctx context.Context, inv Invocation) func() []aiv1.OwnerMessage {
+	if !implementerKind(inv.Kind) || r.run == nil {
+		return func() []aiv1.OwnerMessage { return nil }
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	done := make(chan struct{})
+	var stoppedFor []aiv1.OwnerMessage
 	wake := r.watchObject(ctx, &aiv1.AgentTaskList{}, r.TaskName)
 	go func() {
 		defer close(done)
 		tried := map[string]bool{}
 		for {
-			r.streamOwnerMessages(ctx, tried)
+			if stoppedFor = r.deliverOwnerMessages(ctx, inv, tried); stoppedFor != nil {
+				return
+			}
 			select {
 			case <-ctx.Done():
 				return
@@ -129,20 +137,22 @@ func (r *Runner) watchOwnerMessages(ctx context.Context, inv Invocation) func() 
 			}
 		}
 	}()
-	return func() {
+	return func() []aiv1.OwnerMessage {
 		cancel()
 		<-done
+		return stoppedFor
 	}
 }
 
-// streamOwnerMessages writes the pending owner messages, within the cap, into
-// the running call as one user message and records them as stream once the
-// call replayed it. Messages the call did not take (tried) are not written
-// again in this call: they go to undelivered.
-func (r *Runner) streamOwnerMessages(ctx context.Context, tried map[string]bool) {
+// deliverOwnerMessages takes the pending owner messages, within the cap, to
+// the running call inv. A stream-input call gets them as one user message,
+// recorded as stream once the call replayed it; messages it did not take
+// (tried) are not written again in this call. Messages a call could not take
+// stop it (stopFor), unless its result came first: then they stay pending.
+func (r *Runner) deliverOwnerMessages(ctx context.Context, inv Invocation, tried map[string]bool) []aiv1.OwnerMessage {
 	task, err := r.taskNow(ctx)
 	if err != nil {
-		return
+		return nil
 	}
 	var batch []aiv1.OwnerMessage
 	ids := make([]string, 0)
@@ -153,38 +163,76 @@ func (r *Runner) streamOwnerMessages(ctx context.Context, tried map[string]bool)
 		}
 	}
 	if len(batch) == 0 {
-		return
+		return nil
+	}
+	if !inv.StreamInput {
+		return r.stopFor(ctx, batch)
 	}
 	res, err := r.Agent.Message(ctx, MessageRequest{ID: strings.Join(ids, ","), Text: ownerMessagesPrompt(batch)})
 	if err != nil && strings.Contains(err.Error(), errNoStreamCall.Error()) {
-		return // nothing was written: the call is not (or no longer) live
+		return nil // nothing was written: the call is not (or no longer) live
 	}
 	for _, id := range ids {
 		tried[id] = true
 	}
-	if err != nil || !res.Delivered {
-		reason := res.Reason
-		if err != nil {
-			reason = err.Error()
+	if err == nil && res.Delivered {
+		r.run.noteMidRun(len(batch))
+		// Recorded even when the call ends meanwhile: the call took them.
+		if err := r.recordDeliveries(context.WithoutCancel(ctx), batch, func(aiv1.OwnerMessage) aiv1.DeliveryHow { return aiv1.DeliveryStream }); err != nil {
+			r.log().Error(err, "recording owner messages delivered into the running call", "messages", ids)
+			return nil
 		}
-		r.undelivered(batch, reason)
-		return
+		r.log().Info("owner messages delivered into the running call", "messages", ids)
+		return nil
 	}
-	r.run.noteMidRun(len(batch))
-	// Recorded even when the call ends meanwhile: the call took them.
-	if err := r.recordDeliveries(context.WithoutCancel(ctx), batch, func(aiv1.OwnerMessage) aiv1.DeliveryHow { return aiv1.DeliveryStream }); err != nil {
-		r.log().Error(err, "recording owner messages delivered into the running call", "messages", ids)
-		return
+	reason := res.Reason
+	if err != nil {
+		reason = err.Error()
 	}
-	r.log().Info("owner messages delivered into the running call", "messages", ids)
+	if ctx.Err() != nil || res.Answered {
+		// The call ended first: nothing to stop.
+		r.log().Info("the call answered before it took the owner messages in; they wait for the next implementer call",
+			"messages", len(batch), "reason", reason)
+		return nil
+	}
+	r.log().Info("the running call did not take the owner messages in; stopping it to resume with them",
+		"messages", len(batch), "reason", reason)
+	return r.stopFor(ctx, batch)
 }
 
-// undelivered handles owner messages a running call did not take in: they
-// stay pending, for the next implementer call or the next run. Stopping the
-// call and resuming its session with them hooks in here.
-func (r *Runner) undelivered(msgs []aiv1.OwnerMessage, reason string) {
-	r.log().Info("the running call did not take the owner messages in; they wait for the next implementer call",
-		"messages", len(msgs), "reason", reason)
+// stopFor stops the running call gracefully for msgs and returns them; nil
+// when the call cannot be stopped (not running yet, or it answered): they
+// stay pending.
+func (r *Runner) stopFor(ctx context.Context, msgs []aiv1.OwnerMessage) []aiv1.OwnerMessage {
+	if err := r.Agent.Stop(ctx); err != nil {
+		r.log().V(1).Info("could not stop the running call for owner messages", "messages", len(msgs), "error", err.Error())
+		return nil
+	}
+	r.log().Info("stopped the running call for owner messages", "messages", len(msgs))
+	return msgs
+}
+
+// resumeAfterStop is the call that goes on after inv was stopped for msgs
+// (with the session ID seen, maybe none). msgs are recorded as resume before
+// it starts. It resumes the session with them; without a session ID it is
+// the step's call again, fullPrompt with them after it, on the edits the
+// stopped call left. It returns the call and the messages it took: a failed
+// record leaves msgs pending, and the call goes on without them.
+func (r *Runner) resumeAfterStop(ctx context.Context, inv Invocation, session, fullPrompt string, msgs []aiv1.OwnerMessage) (Invocation, []aiv1.OwnerMessage) {
+	if err := r.recordDeliveries(ctx, msgs, func(aiv1.OwnerMessage) aiv1.DeliveryHow { return aiv1.DeliveryResume }); err != nil {
+		r.log().Error(err, "recording owner messages for the resumed call; they wait for a later call")
+		msgs = nil
+	} else {
+		r.run.noteMidRun(len(msgs))
+	}
+	inv.Resume = session
+	if session != "" {
+		inv.Prompt = resumeMessagesPrompt(msgs)
+	} else if inv.Prompt = fullPrompt; len(msgs) > 0 {
+		inv.Prompt += "\n\n" + ownerMessagesPrompt(msgs)
+	}
+	r.log().Info("resuming the stopped call with the owner messages", "messages", len(msgs), "session", session)
+	return inv, msgs
 }
 
 // recordDeliveries adds msgs to status.run.deliveredMessages as delivered to

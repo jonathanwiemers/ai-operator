@@ -424,6 +424,37 @@ message (a) comes back as a replay and (b) is acted on before the single
 result line. Run it again when the claude CLI in `Dockerfile.agent` changes
 how it streams.
 
+**Stop and resume.** A call that cannot take a message while it runs is
+stopped gracefully and resumes its session with the message
+(`internal/runner/stop.go`, `internal/runner/messages.go`). That covers
+cursor calls, and claude calls whose write to stdin fails or whose replay
+does not come within 60 s.
+
+1. `LocalAgent` keeps a handle on the CLI process of every call in flight,
+   whatever the engine. `POST /stop` (`AgentClient.Stop`) sends it SIGINT
+   and closes a stream-input call's stdin. That `Run` returns a partial
+   result with `Stopped` and the session ID of the stream's first line, and
+   no error, also without a result line. A call whose result line came
+   first is not stopped: the result stands. Answer grace and the
+   agent-lost handling are unchanged.
+2. The runner's delivery watcher runs for every implementer call. It
+   sends `Stop` and remembers the batch. If the call answered before the
+   replay, nothing is stopped and the messages stay pending, for the next
+   implementer call or the next run.
+3. `invokeOn` records the stopped call with `stoppedForMessage`. A stop
+   carries no error, so it takes no checkpoint, is no failure and no usage
+   limit, and does not count in `status.run.interruptions`. The workspace
+   stays as it is: no `Reset`.
+4. It records the batch as `resume`, with the Seq of the next call, before
+   that call starts. Then it resumes the session (`--resume`) with the
+   messages ("## Message from @owner via the pilot", the text, "Go on with
+   the task; answer as before."). Claude keeps stream input. Without a
+   session ID, the step's call starts again on the same tree, with the
+   full prompt and the messages after it.
+5. The resumed call's result is the step's result. Its cost includes the
+   stopped call's, and both calls are in `status.run.calls`. The cap of 5
+   mid-run deliveries per run counts both ways.
+
 ### Stall detection
 
 A run that stops making progress is noticed without an LLM call per task.

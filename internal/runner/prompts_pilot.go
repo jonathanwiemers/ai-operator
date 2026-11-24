@@ -75,11 +75,21 @@ func pilotInstruction(task *aiv1.AgentTask) string {
 // pilot, for a running implementer call (one user message) or the prompt of
 // the next implementer call: one part per message, the owner's own words.
 func ownerMessagesPrompt(msgs []aiv1.OwnerMessage) string {
+	return ownerMessagesThen(msgs, "Take this into account and go on with the task; answer as before.")
+}
+
+// resumeMessagesPrompt is the prompt that resumes the session of a call
+// stopped for msgs (none: the record failed, they wait for a later call).
+func resumeMessagesPrompt(msgs []aiv1.OwnerMessage) string {
+	return ownerMessagesThen(msgs, "Go on with the task; answer as before.")
+}
+
+func ownerMessagesThen(msgs []aiv1.OwnerMessage, then string) string {
 	var b strings.Builder
 	for _, m := range msgs {
 		fmt.Fprintf(&b, "## Message from @%s via the pilot\n\n%s\n\n", m.Owner, m.Text)
 	}
-	b.WriteString("Take this into account and go on with the task; answer as before.")
+	b.WriteString(then)
 	return b.String()
 }
 

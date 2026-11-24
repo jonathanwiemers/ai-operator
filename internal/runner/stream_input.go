@@ -29,9 +29,11 @@ type MessageRequest struct {
 }
 
 // MessageResult says whether the call took the message in: Delivered once
-// its replay showed up in the call's output, else Reason says why not.
+// its replay showed up in the call's output, else Reason says why not, and
+// Answered whether that is because the call's result came first.
 type MessageResult struct {
 	Delivered bool   `json:"delivered"`
+	Answered  bool   `json:"answered,omitempty"`
 	Reason    string `json:"reason,omitempty"`
 }
 
@@ -156,7 +158,7 @@ func (in *liveInput) message(ctx context.Context, text string, wait time.Duratio
 						return MessageResult{Delivered: true}, nil
 					}
 				default:
-					return MessageResult{Reason: "the call answered before the message was replayed"}, nil
+					return MessageResult{Answered: true, Reason: "the call answered before the message was replayed"}, nil
 				}
 			}
 		case <-timer.C:

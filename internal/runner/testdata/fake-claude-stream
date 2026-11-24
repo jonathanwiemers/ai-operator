@@ -23,7 +23,7 @@ case " $* " in *" --input-format stream-json "*) stream=1 ;; esac
 seen=$(mktemp)
 trap 'rm -f "$seen"' EXIT
 if [ -n "$FAKE_CLAUDE_SIGINT" ]; then
-	trap 'echo "{\"type\":\"assistant\",\"message\":{\"id\":\"msg_int\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Interrupted.\"}]},\"session_id\":\"$sid\"}"; exit 130' INT
+	trap 'echo "{\"type\":\"assistant\",\"message\":{\"id\":\"msg_int\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Interrupted.\"}]},\"session_id\":\"$sid\"}"; [ -z "$reader" ] || kill "$reader" 2>/dev/null; exit 130' INT
 fi
 
 replay() {
@@ -48,7 +48,7 @@ else
 fi
 
 echo "{\"type\":\"assistant\",\"message\":{\"id\":\"msg_1\",\"role\":\"assistant\",\"content\":[{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"Bash\",\"input\":{\"command\":\"sleep 20 && echo done\"}}],\"usage\":{\"input_tokens\":10,\"cache_read_input_tokens\":100,\"cache_creation_input_tokens\":0,\"output_tokens\":5}},\"session_id\":\"$sid\"}"
-sleep "${FAKE_CLAUDE_WORK:-1}" &
+sleep "${FAKE_CLAUDE_WORK:-1}" >/dev/null 2>&1 &
 wait $!
 echo "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"toolu_1\",\"content\":\"done\"}]},\"session_id\":\"$sid\"}"
 n=$(wc -l <"$seen" | tr -d ' ')
