@@ -1,7 +1,7 @@
 // Tests of src/transcriptFold.ts: npm test (node --test, no extra dependencies).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { foldName, foldTranscript } from '../src/transcriptFold.ts'
+import { foldName, foldTranscript, ownerMessages } from '../src/transcriptFold.ts'
 
 const step = { kind: 'step', stepNo: 3, step: 'run implementer', status: 'started' }
 const says = { kind: 'says', text: 'Looking at the parser.' }
@@ -79,4 +79,29 @@ test('a child before its tool line is not folded', () => {
   const rows = foldTranscript([grep, agent])
   assert.deepEqual(rows[0], { kind: 'entry', entry: grep })
   assert.equal(rows[1].count, 0)
+})
+
+test("an owner-message user turn reads as the owner's words, without the closing line", () => {
+  const text = '## Message from @alice via the pilot\n\nUse the existing retry helper.\n\nTake this into account and go on with the task; answer as before.'
+  assert.deepEqual(ownerMessages(text), [{ owner: 'alice', text: 'Use the existing retry helper.' }])
+  // A resumed session's prompt ends the same way, in other words.
+  assert.deepEqual(ownerMessages('## Message from @bob via the pilot\n\nStop.\n\nGo on with the task; answer as before.'), [
+    { owner: 'bob', text: 'Stop.' },
+  ])
+})
+
+test('several owner messages in one user turn stay apart, with paragraphs kept', () => {
+  const text =
+    '## Message from @alice via the pilot\n\nFirst.\n\nSecond paragraph.\n\n' +
+    '## Message from @bob via the pilot\n\nOther words.\n\nTake this into account and go on with the task; answer as before.'
+  assert.deepEqual(ownerMessages(text), [
+    { owner: 'alice', text: 'First.\n\nSecond paragraph.' },
+    { owner: 'bob', text: 'Other words.' },
+  ])
+})
+
+test('another user turn is no owner message', () => {
+  assert.deepEqual(ownerMessages(undefined), [])
+  assert.deepEqual(ownerMessages('Please also run the linter.'), [])
+  assert.deepEqual(ownerMessages('Quoting: \n## Message from @alice via the pilot\n\nx'), [])
 })

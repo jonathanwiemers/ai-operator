@@ -25,6 +25,7 @@ import SpendPanel from '../components/SpendPanel.vue'
 import Composer from '../components/Composer.vue'
 import Cockpit from '../components/cockpit/Cockpit.vue'
 import CockpitComposer from '../components/cockpit/CockpitComposer.vue'
+import CockpitLive from '../components/cockpit/CockpitLive.vue'
 import EventCard from '../components/stream/EventCard.vue'
 import MilestoneDecisions from '../components/MilestoneDecisions.vue'
 import MilestoneIssues from '../components/MilestoneIssues.vue'
@@ -759,8 +760,16 @@ watch(
             <UAlert v-else-if="milestoneFailed" :color="alertColor('danger')" variant="subtle" class="mt-3" description="The milestone could not be loaded." />
             <div v-else class="empty">Loading…</div>
           </template>
-          <!-- The composer to the pilot (R12); a stored milestone has none. -->
+          <!-- The live lines of running issues (R11), then the composer to
+               the pilot (R12); a stored milestone has neither. -->
           <template #composer="{ sent, reload }">
+            <CockpitLive
+              v-if="namespace && name && pageMilestone"
+              :namespace="namespace"
+              :name="name"
+              :tasks="pageMilestone.tasks"
+              :transcript="!!pageMilestone.permissions?.transcript"
+            />
             <CockpitComposer
               v-if="namespace && name && pageMilestone && !pageMilestone.stored"
               :namespace="namespace"

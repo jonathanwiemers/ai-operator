@@ -364,3 +364,24 @@ export function refundsLogs(q: URLSearchParams): string {
   const c = q.get('container') ?? 'runner'
   return `2026-11-12T18:51:54Z ${c}: step started 18 push\n2026-11-12T18:51:57Z ${c}: wrote the bundle\n`
 }
+
+// captures is the task of #282 while its implementer runs, for the
+// Cockpit's live line: "#282 implementing · 4 min" (R11).
+export const captures: Task = implementTask(282, 'Partial captures for split shipments', payments, 'working', {
+  phase: 'Running',
+  podName: 'shop-282-implement-run-1',
+  run: { activeRunRequest: 1, observedRunRequest: 0, currentStep: '3 run implementer', currentStepSince: ago(4) },
+})
+
+// capturesTranscript: the live transcript of captures' run as the Desk
+// streams it, with an owner message the runner wrote into the running call.
+export const capturesTranscript = [
+  { kind: 'step', time: ago(4), stepNo: 3, step: 'run implementer', status: 'started' },
+  { kind: 'says', time: ago(3), text: 'Looking at the capture service.' },
+  {
+    kind: 'user',
+    time: ago(2),
+    text: '## Message from @alice via the pilot\n\nUse the existing retry helper.\n\nTake this into account and go on with the task; answer as before.',
+  },
+  { kind: 'says', time: ago(1), text: 'Switching to the retry helper.' },
+]

@@ -30,6 +30,35 @@ export function foldName(f: TranscriptFold): string {
   return f.tool.subagent || f.tool.input || f.tool.tool || 'subagent'
 }
 
+// OwnerMessage is one owner's words that the pilot passed on to a running
+// implementer.
+export interface OwnerMessage {
+  owner: string
+  text: string
+}
+
+const ownerHeading = /^## Message from @(\S+) via the pilot$/gm
+
+// ownerMessages reads the user turn the runner writes into a running call
+// (or resumes its session with): one "## Message from @owner via the pilot"
+// part per message, then a closing line for the agent, which is dropped.
+// Any other text gives an empty list.
+export function ownerMessages(text: string | undefined): OwnerMessage[] {
+  if (!text) return []
+  const heads = [...text.matchAll(ownerHeading)]
+  if (!heads.length || heads[0]!.index !== 0) return []
+  return heads.map((h, i) => {
+    const end = i + 1 < heads.length ? heads[i + 1]!.index : text.length
+    let body = text.slice(h.index + h[0].length, end).trim()
+    if (i === heads.length - 1) {
+      // The closing line is the last paragraph after the owner's words.
+      const cut = body.lastIndexOf('\n\n')
+      if (cut >= 0 && /^(Take this into account and )?[Gg]o on with the task/.test(body.slice(cut + 2))) body = body.slice(0, cut).trim()
+    }
+    return { owner: h[1]!, text: body }
+  })
+}
+
 // foldTranscript groups entries into rows. Only a main-thread tool line
 // (no parent of its own) opens a fold, and only lines after it join it.
 // Lines of a nested subagent, or of a parent not seen (cut off by the

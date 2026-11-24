@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import Markdown from './Markdown.vue'
 import Badge from './Badge.vue'
+import { computed } from 'vue'
+import { ownerMessages } from '../transcriptFold'
 import type { TranscriptEntry } from '../types'
 
 // TranscriptLine is one entry of the live transcript, on the main thread
-// or inside a subagent's fold.
-defineProps<{ e: TranscriptEntry }>()
+// or inside a subagent's fold. A user turn that carries owner messages
+// shows each with its owner, without the runner's closing line.
+const props = defineProps<{ e: TranscriptEntry }>()
+const owners = computed(() => (props.e.kind === 'user' ? ownerMessages(props.e.text) : []))
 
 const stepTone = (s?: string) => (s === 'done' ? 'success' : s === 'failed' ? 'danger' : s === 'deferred' ? 'warning' : 'progress')
 const time = (t?: string) => (t ? new Date(t).toLocaleTimeString() : '')
@@ -31,6 +35,16 @@ const time = (t?: string) => (t ? new Date(t).toLocaleTimeString() : '')
     <template v-else-if="e.kind === 'says'">
       <span class="who">says</span>
       <Markdown class="text says" :text="e.text ?? ''" />
+    </template>
+    <template v-else-if="e.kind === 'user' && owners.length">
+      <!-- An owner's words the pilot passed on to the running call. -->
+      <span class="who">user</span>
+      <div class="owner-turn" data-owner-message>
+        <p v-for="(m, i) in owners" :key="i">
+          <Badge tone="info">Message from @{{ m.owner }} via the pilot</Badge>
+          <span class="text user-text">{{ m.text }}</span>
+        </p>
+      </div>
     </template>
     <template v-else-if="e.kind === 'user'">
       <!-- A message written into the running call, which the agent took in. -->
@@ -94,6 +108,22 @@ const time = (t?: string) => (t ? new Date(t).toLocaleTimeString() : '')
 
 .user-text {
   font-weight: 500;
+}
+
+.owner-turn {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 4px 8px;
+  border-left: 2px solid var(--ui-primary);
+}
+
+.owner-turn p {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: baseline;
+  margin: 0;
 }
 
 .thinking {
