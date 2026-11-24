@@ -371,3 +371,161 @@ export function slashPick(cmd: string): string {
 
 // The % reference menu's opening and picking, beside the / menu's.
 export { refItems, refPick, refQuery, type RefItem, type RefItemSource } from './refMenu.ts'
+
+// Cockpit (R9): every kind is pinned (open problems, proposals and
+// questions; the open card is pinned from the views, the event stays in the
+// time stream as its history), shown, or folded into one-line groups. A
+// Record over StreamKind fails the type check on a new kind.
+type CockpitClass = 'pinned' | 'shown' | 'folded'
+
+export const cockpitClass: Record<StreamKind, CockpitClass> = {
+  'prompt.posted': 'pinned',
+  proposal: 'pinned',
+  'problem.opened': 'pinned',
+  needs: 'pinned',
+  'pilot.acted': 'shown',
+  'pilot.writeFailed': 'shown',
+  'chat.user': 'shown',
+  'chat.agent': 'shown',
+  note: 'shown',
+  merged: 'shown',
+  closed: 'shown',
+  autopilot: 'shown',
+  'autopilot.paused': 'shown',
+  'autopilot.resumed': 'shown',
+  'release.decided': 'shown',
+  'release.started': 'shown',
+  'release.ended': 'shown',
+  retrospective: 'shown',
+  'problem.resolved': 'shown',
+  'prompt.answered': 'shown',
+  'prompt.closed': 'shown',
+  'hold.set': 'shown',
+  'hold.cleared': 'shown',
+  'item.skipped': 'shown',
+  'run.started': 'folded',
+  'run.finished': 'folded',
+  push: 'folded',
+  ci: 'folded',
+  review: 'folded',
+  checkpoint: 'folded',
+}
+
+// Across all projects only merges and milestone state are shown.
+const allScopeShown: StreamKind[] = [
+  'merged',
+  'closed',
+  'autopilot',
+  'autopilot.paused',
+  'autopilot.resumed',
+  'release.decided',
+  'release.started',
+  'release.ended',
+  'retrospective',
+]
+
+type CockpitScope = 'milestone' | 'project' | 'all'
+
+type CockpitGroup = {
+  type: 'group'
+  key: string
+  namespace: string
+  project: string
+  milestoneIID?: number
+  issueIID?: number
+  from: string
+  to: string
+  events: StreamEvent[]
+  summary: string
+}
+
+type CockpitItem =
+  | { type: 'event'; event: StreamEvent }
+  | { type: 'thread'; key: string; at: string; notes: StreamEvent[] }
+  | CockpitGroup
+
+// cockpitItems sorts a stream (newest first, as GET /stream returns it)
+// into the Cockpit's items, oldest first: shown events, note threads, and
+// groups of the folded events of one key between two shown events. The key
+// is (milestone, issue), or the project with scope 'all'.
+export function cockpitItems(events: StreamEvent[], opts: { scope?: CockpitScope } = {}): CockpitItem[] {
+  const scope = opts.scope ?? 'milestone'
+  const shown = (k: StreamKind) => (scope === 'all' ? allScopeShown.includes(k) : cockpitClass[k] !== 'folded')
+  const out: CockpitItem[] = []
+  let open = new Map<string, CockpitGroup>()
+  const flush = () => {
+    const groups = [...open.values()]
+    for (const g of groups) g.summary = groupSummary(g.events, scope === 'all' ? g.project : undefined)
+    out.push(...groups)
+    open = new Map()
+  }
+  const fold = (e: StreamEvent) => {
+    const key =
+      scope === 'all'
+        ? `${e.namespace}/${e.project}`
+        : `${e.namespace}/${e.project}/${e.milestoneIID ?? ''}/${e.issueIID ?? ''}`
+    const g = open.get(key)
+    if (g) {
+      g.events.push(e)
+      g.to = e.at
+      return
+    }
+    open.set(key, {
+      type: 'group',
+      key,
+      namespace: e.namespace,
+      project: e.project,
+      ...(scope !== 'all' && { milestoneIID: e.milestoneIID, issueIID: e.issueIID }),
+      from: e.at,
+      to: e.at,
+      events: [e],
+      summary: '',
+    })
+  }
+
+  for (const item of groupThreads(events).reverse()) {
+    if (item.kind === 'thread') {
+      if (scope === 'all') item.notes.forEach(fold)
+      else {
+        flush()
+        out.push({ type: 'thread', key: item.key, at: item.at, notes: item.notes })
+      }
+    } else if (shown(item.event.kind)) {
+      flush()
+      out.push({ type: 'event', event: item.event })
+    } else fold(item.event)
+  }
+  flush()
+  return out
+}
+
+// groupSummary is a folded group's line, "#712 · 3 runs, 2 CI rounds,
+// review clean": runs count run.started, CI rounds ci; the review is the
+// last one's verdict. Parts with zero are left out. The prefix is the
+// project (scope 'all'), else the issue, else the milestone.
+export function groupSummary(events: StreamEvent[], projectName?: string): string {
+  const count = (k: StreamKind) => events.filter((e) => e.kind === k).length
+  const parts: string[] = []
+  const runs = count('run.started')
+  if (runs) parts.push(`${runs} ${plural(runs, 'run')}`)
+  const pushes = count('push')
+  if (pushes) parts.push(`${pushes} ${plural(pushes, 'push', 'pushes')}`)
+  const ci = count('ci')
+  if (ci) parts.push(`${ci} CI ${plural(ci, 'round')}`)
+  const review = [...events].reverse().find((e) => e.kind === 'review')
+  if (review) {
+    const blocking = review.data?.blocking ?? 0
+    if (blocking > 0) parts.push(`review: ${blocking} ${plural(blocking, 'finding')}`)
+    else if (review.data?.reviewErrors) parts.push('review with errors')
+    else parts.push('review clean')
+  }
+  const checkpoints = count('checkpoint')
+  if (checkpoints) parts.push(`${checkpoints} ${plural(checkpoints, 'checkpoint')}`)
+  if (!parts.length) parts.push(`${events.length} ${plural(events.length, 'event')}`)
+
+  const first = events[0]
+  const prefix =
+    projectName ??
+    (first?.issueIID != null ? `#${first.issueIID}` : first?.milestoneIID != null ? `%${first.milestoneIID}` : first?.project)
+  return prefix ? `${prefix} · ${parts.join(', ')}` : parts.join(', ')
+}
