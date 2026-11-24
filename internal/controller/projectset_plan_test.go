@@ -477,3 +477,143 @@ func TestProjectSetPlanEntryDropsExcludedTargets(t *testing.T) {
 		t.Errorf("entry spec was changed: %+v", merged.CrossRepo.Targets)
 	}
 }
+
+// A project spec.projects names is active without work, unless the set's
+// scope leaves it out; it wins a child name over an unnamed project.
+func TestProjectSetPlanNamedProjects(t *testing.T) {
+	type want struct {
+		state  aiv1.ProjectSetState
+		child  string
+		reason string // substring
+	}
+	set := planSet()
+	shop := []aiv1.ProjectSetEntry{{Path: "jo.wiemers/shop"}}
+	idleShop := []gitlab.DiscoveredProject{{FullPath: "jo.wiemers/Shop"}}
+	// a-b/c is named; a/b-c, unnamed and active, derives the same name.
+	clash := []gitlab.DiscoveredProject{activeProject("jo.wiemers/a/b-c"), {FullPath: "jo.wiemers/a-b/c"}}
+	clashWant := map[string]want{
+		"jo.wiemers/a-b/c": {aiv1.ProjectSetActive, "a-b-c", namedReason},
+		"jo.wiemers/a/b-c": {aiv1.ProjectSetNameTaken, "", "name a-b-c is taken by the child of jo.wiemers/a-b/c"},
+	}
+	cases := []struct {
+		name      string
+		entries   []aiv1.ProjectSetEntry
+		include   []string
+		projects  []gitlab.DiscoveredProject
+		existing  []aiv1.AgentProject
+		prev      []aiv1.ProjectSetProjectStatus
+		want      map[string]want
+		wantChild []string
+	}{
+		{
+			name: "an idle named project is active with a child", entries: shop, projects: idleShop,
+			want:      map[string]want{"jo.wiemers/Shop": {aiv1.ProjectSetActive, "shop", namedReason}},
+			wantChild: []string{"shop"},
+		},
+		{
+			name: "a named child stays active past dormantAfter", entries: shop, projects: idleShop,
+			existing:  []aiv1.AgentProject{agentProject("agents", "shop", "jo.wiemers/shop", set)},
+			prev:      []aiv1.ProjectSetProjectStatus{{Path: "jo.wiemers/shop", State: aiv1.ProjectSetActive, Child: "shop", LastActiveTime: ago(1000 * time.Hour)}},
+			want:      map[string]want{"jo.wiemers/Shop": {aiv1.ProjectSetActive, "shop", namedReason}},
+			wantChild: []string{"shop"},
+		},
+		{
+			name: "the entry's name names a new child", entries: []aiv1.ProjectSetEntry{{Path: "jo.wiemers/shop", Name: "my-shop"}}, projects: idleShop,
+			want:      map[string]want{"jo.wiemers/Shop": {aiv1.ProjectSetActive, "my-shop", namedReason}},
+			wantChild: []string{"my-shop"},
+		},
+		{
+			name: "an owned child keeps its name", entries: []aiv1.ProjectSetEntry{{Path: "jo.wiemers/shop", Name: "my-shop"}}, projects: idleShop,
+			existing:  []aiv1.AgentProject{agentProject("agents", "shop", "jo.wiemers/shop", set)},
+			want:      map[string]want{"jo.wiemers/Shop": {aiv1.ProjectSetActive, "shop", "the child keeps its name shop, name my-shop applies only to a new child"}},
+			wantChild: []string{"shop"},
+		},
+		{
+			name:    "excluded, archived or outside include: no child",
+			entries: []aiv1.ProjectSetEntry{{Path: "jo.wiemers/archived/old"}, {Path: "jo.wiemers/apps/gone"}, {Path: "jo.wiemers/shop"}},
+			include: []string{"jo.wiemers/apps/**", "jo.wiemers/archived/**"},
+			projects: []gitlab.DiscoveredProject{
+				activeProject("jo.wiemers/archived/old"), {FullPath: "jo.wiemers/apps/gone", Archived: true}, activeProject("jo.wiemers/shop"),
+			},
+			existing: []aiv1.AgentProject{agentProject("agents", "shop", "jo.wiemers/shop", set)},
+			want: map[string]want{
+				"jo.wiemers/archived/old": {aiv1.ProjectSetExcluded, "", "named in spec.projects, but matches exclude jo.wiemers/archived/**"},
+				"jo.wiemers/apps/gone":    {aiv1.ProjectSetExcluded, "", "named in spec.projects, but archived"},
+				"jo.wiemers/shop":         {aiv1.ProjectSetExcluded, "shop", "named in spec.projects, but not matched by include"},
+			},
+		},
+		{
+			name:     "not found in the group: dormant without a child",
+			entries:  []aiv1.ProjectSetEntry{{Path: "jo.wiemers/Missing"}, {Path: "jo.wiemers/vanished"}},
+			existing: []aiv1.AgentProject{agentProject("agents", "vanished", "jo.wiemers/vanished", set)},
+			want: map[string]want{
+				"jo.wiemers/Missing":  {aiv1.ProjectSetDormant, "", "named in spec.projects, but not found in the group"},
+				"jo.wiemers/vanished": {aiv1.ProjectSetDormant, "vanished", "named in spec.projects, but not found in the group"},
+			},
+		},
+		{
+			name: "a name a foreign AgentProject holds is taken", entries: shop, projects: idleShop,
+			existing: []aiv1.AgentProject{agentProject("agents", "shop", "elsewhere/shop", nil)},
+			want:     map[string]want{"jo.wiemers/Shop": {aiv1.ProjectSetNameTaken, "", "name shop is taken by AgentProject agents/shop"}},
+		},
+		{
+			name: "an explicit watcher wins", entries: shop, projects: idleShop,
+			existing: []aiv1.AgentProject{agentProject("team", "mine", "jo.wiemers/shop", nil)},
+			want:     map[string]want{"jo.wiemers/Shop": {aiv1.ProjectSetExplicit, "", "watched by AgentProject team/mine"}},
+		},
+		{
+			name: "named wins a derived name, unnamed first", entries: []aiv1.ProjectSetEntry{{Path: "jo.wiemers/a-b/c"}},
+			projects: clash, want: clashWant, wantChild: []string{"a-b-c"},
+		},
+		{
+			name: "named wins a derived name, named first", entries: []aiv1.ProjectSetEntry{{Path: "jo.wiemers/a-b/c"}},
+			projects: []gitlab.DiscoveredProject{clash[1], clash[0]}, want: clashWant, wantChild: []string{"a-b-c"},
+		},
+		{
+			name: "an entry's name wins over a derived one", entries: []aiv1.ProjectSetEntry{{Path: "jo.wiemers/other", Name: "shop"}},
+			projects: []gitlab.DiscoveredProject{activeProject("jo.wiemers/shop"), {FullPath: "jo.wiemers/other"}},
+			want: map[string]want{
+				"jo.wiemers/other": {aiv1.ProjectSetActive, "shop", namedReason},
+				"jo.wiemers/shop":  {aiv1.ProjectSetNameTaken, "", "name shop is taken by the child of jo.wiemers/other"},
+			},
+			wantChild: []string{"shop"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := set.DeepCopy()
+			s.Spec.Projects, s.Status.Projects = tc.entries, tc.prev
+			if tc.include != nil {
+				s.Spec.Include = tc.include
+			}
+			plan := planProjectSet(projectSetInput{
+				Set: s, Discovery: &gitlab.GroupDiscovery{Projects: tc.projects}, Projects: tc.existing, Now: planNow,
+			})
+			if len(plan.Entries) != len(tc.want) {
+				t.Fatalf("entries = %+v, want %d", plan.Entries, len(tc.want))
+			}
+			for _, e := range plan.Entries {
+				w, ok := tc.want[e.Path]
+				if !ok {
+					t.Fatalf("unexpected entry %+v", e)
+				}
+				if e.State != w.state || e.Child != w.child || !strings.Contains(e.Reason, w.reason) {
+					t.Errorf("%s = %s/%q/%q, want %s/%q/~%q", e.Path, e.State, e.Child, e.Reason, w.state, w.child, w.reason)
+				}
+				if e.State == aiv1.ProjectSetActive && !e.LastActiveTime.Time.Equal(planNow) {
+					t.Errorf("%s lastActiveTime = %v", e.Path, e.LastActiveTime)
+				}
+			}
+			var children []string
+			for _, c := range plan.Children {
+				children = append(children, c.Name)
+			}
+			if strings.Join(children, ",") != strings.Join(tc.wantChild, ",") {
+				t.Errorf("children = %v, want %v", children, tc.wantChild)
+			}
+			if plan.Counts != projectSetCounts(plan.Entries) || int(plan.Counts.Active) != len(tc.wantChild) {
+				t.Errorf("counts = %+v", plan.Counts)
+			}
+		})
+	}
+}

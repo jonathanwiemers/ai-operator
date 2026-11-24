@@ -318,3 +318,77 @@ func TestProjectSetRemovalKeepsSettlingChildWithTasks(t *testing.T) {
 		t.Fatal("child not deleted after its tasks were gone")
 	}
 }
+
+// namedShop sets up a set that names jo.wiemers/shop, idle, with its child.
+func namedShop(t *testing.T) *setEnv {
+	t.Helper()
+	e := newSetEnv(t, func(s *aiv1.AgentProjectSet) { s.Spec.Projects = []aiv1.ProjectSetEntry{{Path: "jo.wiemers/shop"}} })
+	e.discover(gitlab.DiscoveredProject{FullPath: "jo.wiemers/shop"})
+	e.reconcile()
+	return e
+}
+
+// A named child without work is never removed.
+func TestProjectSetRemovalKeepsNamedChild(t *testing.T) {
+	e := namedShop(t)
+	e.now = e.now.Add(1000 * time.Hour)
+	e.reconcile()
+	e.poll()
+	if c := e.child("shop"); removing(c) || !c.Spec.Webhook.Enabled {
+		t.Fatalf("named child touched: webhook %v, annotations %v", c.Spec.Webhook.Enabled, c.Annotations)
+	}
+	set := e.set()
+	if en := setEntry(set, "jo.wiemers/shop"); en.State != aiv1.ProjectSetActive || en.Child != "shop" || en.Reason != namedReason ||
+		!en.LastActiveTime.Time.Equal(e.now) {
+		t.Errorf("entry = %+v", en)
+	}
+	if set.Status.Counts != (aiv1.ProjectSetCounts{Active: 1}) {
+		t.Errorf("counts = %+v", set.Status.Counts)
+	}
+}
+
+// A named child whose project leaves the scope or the group is removed
+// through the usual paths, and the set stays Ready.
+func TestProjectSetRemovalNamedChildOutOfScope(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		change func(*setEnv)
+		state  aiv1.ProjectSetState
+		reason string
+	}{
+		{"excluded", func(e *setEnv) {
+			set := e.set()
+			set.Spec.Exclude = append(set.Spec.Exclude, "jo.wiemers/shop")
+			set.Generation = 2
+			if err := e.c.Update(context.Background(), set); err != nil {
+				t.Fatal(err)
+			}
+		}, aiv1.ProjectSetExcluded, "named in spec.projects, but matches exclude jo.wiemers/shop"},
+		{"not found", func(e *setEnv) { e.discover() }, aiv1.ProjectSetDormant, "named in spec.projects, but not found in the group"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := namedShop(t)
+			tc.change(e)
+			e.poll()
+			if c := e.child("shop"); !removing(c) {
+				t.Fatalf("child not switched off: webhook %v", c.Spec.Webhook.Enabled)
+			}
+			e.poll()
+			if !e.gone("shop") {
+				t.Fatal("child not deleted")
+			}
+			set := e.set()
+			if en := setEntry(set, "jo.wiemers/shop"); en.State != tc.state || en.Child != "" || en.Reason != tc.reason {
+				t.Errorf("entry = %+v", en)
+			}
+			if c := setCondition(t, set, aiv1.ConditionReady); c.Status != metav1.ConditionTrue {
+				t.Errorf("ready = %+v", c)
+			}
+			// No child comes back on later polls.
+			e.poll()
+			if len(e.children()) != 0 {
+				t.Errorf("children = %+v", e.children())
+			}
+		})
+	}
+}

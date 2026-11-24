@@ -240,3 +240,22 @@ func TestWokenSetDiscoversAtOnce(t *testing.T) {
 		t.Fatal("the wake discovered twice")
 	}
 }
+
+// A named project missing from the group is dormant without a child, and
+// gets no set hook.
+func TestSetHookNotForNamedProjectNotFound(t *testing.T) {
+	e, h := newHookEnv(t)
+	set := e.set()
+	set.Spec.Projects = []aiv1.ProjectSetEntry{{Path: "jo.wiemers/missing"}}
+	if err := e.c.Update(context.Background(), set); err != nil {
+		t.Fatal(err)
+	}
+	e.discover(gitlab.DiscoveredProject{FullPath: "jo.wiemers/idle"})
+	e.reconcile()
+	if got := h.takeCalls(); got != "list jo.wiemers/idle, add jo.wiemers/idle" {
+		t.Fatalf("hook requests = %q", got)
+	}
+	if en := setEntry(e.set(), "jo.wiemers/missing"); en.State != aiv1.ProjectSetDormant || en.Child != "" || en.HookID != 0 {
+		t.Errorf("missing entry = %+v", en)
+	}
+}

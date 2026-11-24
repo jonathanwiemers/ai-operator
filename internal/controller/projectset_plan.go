@@ -53,7 +53,13 @@ type projectSetPlan struct {
 	// Dropped are the crossRepo targets of the template and the entries that
 	// the set's exclude matches, unique and sorted.
 	Dropped []string
+	// missing are the normalized paths of entries whose project is not in
+	// the discovery: the set registers no project hook for them.
+	missing map[string]bool
 }
+
+// namedReason is the reason of a project spec.projects names.
+const namedReason = "named in spec.projects"
 
 // planProjectSet decides, without I/O, the state of every project the set's
 // include matches and which children the set writes.
@@ -68,7 +74,11 @@ func planProjectSet(in projectSetInput) projectSetPlan {
 		dropped = append(dropped, d...)
 	}
 	slices.Sort(dropped)
-	plan := projectSetPlan{Dropped: slices.Compact(dropped)}
+	plan := projectSetPlan{Dropped: slices.Compact(dropped), missing: map[string]bool{}}
+	entries := make(map[string]aiv1.ProjectSetEntry, len(spec.Projects))
+	for _, e := range spec.Projects {
+		entries[aiv1.NormalizeProject(e.Path)] = e
+	}
 
 	// Ownership and watchers, by normalized project path and by name.
 	owned := map[string]*aiv1.AgentProject{}
@@ -102,18 +112,15 @@ func planProjectSet(in projectSetInput) projectSetPlan {
 	sel := in.Template.WithDefaults()
 	titleRE, reErr := titlePattern(sel)
 
-	seen := map[string]bool{}
+	discovered, seen := projectSetOrder(disc.Projects, entries)
 	planned := map[string]string{} // child name -> normalized path
-	for _, dp := range disc.Projects {
+	for _, dp := range discovered {
 		path := aiv1.NormalizeProject(dp.FullPath)
-		if seen[path] {
-			continue
-		}
-		seen[path] = true
+		entry, isNamed := entries[path]
 		child := owned[path]
 		if !projectglob.MatchAny(spec.Include, path) {
-			if child != nil {
-				plan.add(dp.FullPath, aiv1.ProjectSetExcluded, child.Name, "not matched by include", prev[path].LastActiveTime)
+			if child != nil || isNamed {
+				plan.add(dp.FullPath, aiv1.ProjectSetExcluded, childName(child), namedBut(isNamed, "not matched by include"), prev[path].LastActiveTime)
 			}
 			continue
 		}
@@ -122,11 +129,15 @@ func planProjectSet(in projectSetInput) projectSetPlan {
 			e.Child = child.Name
 		}
 		if reason, ok := projectSetSkip(dp, spec.Exclude, watchers[path]); ok {
-			e.State, e.Reason = reason.state, reason.text
+			e.State, e.Reason = reason.state, namedBut(isNamed, reason.text)
 			plan.Entries = append(plan.Entries, e)
 			continue
 		}
+		// An owned child keeps its name: a rename would delete its tasks.
 		name := aiv1.ProjectSetChildName(spec.GitLab.Group, dp.FullPath)
+		if entry.Name != "" {
+			name = entry.Name
+		}
 		if child != nil {
 			name = child.Name
 		}
@@ -140,7 +151,8 @@ func planProjectSet(in projectSetInput) projectSetPlan {
 		if p := byName[name]; p == nil || metav1.IsControlledBy(p, set) {
 			plans = in.PlanCounts[name]
 		}
-		active := work || plans > 0
+		// A named project needs no work: it is never dormant.
+		active := work || plans > 0 || isNamed
 		now := metav1.NewTime(in.Now)
 		switch {
 		case active && child == nil:
@@ -163,7 +175,14 @@ func planProjectSet(in projectSetInput) projectSetPlan {
 		default:
 			e.State, e.Reason = aiv1.ProjectSetDormant, "no milestone with the spec marker, ready issue or task"
 		}
-		if !work && plans > 0 && e.State == aiv1.ProjectSetActive {
+		switch {
+		case e.State != aiv1.ProjectSetActive:
+		case isNamed:
+			e.Reason = namedReason
+			if child != nil && entry.Name != "" && entry.Name != child.Name {
+				e.Reason += fmt.Sprintf("; the child keeps its name %s, name %s applies only to a new child", child.Name, entry.Name)
+			}
+		case !work && plans > 0:
 			e.Reason = keptReason(0, plans, "")
 		}
 		// A dormant child is not planned: the set removes it, or revives it
@@ -180,7 +199,15 @@ func planProjectSet(in projectSetInput) projectSetPlan {
 	}
 	for path, child := range owned {
 		if !seen[path] {
-			plan.add(child.Spec.GitLab.Project, aiv1.ProjectSetDormant, child.Name, "not found in the group", prev[path].LastActiveTime)
+			_, isNamed := entries[path]
+			plan.add(child.Spec.GitLab.Project, aiv1.ProjectSetDormant, child.Name, namedBut(isNamed, "not found in the group"), prev[path].LastActiveTime)
+			plan.missing[path] = true
+		}
+	}
+	for path, e := range entries {
+		if !seen[path] && owned[path] == nil {
+			plan.add(e.Path, aiv1.ProjectSetDormant, "", namedBut(true, "not found in the group"), prev[path].LastActiveTime)
+			plan.missing[path] = true
 		}
 	}
 
@@ -196,6 +223,52 @@ func planProjectSet(in projectSetInput) projectSetPlan {
 
 func (p *projectSetPlan) add(path string, state aiv1.ProjectSetState, child, reason string, last *metav1.Time) {
 	p.Entries = append(p.Entries, aiv1.ProjectSetProjectStatus{Path: path, State: state, Child: child, Reason: reason, LastActiveTime: last})
+}
+
+// projectSetOrder returns the discovered projects without duplicate paths,
+// the named ones first by path, so a named project wins a child name over an
+// unnamed one whatever the discovery order; the others keep their order. seen
+// holds every normalized path.
+func projectSetOrder(projects []gitlab.DiscoveredProject, entries map[string]aiv1.ProjectSetEntry) ([]gitlab.DiscoveredProject, map[string]bool) {
+	seen := map[string]bool{}
+	var out []gitlab.DiscoveredProject
+	for _, dp := range projects {
+		if path := aiv1.NormalizeProject(dp.FullPath); !seen[path] {
+			seen[path] = true
+			out = append(out, dp)
+		}
+	}
+	slices.SortStableFunc(out, func(a, b gitlab.DiscoveredProject) int {
+		pa, pb := aiv1.NormalizeProject(a.FullPath), aiv1.NormalizeProject(b.FullPath)
+		_, na := entries[pa]
+		_, nb := entries[pb]
+		switch {
+		case na && nb:
+			return strings.Compare(pa, pb)
+		case na:
+			return -1
+		case nb:
+			return 1
+		}
+		return 0
+	})
+	return out, seen
+}
+
+// namedBut prefixes the reason of a named project that gets no child, e.g.
+// "named in spec.projects, but archived".
+func namedBut(named bool, reason string) string {
+	if !named {
+		return reason
+	}
+	return namedReason + ", but " + reason
+}
+
+func childName(p *aiv1.AgentProject) string {
+	if p == nil {
+		return ""
+	}
+	return p.Name
 }
 
 type projectSetReason struct {

@@ -186,7 +186,8 @@ func (r *AgentProjectSetReconciler) syncSetHooks(ctx context.Context, set *aiv1.
 			e.HookID, e.HookCheckedAt = p.HookID, p.HookCheckedAt
 			delete(prev, path)
 		}
-		want := e.State == aiv1.ProjectSetDormant && e.Child == ""
+		// A project not in the group has nothing to hook.
+		want := e.State == aiv1.ProjectSetDormant && e.Child == "" && !plan.missing[path]
 		switch {
 		case want:
 			if err == nil && setHookDue(e, now) {
