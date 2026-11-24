@@ -248,3 +248,20 @@ func TestExplicitProjectWatchedByTheSetSkipsPolls(t *testing.T) {
 		t.Fatalf("WebhookDeliveries = %+v", cond)
 	}
 }
+
+// A child without an entry keeps the hash it had before entries existed: an
+// upgrade rewrites no child. The value was taken before the merge was added.
+func TestProjectSetChildHashWithoutEntryIsPinned(t *testing.T) {
+	tmpl := aiv1.AgentProjectSpec{MaxConcurrentRuns: 2, Webhook: aiv1.WebhookSpec{Enabled: true, URL: "https://hooks.example/gitlab"}}
+	in := projectSetInput{
+		Set: planSet(), Template: tmpl, Now: planNow,
+		Entries:    map[string]aiv1.AgentProjectSpec{"jo.wiemers/other": {MaxConcurrentRuns: 9}},
+		Discovery:  &gitlab.GroupDiscovery{Projects: []gitlab.DiscoveredProject{{FullPath: "jo.wiemers/shop"}}},
+		TaskCounts: map[string]int{"shop": 1},
+	}
+	plan := planProjectSet(in)
+	const want = "1c36cc06f67b176c4b978919f949e09fbce1ee7414336c44773ae48a6f22d010"
+	if len(plan.Children) != 1 || plan.Children[0].Hash != want {
+		t.Errorf("children = %+v, want hash %s", plan.Children, want)
+	}
+}

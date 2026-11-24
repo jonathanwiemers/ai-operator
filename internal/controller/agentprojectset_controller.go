@@ -97,7 +97,7 @@ func (r *AgentProjectSetReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	poll := spec.PollInterval.Duration
 	now := r.now()
 
-	tmpl, reason, msg := checkProjectSet(spec)
+	tmpl, entries, reason, msg := checkProjectSet(spec)
 	if reason != "" {
 		setProjectSetCondition(&set, aiv1.ConditionReady, false, reason, msg)
 		return r.patchStatus(ctx, &set, orig, poll)
@@ -147,7 +147,7 @@ func (r *AgentProjectSetReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 	planCounts := countPlans(plans.Items)
 	plan := planProjectSet(projectSetInput{
-		Set: &set, Template: tmpl, Discovery: disc, Projects: projects.Items,
+		Set: &set, Template: tmpl, Entries: entries, Discovery: disc, Projects: projects.Items,
 		TaskCounts: counts, PlanCounts: planCounts, Now: now,
 	})
 
@@ -192,23 +192,37 @@ func (r *AgentProjectSetReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	return res, err
 }
 
-// checkProjectSet decodes the template, or says why the set cannot use its
-// spec: the condition reason and message.
-func checkProjectSet(spec aiv1.AgentProjectSetSpec) (tmpl aiv1.AgentProjectSpec, reason, msg string) {
+// checkProjectSet decodes the template and the merged spec of each entry,
+// keyed by its normalized path, or says why the set cannot use its spec: the
+// condition reason and message. A broken entry stops the set like a broken
+// template.
+func checkProjectSet(spec aiv1.AgentProjectSetSpec) (tmpl aiv1.AgentProjectSpec, entries map[string]aiv1.AgentProjectSpec, reason, msg string) {
 	if problems := spec.Validate(); len(problems) > 0 {
-		return tmpl, aiv1.ReasonInvalidSpec, strings.Join(problems, "; ")
+		return tmpl, nil, aiv1.ReasonInvalidSpec, strings.Join(problems, "; ")
 	}
 	tmpl, err := spec.DecodeTemplate()
 	if err != nil {
-		return tmpl, aiv1.ReasonInvalidTemplate, textutil.Truncate(err.Error(), 1024)
+		return tmpl, nil, aiv1.ReasonInvalidTemplate, textutil.Truncate(err.Error(), 1024)
 	}
+	// Each entry alone first: an unknown field is refused even when null.
 	if _, err := spec.DecodeEntries(); err != nil {
-		return tmpl, aiv1.ReasonInvalidTemplate, textutil.Truncate(err.Error(), 1024)
+		return tmpl, nil, aiv1.ReasonInvalidTemplate, textutil.Truncate(err.Error(), 1024)
 	}
-	if problem := spec.WebhookProblem(tmpl); problem != "" {
-		return tmpl, aiv1.ReasonWebhookRequired, "set children need webhooks: " + problem
+	if problem := spec.WebhookProblem("template.", tmpl); problem != "" {
+		return tmpl, nil, aiv1.ReasonWebhookRequired, "set children need webhooks: " + problem
 	}
-	return tmpl, "", ""
+	entries = make(map[string]aiv1.AgentProjectSpec, len(spec.Projects))
+	for i, e := range spec.Projects {
+		merged, err := spec.EntrySpec(i)
+		if err != nil {
+			return tmpl, nil, aiv1.ReasonInvalidTemplate, textutil.Truncate(err.Error(), 1024)
+		}
+		if problem := spec.WebhookProblem("", merged); problem != "" {
+			return tmpl, nil, aiv1.ReasonWebhookRequired, fmt.Sprintf("projects[%d]: set children need webhooks: %s", i, problem)
+		}
+		entries[aiv1.NormalizeProject(e.Path)] = merged
+	}
+	return tmpl, entries, "", ""
 }
 
 // gitlabClient reads the set's token and creates its GitLab client.

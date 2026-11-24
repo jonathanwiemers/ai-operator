@@ -210,25 +210,45 @@ func TestProjectSetReconcileCreate(t *testing.T) {
 	}
 }
 
-// Entries change no child yet: the child of a named project keeps the
-// template's spec, name and hash (R2 merges the entry).
-func TestProjectSetReconcileEntriesChangeNoChild(t *testing.T) {
-	disc := &gitlab.GroupDiscovery{Projects: []gitlab.DiscoveredProject{activeProject("jo.wiemers/shop")}}
-	plain := newSetEnv(t, nil)
+// A named project's child carries the template with its entry merged on
+// top; the other children keep the template's spec and hash. A template
+// change reaches the fields the entry does not set.
+func TestProjectSetReconcileEntryMerged(t *testing.T) {
+	disc := &gitlab.GroupDiscovery{Projects: []gitlab.DiscoveredProject{activeProject("jo.wiemers/shop"), activeProject("jo.wiemers/other")}}
+	tmpl := func(image string) *runtime.RawExtension {
+		return setTemplate(map[string]any{"maxConcurrentRuns": 2, "agents": map[string]any{"image": image, "imagePullPolicy": "Always"}})
+	}
+	plain := newSetEnv(t, func(s *aiv1.AgentProjectSet) { s.Spec.Template = tmpl("agent:1") })
 	plain.disc.disc = disc
 	plain.reconcile()
 	named := newSetEnv(t, func(s *aiv1.AgentProjectSet) {
-		s.Spec.Projects = []aiv1.ProjectSetEntry{{Path: "jo.wiemers/shop", Name: "renamed",
-			Spec: setTemplate(map[string]any{"maxConcurrentRuns": 3})}}
+		s.Spec.Template = tmpl("agent:1")
+		s.Spec.Projects = []aiv1.ProjectSetEntry{{Path: "jo.wiemers/shop",
+			Spec: &runtime.RawExtension{Raw: []byte(`{"maxConcurrentRuns":3,"agents":{"imagePullPolicy":null}}`)}}}
 	})
 	named.disc.disc = disc
 	named.reconcile()
-	want, got := plain.child("shop"), named.child("shop")
-	if got.Spec.MaxConcurrentRuns != want.Spec.MaxConcurrentRuns || got.Annotations[aiv1.AnnotationTemplateHash] != want.Annotations[aiv1.AnnotationTemplateHash] {
-		t.Errorf("child with entry = %+v, want %+v", got, want)
-	}
 	if c := setCondition(t, named.set(), aiv1.ConditionReady); c.Status != metav1.ConditionTrue {
 		t.Errorf("Ready = %+v", c)
+	}
+	shop, other := named.child("shop"), named.child("other")
+	if shop.Spec.MaxConcurrentRuns != 3 || shop.Spec.Agents.Image != "agent:1" || shop.Spec.Agents.ImagePullPolicy != "" {
+		t.Errorf("shop spec = %+v", shop.Spec)
+	}
+	if hash := aiv1.AnnotationTemplateHash; shop.Annotations[hash] == plain.child("shop").Annotations[hash] ||
+		other.Annotations[hash] != plain.child("other").Annotations[hash] || other.Spec.MaxConcurrentRuns != 2 {
+		t.Errorf("hashes: shop %s, other %s", shop.Annotations[hash], other.Annotations[hash])
+	}
+
+	set := named.set()
+	set.Spec.Template = tmpl("agent:2")
+	if err := named.c.Update(context.Background(), set); err != nil {
+		t.Fatal(err)
+	}
+	named.now = named.now.Add(time.Hour)
+	named.reconcile()
+	if got := named.child("shop").Spec; got.Agents.Image != "agent:2" || got.MaxConcurrentRuns != 3 {
+		t.Errorf("shop after template change = %+v", got)
 	}
 }
 
@@ -350,6 +370,9 @@ func TestProjectSetReconcileInvalid(t *testing.T) {
 		"entry unknown field": {func(s *aiv1.AgentProjectSet) {
 			s.Spec.Projects = []aiv1.ProjectSetEntry{{Path: "jo.wiemers/shop", Spec: setTemplate(map[string]any{"bogus": 1})}}
 		}, aiv1.ReasonInvalidTemplate},
+		"entry webhook off": {func(s *aiv1.AgentProjectSet) {
+			s.Spec.Projects = []aiv1.ProjectSetEntry{{Path: "jo.wiemers/shop", Spec: &runtime.RawExtension{Raw: []byte(`{"webhook":{"enabled":false}}`)}}}
+		}, aiv1.ReasonWebhookRequired},
 	} {
 		t.Run(name, func(t *testing.T) {
 			e := newSetEnv(t, tc.mutate)

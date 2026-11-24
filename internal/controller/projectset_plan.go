@@ -22,7 +22,10 @@ type projectSetInput struct {
 	// Set is the set, its spec with defaults.
 	Set *aiv1.AgentProjectSet
 	// Template is the decoded template, without AgentProject defaults.
-	Template  aiv1.AgentProjectSpec
+	Template aiv1.AgentProjectSpec
+	// Entries are the merged specs of the projects spec.projects names, by
+	// normalized path: the template with the entry's spec on top.
+	Entries   map[string]aiv1.AgentProjectSpec
 	Discovery *gitlab.GroupDiscovery
 	// Projects are all AgentProjects in every namespace.
 	Projects []aiv1.AgentProject
@@ -47,7 +50,8 @@ type projectSetPlan struct {
 	Children []plannedChild
 	Entries  []aiv1.ProjectSetProjectStatus
 	Counts   aiv1.ProjectSetCounts
-	// Dropped are the template's crossRepo targets the set's exclude matches.
+	// Dropped are the crossRepo targets of the template and the entries that
+	// the set's exclude matches, unique and sorted.
 	Dropped []string
 }
 
@@ -57,7 +61,14 @@ func planProjectSet(in projectSetInput) projectSetPlan {
 	set := in.Set
 	spec := set.Spec.WithDefaults()
 	tmpl, dropped := projectSetTemplate(in.Template, spec.Exclude)
-	plan := projectSetPlan{Dropped: dropped}
+	named := make(map[string]aiv1.AgentProjectSpec, len(in.Entries))
+	for path, entry := range in.Entries {
+		s, d := projectSetTemplate(entry, spec.Exclude)
+		named[path] = s
+		dropped = append(dropped, d...)
+	}
+	slices.Sort(dropped)
+	plan := projectSetPlan{Dropped: slices.Compact(dropped)}
 
 	// Ownership and watchers, by normalized project path and by name.
 	owned := map[string]*aiv1.AgentProject{}
@@ -159,7 +170,11 @@ func planProjectSet(in projectSetInput) projectSetPlan {
 		// with the planned spec once the project is active again.
 		if e.Child != "" && e.State == aiv1.ProjectSetActive {
 			planned[e.Child] = path
-			plan.Children = append(plan.Children, planChild(name, dp.FullPath, tmpl, spec))
+			childSpec, ok := named[path]
+			if !ok {
+				childSpec = tmpl
+			}
+			plan.Children = append(plan.Children, planChild(name, dp.FullPath, childSpec, spec))
 		}
 		plan.Entries = append(plan.Entries, e)
 	}
@@ -255,8 +270,10 @@ func projectSetTemplate(t aiv1.AgentProjectSpec, exclude []string) (aiv1.AgentPr
 	return t, dropped
 }
 
-// planChild is the child spec of a project: the template with the set's
-// GitLab and the project's path, and its hash.
+// planChild is the child spec of a project: tmpl, the template or the
+// entry's merged spec, with the set's GitLab and the project's path, and its
+// hash. The hash covers only that final spec, so a child without an entry
+// keeps the hash it had before entries existed.
 func planChild(name, path string, tmpl aiv1.AgentProjectSpec, spec aiv1.AgentProjectSetSpec) plannedChild {
 	s := *tmpl.DeepCopy()
 	s.GitLab = aiv1.GitLabSpec{URL: spec.GitLab.URL, Project: path, TokenSecretRef: spec.GitLab.TokenSecretRef}

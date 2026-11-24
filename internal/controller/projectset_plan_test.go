@@ -279,7 +279,7 @@ func TestProjectSetPlanChildSpec(t *testing.T) {
 	if got := c.Spec.CrossRepo.Targets; len(got) != 1 || got[0].Project != "jo.wiemers/infra/cluster" {
 		t.Errorf("targets = %+v", got)
 	}
-	if strings.Join(plan.Dropped, ",") != "jo.wiemers/archived/old,Jo.Wiemers/Archived/Old" {
+	if strings.Join(plan.Dropped, ",") != "Jo.Wiemers/Archived/Old,jo.wiemers/archived/old" {
 		t.Errorf("dropped = %v", plan.Dropped)
 	}
 	if len(tmpl.CrossRepo.Targets) != 3 {
@@ -407,5 +407,73 @@ func TestProjectSetPlanSettlingChildIsIdle(t *testing.T) {
 				t.Errorf("entry = %s/%q, last active %v, want %s/shop, %v", e.State, e.Child, e.LastActiveTime, tc.wantState, tc.wantActive)
 			}
 		})
+	}
+}
+
+// entriesInput plans shop and other, both active; shop is named with the
+// entry's merged spec.
+func entriesInput(tmpl aiv1.AgentProjectSpec, shop *aiv1.AgentProjectSpec) projectSetInput {
+	in := projectSetInput{
+		Set: planSet(), Template: tmpl, Now: planNow,
+		Discovery: &gitlab.GroupDiscovery{Projects: []gitlab.DiscoveredProject{
+			{FullPath: "jo.wiemers/Shop"}, {FullPath: "jo.wiemers/other"},
+		}},
+		TaskCounts: map[string]int{"shop": 1, "other": 1},
+	}
+	if shop != nil {
+		in.Entries = map[string]aiv1.AgentProjectSpec{"jo.wiemers/shop": *shop}
+	}
+	return in
+}
+
+func TestProjectSetPlanEntrySpec(t *testing.T) {
+	tmpl := aiv1.AgentProjectSpec{MaxConcurrentRuns: 2}
+	base := planProjectSet(entriesInput(tmpl, nil))
+	merged := aiv1.AgentProjectSpec{MaxConcurrentRuns: 5}
+	plan := planProjectSet(entriesInput(tmpl, &merged))
+	if len(plan.Children) != 2 || plan.Children[0].Name != "other" || plan.Children[1].Name != "shop" {
+		t.Fatalf("children = %+v", plan.Children)
+	}
+	other, shop := plan.Children[0], plan.Children[1]
+	// The named project gets its merged spec, with the set's GitLab.
+	if shop.Spec.MaxConcurrentRuns != 5 || shop.Spec.GitLab.Project != "jo.wiemers/Shop" || shop.Spec.GitLab.URL != "https://gitlab.example" {
+		t.Errorf("shop spec = %+v", shop.Spec)
+	}
+	// The entry changes only its child.
+	if other.Spec.MaxConcurrentRuns != 2 || other.Hash != base.Children[0].Hash {
+		t.Errorf("other = %+v, want hash %s", other, base.Children[0].Hash)
+	}
+	if shop.Hash == base.Children[1].Hash {
+		t.Errorf("shop hash did not change with its entry")
+	}
+	merged.MaxConcurrentRuns = 6
+	if again := planProjectSet(entriesInput(tmpl, &merged)); again.Children[1].Hash == shop.Hash || again.Children[0].Hash != other.Hash {
+		t.Errorf("edited entry: hashes %s, %s", again.Children[0].Hash, again.Children[1].Hash)
+	}
+}
+
+// An entry's crossRepo target the exclude matches is dropped from its child
+// and listed once with the template's, sorted.
+func TestProjectSetPlanEntryDropsExcludedTargets(t *testing.T) {
+	targets := func(ps ...string) *aiv1.CrossRepoSpec {
+		c := &aiv1.CrossRepoSpec{}
+		for _, p := range ps {
+			c.Targets = append(c.Targets, aiv1.CrossRepoTarget{Project: p})
+		}
+		return c
+	}
+	tmpl := aiv1.AgentProjectSpec{CrossRepo: targets("jo.wiemers/infra", "jo.wiemers/archived/z")}
+	merged := aiv1.AgentProjectSpec{CrossRepo: targets("jo.wiemers/infra", "jo.wiemers/archived/z", "jo.wiemers/archived/a")}
+	plan := planProjectSet(entriesInput(tmpl, &merged))
+	if strings.Join(plan.Dropped, ",") != "jo.wiemers/archived/a,jo.wiemers/archived/z" {
+		t.Errorf("dropped = %v", plan.Dropped)
+	}
+	for _, c := range plan.Children {
+		if got := c.Spec.CrossRepo.Targets; len(got) != 1 || got[0].Project != "jo.wiemers/infra" {
+			t.Errorf("%s targets = %+v", c.Name, got)
+		}
+	}
+	if len(merged.CrossRepo.Targets) != 3 {
+		t.Errorf("entry spec was changed: %+v", merged.CrossRepo.Targets)
 	}
 }

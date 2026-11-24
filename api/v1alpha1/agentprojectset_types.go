@@ -423,18 +423,20 @@ func decodeStrict(field string, raw *runtime.RawExtension) (AgentProjectSpec, er
 	return spec, nil
 }
 
-// WebhookProblem says what the template's webhook lacks for a set child:
-// webhook.enabled, webhook.secretRef and webhook.url. Empty when nothing.
-func (s AgentProjectSetSpec) WebhookProblem(t AgentProjectSpec) string {
+// WebhookProblem says what the webhook of t, the template or an entry's
+// merged spec, lacks for a set child: webhook.enabled, webhook.secretRef and
+// webhook.url, each prefixed with prefix, e.g. "template.". Empty when
+// nothing.
+func (s AgentProjectSetSpec) WebhookProblem(prefix string, t AgentProjectSpec) string {
 	var missing []string
 	if !t.Webhook.Enabled {
-		missing = append(missing, "template.webhook.enabled is not true")
+		missing = append(missing, prefix+"webhook.enabled is not true")
 	}
 	if t.Webhook.SecretRef == nil {
-		missing = append(missing, "template.webhook.secretRef is not set")
+		missing = append(missing, prefix+"webhook.secretRef is not set")
 	}
 	if t.Webhook.URL == "" {
-		missing = append(missing, "template.webhook.url is not set")
+		missing = append(missing, prefix+"webhook.url is not set")
 	}
 	return strings.Join(missing, "; ")
 }

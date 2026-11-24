@@ -183,7 +183,7 @@ func TestProjectSetWebhookProblem(t *testing.T) {
 	} {
 		w := ok
 		tc.edit(&w)
-		if got := (AgentProjectSetSpec{}).WebhookProblem(AgentProjectSpec{Webhook: w}); got != tc.want {
+		if got := (AgentProjectSetSpec{}).WebhookProblem("template.", AgentProjectSpec{Webhook: w}); got != tc.want {
 			t.Errorf("%s: %q, want %q", tc.name, got, tc.want)
 		}
 	}
