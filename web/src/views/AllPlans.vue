@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // /plans (R12): the plans of every project the user may see (PlanList,
-// with the project column and the project picker of Plan milestone).
-// PlanList puts Plan milestone into the header's links, the primary action.
+// with the project column). PlanList puts New plan, a link to the New plan
+// page, into the header's links, the primary action.
 import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
 import { ref } from 'vue'
 import PlanList from '../components/PlanList.vue'

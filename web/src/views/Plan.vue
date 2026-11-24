@@ -2,13 +2,14 @@
 import { errorMessage } from '../format'
 import UAlert from '@nuxt/ui/components/Alert.vue'
 import { alertColor } from '../badgeTone'
-// One plan (R11): header with phase, spend / cap, budget raise and (in ⋯) delete;
+// One plan (R11): header with phase, spend / cap, budget raise and (in ⋯) delete,
+// below it the status message while Starting or Failed;
 // chat left, the right pane with the tabs Draft / Decisions, on phones the
 // tabs Chat / Decisions / Draft (R6). One ?tab= serves both layouts.
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { deletePlan, getPlan, LoginRequiredError, NotFoundError, raisePlanBudget } from '../client'
-import { planPhaseTone, planSpendLabel, planTitle, raiseBudgetError } from '../planRows'
+import { planPhaseTone, planSpendLabel, planStatusMessage, planTitle, raiseBudgetError } from '../planRows'
 import { planPaneTab, planPaneTabs, planTabs, tabFromQuery, tabQuery, type PlanPaneTab, type PlanTab } from '../streamTabs'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
@@ -38,6 +39,8 @@ const pane = computed(() => planPaneTab(tab.value))
 const paneClass = (id: PlanPaneTab) => ({ 'max-tablet:hidden': tab.value !== id, 'tablet:hidden': pane.value !== id })
 const owner = computed(() => !!view.value?.permissions.steer)
 const wizard = ref(false)
+// Why the plan waits for its project or failed, below the header.
+const status = computed(() => (view.value ? planStatusMessage(view.value) : null))
 
 async function load() {
   try {
@@ -109,6 +112,7 @@ onUnmounted(() => window.clearInterval(timer))
         </HeaderActions>
       </template>
     </UPageHeader>
+    <UAlert v-if="status" :color="alertColor(status.tone)" variant="subtle" class="mt-3" :description="status.text" data-plan-message />
     <UAlert v-if="raiseError" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="raiseError" />
     <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
     <div v-if="!view" class="empty">Loading…</div>

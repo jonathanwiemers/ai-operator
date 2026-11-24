@@ -1,10 +1,10 @@
-// Plan milestone in the plan lists (decision 14). Kept free of Vue and the
-// client so node --test can import it; PlanList.vue creates the plan and
-// opens it.
+// Starting a plan: New plan in the plan lists and the New plan page's
+// picker. Kept free of Vue and the client so node --test can import it;
+// PlanNew.vue creates the plan and opens it.
 import type { PlanProject } from './generated/views'
 
 // planStartProjects are the projects the caller may start a plan in (steer),
-// sorted by namespace and name. Empty: no button. One: no picker.
+// sorted by namespace and name. Empty: no New plan button.
 export function planStartProjects(projects: readonly PlanProject[]): PlanProject[] {
   return projects
     .filter((p) => p.steer)
@@ -69,4 +69,10 @@ export function planStartMenuItems(
   groups: readonly PlanStartGroup[],
 ): (PlanStartItem | { type: 'label'; label: string; value?: undefined })[][] {
   return groups.map((g) => [{ type: 'label' as const, label: g.label }, ...g.items])
+}
+
+// planNewTo is where New plan in a plan list goes: the New plan page, with
+// ?project=<namespace>/<name> on a project's Plans tab to preselect it.
+export function planNewTo(project?: { namespace: string; name: string }): { name: 'plan-new'; query?: { project: string } } {
+  return project ? { name: 'plan-new', query: { project: key(project) } } : { name: 'plan-new' }
 }

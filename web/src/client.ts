@@ -365,9 +365,8 @@ export function getPlan(namespace: string, name: string, plan: string): Promise<
 export function getPlanDecisionHistory(namespace: string, name: string, plan: string): Promise<PlanDecisionHistoryView> {
   return get(`${planPath(namespace, name, plan)}/decisions`)
 }
-// createPlan: POST …/plans with the first message (required by the server;
-// optional here only for PlanList's untitled start, which goes next).
-export function createPlan(namespace: string, name: string, body: { title?: string; message?: string } = {}): Promise<PlanView> {
+// createPlan: POST …/plans with the plan's first message.
+export function createPlan(namespace: string, name: string, body: { title?: string; message: string }): Promise<PlanView> {
   return post(planPath(namespace, name), body)
 }
 export function deletePlan(namespace: string, name: string, plan: string): Promise<void> {

@@ -9,6 +9,7 @@ import {
   planPhaseTone,
   planSections,
   planSpendLabel,
+  planStatusMessage,
   planTitle,
   raiseBudgetError,
 } from '../src/planRows.ts'
@@ -114,4 +115,16 @@ test('planDraftsCreated: N of M for several drafts, the milestones after the fir
   assert.deepEqual(planDraftsCreated({ draftsTotal: 3, draftsCreated: 0, createdMilestones: [] }), { label: '0 of 3 created', others: [] })
   assert.deepEqual(planDraftsCreated({ draftsTotal: 3, draftsCreated: 2, createdMilestones: [m(7), m(9)], createdMilestoneIID: 7 }),
     { label: '2 of 3 created', others: [m(9)] })
+})
+
+test('planStatusMessage: the message while Starting (info) or Failed (danger)', () => {
+  const waiting = 'Waiting for the project set to create the project'
+  assert.deepEqual(planStatusMessage({ phase: 'Starting', message: waiting }), { text: waiting, tone: 'info' })
+  assert.deepEqual(planStatusMessage({ phase: 'Failed', message: 'project not found' }), { text: 'project not found', tone: 'danger' })
+})
+
+test('planStatusMessage: none without a message or in another phase', () => {
+  assert.equal(planStatusMessage({ phase: 'Starting' }), null)
+  assert.equal(planStatusMessage({ phase: 'Failed', message: '  ' }), null)
+  for (const phase of ['Working', 'Ready', 'Idle', 'Created', undefined]) assert.equal(planStatusMessage({ phase, message: 'x' }), null)
 })

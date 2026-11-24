@@ -162,3 +162,20 @@ export function railItems(input: RailInput): RailItem[][] {
 export function openSets(groups: RailItem[][]): string[] {
   return groups.flat().flatMap((i) => (i.defaultOpen && i.value ? [i.value] : []))
 }
+
+// RailNewPlan is the New plan button at the top of the rail (RailNav.vue,
+// D758-P2): a UButton, not a menu item, as it is an action, not a page.
+export interface RailNewPlan {
+  label: string
+  icon: string
+  to: string
+  'aria-label': string
+}
+
+// railNewPlan: the New plan button while the plans feature is on, else null.
+// The same item serves both widths; collapsed, RailNav shows the icon with
+// the label as tooltip and aria-label.
+export function railNewPlan(input: Pick<RailInput, 'features'>): RailNewPlan | null {
+  if (!input.features.plans) return null
+  return { label: 'New plan', icon: 'i-lucide-plus', to: '/plans/new', 'aria-label': 'New plan' }
+}

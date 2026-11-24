@@ -98,3 +98,12 @@ export function planDraftsCreated(
   const others = item.createdMilestones.filter((m) => m.iid !== item.createdMilestoneIID)
   return { label: `${item.draftsCreated} of ${item.draftsTotal} created`, others }
 }
+
+// planStatusMessage is the plan page's status alert below the header: the
+// plan's message while it waits for its project (Starting, info) or failed
+// (Failed, danger); null otherwise or without a message.
+export function planStatusMessage(item: Pick<PlanListItem, 'phase' | 'message'>): { text: string; tone: Tone } | null {
+  const text = item.message?.trim() ?? ''
+  if (!text || (item.phase !== 'Starting' && item.phase !== 'Failed')) return null
+  return { text, tone: item.phase === 'Failed' ? 'danger' : 'info' }
+}

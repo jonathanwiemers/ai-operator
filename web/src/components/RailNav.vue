@@ -1,6 +1,7 @@
 <script setup lang="ts">
-// The rail's content (docs/contributing/web-ui.md, "Navigation"): a vertical
-// UNavigationMenu with Inbox, Overview, Metrics, Plans, the projects with
+// The rail's content (docs/contributing/web-ui.md, "Navigation"): New plan
+// at the top (with the plans feature; collapsed an icon with a tooltip), a
+// vertical UNavigationMenu with Inbox, Overview, Metrics, Plans, the projects with
 // their sets and the research (src/railItems.ts), then the engine meters with
 // their reset times and, at the very bottom, the account button: avatar,
 // name and live dot, opening the account menu (src/accountMenu.ts) with the
@@ -18,7 +19,7 @@ import { accountItems, initials } from '../accountMenu'
 import { themeInjectionKey, type Theme } from '../colorScheme'
 import { absTime, loginLasts, resetLabel, windowLabel } from '../format'
 import { live, useNow } from '../live'
-import { openSets, railItems } from '../railItems'
+import { openSets, railItems, railNewPlan } from '../railItems'
 import type { EngineUsage, ProjectSummary, ResearchSummary } from '../types'
 import type { ProjectSetSummary } from '../generated/views'
 import UAvatar from '@nuxt/ui/components/Avatar.vue'
@@ -65,6 +66,7 @@ const liveText = computed(() => (live.connected ? 'Live' : 'Offline'))
 const liveHint = computed(() => (live.connected ? 'Updates arrive live' : 'Reconnecting…'))
 const dot = computed(() => (live.connected ? 'bg-(--tone-success-fg)' : 'bg-(--text-3)'))
 
+const features = computed(() => ({ history: hasFeature('history'), plans: hasFeature('plans'), research: hasFeature('research') }))
 const items = computed(() =>
   railItems({
     path: route.path,
@@ -72,11 +74,12 @@ const items = computed(() =>
     projects: props.projects,
     projectSets: props.projectSets,
     researches: props.researches,
-    features: { history: hasFeature('history'), plans: hasFeature('plans'), research: hasFeature('research') },
+    features: features.value,
     collapsed: props.collapsed,
     onSelect: () => emit('navigate'),
   }),
 )
+const newPlan = computed(() => railNewPlan({ features: features.value }))
 
 // The open sets. The projects load after the menu mounts, so defaultOpen
 // alone would not open a set: a set the route enters is added here, and one
@@ -118,6 +121,24 @@ const engineMeters = computed(() => {
 
 <template>
   <div class="flex min-h-0 flex-1 flex-col">
+    <!-- New plan, above the navigation; navigate closes the phone sheet.
+         44 px on phones, like the links. -->
+    <div v-if="newPlan" :class="['px-2 pt-2', collapsed && 'flex justify-center']">
+      <UTooltip :text="newPlan.label" :disabled="!collapsed" :content="{ side: 'right' }">
+        <UButton
+          color="primary"
+          :to="newPlan.to"
+          :icon="newPlan.icon"
+          :label="collapsed ? undefined : newPlan.label"
+          :aria-label="collapsed ? newPlan['aria-label'] : undefined"
+          :block="!collapsed"
+          :square="collapsed"
+          data-rail-new-plan
+          class="max-tablet:min-h-11 max-tablet:min-w-11"
+          @click="emit('navigate')"
+        />
+      </UTooltip>
+    </div>
     <!-- Links are controls: 44 px on phones, like the buttons (style.css,
          "Hit areas"). -->
     <UNavigationMenu

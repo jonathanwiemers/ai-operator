@@ -1,7 +1,7 @@
 // Tests of src/planStart.ts: npm test (node --test, no extra dependencies).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { dormantDescription, planStartGroups, planStartMenuItems, planStartProjects } from '../src/planStart.ts'
+import { dormantDescription, planNewTo, planStartGroups, planStartMenuItems, planStartProjects } from '../src/planStart.ts'
 
 const p = (namespace, name, steer = true) => ({ namespace, name, steer })
 
@@ -69,4 +69,9 @@ test('planStartMenuItems: one array per group, led by its label', () => {
   const items = planStartMenuItems(groups)
   assert.deepEqual(items.map((g) => g[0]), [{ type: 'label', label: 'Projects' }, { type: 'label', label: 's' }])
   assert.deepEqual(items.map((g) => g.slice(1)), groups.map((g) => g.items))
+})
+
+test('planNewTo: the New plan page, with ?project= on a project', () => {
+  assert.deepEqual(planNewTo(), { name: 'plan-new' })
+  assert.deepEqual(planNewTo({ namespace: 'agents', name: 'shop' }), { name: 'plan-new', query: { project: 'agents/shop' } })
 })

@@ -148,18 +148,27 @@ func planWriterEnv(t *testing.T, roles ...string) *testEnv {
 	return env
 }
 
+// planCreateEnv is planChatEnv with the reader as the writer client: a
+// create stores its first message (skipped without a test database).
+func planCreateEnv(t *testing.T, roles ...string) *testEnv {
+	t.Helper()
+	env, _ := planChatEnv(t, roles...)
+	env.server.SetResearchWriter(env.reader)
+	return env
+}
+
 func (e *testEnv) planExists(t *testing.T, name string) bool {
 	t.Helper()
 	return e.reader.Get(context.Background(), client.ObjectKey{Namespace: "team-a", Name: name}, &aiv1.AgentPlan{}) == nil
 }
 
 func TestCreatePlan(t *testing.T) {
-	env := planWriterEnv(t, "leads")
+	env := planCreateEnv(t, "leads")
 	var ap aiv1.AgentProject
 	if err := env.reader.Get(context.Background(), client.ObjectKey{Namespace: "team-a", Name: "shop"}, &ap); err != nil {
 		t.Fatal(err)
 	}
-	code, out := env.postJSON(t, shopPlans, map[string]string{"title": "  Refunds v2 "})
+	code, out := env.postJSON(t, shopPlans, map[string]string{"title": "  Refunds v2 ", "message": "plan refunds"})
 	if code != http.StatusCreated {
 		t.Fatalf("create: %d %v", code, out)
 	}
@@ -183,24 +192,24 @@ func TestCreatePlan(t *testing.T) {
 		t.Errorf("owner references: %+v, want %+v", pl.OwnerReferences, want)
 	}
 
-	// Without a body the title is empty.
-	if resp := env.do(t, http.MethodPost, shopPlans, nil, nil); resp.StatusCode != http.StatusCreated {
-		t.Errorf("empty body: %d", resp.StatusCode)
+	// Without a title the title is empty.
+	if code, out := env.postJSON(t, shopPlans, map[string]string{"message": "plan"}); code != http.StatusCreated || out["title"] != "" {
+		t.Errorf("untitled: %d %v", code, out)
 	}
 }
 
 func TestCreatePlanTitle(t *testing.T) {
-	env := planWriterEnv(t, "leads")
+	env := planCreateEnv(t, "leads")
 	for name, title := range map[string]string{
 		"too long":  strings.Repeat("é", maxPlanTitle+1),
 		"two lines": "Refunds\nand more",
 		"carriage":  "Refunds\rand more",
 	} {
-		if code, out := env.postJSON(t, shopPlans, map[string]string{"title": title}); code != http.StatusBadRequest || out["field"] != "title" {
+		if code, out := env.postJSON(t, shopPlans, map[string]string{"title": title, "message": "plan"}); code != http.StatusBadRequest || out["field"] != "title" {
 			t.Errorf("%s: %d %v", name, code, out)
 		}
 	}
-	if code, _ := env.postJSON(t, shopPlans, map[string]string{"title": strings.Repeat("é", maxPlanTitle)}); code != http.StatusCreated {
+	if code, _ := env.postJSON(t, shopPlans, map[string]string{"title": strings.Repeat("é", maxPlanTitle), "message": "plan"}); code != http.StatusCreated {
 		t.Errorf("255 characters: %d", code)
 	}
 	if code, _ := env.postJSON(t, shopPlans, map[string]int{"title": 1}); code != http.StatusBadRequest {
@@ -209,13 +218,13 @@ func TestCreatePlanTitle(t *testing.T) {
 }
 
 func TestCreatePlanRateLimit(t *testing.T) {
-	env := planWriterEnv(t, "leads")
+	env := planCreateEnv(t, "leads")
 	for i := range plansPerWindow {
-		if code, _ := env.postJSON(t, shopPlans, map[string]string{}); code != http.StatusCreated {
+		if code, _ := env.postJSON(t, shopPlans, map[string]string{"message": "plan"}); code != http.StatusCreated {
 			t.Fatalf("create %d: %d", i, code)
 		}
 	}
-	resp := env.do(t, http.MethodPost, shopPlans, []byte(`{}`), nil)
+	resp := env.do(t, http.MethodPost, shopPlans, []byte(`{"message":"plan"}`), nil)
 	if resp.StatusCode != http.StatusTooManyRequests || resp.Header.Get("Retry-After") == "" {
 		t.Errorf("over the limit: %d, Retry-After %q", resp.StatusCode, resp.Header.Get("Retry-After"))
 	}
@@ -332,7 +341,10 @@ func standInEnv(t *testing.T, roles ...string) (*testEnv, func() string) {
 // the child name; reading and deleting it work before the child exists.
 func TestCreatePlanStandIn(t *testing.T) {
 	env, logs := standInEnv(t, "leads")
-	code, out := env.postJSON(t, fooPlans, map[string]string{"title": "Foo"})
+	_, reader, chat := chatStores(t)
+	env.server.SetResearchStore(reader)
+	env.server.SetChatStore(chat)
+	code, out := env.postJSON(t, fooPlans, map[string]string{"title": "Foo", "message": "plan foo"})
 	if code != http.StatusCreated {
 		t.Fatalf("create: %d %v", code, out)
 	}
@@ -344,7 +356,7 @@ func TestCreatePlanStandIn(t *testing.T) {
 	if pl.Spec.ProjectRef != "tools-foo" || pl.Labels[aiv1.LabelProjectSet] != "acme" || len(pl.OwnerReferences) != 0 || pl.Spec.Title != "Foo" {
 		t.Errorf("plan: %+v %+v", pl.ObjectMeta, pl.Spec)
 	}
-	if l := logs(); !strings.Contains(l, `"action"="plan.create"`) || !strings.Contains(l, `"set"="acme"`) || !strings.Contains(l, `"message"=false`) {
+	if l := logs(); !strings.Contains(l, `"action"="plan.create"`) || !strings.Contains(l, `"set"="acme"`) || strings.Contains(l, "plan foo") {
 		t.Errorf("audit line: %s", l)
 	}
 	var got PlanView
@@ -415,10 +427,18 @@ func TestCreatePlanMessage(t *testing.T) {
 	for name, msg := range map[string]string{
 		"too many runes": strings.Repeat("é", maxChatBody+1),
 		"over the bound": strings.Repeat("\x01", maxChatBody+1024), // \u0001 each
+		"blank":          " \n\t ",
 	} {
 		if code, out := env.postJSON(t, shopPlans, map[string]string{"message": msg}); code != http.StatusBadRequest || out["field"] != "message" {
 			t.Errorf("%s: %d %v", name, code, out)
 		}
+	}
+	// Without a message, or without a body: 400 on message.
+	if code, out := env.postJSON(t, shopPlans, map[string]string{"title": "Refunds"}); code != http.StatusBadRequest || out["field"] != "message" || out["error"] != "write what you want to plan" {
+		t.Errorf("no message: %d %v", code, out)
+	}
+	if resp := env.do(t, http.MethodPost, shopPlans, nil, nil); resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("empty body: %d", resp.StatusCode)
 	}
 	// No chat database: its 503, and the plan is gone again.
 	if code, out := env.postJSON(t, shopPlans, map[string]string{"message": "plan refunds"}); code != http.StatusServiceUnavailable {

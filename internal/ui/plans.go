@@ -313,11 +313,11 @@ func (s *Server) ownPlans(w http.ResponseWriter, r *http.Request) (planScope, bo
 	return planScope{}, false
 }
 
-// createPlan starts a plan of the project {"title"?, "message"?}, named by
+// createPlan starts a plan of the project {"title"?, "message"}, named by
 // the server, stamped with its creator and owned by the project, or labelled
 // with the set of a stand-in project, whose plan the set's child adopts.
-// A message is stored as the plan's first; the plan is deleted again when
-// that fails. The audit line never includes the text.
+// The message is required and stored as the plan's first; the plan is
+// deleted again when that fails. The audit line never includes the text.
 func (s *Server) createPlan(w http.ResponseWriter, r *http.Request) {
 	sc, ok := s.ownPlans(w, r)
 	if !ok {
@@ -340,7 +340,11 @@ func (s *Server) createPlan(w http.ResponseWriter, r *http.Request) {
 		fieldError(w, "title", fmt.Sprintf("the title must be one line of at most %d characters", maxPlanTitle))
 		return
 	}
-	if req.Message = strings.TrimSpace(req.Message); utf8.RuneCountInString(req.Message) > maxChatBody {
+	switch req.Message = strings.TrimSpace(req.Message); {
+	case req.Message == "":
+		fieldError(w, "message", "write what you want to plan")
+		return
+	case utf8.RuneCountInString(req.Message) > maxChatBody:
 		fieldError(w, "message", planMessageTooLong)
 		return
 	}
@@ -364,19 +368,17 @@ func (s *Server) createPlan(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, err)
 		return
 	}
-	if req.Message != "" {
-		if _, _, ok := s.insertChat(w, r, store.ChatMessage{Namespace: pl.Namespace, Project: ap.Name, Plan: pl.Name, Kind: "message", Body: req.Message}); !ok {
-			if err := s.writer.Delete(r.Context(), pl); client.IgnoreNotFound(err) != nil {
-				s.log.Error(err, "deleting the plan whose first message failed", "namespace", pl.Namespace, "name", pl.Name)
-			}
-			return
+	if _, _, ok := s.insertChat(w, r, store.ChatMessage{Namespace: pl.Namespace, Project: ap.Name, Plan: pl.Name, Kind: "message", Body: req.Message}); !ok {
+		if err := s.writer.Delete(r.Context(), pl); client.IgnoreNotFound(err) != nil {
+			s.log.Error(err, "deleting the plan whose first message failed", "namespace", pl.Namespace, "name", pl.Name)
 		}
+		return
 	}
 	kv := []any{"action", "plan.create", "user", p.Username, "namespace", pl.Namespace, "name", pl.Name, "project", ap.Name}
 	if sc.Set != "" {
 		kv = append(kv, "set", sc.Set)
 	}
-	s.log.Info("audit", append(kv, "message", req.Message != "")...)
+	s.log.Info("audit", kv...)
 	writeJSON(w, http.StatusCreated, s.planView(pl, true))
 }
 

@@ -192,7 +192,10 @@ const routes: Route[] = [
         await expect(bar).toHaveAttribute('aria-valuenow', '2')
         await expect(bar).toHaveAttribute('aria-valuemax', '4')
         await expect(bar).toHaveAttribute('aria-label', /: 2 of 4 merged$/)
-        await expect(page.locator('main').getByRole('button', { name: 'Plan milestone' })).toBeVisible()
+        // New plan links to the New plan page, on the tab with its project.
+        const href = name === 'all-plans' ? '/plans/new' : '/plans/new?project=team-a/shop'
+        await expect(page.locator('main').getByRole('link', { name: 'New plan' })).toHaveAttribute('href', href)
+        await expect(page.locator('main [data-plan-picker]')).toHaveCount(0)
       },
     }),
   ),
@@ -216,6 +219,17 @@ const routes: Route[] = [
       },
     }),
   ),
+  // A plan waiting for its set project (Plan.vue): its status message below
+  // the header.
+  {
+    name: 'plan-waiting',
+    path: '/projects/team-a/tools-foo/plans/plan-wait',
+    features: [...features.features, { name: 'plans' }],
+    ready: async (page) => {
+      await expect(page.locator('main [data-plan-phase]')).toHaveText('Starting')
+      await expect(page.locator('main [data-plan-message]')).toContainText('Waiting for the project set to create the project')
+    },
+  },
   {
     name: 'researches',
     path: '/research',
@@ -2288,6 +2302,26 @@ test.describe('rail sheet', () => {
     await inbox.ready(page)
     await expect(page.getByRole('dialog')).toHaveCount(0)
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+
+  // New plan (with the plans feature) is in the sheet too, and closes it.
+  test('New plan in the sheet opens the New plan page@375', async ({ page, baseURL }) => {
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    const plans = routes.find((r) => r.name === 'all-plans')!
+    await page.setViewportSize({ width: 375, height: 812 })
+    // No fixed clock, as above: RailNav's click must run.
+    await watch(page, new URL(baseURL ?? '').origin, problems)
+    await mockAPI(page, plans, problems)
+    await page.route('**/api/v1/features', (r) => r.fulfill({ status: 200, json: { features: plans.features } }))
+    await page.goto(plans.path)
+    await plans.ready(page)
+
+    const sheet = await openSheet(page)
+    await sheet.getByRole('link', { name: 'New plan' }).click()
+    await expect(page).toHaveURL(/\/plans\/new$/)
+    await expect(sheet).toBeHidden()
+    await expect(page.locator('main [data-plan-new-form]')).toBeVisible()
+    expect(problems.pageErrors, 'uncaught errors').toEqual([])
   })
 
   // Tablet and desktop keep the rail in the aside: no bottom bar, no sheet.
@@ -5681,4 +5715,40 @@ test('plan-new shows a field error on its field@1280', async ({ page, baseURL })
   await page.getByRole('button', { name: 'Start plan' }).click()
   await expect(page.locator('main [data-slot=error]')).toHaveText('The title is too long.')
   await expect(page).toHaveURL(/\/plans\/new/)
+})
+
+// New plan at the top of the rail (RailNav.vue, railNewPlan) opens the New
+// plan page, expanded and collapsed (an icon with its name as tooltip).
+test('rail New plan opens the New plan page, expanded and collapsed@1280', async ({ page, baseURL }) => {
+  const route = routes.find((r) => r.name === 'all-plans')!
+  const problems = await openRoute(page, baseURL, route, { width: 1280, height: 800 })
+  await route.ready(page)
+  const rail = page.locator('.rail')
+  const newPlan = rail.locator('[data-rail-new-plan]')
+  await expect(newPlan).toHaveText('New plan')
+  await newPlan.click()
+  await expect(page).toHaveURL(/\/plans\/new$/)
+  await expect(page.locator('main [data-plan-new-form]')).toBeVisible()
+
+  await page.goBack()
+  await route.ready(page)
+  await rail.getByRole('button', { name: 'Collapse sidebar' }).click()
+  await expect(rail).toHaveAttribute('data-collapsed', 'true')
+  const icon = rail.getByRole('link', { name: 'New plan' })
+  await expect(icon).toHaveText('')
+  await icon.hover()
+  await expect(page.getByRole('tooltip')).toHaveText('New plan')
+  await icon.click()
+  await expect(page).toHaveURL(/\/plans\/new$/)
+  expect(problems.pageErrors, 'uncaught errors').toEqual([])
+})
+
+// The Plans tab's New plan preselects its project on the New plan page.
+test('Plans tab New plan opens the New plan page with its project@1280', async ({ page, baseURL }) => {
+  const route = routes.find((r) => r.name === 'stream-project-plans')!
+  await openRoute(page, baseURL, route, { width: 1280, height: 800 })
+  await route.ready(page)
+  await page.locator('main').getByRole('link', { name: 'New plan' }).click()
+  await expect(page).toHaveURL(/\/plans\/new\?project=team-a(\/|%2F)shop$/)
+  await expect(page.locator('main [data-plan-project]')).toContainText('team-a/shop')
 })

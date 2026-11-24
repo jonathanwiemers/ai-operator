@@ -121,7 +121,7 @@ func TestCreatePlanStandInWithMessage(t *testing.T) {
 	if pl := env.getPlan(t, name); len(pl.OwnerReferences) != 0 || pl.Labels[aiv1.LabelProjectSet] != "acme" || pl.Spec.ProjectRef != "tools-foo" {
 		t.Errorf("plan: %+v %+v", pl.ObjectMeta, pl.Spec)
 	}
-	if l := logs(); !strings.Contains(l, `"message"=true`) || strings.Contains(l, "plan foo") {
+	if l := logs(); !strings.Contains(l, `"action"="plan.create"`) || strings.Contains(l, "plan foo") {
 		t.Errorf("audit line: %s", l)
 	}
 	msgs, err := owner.PlanMessages(t.Context(), "team-a", "tools-foo", name, 0, 0, 10)

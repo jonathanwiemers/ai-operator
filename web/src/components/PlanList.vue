@@ -4,25 +4,23 @@ import UAlert from '@nuxt/ui/components/Alert.vue'
 import { alertColor } from '../badgeTone'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import { computed, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
 import UButton from '@nuxt/ui/components/Button.vue'
 import PlanRow from './PlanRow.vue'
-import { ApiError, createPlan, getPlans, LoginRequiredError, NotFoundError } from '../client'
+import { getPlans, LoginRequiredError, NotFoundError } from '../client'
 import { planSections } from '../planRows'
-import { planStartProjects } from '../planStart'
-import type { PlanOverview, PlanProject } from '../generated/views'
+import { planNewTo, planStartProjects } from '../planStart'
+import type { PlanOverview } from '../generated/views'
 
 // The plan list (decision 12) of every visible project, or of one project:
 // Drafting, then Milestones created, each hidden when empty. It loads on
 // mount and when the project changes, not live. notFound: no chat, or a
 // project the user may not view.
 //
-// Plan milestone (decision 14) shows when the caller may steer a listed
-// project, also on an empty list. It starts an untitled plan and opens it:
-// right away with one such project (always so with project set), after a
-// pick from an inline list with more. A 403 hides it until the next load.
+// New plan shows when the caller may steer a listed project, also on an
+// empty list. It links to the New plan page (/plans/new), with the project
+// preselected (?project=) when project is set; the page creates the plan.
 // actionsTo: a selector in the host's page header; the button moves there
-// (Teleport), the picker stays above the list.
+// (Teleport).
 // milestones: the project's milestones where the page has them (the project
 // page), so a created milestone shows by title.
 const props = defineProps<{ project?: { namespace: string; name: string }; actionsTo?: string; milestones?: { iid: number; title: string }[] }>()
@@ -33,15 +31,14 @@ const overview = ref<PlanOverview | null>(null)
 const error = ref('')
 const projects = computed(() => overview.value?.projects ?? [])
 const sections = computed(() => planSections(overview.value?.plans ?? []))
-const starts = computed(() => planStartProjects(projects.value))
-const [busy, picking, forbidden, startError] = [ref(false), ref(false), ref(false), ref('')]
-const router = useRouter()
+const canStart = computed(() => planStartProjects(projects.value).length > 0)
+const newPlanTo = computed(() => planNewTo(props.project))
 let seq = 0
 
 async function load() {
   const n = ++seq
   overview.value = null
-  ;[error.value, startError.value, forbidden.value, picking.value] = ['', '', false, false]
+  error.value = ''
   try {
     const res = await getPlans(props.project)
     if (n === seq) overview.value = res
@@ -57,61 +54,15 @@ async function load() {
 // The key, not the object: a host's inline {namespace, name} is new on
 // every render.
 watch(() => (props.project ? `${props.project.namespace}/${props.project.name}` : ''), load, { immediate: true })
-
-function onPlan() {
-  if (starts.value.length === 1) void start(starts.value[0]!)
-  else picking.value = !picking.value
-}
-async function start(p: PlanProject) {
-  if (busy.value) return
-  ;[busy.value, startError.value] = [true, '']
-  try {
-    const plan = await createPlan(p.namespace, p.name)
-    await router.push({ name: 'plans', params: { namespace: p.namespace, name: p.name, plan: plan.name } })
-  } catch (e) {
-    startError.value = errorMessage(e)
-    if (e instanceof ApiError && e.status === 403) forbidden.value = true
-  } finally {
-    ;[busy.value, picking.value] = [false, false]
-  }
-}
 </script>
 
 <template>
   <div data-plan-list>
-    <div v-if="starts.length && !forbidden" :class="['flex flex-wrap items-center gap-2', (!actionsTo || picking) && 'mb-3']" data-plan-start>
+    <div v-if="canStart" :class="['flex flex-wrap items-center gap-2', !actionsTo && 'mb-3']" data-plan-start>
       <Teleport defer :to="actionsTo || 'body'" :disabled="!actionsTo">
-        <UButton
-          color="primary"
-          :size="actionsTo ? 'md' : 'sm'"
-          :disabled="busy"
-          :label="busy ? '…' : 'Plan milestone'"
-          :aria-expanded="starts.length > 1 ? picking : undefined"
-          @click="onPlan"
-        />
+        <UButton color="primary" :size="actionsTo ? 'md' : 'sm'" icon="i-lucide-plus" label="New plan" :to="newPlanTo" data-plan-new />
       </Teleport>
-      <!-- The picker: one button per steer project, wrapping on phones. -->
-      <div
-        v-if="picking && starts.length > 1"
-        class="flex basis-full flex-wrap gap-2"
-        role="group"
-        aria-label="Project of the new plan"
-        data-plan-picker
-      >
-        <UButton
-          v-for="p in starts"
-          :key="`${p.namespace}/${p.name}`"
-          color="neutral"
-          variant="outline"
-          size="sm"
-          class="max-w-full [overflow-wrap:anywhere]"
-          :disabled="busy"
-          :label="`${p.namespace}/${p.name}`"
-          @click="start(p)"
-        />
-      </div>
     </div>
-    <UAlert v-if="startError" role="alert" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="startError" />
     <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
     <p v-else-if="!overview" class="muted">Loading…</p>
     <UEmpty v-else-if="!overview.plans.length" icon="i-lucide-map" title="No plans yet." class="section" />

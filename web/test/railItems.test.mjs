@@ -1,7 +1,7 @@
 // Tests of src/railItems.ts: npm test (node --test, no extra dependencies).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { openSets, railItems } from '../src/railItems.ts'
+import { openSets, railItems, railNewPlan } from '../src/railItems.ts'
 
 const project = (name, over = {}) => ({ namespace: 'agents', name, stages: {}, ...over })
 const set = (name, over = {}) => ({ namespace: 'agents', name, counts: { active: 2 }, ...over })
@@ -173,4 +173,15 @@ test('railItems: every link calls onSelect, labels and triggers do not', () => {
   for (const i of g.flat().flatMap((i) => [i, ...(i.children ?? [])])) {
     assert.equal(i.onSelect, i.to ? onSelect : undefined, i.label)
   }
+})
+
+test('railNewPlan: the New plan button with the plans feature, collapsed and expanded', () => {
+  const want = { label: 'New plan', icon: 'i-lucide-plus', to: '/plans/new', 'aria-label': 'New plan' }
+  assert.deepEqual(railNewPlan(input()), want)
+  assert.deepEqual(railNewPlan(input({ collapsed: true })), want)
+})
+
+test('railNewPlan: none without the plans feature', () => {
+  assert.equal(railNewPlan(input({ features: { ...all, plans: false } })), null)
+  assert.equal(railNewPlan(input({ features: { ...all, plans: false }, collapsed: true })), null)
 })

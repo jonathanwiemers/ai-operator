@@ -5,7 +5,7 @@
 import { costs, costsMetrics, costsTop } from './costs'
 import { answerDecisions } from './decisions'
 import { doneMilestones, openMilestones, overview } from './overview'
-import { answerPlans } from './plans'
+import { answerPlans, planAPI } from './plans'
 import { metricsCode, metricsFlow, metricsPauses } from './metrics'
 import { listProblems, problemThread, type ProblemsOpts } from './problems'
 import { inbox, projects, projectSets, researches } from './rail'
@@ -59,6 +59,7 @@ export const api: Record<string, Fixture> = {
   [`${refundsPath}/logs`]: refundsLogs,
   [`${shopPath}/tasks/shop-m14-pilot/chat`]: pilotChat,
   ...researchAPI,
+  ...planAPI,
 }
 
 const shopProblems = /^\/projects\/team-a\/shop\/milestones\/(\d+)\/problems(?:\/([^/]+))?$/

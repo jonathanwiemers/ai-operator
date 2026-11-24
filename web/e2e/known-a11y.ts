@@ -85,6 +85,7 @@ export const knownA11y: Record<string, string> = {
   'plan-new@1280-dark': `${R6} R6: color-contrast`,
   'plan-new-dark@375': `${R6} R6: color-contrast`,
   'plan-new-dark@1280': `${R6} R6: color-contrast`,
+  'plan-waiting@1280-dark': `${R6} R6: color-contrast`,
   'researches@375': `${R6} R6: color-contrast`,
   'researches@1280': `${R6} R6: color-contrast`,
   'researches@1280-dark': `${R6} R6: color-contrast`,

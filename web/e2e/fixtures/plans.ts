@@ -1,4 +1,4 @@
-import type { PlanListItem, PlanOverview } from '../../src/generated/views'
+import type { ChatPage, PlanListItem, PlanOverview, PlanView } from '../../src/generated/views'
 import { ago } from './clock'
 
 // GET /api/v1/plans?project=team-a/shop: one plan per kind of row, with a
@@ -67,3 +67,25 @@ const allPlanOverview: PlanOverview = {
 }
 
 export const answerPlans = (q: URLSearchParams): PlanOverview => (q.get('project') ? shopPlanOverview : allPlanOverview)
+
+// GET …/tools-foo/plans/plan-wait: a plan in the dormant set entry, waiting
+// for the set to create its project (phase Starting with the message).
+const waitPath = '/projects/team-a/tools-foo/plans/plan-wait'
+const waitingPlan: PlanView = {
+  ...plan({
+    name: 'plan-wait',
+    project: 'tools-foo',
+    title: 'CSV export on the Metrics page',
+    phase: 'Starting',
+    message: 'Waiting for the project set to create the project',
+    createdAt: ago(1),
+    lastActivityAt: ago(1),
+    spendUSD: '0',
+    tokens: 0,
+  }),
+  drafts: [],
+  decisions: [],
+  decisionsPending: 0,
+}
+const waitingChat: ChatPage = { messages: [] }
+export const planAPI: Record<string, unknown> = { [waitPath]: waitingPlan, [`${waitPath}/chat`]: waitingChat }
