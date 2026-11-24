@@ -1,5 +1,5 @@
 import { h, type VNodeChild } from 'vue'
-import { fullTime } from './format.ts'
+import { fullTime, relTime } from './format.ts'
 
 // Server text writes times in UTC, as "2026-11-21 14:05 UTC" (Go's
 // timefmt.UTCMinute) or with seconds. The Desk shows each such time in the
@@ -75,4 +75,11 @@ export function localMinute(iso: string, now: number): string {
     year: t.getFullYear() === n.getFullYear() ? undefined : 'numeric',
   }).format(t)
   return `${date}, ${clock}`
+}
+
+// nextRunTitle is the tooltip of a research's next run, whose label is its
+// localMinute: the full local time and how far off it is ("24 Nov 2026,
+// 08:15 CET · in 3 hours").
+export function nextRunTitle(iso: string, now: number): string {
+  return `${fullTime(iso)} · ${relTime(iso, now)}`
 }

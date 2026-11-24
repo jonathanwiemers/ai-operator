@@ -63,10 +63,11 @@ export function relTime(iso: string | undefined | null, now: number): string {
   return rtf.format(Math.round(diff / (86400 * 365)), 'year')
 }
 
+// absTime is the local date and time to the second with the time zone ("21
+// Nov 2026, 15:05:12 CET"), for the tooltip of a relative time. Not
+// dateStyle and timeStyle: together with timeZoneName they throw.
 export function absTime(iso: string | undefined | null): string {
-  if (!iso) return ''
-  const t = new Date(iso)
-  return Number.isNaN(t.getTime()) ? '' : t.toLocaleString()
+  return zoned(iso, { second: '2-digit' })
 }
 
 const windowLabels: Record<string, string> = {
@@ -85,17 +86,15 @@ export function windowLabel(name: string): string {
 // 14:59 CET"), for the tooltip of a clockTime. dateStyle and timeStyle
 // cannot be combined with timeZoneName: toLocaleString throws.
 export function fullTime(iso: string | undefined | null): string {
-  if (!iso) return ''
-  const t = new Date(iso)
-  if (Number.isNaN(t.getTime())) return ''
-  return t.toLocaleString(undefined, {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZoneName: 'short',
-  })
+  return zoned(iso)
+}
+
+// zoned is the local date and time to the minute with the time zone, and
+// more of the time in extra; '' for a missing or invalid time.
+function zoned(iso: string | undefined | null, extra?: Intl.DateTimeFormatOptions): string {
+  const t = new Date(iso as string)
+  if (!iso || Number.isNaN(t.getTime())) return ''
+  return t.toLocaleString(undefined, { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', ...extra, timeZoneName: 'short' })
 }
 
 // clockTime is a local time of day ("14:00"), with the weekday when it is

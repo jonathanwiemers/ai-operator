@@ -10,11 +10,13 @@ import { chatPostError } from '../api'
 import { alertColor } from '../badgeTone'
 import { getProblems, postTaskChat } from '../client'
 import { live, useNow } from '../live'
+import { localTimesText } from '../localTime'
 import { needsOpen } from '../needsOpen'
 import { pausesLine, pausesSummary } from '../pauses'
 import { problemFromHash, problemParam, problemSubject, sameProblem, statusColors, statusLine } from '../problemThread'
 import type { MilestoneView, ProblemView } from '../types'
 import Markdown from './Markdown.vue'
+import LocalText from './LocalText.vue'
 import ProblemThread from './ProblemThread.vue'
 import RelTime from './RelTime.vue'
 
@@ -132,7 +134,7 @@ const chip = { color: 'neutral', variant: 'outline', size: 'sm' } as const
               <UBadge size="sm" variant="subtle" :color="statusColors[statusLine(p.status).tone]" :label="statusLine(p.status).text" />
               <RelTime class="faint text-[12px]" :time="p.resolvedAt ?? p.reopenedAt ?? p.openedAt" />
             </span>
-            <span v-if="p.cause" class="min-w-0 truncate text-[12.5px] text-(--text-3)">{{ p.cause }}</span>
+            <span v-if="p.cause" class="min-w-0 truncate text-[12.5px] text-(--text-3)" :title="localTimesText(p.cause, now)"><LocalText :text="p.cause" /></span>
           </RouterLink>
         </nav>
       </section>

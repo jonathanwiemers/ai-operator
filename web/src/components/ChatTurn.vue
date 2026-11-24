@@ -4,6 +4,7 @@ import type { PlanDecision } from '../generated/api'
 import type { ChatMessage } from '../types'
 import Badge from './Badge.vue'
 import ChatAnswers from './ChatAnswers.vue'
+import LocalText from './LocalText.vue'
 import Markdown from './Markdown.vue'
 import RelTime from './RelTime.vue'
 
@@ -43,7 +44,7 @@ defineProps<{
       class="m-0 text-[13px]"
       :class="message.state === 'failed' ? 'text-(--tone-danger-fg)' : 'text-(--text-3)'"
     >
-      {{ message.reason }}
+      <LocalText :text="message.reason" />
     </p>
   </div>
 </template>

@@ -33,6 +33,7 @@ import type { HoldView, MilestoneView } from '../types'
 import Badge from './Badge.vue'
 import CompanionChip from './CompanionChip.vue'
 import ExtLink from './ExtLink.vue'
+import LocalText from './LocalText.vue'
 import Markdown from './Markdown.vue'
 import PromptCard from './PromptCard.vue'
 import RelTime from './RelTime.vue'
@@ -334,7 +335,7 @@ const wrap = '[overflow-wrap:anywhere]'
             <span :class="wrap">{{ e.when }}</span>
             <Badge :tone="e.tone">{{ e.chip }}</Badge>
           </span>
-          <span v-if="e.detail" class="muted" :class="wrap">{{ e.detail }}</span>
+          <span v-if="e.detail" class="muted" :class="wrap"><LocalText :text="e.detail" /></span>
           <span class="faint">→ {{ e.does }}</span>
         </li>
       </ul>
@@ -427,7 +428,7 @@ const wrap = '[overflow-wrap:anywhere]'
     <p v-if="sent" :class="wrap" role="status">
       <strong>{{ sent.label }}:</strong>
       <span v-if="answer.state === 'pending'" class="faint"> sent…</span>
-      <span v-else-if="answer.state === 'failed'" class="text-(--tone-danger-fg)"> {{ answer.reason }}</span>
+      <span v-else-if="answer.state === 'failed'" class="text-(--tone-danger-fg)"> <LocalText :text="answer.reason" /></span>
       <span v-else-if="answer.redacted" class="muted"> answered</span>
       <span v-else class="whitespace-pre-wrap"> {{ answer.text }}</span>
     </p>

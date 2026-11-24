@@ -23,6 +23,7 @@ import CostChip from './CostChip.vue'
 import CompanionChip from './CompanionChip.vue'
 import ExtLink from './ExtLink.vue'
 import RelTime from './RelTime.vue'
+import LocalText from './LocalText.vue'
 import StatTile from './StatTile.vue'
 import Truncated from '../ui/Truncated.vue'
 import LiveTranscript from './LiveTranscript.vue'
@@ -188,7 +189,7 @@ const actions = computed(() => [
           <span>autopilot</span>
         </template>
         <Badge v-if="health?.stalled" tone="danger" :title="health.stalledMessage || undefined">
-          Stalled<template v-if="health.stalledReason"> · {{ health.stalledReason }}</template>
+          Stalled<template v-if="health.stalledReason"> · <LocalText :text="health.stalledReason" /></template>
         </Badge>
         <CostChip :cost="data.cost" />
         <CompanionChip v-if="t.companion" :companion="t.companion" />
@@ -354,7 +355,7 @@ const actions = computed(() => [
           <template v-if="t.status.agentTermination">
             <dt :class="dt">Agent container</dt>
             <dd :class="dd">
-              last stopped {{ t.status.agentTermination.reason }} (exit {{ t.status.agentTermination.exitCode ?? '?' }}),
+              last stopped <LocalText :text="t.status.agentTermination.reason" /> (exit {{ t.status.agentTermination.exitCode ?? '?' }}),
               {{ t.status.agentTermination.restarts ?? 0 }} restarts
             </dd>
           </template>
@@ -375,7 +376,7 @@ const actions = computed(() => [
           <DataList :columns="conditionColumns" :rows="t.status.conditions" :row-key="(c) => c.type">
             <template #cell-status="{ row: c }">
               <Badge :tone="conditionTone(c.type, c.status)">{{ c.reason || c.status }}</Badge>
-              <div v-if="c.message" class="faint">{{ c.message }}</div>
+              <div v-if="c.message" class="faint"><LocalText :text="c.message" /></div>
             </template>
           </DataList>
         </div>

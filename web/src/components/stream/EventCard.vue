@@ -16,6 +16,7 @@ import {
 } from '../../releaseEvents'
 import Badge from '../Badge.vue'
 import ExtLink from '../ExtLink.vue'
+import LocalText from '../LocalText.vue'
 import Markdown from '../Markdown.vue'
 import { askedQuestion, promptStatus, shortStatus } from '../../promptCard'
 import NoteThread from '../NoteThread.vue'
@@ -130,7 +131,8 @@ function taskLink(ev: StreamEvent) {
          inherited), so a row never widens the stream on a phone. -->
     <div class="min-w-0 wrap-anywhere">
       <div class="meta">
-        <b>{{ (isRelease && releaseEventTitle(e)) || e.summary || e.kind }}</b>
+        <b v-if="isRelease && releaseEventTitle(e)">{{ releaseEventTitle(e) }}</b>
+        <b v-else><LocalText :text="e.summary || e.kind" /></b>
         <span v-if="e.issueIID" class="ctx">#{{ e.issueIID }}</span>
         <span v-else-if="e.mergeRequestIID" class="ctx">!{{ e.mergeRequestIID }}</span>
         <time :datetime="e.at" :title="fullTime(e.at)">{{ clockTime(e.at, now) }}</time>
@@ -229,7 +231,7 @@ function taskLink(ev: StreamEvent) {
       <!-- proposal -->
       <div v-else-if="e.kind === 'proposal'" class="card pilot">
         <Markdown v-if="e.data.body" :text="e.data.body" />
-        <p v-else>{{ e.summary }}</p>
+        <p v-else><LocalText :text="e.summary" /></p>
         <div v-if="e.data.proposalState === 'open' || !e.data.proposalState" class="mt-2.5 flex flex-wrap gap-1.5">
           <UButton
             color="neutral"
@@ -292,7 +294,7 @@ function taskLink(ev: StreamEvent) {
 
       <!-- prompt.answered, prompt.closed: one line -->
       <div v-else-if="isPrompt" class="compact">
-        <span>{{ e.summary }}</span>
+        <span><LocalText :text="e.summary" /></span>
       </div>
 
       <!-- Desk chat -->
@@ -309,7 +311,7 @@ function taskLink(ev: StreamEvent) {
       </div>
 
       <div v-else class="compact">
-        <span>{{ e.summary }}</span>
+        <span><LocalText :text="e.summary" /></span>
       </div>
     </div>
   </div>

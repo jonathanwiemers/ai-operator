@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LocalText from '../components/LocalText.vue'
 import { errorMessage, researchRoute } from '../format'
 import UAlert from '@nuxt/ui/components/Alert.vue'
 import { alertColor } from '../badgeTone'
@@ -210,7 +211,7 @@ const selectProps = {
       </UAlert>
       <UAlert v-else-if="selected && !selected.available" :color="alertColor('warning')" variant="subtle" class="mt-3 [overflow-wrap:anywhere]">
         <template #description>
-        The project {{ selected.name }} cannot run researches: {{ selected.reason }}.
+        The project {{ selected.name }} cannot run researches: <LocalText :text="selected.reason" />.
         </template>
       </UAlert>
       <p v-else-if="errors.project" class="m-0 text-[13px] text-(--tone-danger-fg) [overflow-wrap:anywhere]" role="alert">

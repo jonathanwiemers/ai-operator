@@ -7,10 +7,12 @@ import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
 import { canStartResearch } from '../api'
 import { getResearches } from '../client'
 import { useNow, useResource } from '../live'
+import { localMinute, nextRunTitle } from '../localTime'
 import { pageHeaderUi } from '../pageHeader'
 import { clockTime, researchRoute, runLine, type Tone } from '../format'
 import Badge from '../components/Badge.vue'
 import CronSchedule from '../components/CronSchedule.vue'
+import LocalText from '../components/LocalText.vue'
 import RelTime from '../components/RelTime.vue'
 import type { ResearchPhase, ResearchSummary } from '../types'
 
@@ -85,18 +87,18 @@ function lastRunLine(r: ResearchSummary): string {
           <CronSchedule v-if="r.schedule" :schedule="r.schedule" :time-zone="r.timeZone" />
           <span v-else>one-off<template v-if="r.createdBy"> by {{ r.createdBy }}</template></span>
           <span>last run <RelTime :time="r.lastRun" /></span>
-          <span v-if="r.nextRun">next run <RelTime :time="r.nextRun" /></span>
+          <span v-if="r.nextRun">next run <time :datetime="r.nextRun" :title="nextRunTitle(r.nextRun, now)">{{ localMinute(r.nextRun, now) }}</time></span>
         </div>
         <div v-if="lastRunLine(r)" class="text-[13px] text-(--text-3) [overflow-wrap:anywhere]">
           {{ lastRunLine(r) }}
           <template v-if="r.run?.outcome && r.run.outcome !== 'succeeded'"> · {{ r.run.outcome }}</template>
-          <span v-if="r.run?.reason" class="block">{{ r.run.reason }}</span>
+          <span v-if="r.run?.reason" class="block"><LocalText :text="r.run.reason" /></span>
         </div>
         <div v-if="r.waiting || r.skippedReason" class="flex flex-wrap items-center gap-2 text-[13px]">
           <Badge v-if="r.waiting" tone="warning">
             waiting for <code>{{ r.waiting.engine }}</code> until {{ clockTime(r.waiting.until, now) }}
           </Badge>
-          <span v-if="r.skippedReason" class="text-(--text-2) [overflow-wrap:anywhere]">{{ r.skippedReason }}</span>
+          <span v-if="r.skippedReason" class="text-(--text-2) [overflow-wrap:anywhere]"><LocalText :text="r.skippedReason" /></span>
         </div>
       </li>
     </ul>

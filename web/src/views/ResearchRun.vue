@@ -11,6 +11,7 @@ import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
 import RelTime from '../components/RelTime.vue'
 import { toneText } from '../badgeTone'
 import { pageHeaderUi } from '../pageHeader'
+import LocalText from '../components/LocalText.vue'
 import ResearchResult from '../components/ResearchResult.vue'
 import StatTile from '../components/StatTile.vue'
 import NotFound from './NotFound.vue'
@@ -80,7 +81,7 @@ const duration = computed(() => {
         <StatTile label="Model spend" :value="cost(run.costUSD)" />
         <StatTile label="Kept until"><RelTime :time="run.expiresAt" /></StatTile>
       </div>
-      <p v-if="run.choiceReason" class="mt-2.5 mb-0 text-[13px] text-(--text-2) [overflow-wrap:anywhere]">{{ run.choiceReason }}</p>
+      <p v-if="run.choiceReason" class="mt-2.5 mb-0 text-[13px] text-(--text-2) [overflow-wrap:anywhere]"><LocalText :text="run.choiceReason" /></p>
 
       <ResearchResult v-if="data.result" :research="data.research" :run="null" :result="data.result" class="section" />
       <UEmpty

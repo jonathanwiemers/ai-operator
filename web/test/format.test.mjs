@@ -1,8 +1,60 @@
 // Tests of src/format.ts: npm test (node --test, no extra dependencies).
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import { test } from 'node:test'
-import { cost, costChip, dateLabel, costTooltip, deferringEngine, deskTitle, durationShort, errorMessage, plural, fullTime, loginLasts, milestoneIssueURL, researchRoute, resetLabel, tokenCount } from '../src/format.ts'
+import { absTime, cost, costChip, dateLabel, costTooltip, deferringEngine, deskTitle, durationShort, errorMessage, plural, fullTime, loginLasts, milestoneIssueURL, relTime, researchRoute, resetLabel, tokenCount } from '../src/format.ts'
 import { cronText } from '../src/cron.ts'
+import { localMinute, nextRunTitle } from '../src/localTime.ts'
+
+// inBerlin runs fn with the process in Europe/Berlin, as a Desk there.
+function inBerlin(fn) {
+  const saved = process.env.TZ
+  process.env.TZ = 'Europe/Berlin'
+  try {
+    fn()
+  } finally {
+    if (saved === undefined) delete process.env.TZ
+    else process.env.TZ = saved
+  }
+}
+
+// absTimeIn is absTime of each iso in a fresh node with the given locale,
+// in Europe/Berlin: ICU takes the locale from the environment at start.
+function absTimeIn(lang, isos) {
+  const mod = new URL('../src/format.ts', import.meta.url).href
+  const code = `import { absTime } from ${JSON.stringify(mod)}; console.log(JSON.stringify(${JSON.stringify(isos)}.map(absTime)))`
+  const out = execFileSync(process.execPath, ['--input-type=module', '-e', code], {
+    env: { ...process.env, TZ: 'Europe/Berlin', LANG: lang, LC_ALL: lang },
+    encoding: 'utf8',
+  })
+  return JSON.parse(out)
+}
+
+test('absTime names the zone and has seconds: CET in winter, CEST in summer', () => {
+  assert.deepEqual(absTimeIn('en_GB.UTF-8', ['2026-01-21T14:05:12Z', '2026-07-21T14:05:12Z']), [
+    '21 Jan 2026, 15:05:12 CET',
+    '21 Jul 2026, 16:05:12 CEST',
+  ])
+})
+
+test('absTime is empty for a missing or invalid time', () => {
+  assert.equal(absTime(undefined), '')
+  assert.equal(absTime(null), '')
+  assert.equal(absTime(''), '')
+  assert.equal(absTime('not a time'), '')
+})
+
+test('next run: the local clock time, with the full time and how far off in the title', () => {
+  inBerlin(() => {
+    // Schedule 15 7 * * * in UTC: in Berlin in winter it runs at 08:15.
+    const nextRun = '2026-11-24T07:15:00Z'
+    const now = Date.parse('2026-11-24T04:15:00Z')
+    const clock = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' }).format(new Date(nextRun))
+    assert.match(clock, /08.15/)
+    assert.equal(localMinute(nextRun, now), clock)
+    assert.equal(nextRunTitle(nextRun, now), `${fullTime(nextRun)} · ${relTime(nextRun, now)}`)
+  })
+})
 
 test('fullTime shows the date, time and time zone', () => {
   const s = fullTime('2026-11-02T13:59:00Z')

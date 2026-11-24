@@ -29,6 +29,7 @@ import Badge from './Badge.vue'
 import CommandStatus from './CommandStatus.vue'
 import CompanionChip from './CompanionChip.vue'
 import ExtLink from './ExtLink.vue'
+import LocalText from './LocalText.vue'
 
 // QueueList is a milestone's autopilot queue: per issue its state, merge
 // request, implement task and the decisions recorded for it, what a waiting
@@ -215,7 +216,7 @@ const laneHead = 'm-0 mb-1 px-1.5 text-xs font-semibold tracking-normal text-(--
           </template>
         </div>
         <div v-if="q.lane === 'held' && q.hold" class="ml-[26px] flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs" data-hold>
-          <span class="min-w-0 flex-[1_1_12rem] [overflow-wrap:anywhere] text-(--tone-warning-fg)">{{ q.hold.reason || 'Held.' }}</span>
+          <span class="min-w-0 flex-[1_1_12rem] [overflow-wrap:anywhere] text-(--tone-warning-fg)"><LocalText :text="q.hold.reason || 'Held.'" /></span>
           <UButton
             v-if="canResume"
             color="neutral"

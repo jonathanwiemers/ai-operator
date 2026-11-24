@@ -14,6 +14,7 @@ import { useDraggable } from 'vue-draggable-plus'
 import { useBackClose } from '../ui/useBackClose'
 import Badge from './Badge.vue'
 import CostChip from './CostChip.vue'
+import LocalText from './LocalText.vue'
 import Markdown from './Markdown.vue'
 import Truncated from '../ui/Truncated.vue'
 const UModal = defineAsyncComponent(() => import('@nuxt/ui/components/Modal.vue'))
@@ -232,7 +233,8 @@ onBeforeUnmount(stopDrag)
     </ol>
     <div v-if="error" class="[overflow-wrap:anywhere] text-(--text-3)" role="alert">{{ error }}</div>
     <div v-else-if="sent" class="[overflow-wrap:anywhere] text-(--text-3)" role="status">
-      {{ answer.state === 'pending' ? 'Sent…' : answer.state === 'failed' ? answer.reason : answer.redacted ? 'Done.' : answer.text }}
+      <LocalText v-if="answer.state === 'failed'" :text="answer.reason" />
+      <template v-else>{{ answer.state === 'pending' ? 'Sent…' : answer.redacted ? 'Done.' : answer.text }}</template>
     </div>
     <UModal v-model:open="confirmOpen" title="Move above the running milestone?" :ui="{ overlay: 'z-40', content: 'z-40 tablet:max-w-md' }">
       <template #body>

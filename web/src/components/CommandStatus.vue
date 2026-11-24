@@ -3,6 +3,7 @@ import type { RouteLocationRaw } from 'vue-router'
 import { sentLine } from '../milestoneQueue'
 import type { CommandAnswer } from '../pauseCard'
 import type { Sent } from '../useCommandSend'
+import LocalText from './LocalText.vue'
 
 // CommandStatus is the line under a queue or a decision card after a chat
 // command (useCommandSend): the post's error, the pending line, the failed
@@ -19,7 +20,7 @@ const note = 'text-[13px] text-(--text-3)'
   <div v-if="error" :class="note" role="alert">{{ error }}</div>
   <div v-else-if="sent" :class="note" role="status">
     <template v-if="answer.state === 'pending'">{{ sentLine(sent.kind, sent.key, true) }}</template>
-    <template v-else-if="answer.state === 'failed'">{{ answer.reason }}</template>
+    <template v-else-if="answer.state === 'failed'"><LocalText :text="answer.reason" /></template>
     <template v-else-if="answer.redacted">{{ sentLine(sent.kind, sent.key, false) }}</template>
     <template v-else>
       {{ answer.text }}

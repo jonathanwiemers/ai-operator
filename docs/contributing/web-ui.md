@@ -334,6 +334,11 @@ build, so the CI `ui` job enforces it. It prints
   from 141.7 kB at the cap. The view is lazy; its route record, route name
   and breadcrumb are in the initial chunk. The cap rose to 141.9 kB and the
   raise was reported on its merge request.
+- 2026-11-24, local times in plain server text (#774, R4 and R5 of the
+  local-times milestone): 141.91 kB, up from 141.79 kB. `LocalText.vue` is
+  a lazy chunk, but its name is in the preload lists of the routes that
+  use it, and `absTime` in `format.ts` gained seconds and the zone name. The
+  cap rose to 142.0 kB and the raise was reported on its merge request.
 - The cap only drops. A change that breaks it is reported, not answered by
   raising it.
 

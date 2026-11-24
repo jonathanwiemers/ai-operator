@@ -9,10 +9,12 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { deleteResearch, getResearch } from '../client'
 import { useNow, useResource } from '../live'
+import { localMinute, nextRunTitle } from '../localTime'
 import { clockTime, duration, errorMessage, researchRoute, safeURL } from '../format'
 import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
 import Badge from '../components/Badge.vue'
 import CronSchedule from '../components/CronSchedule.vue'
+import LocalText from '../components/LocalText.vue'
 import RelTime from '../components/RelTime.vue'
 import { pageHeaderUi } from '../pageHeader'
 import ResearchResult from '../components/ResearchResult.vue'
@@ -114,7 +116,7 @@ async function remove() {
               <span v-else>one-off<template v-if="r.createdBy"> by {{ r.createdBy }}</template></span>
               <span class="[overflow-wrap:anywhere]">agent <code>{{ agent }}</code></span>
               <span>last run <RelTime :time="r.lastRun" /></span>
-              <span v-if="r.nextRun">next run <RelTime :time="r.nextRun" /></span>
+              <span v-if="r.nextRun">next run <time :datetime="r.nextRun" :title="nextRunTitle(r.nextRun, now)">{{ localMinute(r.nextRun, now) }}</time></span>
             </span>
           </template>
           <template #links>
@@ -169,9 +171,11 @@ async function remove() {
           <Badge v-if="r.waiting" tone="warning">
             waiting for <code>{{ r.waiting.engine }}</code> until {{ clockTime(r.waiting.until, now) }}
           </Badge>
-          <span v-if="r.skippedReason" class="text-(--text-2) [overflow-wrap:anywhere]">{{ r.skippedReason }}</span>
+          <span v-if="r.skippedReason" class="text-(--text-2) [overflow-wrap:anywhere]"><LocalText :text="r.skippedReason" /></span>
         </div>
-        <UAlert v-if="r.run?.outcome === 'failed' && r.run.message" :color="alertColor('danger')" variant="subtle" class="mt-3 [overflow-wrap:anywhere]" title="The last run failed" :description="r.run.message" />
+        <UAlert v-if="r.run?.outcome === 'failed' && r.run.message" :color="alertColor('danger')" variant="subtle" class="mt-3 [overflow-wrap:anywhere]" title="The last run failed">
+          <template #description><LocalText :text="r.run.message" /></template>
+        </UAlert>
       </header>
 
       <div v-if="pending" class="card section flex flex-wrap items-center gap-x-3 gap-y-1.5 px-[18px] py-4">
@@ -181,13 +185,13 @@ async function remove() {
             waiting for <code>{{ r.waiting.engine }}</code> until {{ clockTime(r.waiting.until, now) }}
           </span>
           <span v-else>waiting for a usage window to reset</span>
-          <span v-if="r.skippedReason || r.run?.reason" :class="note">{{ r.skippedReason || r.run?.reason }}</span>
+          <span v-if="r.skippedReason || r.run?.reason" :class="note"><LocalText :text="r.skippedReason || r.run?.reason" /></span>
         </template>
         <template v-else-if="pending === 'running'">
           <Badge tone="progress" dot pulse>Running</Badge>
           <span v-if="runAgent" class="[overflow-wrap:anywhere]"><code>{{ runAgent }}</code></span>
           <span v-if="elapsed" class="text-(--text-2)">for {{ elapsed }}</span>
-          <span v-if="r.run?.reason" :class="note">{{ r.run.reason }}</span>
+          <span v-if="r.run?.reason" :class="note"><LocalText :text="r.run.reason" /></span>
         </template>
         <template v-else>
           <Badge tone="muted" dot pulse>Starting</Badge>
