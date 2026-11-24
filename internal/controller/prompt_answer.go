@@ -93,7 +93,7 @@ func (r *AgentProjectReconciler) answerPrompt(ctx context.Context, project *aiv1
 	if len(o.Actions) == 0 {
 		return fmt.Sprintf("%s answered: %s.", p.ID, label), true, nil
 	}
-	accepted := aiv1.PilotProposal{Prompt: p.ID, Summary: label, Actions: slices.Clone(o.Actions), AcceptedBy: who,
+	accepted := aiv1.PilotProposal{Prompt: p.ID, Summary: label, Actions: slices.Clone(o.Actions), AcceptedBy: who, Source: p.Source.Key,
 		State: aiv1.PilotState(st, tasks, o.Actions), Trigger: p.Source.IssueIID}
 	// Tried again on a fresh copy: the answer is recorded, and appending to
 	// Accepted cannot run anything twice.

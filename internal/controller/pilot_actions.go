@@ -620,13 +620,15 @@ func (r *AgentProjectReconciler) runAccepted(ctx context.Context, gl gitlab.API,
 			if errs[i][j] == nil && a.Tool == "restartRun" {
 				answer, errs[i][j] = r.pilotRestart(ctx, gl, spec, tasks[a.IssueIID], a.IssueIID, proposalHow(p), project.Status.BotUserID)
 			} else if errs[i][j] == nil {
-				if errs[i][j] = r.runAction(ctx, gl, project, spec, st, tracking, proposalHow(p), p.AcceptedBy, a, tasks[a.IssueIID]); errs[i][j] != nil && a.Tool == "openIssue" {
+				if answer, errs[i][j] = r.runAction(ctx, gl, project, spec, st, tracking, proposalHow(p), p.AcceptedBy, ownerMessageID(p), a, tasks[a.IssueIID]); errs[i][j] != nil && a.Tool == "openIssue" {
 					failed = append(failed, titleKey(a.Title)) // may be opened again
 				}
 			}
 			line := describeAction(a, errs[i][j])
-			if answer != "" && errs[i][j] == nil {
+			if answer != "" && errs[i][j] == nil && a.Tool == "restartRun" {
 				line = fmt.Sprintf("- **restartRun** #%d: %s", a.IssueIID, answer)
+			} else if answer != "" && errs[i][j] == nil {
+				line += "; " + answer
 			}
 			if a.Tool == "editSpec" && errs[i][j] == nil {
 				line += ": spec updated; the milestone is planned again"
@@ -688,43 +690,57 @@ func cutText(s string, n int) string {
 	return textutil.Cut(strings.ToValidUTF8(s, "�"), n)
 }
 
+// ownerMessageID is the key of the owner message proposal p passes on: its
+// source (tell/<noteID>, chat/<id>), else the prompt or the proposal.
+func ownerMessageID(p aiv1.PilotProposal) string {
+	switch {
+	case p.Source != "":
+		return p.Source
+	case p.Prompt != "":
+		return "prompt/" + p.Prompt
+	}
+	return fmt.Sprintf("acted/%d", p.ID)
+}
+
 // runAction executes one validated action of an accepted proposal; how
-// says how it came to run (proposalHow), by who accepted it.
+// says how it came to run (proposalHow), by who accepted it, source is the
+// key of an owner's words (ownerMessageID). It returns where an owner's
+// words went.
 func (r *AgentProjectReconciler) runAction(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask,
-	tracking int64, how, by string, a aiv1.PilotAction, t *aiv1.AgentTask) error {
+	tracking int64, how, by, source string, a aiv1.PilotAction, t *aiv1.AgentTask) (string, error) {
 	switch a.Tool {
 	case "fixFlaky":
 		// Checked again: another pilot may have handed it over meanwhile.
 		mh := project.Status.MainHealth
 		is, err := checkFlaky(ctx, gl, spec, project.Status.BotUserID, mh, a.IssueIID, st.Spec.Milestone.IID, by != "")
 		if err != nil {
-			return err
+			return "", err
 		}
-		return r.handOverFlaky(ctx, gl, spec, mh, st, is, fmt.Sprintf("the pilot of milestone %q, %s", inertLine(st.Spec.Milestone.Title, 100), how), by != "")
+		return "", r.handOverFlaky(ctx, gl, spec, mh, st, is, fmt.Sprintf("the pilot of milestone %q, %s", inertLine(st.Spec.Milestone.Title, 100), how), by != "")
 	case "retryPipeline":
 		// Checked again: the branch may be green or have a newer pipeline.
 		if err := checkRetryPipeline(project.Status.MainHealth, a.PipelineID); err != nil {
-			return err
+			return "", err
 		}
 		_, err := gl.RetryPipeline(ctx, spec.GitLab.Project, a.PipelineID)
-		return err
+		return "", err
 	case "rebase", "mergeBase", "skip", "unskip", "startAnyway", "pause", "resume", "revisit", "endMilestone":
-		return r.queueCommand(ctx, st, aiv1.PilotCommand{Action: a, Owner: by, OnIssue: tracking})
+		return "", r.queueCommand(ctx, st, aiv1.PilotCommand{Action: a, Owner: by, OnIssue: tracking})
 	case "markDone":
-		return markDone(ctx, gl, spec, st, how, a)
+		return "", markDone(ctx, gl, spec, st, how, a)
 	case "raiseBudget":
-		return r.raiseBudget(ctx, gl, spec, st, a.Amount)
+		return "", r.raiseBudget(ctx, gl, spec, st, a.Amount)
 	case "setRule", "forgetRule":
-		return r.runRule(ctx, gl, spec, st, a)
+		return "", r.runRule(ctx, gl, spec, st, a)
 	case "editSpec":
 		// Read again: the description the owner saw, with its command
 		// lines of now; the next poll plans the milestone again.
 		desc, _, err := specEdit(ctx, gl, spec, st, a)
 		if err != nil {
-			return err
+			return "", err
 		}
 		_, err = gl.UpdateMilestoneDescription(ctx, spec.GitLab.Project, st.Spec.Milestone.ID, desc)
-		return err
+		return "", err
 	case "openIssue":
 		_, err := gl.CreateIssue(ctx, spec.GitLab.Project, gitlab.CreateIssueOptions{
 			Title: inertLine(a.Title, 200),
@@ -732,12 +748,19 @@ func (r *AgentProjectReconciler) runAction(ctx context.Context, gl gitlab.API, p
 				notify.Inert(a.Note), inertLine(st.Spec.Milestone.Title, 200), how, titleKey(a.Title)),
 			Labels: spec.Workflow.GeneratedLabel,
 		})
-		return err
+		return "", err
 	}
+	running := false
 	// On a fresh copy, tried again on a conflict: the task changes as it runs.
 	if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		if err := r.Get(ctx, client.ObjectKeyFromObject(t), t); err != nil {
 			return err
+		}
+		// An owner's words reach the running implementer without a new run.
+		if running = a.Tool == "instruct" && a.Text != "" && runInProgress(t); running {
+			t.Spec.Source.OwnerMessages = aiv1.AppendOwnerMessage(t.Spec.Source.OwnerMessages,
+				aiv1.OwnerMessage{ID: source, Owner: a.Owner, Text: a.Text, At: metav1.NewTime(r.now())})
+			return r.Update(ctx, t)
 		}
 		switch a.Tool {
 		case "reReview":
@@ -752,19 +775,30 @@ func (r *AgentProjectReconciler) runAction(ctx context.Context, gl gitlab.API, p
 		}
 		return r.requestRun(ctx, gl, spec, t, a.IssueIID)
 	}); err != nil {
-		return err
+		return "", err
+	}
+	if running {
+		body := fmt.Sprintf("🧭 Message from `@%s` via the pilot, passed to the running implementer: %s", a.Owner, inertLine(a.Text, aiv1.MaxOwnerMessageText))
+		if _, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, a.IssueIID, body); err != nil {
+			log.FromContext(ctx).Info("could not show the owner's message", "issue", a.IssueIID, "error", err.Error())
+		}
+		return fmt.Sprintf("queued for #%d's running implementer", a.IssueIID), nil
 	}
 	// A run of the paused issue the pilot (or an owner through it) started.
 	r.commandRun(ctx, st, t, pilotBy(by))
-	if a.Tool == "instruct" {
-		// Shown where the implementer works; its prompt has it from the
-		// task, not from this comment.
-		body := fmt.Sprintf("🧭 Instruction from the pilot (%s) for the next run: %s", how, describeAction(a, nil))
-		if _, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, a.IssueIID, body); err != nil {
-			log.FromContext(ctx).Info("could not show the pilot's instruction", "issue", a.IssueIID, "error", err.Error())
-		}
+	if a.Tool != "instruct" {
+		return "", nil
 	}
-	return nil
+	// Shown where the implementer works; its prompt has it from the
+	// task, not from this comment.
+	body := fmt.Sprintf("🧭 Instruction from the pilot (%s) for the next run: %s", how, describeAction(a, nil))
+	if _, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, a.IssueIID, body); err != nil {
+		log.FromContext(ctx).Info("could not show the pilot's instruction", "issue", a.IssueIID, "error", err.Error())
+	}
+	if a.Text == "" {
+		return "", nil
+	}
+	return fmt.Sprintf("queued for #%d's next run", a.IssueIID), nil
 }
 
 // markDone closes issue a.IssueIID of the milestone of st as done (the done

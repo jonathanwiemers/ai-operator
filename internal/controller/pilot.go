@@ -440,6 +440,9 @@ func (r *AgentProjectReconciler) syncPilots(ctx context.Context, gl gitlab.API, 
 			if err == nil {
 				err = r.runAccepted(ctx, gl, project, spec, st, coord, tracking)
 			}
+			if err == nil {
+				err = r.reportDeliveries(ctx, gl, spec, st, coord, tracking, issues, tasks)
+			}
 		}
 		if err != nil {
 			errs = append(errs, fmt.Errorf("pilot of milestone %q: %w", st.Spec.Milestone.Title, err))
