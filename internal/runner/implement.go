@@ -441,6 +441,11 @@ func (run *implementRun) addInputs(ctx context.Context) error {
 		inv.Prompt = instruction + "\n\n" + inv.Prompt
 		run.humanInput++
 	}
+	// Owner messages still pending go into the implementer's prompt
+	// (promptOwnerMessages), so the implementer runs.
+	if len(task.PendingOwnerMessages()) > 0 {
+		run.humanInput++
+	}
 	// Owners' answers to the agent's questions: each reaches the session
 	// once, a fresh session gets them all.
 	run.answers = promptAnswers(task, *run.state, false)
@@ -508,7 +513,8 @@ func (run *implementRun) mergeBase(ctx context.Context) error {
 			head = aiv1.ReviewHeads(head, companion)
 		}
 		forImplementer := humanNotes(command.WithoutRouting(run.newIssueNotes, prefix), botID) + humanNotes(command.WithoutRouting(run.newMRNotes, prefix), botID)
-		run.reReview = head == run.reviewFor && forImplementer == 0 && !run.ciFix && !mergeBase && len(run.revisits) == 0 && pilotInstruction(task) == "" && len(run.answers) == 0
+		run.reReview = head == run.reviewFor && forImplementer == 0 && !run.ciFix && !mergeBase && len(run.revisits) == 0 && pilotInstruction(task) == "" && len(run.answers) == 0 &&
+			len(task.PendingOwnerMessages()) == 0
 		run.runAgent = run.runAgent && !run.reReview
 	}
 	return nil

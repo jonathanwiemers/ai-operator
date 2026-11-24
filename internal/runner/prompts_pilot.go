@@ -71,6 +71,18 @@ func pilotInstruction(task *aiv1.AgentTask) string {
 	return s
 }
 
+// ownerMessagesPrompt is the section of owner messages passed on by the
+// pilot, for a running implementer call (one user message) or the prompt of
+// the next implementer call: one part per message, the owner's own words.
+func ownerMessagesPrompt(msgs []aiv1.OwnerMessage) string {
+	var b strings.Builder
+	for _, m := range msgs {
+		fmt.Fprintf(&b, "## Message from @%s via the pilot\n\n%s\n\n", m.Owner, m.Text)
+	}
+	b.WriteString("Take this into account and go on with the task; answer as before.")
+	return b.String()
+}
+
 // buildPilotPrompt is one turn of the pilot: the owner's message, then the
 // milestone's state as data.
 func buildPilotPrompt(task *aiv1.AgentTask, m aiv1.PilotMessage, state string) string {

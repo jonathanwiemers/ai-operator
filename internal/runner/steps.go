@@ -39,7 +39,9 @@ type runLog struct {
 	// rewritten counts the commit messages that did not follow
 	// Conventional Commits (noteRewrite).
 	rewritten int
-	mu        sync.Mutex
+	// midRun counts the owner messages delivered mid-run (midRunLeft).
+	midRun int
+	mu     sync.Mutex
 	// onChange is called when a step starts or ends (the progress comment).
 	onChange func()
 }

@@ -25,6 +25,8 @@ func (r *Runner) invoke(ctx context.Context, role aiv1.RoleSpec, inv Invocation,
 		}
 		return nil, err
 	}
+	// Before a fallback too: whichever engine runs the call takes them.
+	inv, fullPrompt = withOwnerMessages(r.promptOwnerMessages(ctx, inv), inv, fullPrompt)
 	if near := r.nearLimit(ctx, role); near != nil {
 		// fallBack hands the soft limit back when there is no usable
 		// fallback: then the role runs on its own engine.
@@ -61,7 +63,9 @@ func (r *Runner) invokeOn(ctx context.Context, role aiv1.RoleSpec, inv Invocatio
 		for {
 			r.markInFlight(inv)
 			start := r.now()
+			stopMessages := r.watchOwnerMessages(ctx, inv)
 			res, err := r.Agent.Run(ctx, role.Engine, inv)
+			stopMessages()
 			lost := r.agentLost(ctx, err, start)
 			cpReason := ""
 			if lost == nil {
