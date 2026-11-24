@@ -164,7 +164,7 @@ Order 1 → 2 → 3; 4 independent after 3.
 
 | # | Title | MR | Status |
 |---|---|---|---|
-| 1 | | | |
+| 1 | ci: one check job and path gates for test, ui, knip and e2e | [!801](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/801) | open |
 | 2 | | | |
 | 3 | | | |
 | 4 | | | |
