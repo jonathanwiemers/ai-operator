@@ -330,6 +330,10 @@ build, so the CI `ui` job enforces it. It prints
   CSS 20.8). `RailNav.vue` stays lazy; the stylesheet gains the theme
   classes of `UNavigationMenu`, `UChip` and `UProgress`, and the icon set
   gains the rail's icons. The cap rose to 136.0 kB, logged there too.
+- 2026-11-23, the New plan route (#757): 141.8 kB (JS 117.9, CSS 23.9), up
+  from 141.7 kB at the cap. The view is lazy; its route record, route name
+  and breadcrumb are in the initial chunk. The cap rose to 141.9 kB and the
+  raise was reported on its merge request.
 - The cap only drops. A change that breaks it is reported, not answered by
   raising it.
 
@@ -385,6 +389,12 @@ loads anyway.
   and tabs milestone, `UDashboardToolbar`): 177.5 kB. The toolbar is
   required there, so the cap was raised to 177.6 kB and the raise reported
   on its merge request.
+  2026-11-23, with the New plan page (#757, R6 of the plan-anywhere
+  milestone): 178.4 kB. Its project picker is a `USelectMenu`, which the
+  milestone requires. Shared with `PlanNew.vue`, the menu and its Reka UI
+  combobox move out of the Metrics chunk into chunks of their own, which
+  compress worse. The cap was raised to 178.5 kB and the raise reported on
+  its merge request.
 
 ## UI kit
 

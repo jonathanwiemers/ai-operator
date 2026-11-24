@@ -37,6 +37,7 @@ const ResearchView = () => import('./views/Research.vue')
 const ResearchRunsView = () => import('./views/ResearchRuns.vue')
 const ResearchRunView = () => import('./views/ResearchRun.vue')
 const AllPlans = () => import('./views/AllPlans.vue')
+const PlanNew = () => import('./views/PlanNew.vue')
 const PlanView = () => import('./views/Plan.vue')
 const NotFound = () => import('./views/NotFound.vue')
 
@@ -50,6 +51,7 @@ const routes: (RouteRecordRaw & { name: RouteName })[] = [
   { path: '/inbox', name: 'inbox', component: Inbox },
   { path: '/metrics', name: 'metrics', component: Metrics },
   { path: '/plans', name: 'all-plans', component: AllPlans },
+  { path: '/plans/new', name: 'plan-new', component: PlanNew },
   { path: '/projects/:namespace/:name', name: 'stream-project', component: Stream, props: true },
   {
     path: '/projects/:namespace/:name/milestones/:iid',
@@ -113,7 +115,7 @@ const router = createRouter({
 // write grant. Users with research alone start there.
 router.beforeEach(async (to) => {
   const research = isResearchPath(to.path)
-  const plans = to.name === 'plans' || to.name === 'all-plans'
+  const plans = to.name === 'plans' || to.name === 'all-plans' || to.name === 'plan-new'
   if (!research && !plans && to.path !== '/') return true
   await featuresLoaded
   if (

@@ -24,8 +24,8 @@ test('every route has crumbs: links but the last, which names the view', () => {
       assert.ok(c.to, `${name}: "${c.label}" is no link`)
       assert.ok(isRouteName(c.to.name), `${name}: "${c.label}" links to an unknown route`)
       // Only the tab crumbs have a query of their own: the project's Plans
-      // tab, the milestone's Needs you tab.
-      const own = { Plans: { tab: 'plans' }, 'Needs you': { tab: 'needs' } }[c.label]
+      // tab, the milestone's Needs you tab; /plans (all-plans) has none.
+      const own = c.to.name === 'all-plans' ? undefined : { Plans: { tab: 'plans' }, 'Needs you': { tab: 'needs' } }[c.label]
       assert.deepEqual(c.to.query, own, `${name}: "${c.label}" keeps the query`)
       assert.ok(!('tab' in c.to.params), `${name}: "${c.label}" keeps the tab`)
     }
@@ -54,6 +54,7 @@ test('project and milestone: the IID until the title is known', () => {
 
 test('all plans, and one plan under the Plans tab of its project', () => {
   assert.deepEqual(crumbsFor({ name: 'all-plans', params: {} }), [{ label: 'Plans' }])
+  assert.deepEqual(crumbsFor({ name: 'plan-new', params: {} }), [{ label: 'Plans', to: { name: 'all-plans', params: {} } }, { label: 'New plan' }])
   const plans = { label: 'Plans', to: { name: 'stream-project', params: at, query: { tab: 'plans' } } }
   assert.deepEqual(crumbsFor({ name: 'plans-list', params: at }), [overview, project, { label: 'Plans' }])
   assert.deepEqual(crumbsFor({ name: 'plans', params: { ...at, plan: 'plan-1' } }), [

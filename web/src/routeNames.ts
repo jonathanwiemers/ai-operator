@@ -8,6 +8,7 @@ export const routeNames = [
   'inbox',
   'metrics',
   'all-plans',
+  'plan-new',
   'stream-project',
   'stream-milestone',
   'problem',

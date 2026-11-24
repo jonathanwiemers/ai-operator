@@ -196,6 +196,26 @@ const routes: Route[] = [
       },
     }),
   ),
+  // The New plan page (PlanNew.vue), empty and with ?project= preselected,
+  // light and dark.
+  ...(
+    [
+      ['plan-new', '/plans/new', undefined],
+      ['plan-new-dark', '/plans/new?project=team-a/tools-foo', 'dark'],
+    ] as const
+  ).map(
+    ([name, path, colorScheme]): Route => ({
+      name,
+      path,
+      colorScheme,
+      features: [...features.features, { name: 'plans' }],
+      ready: async (page) => {
+        await expect(page.locator('main [data-plan-new-form]')).toBeVisible()
+        await expect(page.locator('main').getByRole('button', { name: 'Start plan' })).toBeVisible()
+        if (colorScheme) await expect(page.locator('main [data-plan-project]')).toContainText('team-a/tools/foo')
+      },
+    }),
+  ),
   {
     name: 'researches',
     path: '/research',
@@ -5613,4 +5633,52 @@ test.describe('screen reader flows', () => {
       expect(problems).toEqual(clean)
     })
   }
+})
+
+// The New plan picker (PlanNew.vue, planStartGroups): AgentProjects under
+// Projects, the set's dormant entry under the set, each project once, none
+// the caller may only view; typing finds an entry by its path. Start plan
+// sends the message and opens the new plan.
+test('plan-new picker finds a dormant entry and starts a plan@1280', async ({ page, baseURL }) => {
+  const route = routes.find((r) => r.name === 'plan-new')!
+  const problems = await openRoute(page, baseURL, route, { width: 1280, height: 800 })
+  await route.ready(page)
+  await page.locator('main [data-plan-project]').click()
+  const list = page.getByRole('listbox')
+  // shop once (its dormant duplicate dropped), the set child, the dormant entry.
+  await expect(list.getByRole('option')).toHaveCount(3)
+  await expect(list.getByRole('option').nth(2)).toContainText('team-a/tools/foo')
+  await expect(list.getByText('team-a-group')).toBeVisible()
+  await expect(list.getByText('team-b/web')).toHaveCount(0)
+  await page.getByPlaceholder('Search projects…').fill('foo')
+  const foo = list.getByRole('option')
+  await expect(foo).toHaveCount(1)
+  await expect(foo).toContainText('team-a/tools/foo')
+  await expect(foo).toContainText('dormant, starts with the plan')
+  await foo.click()
+
+  let sent: unknown
+  await page.route('**/api/v1/projects/team-a/tools-foo/plans', async (r) => {
+    sent = r.request().postDataJSON()
+    await r.fulfill({ status: 201, json: { name: 'plan-csv' } })
+  })
+  await page.getByLabel('What do you want to plan?').fill('Add a CSV export to the Metrics page')
+  await page.getByRole('button', { name: 'Start plan' }).click()
+  await expect(page).toHaveURL(/\/projects\/team-a\/tools-foo\/plans\/plan-csv$/)
+  expect(sent).toEqual({ message: 'Add a CSV export to the Metrics page' })
+  expect(problems.pageErrors, 'uncaught errors').toEqual([])
+})
+
+// A 400 about a field shows on that field (PlanNew.vue).
+test('plan-new shows a field error on its field@1280', async ({ page, baseURL }) => {
+  const route = routes.find((r) => r.name === 'plan-new-dark')!
+  await openRoute(page, baseURL, route, { width: 1280, height: 800 })
+  await route.ready(page)
+  await page.route('**/api/v1/projects/team-a/tools-foo/plans', (r) =>
+    r.fulfill({ status: 400, json: { error: 'The title is too long.', field: 'title' } }),
+  )
+  await page.getByLabel('What do you want to plan?').fill('Plan it')
+  await page.getByRole('button', { name: 'Start plan' }).click()
+  await expect(page.locator('main [data-slot=error]')).toHaveText('The title is too long.')
+  await expect(page).toHaveURL(/\/plans\/new/)
 })

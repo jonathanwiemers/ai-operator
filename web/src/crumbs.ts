@@ -115,6 +115,9 @@ export function crumbsFor(route: CrumbRoute, names: CrumbNames = {}): Crumb[] {
     case 'all-plans':
       trail = [{ label: 'Plans' }]
       break
+    case 'plan-new':
+      trail = [{ label: 'Plans', to: { name: 'all-plans', params: {} } }, { label: 'New plan' }]
+      break
     // plans-list only redirects to the project's Plans tab.
     case 'plans-list':
       trail = [overview, project, { label: 'Plans' }]

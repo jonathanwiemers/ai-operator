@@ -5,7 +5,7 @@
 import { costs, costsMetrics, costsTop } from './costs'
 import { answerDecisions } from './decisions'
 import { doneMilestones, openMilestones, overview } from './overview'
-import { shopPlanOverview } from './plans'
+import { answerPlans } from './plans'
 import { metricsCode, metricsFlow, metricsPauses } from './metrics'
 import { listProblems, problemThread, type ProblemsOpts } from './problems'
 import { inbox, projects, projectSets, researches } from './rail'
@@ -46,7 +46,7 @@ export const api: Record<string, Fixture> = {
   '/metrics/pauses': metricsPauses,
   '/gitlab': gitlabStatus,
   '/search': answerSearch,
-  '/plans': shopPlanOverview,
+  '/plans': answerPlans,
   '/timeline': answerTimeline,
   [shopPath]: shopDetail,
   [`${shopPath}/history`]: shopHistory,

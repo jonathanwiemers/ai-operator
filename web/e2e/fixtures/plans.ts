@@ -47,7 +47,23 @@ const shopPlans: PlanListItem[] = [
   }),
 ]
 
-export const shopPlanOverview: PlanOverview = {
+const shopPlanOverview: PlanOverview = {
   plans: shopPlans,
   projects: [{ namespace: 'team-a', name: 'shop', path: 'team-a/shop', steer: true }],
 }
+
+// GET /api/v1/plans without ?project: shop, a set child, a dormant entry of
+// the set, its dormant entry under the name of shop (shown once, as shop)
+// and a project the caller may only view (not offered on New plan).
+const allPlanOverview: PlanOverview = {
+  plans: shopPlans,
+  projects: [
+    ...shopPlanOverview.projects,
+    { namespace: 'team-a', name: 'tools-pnpm', path: 'team-a/tools/pnpm', set: 'team-a-group', steer: true },
+    { namespace: 'team-a', name: 'tools-foo', path: 'team-a/tools/foo', set: 'team-a-group', dormant: true, steer: true },
+    { namespace: 'team-a', name: 'shop', path: 'team-a/shop', set: 'team-a-group', dormant: true, steer: true },
+    { namespace: 'team-b', name: 'web', path: 'team-b/web', steer: false },
+  ],
+}
+
+export const answerPlans = (q: URLSearchParams): PlanOverview => (q.get('project') ? shopPlanOverview : allPlanOverview)
