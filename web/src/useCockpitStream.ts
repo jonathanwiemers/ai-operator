@@ -1,9 +1,11 @@
-import { computed, ref, watch } from 'vue'
+import { computed, onScopeDispose, ref, watch } from 'vue'
 import { hasFeature } from './api'
 import { getStream, LoginRequiredError } from './client'
 import { errorMessage } from './format'
 import { live } from './live'
-import { cockpitItems, cockpitStreamQuery, streamEventKey } from './stream'
+import { chatAnswer, cockpitItems, cockpitStreamQuery, streamEventKey } from './stream'
+import { firstSentence } from './chatView'
+import { announce } from './ui/useAnnounce'
 import type { StreamEvent } from './types'
 
 // CockpitStreamScope is the part of the stream a Cockpit shows: one
@@ -104,6 +106,51 @@ export function useCockpitStream(scope: () => CockpitStreamScope) {
     void reload()
   }
 
+  // refreshNewest asks for the newest page again and merges it: new
+  // events, and newer copies of loaded ones (a pilot reply grows in place
+  // until it is complete, which an after= cursor would miss).
+  async function refreshNewest() {
+    if (loading.value) return
+    const mine = seq
+    try {
+      const page = await getStream(query())
+      if (mine !== seq) return
+      const fresh = new Set(page.events.map(streamEventKey))
+      events.value = [...page.events, ...events.value.filter((e) => !fresh.has(streamEventKey(e)))]
+      if (page.newest) newest.value = page.newest
+    } catch {
+      /* best-effort, as live refreshes */
+    }
+  }
+
+  // expectAnswer follows the chat message id sent to the pilot
+  // (CockpitComposer): the stream reloads, so the message shows, then
+  // refreshes its newest events every 5 s until the pilot's complete answer
+  // to it arrives (chatAnswer), for at most 5 minutes. The answer is said once
+  // ("Pilot replied: <first sentence>"), as the Desk chat says it.
+  let answerTimer: number | undefined
+  function stopAnswer() {
+    if (answerTimer !== undefined) window.clearInterval(answerTimer)
+    answerTimer = undefined
+  }
+  function expectAnswer(id: number) {
+    const until = Date.now() + 5 * 60_000
+    stopAnswer()
+    void reload()
+    const timer = window.setInterval(async () => {
+      if (Date.now() > until) return stopAnswer()
+      if (document.visibilityState !== 'hidden') await refreshNewest()
+      const answer = chatAnswer(events.value, id)
+      // Not after a newer send, a new scope or the end took the timer over.
+      if (!answer || answerTimer !== timer) return
+      stopAnswer()
+      const s = firstSentence(answer.data.body ?? '')
+      announce(s ? `Pilot replied: ${s}` : 'Pilot replied.')
+    }, 5000)
+    answerTimer = timer
+  }
+  onScopeDispose(stopAnswer)
+
   const kind = (s: CockpitStreamScope) => (s.milestoneIID ? 'milestone' : s.namespace ? 'project' : 'all')
   const items = computed(() => cockpitItems(events.value, { scope: kind(scope()) }))
 
@@ -113,6 +160,7 @@ export function useCockpitStream(scope: () => CockpitStreamScope) {
       return `${s.namespace ?? ''}/${s.name ?? ''}/${s.milestoneIID ?? ''}`
     },
     () => {
+      stopAnswer()
       events.value = []
       void reload()
     },
@@ -125,5 +173,5 @@ export function useCockpitStream(scope: () => CockpitStreamScope) {
     },
   )
 
-  return { items, older, historyOn, loading, loadingOlder, error, q, search, reload, loadOlder }
+  return { items, older, historyOn, loading, loadingOlder, error, q, search, reload, loadOlder, expectAnswer }
 }

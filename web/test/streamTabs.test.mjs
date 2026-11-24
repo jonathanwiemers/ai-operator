@@ -9,8 +9,6 @@ import {
   panelFromQuery,
   panelQuery,
   panelViews,
-  pilotFromQuery,
-  pilotQuery,
   planPaneTab,
   planPaneTabs,
   planTabs,
@@ -22,6 +20,7 @@ import {
   tabQuery,
   taskTabFromRoute,
   taskTabs,
+  withoutPilot,
 } from '../src/streamTabs.ts'
 
 test('tabFromQuery: activity is the default', () => {
@@ -110,23 +109,21 @@ test('milestone tabs: ?tab=decisions opens Decisions on live and stored mileston
   assert.deepEqual(tabQuery({ q: 'x' }, 'decisions', milestoneTabs), { q: 'x', tab: 'decisions' })
 })
 
-test('milestone tabs: an old ?tab=pilot link opens the Cockpit (the drawer opens over it)', () => {
+test('milestone tabs: an old ?tab=pilot link opens the Cockpit, where the pilot composer is', () => {
   assert.equal(tabAlias('pilot'), 'cockpit')
   assert.equal(tabFromQuery('pilot', milestoneTabs), 'cockpit')
   assert.equal(milestoneTabFromRoute('pilot', '', milestoneTabsFor({})), 'cockpit')
   assert.equal(milestoneTabFromRoute('pilot', '#prompt-Q3'), 'cockpit')
 })
 
-test('pilotFromQuery and pilotQuery: ?pilot=1 is the drawer, ?tab=pilot becomes it', () => {
-  assert.equal(pilotFromQuery({}), false)
-  assert.equal(pilotFromQuery({ pilot: '1' }), true)
-  assert.equal(pilotFromQuery({ pilot: '0' }), false)
-  assert.equal(pilotFromQuery({ pilot: ['x', '1'] }), true)
-  assert.equal(pilotFromQuery({ tab: 'pilot' }), false, 'Stream.vue replaces it first')
-  assert.deepEqual(pilotQuery({ tab: 'metrics', q: 'x' }, true), { tab: 'metrics', q: 'x', pilot: '1' })
-  assert.deepEqual(pilotQuery({ tab: 'metrics', pilot: '1' }, false), { tab: 'metrics' })
-  assert.deepEqual(pilotQuery({ tab: 'pilot', q: 'x' }, true), { q: 'x', pilot: '1' })
-  assert.deepEqual(pilotQuery({ tab: 'pilot' }, false), {})
+test('withoutPilot: old ?pilot= and ?tab=pilot links lose them, other queries stay', () => {
+  assert.equal(withoutPilot({}), null)
+  assert.equal(withoutPilot({ tab: 'metrics', q: 'x' }), null)
+  assert.deepEqual(withoutPilot({ pilot: '1' }), {})
+  assert.deepEqual(withoutPilot({ tab: 'metrics', pilot: '1', q: 'x' }), { tab: 'metrics', q: 'x' })
+  assert.deepEqual(withoutPilot({ pilot: ['x', '1'] }), {})
+  assert.deepEqual(withoutPilot({ tab: 'pilot', q: 'x' }), { q: 'x' })
+  assert.deepEqual(withoutPilot({ tab: 'pilot', pilot: '1', panel: 'queue' }), { panel: 'queue' })
 })
 
 test('milestoneTabFromRoute: a #prompt-Q<n> or #problem-<iid> hash without ?tab= opens the Cockpit', () => {

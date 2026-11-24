@@ -95,7 +95,7 @@ you ([Steer from the Desk](docs/guides/steer-from-the-desk.md)).
 
 ## Steer it
 
-**In the Desk.** With *Ask pilot* on a milestone you ask the pilot where things
+**In the Desk.** At the bottom of a milestone's *Cockpit* you ask the pilot where things
 stand; its prompts wait on the *Needs you* tab. On a task you chat with its agent, or restart
 a run that hangs. **Revisit** next to a decision asks whether it should
 stay, and pause cards offer the ways out of a pause. Your *Inbox* collects

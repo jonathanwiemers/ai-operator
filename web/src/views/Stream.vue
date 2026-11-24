@@ -24,12 +24,12 @@ import ProjectBoards from '../components/ProjectBoards.vue'
 import SpendPanel from '../components/SpendPanel.vue'
 import Composer from '../components/Composer.vue'
 import Cockpit from '../components/cockpit/Cockpit.vue'
+import CockpitComposer from '../components/cockpit/CockpitComposer.vue'
 import EventCard from '../components/stream/EventCard.vue'
 import MilestoneDecisions from '../components/MilestoneDecisions.vue'
 import MilestoneIssues from '../components/MilestoneIssues.vue'
 import MilestoneNeeds from '../components/MilestoneNeeds.vue'
 import MilestonePanel from '../components/MilestonePanel.vue'
-import MilestonePilot from '../components/MilestonePilot.vue'
 import MilestoneRetro from '../components/MilestoneRetro.vue'
 import MilestoneSections from '../components/MilestoneSections.vue'
 import PlanList from '../components/PlanList.vue'
@@ -74,14 +74,12 @@ import {
   panelFromQuery,
   panelQuery,
   panelViews,
-  pilotFromQuery,
-  pilotQuery,
+  withoutPilot,
   projectTabsFor,
   tabFromQuery,
   tabQuery,
   type PanelView,
 } from '../streamTabs'
-import { useBackClose } from '../ui/useBackClose'
 import NotFound from './NotFound.vue'
 import { announceChange } from '../ui/useAnnounce'
 
@@ -106,7 +104,7 @@ const milestoneIID = computed(() => (props.iid ? Number(props.iid) : undefined))
 // tabs. A stored milestone has no tasks, so no Board, a milestone shows Needs
 // you only while something needs you and Retrospective only once it has one
 // (milestoneTabsFor). The Cockpit tab's badge is the count of the Open
-// items (D674-P2). The pilot is a drawer (pilotOpen below), not a tab.
+// items (D674-P2). The pilot's composer is at the bottom of the Cockpit.
 const route = useRoute()
 // pageMilestone: the loaded milestone, once it is the route's.
 const pageMilestone = computed(() => (milestone.value?.iid === milestoneIID.value ? milestone.value : null))
@@ -158,7 +156,7 @@ const decisionsMilestoneItems = computed(() => {
 function setDecisionsMilestone(iid: number) {
   void router.replace({ query: decisionsQuery(route.query, { milestone: iid }) })
 }
-// A milestone's Activity tab has the runtime kinds only; the pilot drawer the rest.
+// A milestone's Activity tab has the runtime kinds only; the Cockpit all.
 const filters = computed(() => (milestoneIID.value ? runtimeStreamFilters : streamFilters))
 const q = ref('')
 const qDraft = ref('')
@@ -200,7 +198,7 @@ const milestone = ref<MilestoneView | null>(null)
 // says so instead of loading forever).
 const milestoneFailed = ref(false)
 
-// The project's note composer (a milestone's is in its pilot drawer).
+// The project's note composer (a milestone's is at the bottom of its Cockpit).
 const note = useStreamNote(
   () => ({
     namespace: props.namespace ?? '',
@@ -481,41 +479,17 @@ const links = computed(() => {
   return [{ label: 'Milestone in GitLab', href: m?.webURL }]
 })
 
-// The pilot drawer (Decision 8): MilestonePilot in a sheet from the header's
-// Ask pilot button, over any tab of a milestone. Its open state is
-// ?pilot=1 (D674-P3), so a reload or a link keeps it open; an old
-// ?tab=pilot link becomes the Cockpit plus ?pilot=1. Opening sets the query and
-// pilotOpen follows it; closing (Escape, close button, overlay, Back) pops
-// useBackClose's entry, then drops ?pilot (onClose). Focus returns to the
-// button. The sheet loads with its first opening.
-const USlideover = defineAsyncComponent(() => import('@nuxt/ui/components/Slideover.vue'))
-const pilotOpen = ref(false)
-// pilotUsed: the drawer was opened once, so the sheet is loaded and mounted.
-const pilotUsed = ref(false)
-const pilotButton = ref<{ $el?: HTMLElement } | null>(null)
-useBackClose(pilotOpen, {
-  onClose: () => {
-    if (pilotFromQuery(route.query)) void router.replace({ query: pilotQuery(route.query, false) })
-  },
-})
+// An old link to the pilot drawer (?pilot=1) or the Pilot tab (?tab=pilot)
+// opens the Cockpit, whose bottom is the composer to the pilot (R12): the
+// parameters go on load.
 watch(
   () => [milestoneIID.value, route.query] as const,
   ([iid, query]) => {
-    if (iid && query.tab === 'pilot') void router.replace({ query: pilotQuery(query, true) })
-    pilotOpen.value = !!iid && pilotFromQuery(query)
-    if (pilotOpen.value) pilotUsed.value = true
+    const next = iid ? withoutPilot(query) : null
+    if (next) void router.replace({ query: next, hash: route.hash })
   },
   { immediate: true },
 )
-function openPilot() {
-  void router.replace({ query: pilotQuery(route.query, true) })
-}
-function focusPilotButton(e: Event) {
-  const el = pilotButton.value?.$el
-  if (!el?.isConnected) return
-  e.preventDefault()
-  el.focus()
-}
 
 // The header's cost (headerCost.ts): one number per page, on every tab. The
 // views' cost of the page's scope or the Metrics tab's totals of the same
@@ -602,22 +576,7 @@ watch(
           </template>
           <template v-if="pageCost" #description><CostChip :cost="pageCost" data-header-cost /></template>
           <template #links>
-            <!-- The milestone's primary action (Ask pilot) goes first; a
-                 stored milestone's drawer has the pilot's events only, so
-                 its button says Pilot (D674-P4). -->
             <HeaderActions :actions="links" :shown="0">
-              <UButton
-                v-if="milestoneIID"
-                ref="pilotButton"
-                size="sm"
-                class="min-h-11 justify-center tablet:min-h-0"
-                icon="i-lucide-message-circle"
-                :label="pageMilestone?.stored ? 'Pilot' : 'Ask pilot'"
-                aria-haspopup="dialog"
-                :aria-expanded="pilotOpen"
-                data-ask-pilot
-                @click="openPilot"
-              />
               <!-- A milestone's panel views (below 1180 px, phones too). -->
               <template v-if="sheet && milestoneIID">
                 <UButton
@@ -764,7 +723,7 @@ watch(
             </template>
           </template>
           <template #prompt>
-            <!-- A milestone's composer is in its pilot drawer. -->
+            <!-- A milestone's composer is at the bottom of its Cockpit. -->
             <Composer
               v-if="!everything && namespace && name && !milestoneIID"
               v-model="note.body"
@@ -785,7 +744,7 @@ watch(
           </template>
         </DeskChat>
       </div>
-      <div v-else-if="tab === 'cockpit'" class="scroll board">
+      <div v-else-if="tab === 'cockpit'" class="scroll board cockpit-tab">
         <!-- The milestone's Cockpit (R10): its problem cards, proposals
              and prompts pinned, answered in place, then its stream. -->
         <Cockpit :scope="{ namespace, name, milestoneIID }" :project="project" :prompts="pageMilestone?.prompts" :can-steer="canSteer">
@@ -799,6 +758,18 @@ watch(
             />
             <UAlert v-else-if="milestoneFailed" :color="alertColor('danger')" variant="subtle" class="mt-3" description="The milestone could not be loaded." />
             <div v-else class="empty">Loading…</div>
+          </template>
+          <!-- The composer to the pilot (R12); a stored milestone has none. -->
+          <template #composer="{ sent, reload }">
+            <CockpitComposer
+              v-if="namespace && name && pageMilestone && !pageMilestone.stored"
+              :namespace="namespace"
+              :name="name"
+              :milestone="pageMilestone"
+              :project="project"
+              @sent="sent"
+              @posted="reload"
+            />
           </template>
         </Cockpit>
       </div>
@@ -884,31 +855,6 @@ watch(
         <div v-if="!project && !error" class="empty">Loading…</div>
       </div>
 
-      <!-- The pilot drawer: from the right, the full width on phones. -->
-      <USlideover
-        v-if="milestoneIID && pilotUsed"
-        v-model:open="pilotOpen"
-        side="right"
-        title="Pilot"
-        :description="title"
-        close-icon="i-lucide-x"
-        :content="{ onCloseAutoFocus: focusPilotButton }"
-        :ui="{
-          overlay: 'z-40',
-          content: 'z-40 w-full tablet:max-w-[560px] pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pr-[env(safe-area-inset-right)]',
-          header: 'min-h-0 gap-2 py-1 ps-4 pe-1 sm:ps-4 sm:pe-1',
-          title: 'text-[15px] font-bold',
-          description: 'truncate text-[13px]',
-          close: 'static ms-auto',
-        }"
-        data-pilot-drawer
-      >
-        <template #body>
-          <MilestonePilot v-if="namespace && name && pageMilestone" :namespace="namespace" :name="name" :milestone="pageMilestone" :project="project" />
-          <UAlert v-else-if="milestoneFailed" :color="alertColor('danger')" variant="subtle" description="The milestone could not be loaded." />
-          <div v-else class="empty">Loading…</div>
-        </template>
-      </USlideover>
     </div>
     </template>
 
@@ -998,6 +944,12 @@ watch(
   flex-direction: column;
   padding-bottom: 16px;
 }
+/* The Cockpit's composer is sticky at the bottom (CockpitComposer.vue):
+   no padding under it. On a phone the page scrolls, not this pane, so the
+   composer sticks to the screen above the bottom bar and the keyboard. */
+.scroll.cockpit-tab {
+  padding-bottom: 0;
+}
 .milestones {
   padding-top: 4px;
 }
@@ -1034,6 +986,9 @@ watch(
   }
   .heat {
     display: none;
+  }
+  .scroll.cockpit-tab {
+    overflow-y: visible;
   }
 }
 </style>

@@ -183,10 +183,11 @@ and record what VoiceOver says.
    them, not the arrow keys); after Enter, focus stays on the tab, which is
    current; the panel's search, filter tabs and headings follow; nothing
    is announced.
-3. **Send a message to the pilot and hear the reply.** Open *Ask pilot*, tab to
-   *Message* in the pilot drawer, type, Ctrl/Cmd+Enter.
+3. **Send a message to the pilot and hear the reply.** Open the milestone's
+   Cockpit, tab to *Message* in its composer, type, Ctrl/Cmd+Enter.
    Automated: passes. The box is not marked invalid; focus stays in it
-   while and after it sends; nothing is said while the reply streams, then
+   while and after it sends; the message and the reply show in the Cockpit's
+   stream; nothing is said while the reply is written, then
    "Pilot replied: <first sentence>" once.
 4. **Read Metrics, including a chart as a table.** Open Metrics, Tab to
    "Show as table" under *Spend over time*, Enter, Tab.

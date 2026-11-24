@@ -7,14 +7,15 @@
 // and Plans with the plans feature (R13). Milestone pages: Cockpit (the
 // default, R10 of "Desk: the Cockpit") | Issues | Activity | Decisions (R11, D546-P1) | Board | Metrics, then Needs you while
 // something needs you and Retrospective once one exists (Decision 7 of
-// "Desk: one header and one row of tabs on every page"); the pilot is a
-// drawer, not a tab (Decision 8). The dashboard at /: Overview | Activity. The
+// "Desk: one header and one row of tabs on every page"); the pilot's
+// composer is at the bottom of the Cockpit (R12 of "Desk: the Cockpit"). The dashboard at /: Overview | Activity. The
 // task page (and the issue page with a live task): Overview | Chat | Live |
 // Logs | Calls (R10; Logs for the task's owners, run watchdog R8).
 // Renamed and merged tabs keep their old ids as aliases (tabAlias): Metrics
 // was named Spend (?tab=spend), Activity was named Stream (?tab=stream), a
 // task's Details went into its Overview (?tab=details), and a milestone's
-// Pilot tab became a drawer over the Cockpit (?tab=pilot, see pilotQuery).
+// Pilot tab, later a drawer, went into the Cockpit (?tab=pilot, see
+// withoutPilot).
 // BaseTab: the tabs project and milestone pages share.
 export type BaseTab = 'activity' | 'board' | 'metrics'
 export type StreamTab = 'milestones' | BaseTab | 'decisions' | 'plans'
@@ -123,8 +124,9 @@ type QueryValue = string | null | (string | null)[] | undefined
 // working: the Spend tab became Metrics (R17 of the milestone "Desk: one
 // Metrics page"), the Stream tab became Activity (R4 of "Desk: one header
 // and one row of tabs on every page"), and a task's Details tab went into
-// its Overview (R6 of the same milestone), and a milestone's Pilot tab
-// became the pilot drawer over the Cockpit (R5; Stream.vue opens the drawer).
+// its Overview (R6 of the same milestone), and a milestone's Pilot tab,
+// later the pilot drawer, went into the Cockpit's composer (R12 of "Desk:
+// the Cockpit").
 const tabAliases: Readonly<Record<string, string>> = { spend: 'metrics', stream: 'activity', details: 'overview', pilot: 'cockpit' }
 
 // tabAlias is the current id of a ?tab= value: the renamed tab's id for an
@@ -167,21 +169,16 @@ export function taskTabFromRoute(v: QueryValue, hash: string, available: readonl
   return tabFromQuery(v, available)
 }
 
-// pilotFromQuery says whether a milestone's pilot drawer is open: ?pilot=1
-// (Decision 8, D674-P3). Stream.vue replaces an old ?tab=pilot link by
-// pilotQuery(query, true) first.
-export function pilotFromQuery(query: Record<string, QueryValue>): boolean {
-  const v = query.pilot
-  return Array.isArray(v) ? v.includes('1') : v === '1'
-}
-
-// pilotQuery is the query with the pilot drawer open (?pilot=1) or closed
-// (no ?pilot), keeping the other parameters; an old ?tab=pilot goes, so
-// the Cockpit shows under the drawer.
-export function pilotQuery<V>(query: Record<string, V>, open: boolean): Record<string, V | string> {
+// withoutPilot is the query of an old pilot link without its pilot
+// parameters, null when it has none: the pilot drawer (?pilot=1) and the
+// Pilot tab (?tab=pilot) are gone, the pilot's composer is at the bottom
+// of the Cockpit (R12 of "Desk: the Cockpit"), so both open the Cockpit
+// and Stream.vue drops them on load.
+export function withoutPilot<V>(query: Record<string, V>): Record<string, V> | null {
   const { pilot: _, ...rest } = query
-  if (rest.tab === 'pilot') delete rest.tab
-  return open ? { ...rest, pilot: '1' } : rest
+  const tab = rest.tab === 'pilot'
+  if (tab) delete rest.tab
+  return tab || Object.hasOwn(query, 'pilot') ? rest : null
 }
 
 // A milestone's context panel (R13 of "Desk: the Cockpit"): its views,

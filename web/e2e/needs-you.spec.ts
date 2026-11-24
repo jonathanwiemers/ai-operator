@@ -236,15 +236,14 @@ for (const size of widths) {
     expect(problems).toEqual([])
   })
 
-  test(`an old ?tab=pilot link opens the Cockpit and the pilot drawer; proposals Accept/Reject@${size.width}`, async ({ page, baseURL }) => {
+  test(`an old ?tab=pilot link opens the Cockpit with the composer to the pilot; proposals Accept/Reject@${size.width}`, async ({ page, baseURL }) => {
     let problems = await open(page, baseURL, `${milestonePath}?tab=pilot`, size)
-    await expect(page).toHaveURL(/\/milestones\/14\?pilot=1$/)
-    // The page under the modal drawer is aria-hidden: the tab by CSS, not by role.
+    await expect(page).toHaveURL(/\/milestones\/14$/)
     await expect(page.locator('main nav[aria-label="View"] a[aria-current="page"]')).toHaveText(/^Cockpit/)
-    const drawer = page.getByRole('dialog', { name: 'Pilot' })
-    await expect(drawer.getByRole('textbox')).toBeVisible()
-    await expect(drawer.locator('[data-prompt]')).toHaveCount(0)
-    await expect(drawer.locator('[data-pauses]')).toHaveCount(0)
+    const composer = page.locator('main [data-cockpit-composer]')
+    await expect(composer.getByRole('textbox')).toBeVisible()
+    await expect(composer.locator('[data-prompt]')).toHaveCount(0)
+    await expect(composer.locator('[data-pauses]')).toHaveCount(0)
     expect(problems).toEqual([])
     problems = await open(page, baseURL, `${milestonePath}?tab=needs`, size)
     const p7 = page.locator('[data-needs-proposals] [data-proposal="7"]')

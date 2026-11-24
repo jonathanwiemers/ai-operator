@@ -21,7 +21,10 @@ import EventCard from '../stream/EventCard.vue'
 // Expand all and the search, then the stream sorted by cockpitItems, newest
 // at the bottom, with Load older above it. Shown events are event cards;
 // folded ones are one-line groups (UCollapsible, closed by default) whose
-// trigger is a button with the summary and the time span.
+// trigger is a button with the summary and the time span. The composer
+// slot comes last (a milestone's CockpitComposer); its sent(id) reloads the
+// stream and waits for the pilot's answer to message id (expectAnswer),
+// reload() only reloads (after a /pilot note).
 const props = defineProps<{
   scope: CockpitStreamScope
   project?: ProjectDetail | null
@@ -154,6 +157,8 @@ function span(g: CockpitGroup): string {
         </ol>
       </template>
     </section>
+
+    <slot name="composer" :sent="stream.expectAnswer" :reload="stream.reload" />
   </div>
 </template>
 

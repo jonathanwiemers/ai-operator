@@ -53,8 +53,6 @@ export const knownA11y: Record<string, string> = {
   'stream-milestone-decisions@375': `${R6} R6: color-contrast`,
   'stream-milestone-decisions@1180': `${R6} R6: color-contrast`,
   'stream-milestone-decisions@1180-dark': `${R6} R6: color-contrast`,
-  // The pilot drawer (e2e/pilot-drawer.spec.ts), once the Pilot tab.
-  'stream-milestone-pilot@375': `${R6} R6: color-contrast`,
   'stream-milestone-retrospective@375': `${R6} R6: color-contrast`,
   'stream-milestone-retrospective@1180': `${R6} R6: color-contrast`,
   'stream-milestone-retrospective@1180-dark': `${R6} R6: color-contrast`,

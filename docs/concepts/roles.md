@@ -128,8 +128,8 @@ it. It does not wait in the queue of runs, and its spend has its own cap per
 milestone (`pilot.maxBudgetUSD`).
 
 **What you see:** its answers and prompts in the Desk in the milestone's
-pilot drawer (*Ask pilot*) and in the inbox, and its comments on the tracking issue. You
-talk to it in the Desk, or with a comment that starts with `/pilot` or
+*Cockpit* and in the inbox, and its comments on the tracking issue. You
+talk to it in the Desk, at the bottom of the Cockpit, or with a comment that starts with `/pilot` or
 mentions the bot user. Without autopilot, `/pilot coordinate` on an issue of
 a planned milestone gives that milestone a pilot.
 

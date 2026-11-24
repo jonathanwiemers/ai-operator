@@ -551,3 +551,12 @@ export function cockpitStreamQuery(
   params.set('limit', '50')
   return params
 }
+
+// chatAnswer is the pilot's complete answer to the chat message id among
+// events: the chat.agent whose replyTo is id (a reply still being written
+// has no replyTo). After a send from the Cockpit composer the Cockpit
+// refreshes its newest events until it is there (useCockpitStream's
+// expectAnswer), so another message's answer never counts.
+export function chatAnswer<E extends Pick<StreamEvent, 'kind' | 'data'>>(events: E[], id: number): E | undefined {
+  return events.find((e) => e.kind === 'chat.agent' && e.data.replyTo === id)
+}

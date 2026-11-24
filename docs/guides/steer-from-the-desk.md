@@ -117,14 +117,15 @@ tracking issue. The Desk logs who posted where, never the text.
 
 ## Ask the pilot
 
-Click *Ask pilot* in the milestone's header, on any tab, and write into
-*Message the pilot* in the drawer. The answer comes in the same thread. Ask where things stand, why the milestone is
-paused, or what an issue waits for. See [The pilot](pilot.md).
+Write into *Message the pilot* at the bottom of the milestone's *Cockpit*.
+Your message and the pilot's answer show in the Cockpit's stream. Ask where
+things stand, why the milestone is paused, or what an issue waits for. See
+[The pilot](pilot.md).
 
 Without the `chat` grant but with `steer`, the box posts your message as a
 `/pilot` comment on the tracking issue, in your name.
 Anyone with the `chat` grant can message the pilot, owner or not. With
-neither grant you see the drawer but cannot write in it.
+neither grant you read the conversation in the Cockpit but cannot write.
 
 ## Answer prompts
 

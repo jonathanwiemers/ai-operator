@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { cockpitClass, cockpitItems, cockpitStreamQuery, groupSummary, pilotStreamKinds, runtimeStreamKinds } from '../src/stream.ts'
+import { chatAnswer, cockpitClass, cockpitItems, cockpitStreamQuery, groupSummary, pilotStreamKinds, runtimeStreamKinds } from '../src/stream.ts'
 
 let id = 0
 // ev builds an event at minute m of a day; the defaults are #712 in %5 of g/p.
@@ -134,4 +134,19 @@ test('cockpitStreamQuery asks for all kinds of a scope, chat kinds only with the
   assert.equal(everything.get('project'), null)
   assert.equal(everything.get('q'), null)
   assert.equal(everything.get('after'), 'c2')
+})
+
+test('chatAnswer: only the complete pilot answer to the sent message', () => {
+  const events = [
+    { id: 12, kind: 'chat.agent', data: { replyTo: 11 } },
+    { id: 10, kind: 'chat.agent', data: {} },
+    { id: 9, kind: 'pilot.acted', data: { replyTo: 8 } },
+    { id: 8, kind: 'chat.user', data: {} },
+  ]
+  // Another message's answer (12 answers 11) does not count, a reply still
+  // being written (10) has no replyTo, and a history event is no answer.
+  assert.equal(chatAnswer(events, 8), undefined)
+  assert.equal(chatAnswer(events, 11), events[0])
+  assert.equal(chatAnswer([{ id: 10, kind: 'chat.agent', data: { replyTo: 8 } }, ...events], 8)?.id, 10)
+  assert.equal(chatAnswer([], 8), undefined)
 })

@@ -480,8 +480,7 @@ Every page has the same frame, from the outside in (decisions 3 to 6 of
      "Running" line repeats it.
    - `title`; then one meta line as `description` (cost chip, dates,
      step).
-   - `links`: one primary action (a milestone's *Ask pilot*, a task's merge
-     request) and the rest in ⋯;
+   - `links`: one primary action (a task's merge request) and the rest in ⋯;
      `components/HeaderActions.vue` shows the first `shown` (2) of its
      `actions` as buttons and puts the rest in a ⋯ `UDropdownMenu`.
      A top-level page with only its own controls (Metrics' range, Inbox's
@@ -961,8 +960,8 @@ first, and the text box at the bottom. `web/src/ui/DeskChat.vue` wraps
 - **Cards.** `streamMessages` turns the stream's items (`groupThreads`,
   newest first) into full-width `card` messages oldest first, with
   `metadata.day` on a day's first card; the caller renders the
-  `EventCard` in the `content` slot. The Activity tab, the issue stream
-  (`IssueStream.vue`) and the pilot drawer's events read this way.
+  `EventCard` in the `content` slot. The Activity tab and the issue stream
+  (`IssueStream.vue`) read this way.
 - **Scrolling.** New messages scroll into view only when the reader is at
   the bottom (`atBottom`, 48 px slack) or the last message is the owner's
   own, still sending. *Load older* (`older` prop, `older` event) adds
@@ -1028,8 +1027,11 @@ links, packing, the windows, the no-history case and the axe check.
 
 `web/src/components/Composer.vue` is the one text box of the Desk: the
 task's *Chat with the agent* (`mode="chat"`, `TaskChat.vue`) and the
-stream's notes (`mode="note"`, the project stream in `Stream.vue` and a
-milestone's pilot drawer in `MilestonePilot.vue`).
+stream's notes (`mode="note"`, the project stream in `Stream.vue`), and
+both at the bottom of a milestone's Cockpit (`CockpitComposer.vue`, see
+[Cockpit](#cockpit)). A chat composer sends with `useChatSend`
+(`web/src/chatSend.ts`): the draft and its `clientKey` stay in
+sessionStorage until a 2xx, and the text survives a sign-in.
 
 ```vue
 <Composer v-model="body" mode="chat" placeholder="Message the agent…" hint="Enter+Ctrl/Cmd to send"
@@ -1139,7 +1141,7 @@ buttons: "Q12 asked:" linked to the card (`#prompt-Q12` without `?tab=`,
 so `milestoneTabFromRoute` picks the tab that holds it), the question
 (from the prompt in status, else the event summary) and, while the view
 has the prompt, its state badge. `IssueStream` takes the view's `prompts`
-for that badge (the pilot drawer and the issue page pass them).
+for that badge (the issue page passes them).
 
 The e2e cases `prompt card …` answer at 375 and 1280 px through the route
 mock and check the POST body to the target task's chat: an option on the
@@ -1216,8 +1218,7 @@ activity heatmap strip keeps scoped CSS (`.heat`, `.cells`).
 - The `UPageHeader` comes first: the milestone's status as eyebrow
   (`milestoneStatus` of `src/milestoneRows.ts`: *Autopilot paused*, or the
   state), the title, the [header cost](#cost-chips) as meta line, and on
-  the right `HeaderActions` with `shown` 0: a milestone's *Ask pilot*
-  ([Milestone Pilot](#milestone-pilot)), *Context* (below 1180 px), and ⋯
+  the right `HeaderActions` with `shown` 0: *Context* (below 1180 px), and ⋯
   with the project or milestone in GitLab. A project has no *Metrics*
   button; the Metrics tab is one click away. While a milestone loads, the
   title comes from the project's milestone list (`%<iid>` without it),
@@ -1485,30 +1486,15 @@ route checks cover `stream-milestone-decisions` and
 
 ### Milestone Pilot
 
-The milestone's pilot drawer (`web/src/components/MilestonePilot.vue`) and
-the autopilot queue (`web/src/components/QueueList.vue`, on the Issues tab
-and in the context sheet) are Tailwind utilities and Nuxt UI tokens,
-without scoped CSS.
+The milestone's pilot line (in `CockpitComposer.vue`, see [Cockpit](#cockpit))
+and the autopilot queue (`web/src/components/QueueList.vue`, on the Issues
+tab and in the context sheet) are Tailwind utilities and Nuxt UI tokens.
 
-- **Drawer** (decision 8 of the header and tabs milestone). The pilot is
-  no tab: *Ask pilot* (`data-ask-pilot`, `aria-haspopup="dialog"`,
-  `aria-expanded`) in the milestone header opens `MilestonePilot` in a
-  `USlideover` from the right (`data-pilot-drawer`, full width below
-  768 px, at most 560 px from there), over any tab. Its open state is
-  `?pilot=1` (`pilotFromQuery`, `pilotQuery` in `src/streamTabs.ts`), so a
-  reload or a link keeps it open; opening replaces the query, closing
-  (Escape, the close button, the overlay, Back through `useBackClose`)
-  drops it, and focus returns to the button (`onCloseAutoFocus`). An old
-  `?tab=pilot` link becomes Issues plus `?pilot=1`. The sheet loads with
-  its first opening (`defineAsyncComponent`). A stored milestone's button
-  says *Pilot*: its drawer has the pilot's events only (D674-P4).
-- The drawer keeps the old tab's order: the pilot line (autonomy, cost, *Pilot
-  task*), the message box (*Ask the pilot* is `TaskChat` in a
-  `DeskChat` with the merged `Composer`, so its input is 16 px on phones)
-  and pilot events (`IssueStream`, cards in a `DeskChat`; a question is
-  one line there). The questions and the pause history are on
-  the Needs you tab. On phones
-  the *Pilot task* link is 44 px high.
+- The pilot line: autonomy, cost and *Pilot task*, as the header of the
+  Cockpit's composer. On phones the *Pilot task* link is 44 px high. The
+  pilot drawer and its *Ask pilot* button are gone (R12 of "Desk: the
+  Cockpit"); `withoutPilot` (`src/streamTabs.ts`) drops an old `?pilot=`
+  and `?tab=pilot` from a milestone URL on load.
 
 - A queue item shows its position, its number (never wrapped), its title
   (two lines, the rest opens on tap) and its state, which wrap onto lines of
@@ -1540,19 +1526,15 @@ without scoped CSS.
   `/agent resume #N`: it lifts that issue's hold only. The list shows
   *Resuming #N…*, then the operator's answer.
 
-The e2e cases `milestone pilot › pilot drawer and prompt link@<width>` and
+The e2e cases `milestone pilot › pilot composer and prompt link@<width>` and
 `milestone pilot › queue lanes, order and numbers@<width>` at 375, 768 and
 1280 px check the sideways scroll, the touch heights on a phone, the
 prompt link to a closed card, the queue's lanes, order, positions,
 one-line numbers, waiting and hold lines, wave chips and count, the Resume
 payload and the stepper's payload and pending limit
 (`milestone-pilot@<width>.png`,
-`milestone-queue@<width>.png`, `milestone-queue-dark@<width>.png`); the route checks cover
-`stream-milestone-pilot` (`?pilot=1`, the page under the drawer) at the three
-widths. `e2e/pilot-drawer.spec.ts` checks that *Ask pilot* opens the drawer on
-every tab, traps focus, closes on Escape and returns focus, `?pilot=1` across
-a reload, an old `?tab=pilot` link, the stored milestone's button, and axe
-with the drawer open.
+`milestone-queue@<width>.png`, `milestone-queue-dark@<width>.png`); `stream-milestone-pilot`
+is the Cockpit with its composer.
 
 ### Cockpit
 
@@ -1581,12 +1563,32 @@ components only:
   and the local time span; Enter or Space opens it to its event cards.
   *Expand all* opens every group; a group opened or closed by hand keeps
   that until the switch changes.
+- **Composer** (R12). The `composer` slot comes last; on a milestone it is
+  `web/src/components/cockpit/CockpitComposer.vue`, none on a stored
+  milestone. Its header is the pilot line ([Milestone Pilot](#milestone-pilot));
+  its body the chat `Composer` to the pilot task with the `chat` grant
+  (`useChatSend`, no Interrupt), else a `/pilot` note (`useStreamNote`)
+  with `steer`, else a read-only line; without a pilot, *No pilot for this
+  milestone*. It shows no transcript: the messages and answers are
+  `chat.user`/`chat.agent` items of the stream. After a chat send the
+  slot's `sent(id)` (`expectAnswer`) reloads the stream, then refetches its
+  newest page every 5 s, replacing loaded copies, until the complete answer
+  to that message (`chat.agent` with `replyTo` = id, `chatAnswer`) arrives,
+  at most 5 minutes, and says "Pilot replied: <first sentence>" once. A
+  `/pilot` note's reply is a GitLab comment, so after a note the slot's
+  `reload` only reloads the stream. The composer is
+  sticky at the bottom of the pane; on phones the pane does not scroll
+  (`.cockpit-tab`), so it sticks to the screen above the bottom bar or the
+  keyboard (`--keyboard-inset`).
 
 The project and Overview Cockpits are to reuse the component and the
 composable with their scopes. The e2e cases in `web/e2e/cockpit.spec.ts`
 at 375 and 1280 px check the order, the closed groups, the keyboard,
 *Expand all*, the search, the problem links and axe; color-contrast is left
 to R6 (#641), as on the Needs you and Activity tabs it reuses.
+`web/e2e/cockpit-composer.spec.ts` checks the composer per grant, no
+pilot, a stored milestone, the old pilot links, the phone placement and axe;
+`desk.spec.ts` flow 3 sends a message and hears the answer.
 
 ### Needs you tab
 
@@ -2031,8 +2033,8 @@ bucket stacked by kind and the paused hours per bucket, tiles for the
 pauses, paused time, mean time to resume and open now, tables by kind,
 resolver and via with the labels of the milestone's pause card
 (`pauseCard.ts`, `pauses.ts`), a per-project table without a project filter, and the ten
-longest pauses, each row linking to the milestone with its pilot drawer (`deskURL` of the
-API, `?tab=pilot`, which the Desk opens as Issues plus `?pilot=1`). `pausesTruncatedNote` shows when the answer says `truncated`, and
+longest pauses, each row linking to the milestone (`deskURL` of the
+API, `?tab=pilot`, which the Desk opens as the Cockpit). `pausesTruncatedNote` shows when the answer says `truncated`, and
 `metricsFilterNote` while Kind or Engine is set. The figures come from the
 `autopilot.paused` and `autopilot.resumed` events
 ([History](design.md#history)).
@@ -2189,12 +2191,12 @@ a path (decision 13 of the header and tabs milestone).
   read against all its tabs, so a `?tab=needs` or `?tab=retrospective`
   link waits; once loaded, a hidden tab falls back to *Cockpit*. The
   `problem` route and a link with a `#prompt-Q<n>` or `#problem-<iid>`
-  hash and no `?tab=` open *Cockpit* (`milestoneTabFromRoute`). The pilot
-  is a drawer, `?pilot=1` ([Milestone Pilot](#milestone-pilot)).
+  hash and no `?tab=` open *Cockpit* (`milestoneTabFromRoute`). The pilot's
+  composer is at the bottom of the Cockpit ([Cockpit](#cockpit)).
 - **Aliases** (`tabAlias`), so old links keep working: `stream` →
   `activity` (project, milestone, dashboard), `spend` → `metrics`,
   `details` → `overview` (task), `pilot` → `cockpit`, where Stream.vue also
-  sets `?pilot=1` (`pilotQuery`). Unknown, empty or repeated values fall
+  drops `?tab=pilot` and `?pilot=` (`withoutPilot`). Unknown, empty or repeated values fall
   back to the first known one, else the default (`tabFromQuery`).
 - The view tabs are one [RouteTabs](#routetabs) strip; the default tab
   drops `?tab=` (`tabQuery`). Scope tabs keep a chosen view tab where the
@@ -2213,7 +2215,7 @@ a path (decision 13 of the header and tabs milestone).
   old paths show Not found. Task and research pages keep their URLs.
 - **Stored milestones.** With the research database a closed milestone whose
   tasks are gone answers from the snapshot (`stored`): no *Board* tab, no
-  message box, the pilot drawer (behind a *Pilot* button) shows only events. Milestones
+  message box; the Cockpit shows the events. Milestones
   closed before the snapshot existed are filled in once by the operator's
   backfill (see [Research internals](research.md#database)): issues with states
   and merge requests and the retrospective's text, but no leftovers and only
@@ -2221,12 +2223,12 @@ a path (decision 13 of the header and tabs milestone).
 
 ### Which events show where
 
-Every event kind belongs to one of a milestone's two event lists, the pilot
-drawer or the Activity tab, never both
+Every event kind belongs to one of two lists, the pilot's kinds or the
+Activity tab's, never both; the milestone's Cockpit shows both
 (`pilotKinds` and `runtimeKinds` in `internal/ui/stream.go`, mirrored in
 `web/src/stream.ts`):
 
-- *Pilot* (the drawer): `prompt.posted`, `prompt.answered`, `prompt.closed`, `needs`,
+- *Pilot*: `prompt.posted`, `prompt.answered`, `prompt.closed`, `needs`,
   `autopilot`, `autopilot.paused`, `autopilot.resumed`, `proposal`,
   `pilot.writeFailed`, `note`, `chat.user`, `chat.agent`,
   `release.decided`, `release.started`, `release.ended` and

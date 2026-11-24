@@ -10,7 +10,7 @@ const widths = [
 ]
 
 const needsTab = '/projects/team-a/shop/milestones/14?tab=needs'
-const pilotDrawer = '/projects/team-a/shop/milestones/14?pilot=1'
+const cockpit = '/projects/team-a/shop/milestones/14'
 const chatPath = `/api/v1/projects/team-a/shop/tasks/${refundsPrompt.target.task}/chat`
 
 interface Problems {
@@ -111,16 +111,15 @@ for (const size of widths) {
     expect(problems).toEqual(clean)
   })
 
-  test(`the pilot drawer shows an open prompt as one row without buttons, the row leads to its thread@${size.width}`, async ({ page, baseURL }) => {
-    const { problems } = await open(page, baseURL, pilotDrawer, size, undefined, false)
-    const drawer = page.getByRole('dialog', { name: 'Pilot' })
-    const events = drawer.locator('section', { has: page.getByRole('heading', { name: 'Pilot events' }) })
+  test(`the Cockpit's stream shows an open prompt as one row without buttons, the row leads to its thread@${size.width}`, async ({ page, baseURL }) => {
+    const { problems } = await open(page, baseURL, cockpit, size, undefined, false)
+    const events = page.locator('main [data-cockpit-stream]')
     const row = events.locator('[data-prompt-row]')
     await expect(row).toHaveCount(1)
     await expect(row.getByRole('link', { name: `${refundsPrompt.id} asked:` })).toBeVisible()
     await expect(row.getByText('open', { exact: true })).toBeVisible()
     await expect(row.getByRole('button')).toHaveCount(0)
-    await expect(drawer.locator(`[data-prompt="${refundsPrompt.id}"]`)).toHaveCount(0)
+    await expect(events.locator(`[data-prompt="${refundsPrompt.id}"]`)).toHaveCount(0)
     await row.getByRole('link', { name: `${refundsPrompt.id} asked:` }).click()
     await expect(page).toHaveURL(/\/milestones\/14\/problems\/issue-281$/)
     await expect(page.locator(`#prompt-${refundsPrompt.id}`)).toBeVisible()

@@ -224,7 +224,7 @@ tablet the *Context* button opens it.
 A milestone page opens on *Cockpit*, which counts what waits for you: problems, proposals and questions pinned on top, answered there,
 then the events, newest at the bottom, with runs, CI and reviews folded into groups (open one, or *Expand all*) and a search.
 Then come *Issues | Activity | Decisions | Board | Metrics*, *Needs you* while the milestone is paused or a problem is open, and
-*Retrospective* once written. The tab is in the address, so you can link to it. *Ask pilot* opens the [pilot drawer](#ask-pilot).
+*Retrospective* once written. The tab is in the address, so you can link to it. The Cockpit ends with the [message box to the pilot](#message-the-pilot).
 A panel on the right switches between *Issues* (the issues by state: running, waiting, next, merged, skipped; *Open table* opens the Issues tab), *Queue* (the project's milestones, this one marked) and *Decisions* (superseded ones folded). Below 1180 px, and on the Issues and Activity tabs, the *Issues*, *Queue* and *Decisions* buttons in the header open it from the right; Escape closes it. The open view is in the address (`?panel=queue`).
 
 ### Issues
@@ -280,13 +280,12 @@ revisit does. Owners get *Revisit* (opens the prompt in *Needs you*),
 *Comment* (on an open issue, in your GitLab name) or a command to copy.
 See [Read and revisit decisions](decisions.md).
 
-### Ask pilot
+### Message the pilot
 
-*Ask pilot* opens a drawer on the right (full width on a phone): the pilot's
-autonomy and cost, *Message the pilot* and its events (questions, answers,
-pauses, releases, comments, chat), see [Steer from the Desk](steer-from-the-desk.md#ask-the-pilot).
-`?pilot=1` keeps it open across reloads and links; old `?tab=pilot` links open
-it over *Issues*. On a done milestone the button says *Pilot*.
+The Cockpit ends with *Message the pilot*: the pilot's autonomy, cost and
+task link, then the box. Your messages and the pilot's answers show in the
+stream; on a phone the box stays above the keyboard. A done milestone has
+none. See [Steer from the Desk](steer-from-the-desk.md#ask-the-pilot).
 
 ### Retrospective
 

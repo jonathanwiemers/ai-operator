@@ -65,7 +65,6 @@ const milestoneReady = {
   issues: 'Document the refund flow for support',
   needs: 'Split across captures',
   decisions: 'Refund in the order currency',
-  pilot: 'Message the pilot',
   retrospective: 'Retry the registry push in the release job',
   activity: 'Run 2 needs input',
   board: 'Partial captures for split shipments',
@@ -281,14 +280,13 @@ const routes: Route[] = [
   },
 ]
 
-// The milestone page with the pilot drawer open (Decision 8 of "Desk: one
-// header and one row of tabs on every page"): the drawer is not a tab, so it
-// is not in routes, whose checks read the page under it; the drawer's own
-// axe check is in e2e/pilot-drawer.spec.ts.
+// The milestone's Cockpit with the composer to the pilot at its bottom
+// (R12 of "Desk: the Cockpit"); its own checks are in
+// e2e/cockpit.spec.ts and e2e/cockpit-composer.spec.ts.
 const pilotRoute: Route = {
   name: 'stream-milestone-pilot',
-  path: '/projects/team-a/shop/milestones/14?pilot=1',
-  ready: (page) => expect(page.getByRole('dialog').getByText(milestoneReady.pilot).first()).toBeVisible(),
+  path: '/projects/team-a/shop/milestones/14',
+  ready: (page) => expect(page.locator('main [data-cockpit-composer]').getByRole('textbox', { name: 'Message' })).toBeVisible(),
 }
 
 // What a check saw go wrong besides overflow.
@@ -900,74 +898,6 @@ for (const reopens of [true, false]) {
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
   })
 }
-
-// The pilot's reply on the milestone's Pilot tab comes in parts, one change
-// event each: the chat log is not a live region, and the announcer says
-// "Pilot replied: <first sentence>" once, after the reply is complete
-// (src/chatView.ts replyAnnouncement), never while it is written.
-test('a pilot reply in parts is announced once, when complete@1280', async ({ page, baseURL }) => {
-  const route = pilotRoute
-  const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
-  await page.setViewportSize({ width: 1280, height: 800 })
-  await page.clock.setFixedTime(now)
-  await watch(page, new URL(baseURL ?? '').origin, problems)
-  await mockAPI(page, route, problems)
-  await recordAnnouncements(page)
-  // A scripted event stream that stays open; __change sends a change event.
-  await page.addInitScript(() => {
-    const w = window as unknown as { __change: () => void; EventSource: unknown }
-    class FakeEventSource extends EventTarget {
-      static CONNECTING = 0
-      static OPEN = 1
-      static CLOSED = 2
-      readyState = 0
-      constructor() {
-        super()
-        w.__change = () => this.dispatchEvent(new MessageEvent('change', { data: '{"kind":"task"}' }))
-        setTimeout(() => {
-          this.readyState = 1
-          this.dispatchEvent(new Event('open'))
-        }, 50)
-      }
-      close() {
-        this.readyState = 2
-      }
-    }
-    w.EventSource = FakeEventSource
-  })
-  const at = now.toISOString()
-  const question = { id: 521, at, role: 'user', kind: 'message', author: 'jo', authorName: 'Jo', body: 'Where is the queue?', state: 'delivered' }
-  const reply = (body: string, done: boolean) => ({ id: 522, at, role: 'agent', kind: 'message', authorName: 'pilot', body, ...(done ? { replyTo: 521 } : {}) })
-  const parts = [
-    [question],
-    [question, reply('Two issues', false)],
-    [question, reply('Two issues are in review. The third', false)],
-    [{ ...question, state: 'answered' }, reply('Two issues are in review. The third waits for CI.', true)],
-  ]
-  let part = 0
-  await page.route(
-    (url) => url.pathname === '/api/v1/projects/team-a/shop/tasks/shop-m14-pilot/chat',
-    (r) => (r.request().method() === 'GET' ? r.fulfill({ status: 200, json: { messages: parts[part] } }) : r.fallback()),
-  )
-  await page.goto(route.path)
-  await route.ready(page)
-  const chat = page.getByRole('dialog').locator('[data-task-chat]')
-  await expect(chat.locator('[data-chat-status]')).toBeVisible()
-  await expect(chat.getByRole('log')).toHaveAttribute('aria-live', 'off')
-  for (const [i, text] of ['Two issues', 'Two issues are in review. The third', 'Two issues are in review. The third waits for CI.'].entries()) {
-    part = i + 1
-    await page.evaluate(() => (window as unknown as { __change: () => void }).__change())
-    await expect(chat.getByText(text, { exact: true })).toBeVisible()
-    if (part < parts.length - 1) expect(await said(page), `announcements after part ${part}`).toEqual([])
-  }
-  await expect(chat.locator('[data-chat-status]')).toHaveCount(0)
-  await expect.poll(() => said(page)).toEqual(['polite: Pilot replied: Two issues are in review.'])
-  // The next change reloads the same reply: nothing more is said.
-  await page.evaluate(() => (window as unknown as { __change: () => void }).__change())
-  await page.waitForTimeout(1000)
-  expect(await said(page)).toEqual(['polite: Pilot replied: Two issues are in review.'])
-  expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
-})
 
 // DataList (src/ui/DataList.vue): on a phone each run row shows its labels,
 // from the tablet width up they are hidden and the headers show instead.
@@ -1897,9 +1827,10 @@ for (const { width, height } of [widths[0]!, widths[2]!]) {
     await expect(budget).toContainText('The budget is used')
     await expect(budget).toContainText('open')
     await budget.locator('[data-long-pause]').click()
-    // The pause link is the server's old ?tab=pilot: Issues with the pilot drawer.
-    await expect(page).toHaveURL(/\/projects\/team-a\/shop\/milestones\/14\?pilot=1$/)
-    await expect(page.getByRole('dialog', { name: 'Pilot' })).toBeVisible()
+    // The pause link is the server's old ?tab=pilot: the Cockpit, with the
+    // composer to the pilot at its bottom.
+    await expect(page).toHaveURL(/\/projects\/team-a\/shop\/milestones\/14$/)
+    await expect(page.locator('main [data-cockpit-composer]')).toBeVisible()
 
     problems.csp.push(...(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)))
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
@@ -3087,9 +3018,9 @@ test.describe('block markdown', () => {
 // strong and code, shows no literal asterisks, and nests no link in a link.
 test.describe('inline markdown', () => {
   for (const { width, height } of [widths[0]!, widths[2]!]) {
-    for (const name of ['inbox', 'stream-milestone-activity', 'stream-milestone-pilot']) {
+    for (const name of ['inbox', 'stream-milestone-activity']) {
       test(`${name} shows no literal ** and no nested links@${width}`, async ({ page, baseURL }, testInfo) => {
-        const route = [...routes, pilotRoute].find((r) => r.name === name)!
+        const route = routes.find((r) => r.name === name)!
         const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
         await page.setViewportSize({ width, height })
         await page.clock.setFixedTime(now)
@@ -3098,8 +3029,7 @@ test.describe('inline markdown', () => {
         await page.goto(route.path)
         await route.ready(page)
 
-        // The pilot drawer is a dialog outside main.
-        const scope = route === pilotRoute ? page.getByRole('dialog') : page.locator('main')
+        const scope = page.locator('main')
         await expect(scope.locator('.md-inline strong').first()).toBeVisible()
         await expect(scope).not.toContainText('**')
         expect(await page.evaluate(() => document.querySelectorAll('a a').length), 'nested links').toBe(0)
@@ -4114,7 +4044,7 @@ test.describe('milestone decisions', () => {
   })
 })
 
-// The milestone's Pilot tab (MilestonePilot.vue) and the queue
+// The milestone's pilot composer (CockpitComposer.vue) and the queue
 // (QueueList.vue, R12), utilities only. A prompt link without ?tab= opens
 // the Needs you tab, unfolds Earlier questions for a closed prompt and scrolls
 // to its card. The queue keeps its order, numbers stay on one line, and on
@@ -4149,11 +4079,11 @@ test.describe('milestone pilot', () => {
   for (const size of widths) {
     const phone = size.width < 760
 
-    test(`pilot drawer and prompt link@${size.width}`, async ({ page, baseURL }, testInfo) => {
+    test(`pilot composer and prompt link@${size.width}`, async ({ page, baseURL }, testInfo) => {
       const problems = await open(page, baseURL, 'stream-milestone-pilot', size)
       expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
       if (phone) {
-        const links = await page.getByRole('dialog').locator('[data-pilot] a').evaluateAll((as) => as.map((a) => a.getBoundingClientRect().height))
+        const links = await page.locator('main [data-cockpit-composer] [data-pilot] a').evaluateAll((as) => as.map((a) => a.getBoundingClientRect().height))
         expect(links.length, 'pilot links').toBeGreaterThan(0)
         for (const h of links) expect(h, 'pilot link height').toBeGreaterThanOrEqual(44)
       }
@@ -5551,44 +5481,46 @@ test.describe('screen reader flows', () => {
       expect(problems).toEqual(clean)
     })
 
-    // Flow 3: open the pilot drawer from Ask pilot, send a message to the
-    // pilot and hear the reply, once, when it is complete.
+    // Flow 3: write to the pilot in the Cockpit's composer and hear the
+    // reply, once, when it is complete. The message and the reply are
+    // items of the Cockpit's stream (R12 of "Desk: the Cockpit").
     test(`flow 3: send a message to the pilot and hear the reply@${size.width}`, async ({ page, baseURL }) => {
       const at = now.toISOString()
       const body = 'Where is the queue?'
-      const question = { id: 521, at, role: 'user', kind: 'message', author: 'jo', authorName: 'Jo', body, state: 'delivered' }
-      const reply = (text: string, done: boolean) => ({ id: 522, at, role: 'agent', kind: 'message', authorName: 'pilot', body: text, ...(done ? { replyTo: 521 } : {}) })
-      const parts = [
-        [],
-        [question],
-        [question, reply('Two issues', false)],
-        [{ ...question, state: 'answered' }, reply('Two issues are in review. The third waits for CI.', true)],
-      ]
+      const ev = (id: number, kind: 'chat.user' | 'chat.agent', data: Record<string, unknown>) => ({
+        id, at, namespace: 'team-a', project: 'shop', milestoneIID: 14, task: 'shop-m14-pilot', kind, actor: 'jo', summary: 'message', data,
+      })
+      const question = ev(521, 'chat.user', { role: 'user', kind: 'message', state: 'delivered', authorName: 'Jo', body })
+      const reply = (text: string, done: boolean) => ev(522, 'chat.agent', { role: 'agent', kind: 'message', authorName: 'pilot', body: text, ...(done ? { replyTo: 521 } : {}) })
+      const final = 'Two issues are in review. The third waits for CI.'
+      const parts = [[], [question], [reply('Two issues', false), question], [reply(final, true), question]]
       let part = 0
       const posts: unknown[] = []
-      const problems = await load(page, baseURL, 'stream-milestone-issues', size, () =>
-        page.route(
-          (url) => url.pathname === chatPath('shop-m14-pilot'),
-          (r) => {
-            if (r.request().method() === 'GET') return r.fulfill({ status: 200, json: { messages: parts[part] } })
-            posts.push(r.request().postDataJSON())
-            part = 1
-            return r.fulfill({ status: 200, json: { id: 521 } })
-          },
-        ),
+      const problems = await load(page, baseURL, 'stream-milestone-pilot', size, () =>
+        Promise.all([
+          page.route(
+            (url) => url.pathname === chatPath('shop-m14-pilot'),
+            (r) => {
+              if (r.request().method() !== 'POST') return r.fallback()
+              posts.push(r.request().postDataJSON())
+              part = 1
+              return r.fulfill({ status: 200, json: { id: 521 } })
+            },
+          ),
+          page.route(
+            (url) => url.pathname === '/api/v1/stream' && url.searchParams.get('milestone') === '14' && !url.searchParams.has('after'),
+            (r) => {
+              const fixture = answer('/stream', new URL(r.request().url()).searchParams) as { events: unknown[] }
+              return r.fulfill({ status: 200, json: { ...fixture, events: [...parts[part]!, ...fixture.events] } })
+            },
+          ),
+        ]),
       )
       await skipToMain(page)
-      const ask = page.locator('main').getByRole('button', { name: 'Ask pilot' })
-      await tabTo(page, ask)
-      await page.keyboard.press('Enter')
-      await expect(page).toHaveURL(/[?&]pilot=1$/)
-      const drawer = page.getByRole('dialog', { name: 'Pilot' })
-      const chat = drawer.locator('[data-task-chat]')
-      await expect(drawer).toMatchAriaSnapshot(`
-        - heading "Pilot"
-        - heading "Message the pilot" [level=2]
-      `)
-      const box = chat.getByRole('textbox', { name: 'Message' })
+      const composer = page.locator('main [data-cockpit-composer]')
+      await expect(composer).toHaveAttribute('aria-label', 'Message the pilot')
+      await expect(composer.getByRole('link', { name: 'Pilot task' })).toBeVisible()
+      const box = composer.getByRole('textbox', { name: 'Message' })
       await tabTo(page, box)
       await expect(focused(page)).toMatchAriaSnapshot('- textbox "Message"')
       // An empty box is not an error.
@@ -5596,26 +5528,19 @@ test.describe('screen reader flows', () => {
       await page.keyboard.type(body)
       await page.keyboard.press('ControlOrMeta+Enter')
       await expect.poll(() => posts).toEqual([{ body, clientKey: expect.any(String), kind: 'message' }])
-      await expect(chat.getByRole('log')).toHaveAttribute('aria-live', 'off')
-      await expect(chat.getByRole('log')).toMatchAriaSnapshot(`
-        - article:
-          - paragraph: ${body}
-      `)
+      const stream = page.locator('main [data-cockpit-stream]')
+      await expect(stream.getByText(body, { exact: true })).toBeVisible()
       await expect(focused(page), 'focus stays in the box').toMatchAriaSnapshot('- textbox "Message"')
 
-      for (const p of [2, 3]) {
-        part = p
-        await page.evaluate(() => (window as unknown as { __change: () => void }).__change())
-        await expect(chat.getByText(p === 2 ? 'Two issues' : 'Two issues are in review. The third waits for CI.', { exact: true })).toBeVisible()
-        if (p === 2) expect(await said(page), 'nothing while the reply is written').toEqual([])
-      }
+      // The Cockpit refreshes its newest events every 5 s until the reply
+      // is complete; nothing is said while it is written.
+      part = 2
+      await expect(stream.getByText('Two issues', { exact: true })).toBeVisible({ timeout: 15_000 })
+      expect(await said(page), 'nothing while the reply is written').toEqual([])
+      part = 3
+      await expect(stream.getByText(final, { exact: true })).toBeVisible({ timeout: 15_000 })
       await expect.poll(() => said(page)).toEqual(['polite: Pilot replied: Two issues are in review.'])
-      await expect(chat.getByRole('log')).toMatchAriaSnapshot(`
-        - article:
-          - paragraph: ${body}
-        - article:
-          - paragraph: Two issues are in review. The third waits for CI.
-      `)
+      await expect(stream.getByText('Two issues', { exact: true })).toHaveCount(0)
       await expect(focused(page)).toMatchAriaSnapshot('- textbox "Message"')
       expect(problems).toEqual(clean)
     })
