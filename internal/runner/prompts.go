@@ -11,6 +11,7 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
 	"github.com/jonathanwiemers/ai-operator/internal/textutil"
+	"github.com/jonathanwiemers/ai-operator/internal/timefmt"
 )
 
 // The system prompts are constants on purpose: they are part of the cached
@@ -675,7 +676,7 @@ func buildChatContext(msgs []aiv1.ChatMessage) string {
 		if m.Role == "agent" {
 			who = "agent (you)"
 		}
-		fmt.Fprintf(&b, "**%s** (%s UTC):\n<untrusted-data>\n%s\n</untrusted-data>\n\n", who, utcMinute(m.At.Time),
+		fmt.Fprintf(&b, "**%s** (%s):\n<untrusted-data>\n%s\n</untrusted-data>\n\n", who, timefmt.UTCMinute(m.At.Time),
 			untrustedEnd.ReplaceAllString(strings.TrimSpace(m.Text), "</untrusted_data"))
 	}
 	return b.String()

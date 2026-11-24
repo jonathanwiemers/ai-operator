@@ -7,6 +7,7 @@ import (
 	"time"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/timefmt"
 )
 
 // Choice is the agent a research run goes to or, when no candidate
@@ -51,7 +52,7 @@ func Choose(project *aiv1.AgentProject, candidates []aiv1.ResearchAgent, maxPerc
 		}
 		var b blocked
 		if l, limited := project.Status.ActiveUsageLimit(o.Engine, now); limited {
-			b = blocked{fmt.Sprintf("%s limited until %s", o.Engine, utcMinute(l.Until.Time)), l.Until.Time, true}
+			b = blocked{fmt.Sprintf("%s limited until %s", o.Engine, timefmt.UTCMinute(l.Until.Time)), l.Until.Time, true}
 		} else if w, ok := project.Status.FullestWindow(o.Engine, now); ok && w.Percent >= maxPercent {
 			b = blocked{fmt.Sprintf("%s: %s window at %d %%", agentLabel(o), windowLabel(w.Name), w.Percent), w.ResetsAt.Time, false}
 		}
@@ -87,7 +88,7 @@ func notes(blocks []blocked, withUntil bool) []string {
 	out := make([]string, 0, len(blocks))
 	for _, b := range blocks {
 		if withUntil && !b.limit {
-			b.note += " until " + utcMinute(b.until)
+			b.note += " until " + timefmt.UTCMinute(b.until)
 		}
 		out = append(out, b.note)
 	}
@@ -121,9 +122,6 @@ func windowLabel(name string) string {
 	}
 	return strings.ReplaceAll(name, "_", " ")
 }
-
-// utcMinute formats a time for reasons, e.g. "2026-11-13 00:00 UTC".
-func utcMinute(t time.Time) string { return t.UTC().Format("2006-01-02 15:04") + " UTC" }
 
 // ParseCandidates parses a comma-separated list of "engine/model[@effort]",
 // e.g. "claude/claude-opus-5-5@high,cursor/auto".

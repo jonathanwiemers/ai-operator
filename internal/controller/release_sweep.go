@@ -12,6 +12,7 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/timefmt"
 )
 
 // releasePhase carries out the release decisions outside milestones, after
@@ -178,7 +179,7 @@ func sweepWhy(n int, tag string, oldest time.Time, age time.Duration) string {
 		commits = "1 commit since " + tag + " is"
 	}
 	return fmt.Sprintf("%s unreleased, the oldest since %s (more than %s)",
-		commits, oldest.UTC().Format("2006-01-02 15:04 UTC"), roundDuration(age))
+		commits, timefmt.UTCMinute(oldest), roundDuration(age))
 }
 
 // landedSince is when the oldest of commits (a compare, oldest first)

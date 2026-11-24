@@ -48,7 +48,7 @@ func TestNeedsInputReason(t *testing.T) {
 			NeedsInputCause: aiv1.NeedsInputRunFailed, NeedsInputURL: testNoteURL, LastActivityTime: &ended,
 			Summary:     "giving up after 20 usage limit deferrals: claude usage limit until 2026-11-06T16:00:00Z: 5-hour limit reached",
 			UsageLimits: []aiv1.UsageLimit{limit(aiv1.EngineClaude, time.Date(2026, 11, 6, 16, 0, 0, 0, time.UTC))}}}},
-			"#7 needs input: the run failed: claude usage limit, resets 16:00 UTC (" + testNoteURL + ")"},
+			"#7 needs input: the run failed: claude usage limit, resets 2026-11-06 16:00 UTC (" + testNoteURL + ")"},
 		{"runFailed, usage limit another day, the other engine's ignored", &aiv1.AgentTask{Status: aiv1.AgentTaskStatus{Run: aiv1.RunStatus{
 			NeedsInputCause: aiv1.NeedsInputRunFailed, LastActivityTime: &ended,
 			Summary: "cursor usage limit until 2026-11-13T00:00:00Z: monthly",

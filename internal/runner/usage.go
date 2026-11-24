@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/jonathanwiemers/ai-operator/internal/textutil"
+	"github.com/jonathanwiemers/ai-operator/internal/timefmt"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -97,8 +98,8 @@ func (r *Runner) routeAround(ctx context.Context, lim *UsageLimitError, role str
 	until := r.resetOrBackoff(lim.ResetAt)
 	l := aiv1.UsageLimit{Engine: lim.Engine, Until: metav1.Time{Time: until}, Message: textutil.Truncate(lim.Message, 300)}
 	r.log().Info("usage limit reached, running on the fallback", "role", role, "engine", lim.Engine, "until", until.UTC(), "fallback", fb.Engine, "model", fb.Model)
-	r.run.noteFallback(fmt.Sprintf("↪️ `%s` reached its usage limit (until %s UTC), so %s ran on `%s/%s` instead.",
-		lim.Engine, utcMinute(until), role, fb.Engine, fb.Model))
+	r.run.noteFallback(fmt.Sprintf("↪️ `%s` reached its usage limit (until %s), so %s ran on `%s/%s` instead.",
+		lim.Engine, timefmt.UTCMinute(until), role, fb.Engine, fb.Model))
 	r.usageMu.Lock()
 	defer r.usageMu.Unlock()
 	r.routed = aiv1.MergeUsageLimit(r.routed, l)
@@ -160,7 +161,7 @@ func (r *Runner) nearLimit(ctx context.Context, role aiv1.RoleSpec) *UsageLimitE
 		if slow {
 			msg := "plan is used up (slow pool)"
 			if !reset.IsZero() {
-				msg = fmt.Sprintf("plan is used up (slow pool until %s UTC)", utcMinute(reset))
+				msg = fmt.Sprintf("plan is used up (slow pool until %s)", timefmt.UTCMinute(reset))
 			}
 			return &UsageLimitError{Engine: role.Engine, ResetAt: reset, Soft: true, Message: msg}
 		}
@@ -196,6 +197,3 @@ func agentName(engine aiv1.Engine, model string) string {
 	}
 	return string(engine) + "/" + model
 }
-
-// utcMinute formats a time for comments, e.g. "2026-11-13 00:00".
-func utcMinute(t time.Time) string { return t.UTC().Format("2006-01-02 15:04") }

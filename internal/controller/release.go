@@ -14,6 +14,7 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/timefmt"
 )
 
 // maxReleaseAttempts is how often a release's tag pipeline runs for one
@@ -504,7 +505,7 @@ func (x *releaser) waiting(ctx context.Context, recs []aiv1.ReleaseRecord, rec *
 	now := x.r.now()
 	if !rec.Final {
 		if next := x.nextStart(recs); now.Before(next) {
-			waitRelease(rec, fmt.Sprintf("at most one release per %s: waits until %s", x.minInterval(), next.UTC().Format("2006-01-02 15:04 UTC")))
+			waitRelease(rec, fmt.Sprintf("at most one release per %s: waits until %s", x.minInterval(), timefmt.UTCMinute(next)))
 			return nil
 		}
 	}

@@ -48,11 +48,7 @@ func failedReviewers(run aiv1.RunStatus) string {
 			why = append(why, string(e.Engine))
 		}
 		if e.ResetAt != nil {
-			day := e.ResetAt.Time
-			if run.LastActivityTime != nil {
-				day = run.LastActivityTime.Time
-			}
-			why = append(why, "resets "+resetTime(e.ResetAt.Time, day))
+			why = append(why, "resets "+resetTime(e.ResetAt.Time))
 		}
 		parts = append(parts, fmt.Sprintf("%s failed (%s)", e.Reviewer, strings.Join(why, ", ")))
 	}

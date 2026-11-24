@@ -14,6 +14,7 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/timefmt"
 )
 
 // A flaky job's issue is handed to the agent once (the pilot's fixFlaky,
@@ -71,7 +72,7 @@ func checkFlaky(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, 
 		if f.MilestoneIID != 0 {
 			where = fmt.Sprintf("in milestone %q", inertLine(f.MilestoneTitle, 100))
 		}
-		return nil, flakyRefusal(fmt.Sprintf("#%d was handed to the agent already, %s at %s", iid, where, f.At.UTC().Format("2006-01-02 15:04 MST")))
+		return nil, flakyRefusal(fmt.Sprintf("#%d was handed to the agent already, %s at %s", iid, where, timefmt.UTCMinute(f.At.Time)))
 	}
 	is, err := gl.GetIssue(ctx, spec.GitLab.Project, iid)
 	if err != nil {

@@ -32,6 +32,7 @@ import (
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/cursorusage"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/timefmt"
 )
 
 // Runner waits for and executes run requests of one AgentTask.
@@ -792,13 +793,13 @@ func (r *Runner) deferRun(ctx context.Context, gl gitlab.API, spec aiv1.AgentPro
 
 	saved := r.run.checkpointText()
 	if (deferrals == 1 || saved != "") && task.Spec.Type == aiv1.TaskTypeImplement && task.Spec.Issue != nil {
-		body := fmt.Sprintf("⏳ `%s` reached its usage limit (until %s UTC).", lim.Engine, utcMinute(own))
+		body := fmt.Sprintf("⏳ `%s` reached its usage limit (until %s).", lim.Engine, timefmt.UTCMinute(own))
 		if lim.FallbackEngine != "" {
-			body = fmt.Sprintf("⏳ No agent has usage left: `%s` is limited until %s UTC, its fallback `%s` until %s UTC.",
-				lim.Engine, utcMinute(own), lim.FallbackEngine, utcMinute(lim.FallbackUntil))
+			body = fmt.Sprintf("⏳ No agent has usage left: `%s` is limited until %s, its fallback `%s` until %s.",
+				lim.Engine, timefmt.UTCMinute(own), lim.FallbackEngine, timefmt.UTCMinute(lim.FallbackUntil))
 		}
-		body += fmt.Sprintf(" The run is paused and resumes at %s UTC on `%s`; until then the issue is blocked (`%squota`).",
-			utcMinute(until), resumeOn, spec.Workflow.BlockedReasonPrefix)
+		body += fmt.Sprintf(" The run is paused and resumes at %s on `%s`; until then the issue is blocked (`%squota`).",
+			timefmt.UTCMinute(until), resumeOn, spec.Workflow.BlockedReasonPrefix)
 		if saved != "" {
 			body += "\n\n" + saved
 		}

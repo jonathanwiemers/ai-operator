@@ -10,6 +10,7 @@ import (
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/notify"
 	"github.com/jonathanwiemers/ai-operator/internal/textutil"
+	"github.com/jonathanwiemers/ai-operator/internal/timefmt"
 )
 
 // failureText is a run's error for a GitLab comment. It quotes CLIs and git,
@@ -36,8 +37,8 @@ func (r *Runner) reportFailure(ctx context.Context, gl gitlab.API, spec aiv1.Age
 	retry := block == aiv1.BlockInfra && task.Spec.Source.InfraRetry != task.Spec.RunRequest
 	switch {
 	case retry:
-		body += fmt.Sprintf("The cause is outside the issue, so it is blocked (`%sinfra`) and the operator starts one new run at %s UTC (`lifecycle.infraRetryAfter`). To try earlier, ",
-			wf.BlockedReasonPrefix, utcMinute(r.now().Add(spec.Lifecycle.InfraRetryAfter.Duration)))
+		body += fmt.Sprintf("The cause is outside the issue, so it is blocked (`%sinfra`) and the operator starts one new run at %s (`lifecycle.infraRetryAfter`). To try earlier, ",
+			wf.BlockedReasonPrefix, timefmt.UTCMinute(r.now().Add(spec.Lifecycle.InfraRetryAfter.Duration)))
 	case block == aiv1.BlockInfra:
 		body += fmt.Sprintf("This was the automatic retry, so the issue stays blocked (`%sinfra`) and waits for you. Once the cause is fixed, ", wf.BlockedReasonPrefix)
 	case block != "":
@@ -98,8 +99,8 @@ func (r *Runner) reportSpecFailure(ctx context.Context, gl gitlab.API, spec aiv1
 	body := fmt.Sprintf("🤖 Planning failed:\n\n```\n%s\n```\n\n", r.failureText(runErr))
 	switch {
 	case block == aiv1.BlockInfra && task.Spec.Source.InfraRetry != task.Spec.RunRequest:
-		body += fmt.Sprintf("The cause is outside the plan, so the operator plans again at %s UTC (`lifecycle.infraRetryAfter`), once.",
-			utcMinute(r.now().Add(spec.Lifecycle.InfraRetryAfter.Duration)))
+		body += fmt.Sprintf("The cause is outside the plan, so the operator plans again at %s (`lifecycle.infraRetryAfter`), once.",
+			timefmt.UTCMinute(r.now().Add(spec.Lifecycle.InfraRetryAfter.Duration)))
 	case block == aiv1.BlockInfra:
 		body += "This was the automatic retry. Once the cause is fixed, change the milestone's spec to plan again."
 	default:

@@ -159,7 +159,7 @@ func TestFailedReviewersNamesEachReviewer(t *testing.T) {
 		{Reviewer: "coderabbit", Kind: "timeout"},
 		{Reviewer: "bugbot", Kind: "usageLimit", ResetAt: &reset},
 	}
-	want := "bugbot failed (usageLimit, resets 16:00 UTC), coderabbit failed (timeout)"
+	want := "bugbot failed (usageLimit, resets 2026-11-06 16:00 UTC), coderabbit failed (timeout)"
 	if got := failedReviewers(run); got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}

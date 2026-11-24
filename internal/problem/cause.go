@@ -8,6 +8,7 @@ import (
 	"unicode/utf8"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/timefmt"
 )
 
 // maxCauseQuote bounds, in characters, the question or error a cause quotes.
@@ -52,25 +53,15 @@ func runError(run aiv1.RunStatus) string {
 		if l.Until.IsZero() {
 			return fmt.Sprintf("%s usage limit", l.Engine)
 		}
-		// The day of the run, not of the poll: the text must not change at
-		// midnight.
-		day := l.Until.Time
-		if run.LastActivityTime != nil {
-			day = run.LastActivityTime.Time
-		}
-		return fmt.Sprintf("%s usage limit, resets %s", l.Engine, ResetTime(l.Until.Time, day))
+		return fmt.Sprintf("%s usage limit, resets %s", l.Engine, ResetTime(l.Until.Time))
 	}
 	return OneLine(run.Summary, maxCauseQuote)
 }
 
-// ResetTime is t as "15:04 UTC", with the date when it is not on day's date.
-func ResetTime(t, day time.Time) string {
-	t, day = t.UTC(), day.UTC()
-	if t.Format(time.DateOnly) == day.Format(time.DateOnly) {
-		return t.Format("15:04 UTC")
-	}
-	return t.Format("2006-01-02 15:04 UTC")
-}
+// ResetTime is the time a usage limit resets, always with its date, e.g.
+// "2026-11-21 16:00 UTC": the text depends on no day, so it stays the same
+// while the limit does.
+func ResetTime(t time.Time) string { return timefmt.UTCMinute(t) }
 
 // OneLine is the first line of s with its whitespace collapsed, at most n
 // characters; "…" marks a cut or lines left out.
