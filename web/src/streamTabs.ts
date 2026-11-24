@@ -4,8 +4,8 @@
 //
 // Project pages: Milestones (the default: queue, Finishing, the milestone
 // sections) | Activity (the event feed) | Decisions (R14) | Board | Metrics,
-// and Plans with the plans feature (R13). Milestone pages: Issues | Activity
-// | Decisions (R11, D546-P1) | Board | Metrics, then Needs you while
+// and Plans with the plans feature (R13). Milestone pages: Cockpit (the
+// default, R10 of "Desk: the Cockpit") | Issues | Activity | Decisions (R11, D546-P1) | Board | Metrics, then Needs you while
 // something needs you and Retrospective once one exists (Decision 7 of
 // "Desk: one header and one row of tabs on every page"); the pilot is a
 // drawer, not a tab (Decision 8). The dashboard at /: Overview | Activity. The
@@ -14,11 +14,11 @@
 // Renamed and merged tabs keep their old ids as aliases (tabAlias): Metrics
 // was named Spend (?tab=spend), Activity was named Stream (?tab=stream), a
 // task's Details went into its Overview (?tab=details), and a milestone's
-// Pilot tab became a drawer over Issues (?tab=pilot, see pilotQuery).
+// Pilot tab became a drawer over the Cockpit (?tab=pilot, see pilotQuery).
 // BaseTab: the tabs project and milestone pages share.
 export type BaseTab = 'activity' | 'board' | 'metrics'
 export type StreamTab = 'milestones' | BaseTab | 'decisions' | 'plans'
-export type MilestoneTab = 'issues' | 'needs' | 'decisions' | 'retrospective' | BaseTab
+export type MilestoneTab = 'cockpit' | 'issues' | 'needs' | 'decisions' | 'retrospective' | BaseTab
 export type DashboardTab = 'overview' | 'activity'
 export type TaskTab = 'overview' | 'chat' | 'live' | 'logs' | 'calls'
 // A plan's tabs on phones: Chat, Decisions, Draft. Tablet and wider keep
@@ -67,8 +67,10 @@ export function projectTabsFor(plans: boolean): Tab<StreamTab>[] {
   return plans ? [...tabs, { id: 'plans', label: 'Plans' }] : tabs
 }
 
-// milestoneTabs are all of a milestone's tabs, in their order.
+// milestoneTabs are all of a milestone's tabs, in their order: Cockpit
+// first, the default.
 export const milestoneTabs: Tab<MilestoneTab>[] = [
+  { id: 'cockpit', label: 'Cockpit' },
   { id: 'issues', label: 'Issues' },
   streamBaseTabs[0]!,
   { id: 'decisions', label: 'Decisions' },
@@ -78,7 +80,8 @@ export const milestoneTabs: Tab<MilestoneTab>[] = [
 ]
 
 // storedMilestoneTabs are a milestone's tabs once its tasks are gone: the
-// Board needs them. Decisions stays, it reads the history database.
+// Board needs them. Cockpit and Decisions stay, they read the history
+// database.
 export const storedMilestoneTabs: Tab<MilestoneTab>[] = milestoneTabs.filter((t) => t.id !== 'board')
 
 // milestoneTabsFor are the tabs a milestone shows: no Board once its tasks
@@ -121,8 +124,8 @@ type QueryValue = string | null | (string | null)[] | undefined
 // Metrics page"), the Stream tab became Activity (R4 of "Desk: one header
 // and one row of tabs on every page"), and a task's Details tab went into
 // its Overview (R6 of the same milestone), and a milestone's Pilot tab
-// became the pilot drawer over Issues (R5; Stream.vue opens the drawer).
-const tabAliases: Readonly<Record<string, string>> = { spend: 'metrics', stream: 'activity', details: 'overview', pilot: 'issues' }
+// became the pilot drawer over the Cockpit (R5; Stream.vue opens the drawer).
+const tabAliases: Readonly<Record<string, string>> = { spend: 'metrics', stream: 'activity', details: 'overview', pilot: 'cockpit' }
 
 // tabAlias is the current id of a ?tab= value: the renamed tab's id for an
 // old one, the value itself otherwise.
@@ -147,11 +150,11 @@ export function tabFromQuery(v: QueryValue, tabs: readonly Tab<string>[] = strea
 
 // milestoneTabFromRoute is a milestone page's tab: ?tab= as tabFromQuery
 // reads it, but a prompt or problem link (#prompt-Q<n>, #problem-<iid>)
-// without ?tab= opens the Needs you tab, where the card is (R12).
+// without ?tab= opens the Cockpit, where the card is pinned (R10).
 export function milestoneTabFromRoute(v: QueryValue, hash: string, tabs: readonly Tab<string>[] = milestoneTabs): string {
   const none = v == null || v === '' || (Array.isArray(v) && !v.length)
   const card = hash.startsWith('#prompt-') || hash.startsWith('#problem-')
-  if (none && card && tabs.some((t) => t.id === 'needs')) return 'needs'
+  if (none && card && tabs.some((t) => t.id === 'cockpit')) return 'cockpit'
   return tabFromQuery(v, tabs)
 }
 
@@ -174,7 +177,7 @@ export function pilotFromQuery(query: Record<string, QueryValue>): boolean {
 
 // pilotQuery is the query with the pilot drawer open (?pilot=1) or closed
 // (no ?pilot), keeping the other parameters; an old ?tab=pilot goes, so
-// Issues shows under the drawer.
+// the Cockpit shows under the drawer.
 export function pilotQuery<V>(query: Record<string, V>, open: boolean): Record<string, V | string> {
   const { pilot: _, ...rest } = query
   if (rest.tab === 'pilot') delete rest.tab

@@ -23,6 +23,7 @@ import PauseCardCompact from '../components/PauseCardCompact.vue'
 import ProjectBoards from '../components/ProjectBoards.vue'
 import SpendPanel from '../components/SpendPanel.vue'
 import Composer from '../components/Composer.vue'
+import Cockpit from '../components/cockpit/Cockpit.vue'
 import EventCard from '../components/stream/EventCard.vue'
 import MilestoneDecisions from '../components/MilestoneDecisions.vue'
 import MilestoneIssues from '../components/MilestoneIssues.vue'
@@ -78,19 +79,19 @@ const props = defineProps<{
   namespace?: string
   name?: string
   iid?: string
-  // problem: the problem route (Needs you tab with one thread open).
+  // problem: the problem route (the Cockpit with one thread open).
   problem?: string
 }>()
 
 const everything = computed(() => !props.namespace || !props.name)
 const milestoneIID = computed(() => (props.iid ? Number(props.iid) : undefined))
 
-// tab: Milestones (the default), Activity, Decisions, Board, Metrics or Plans (feature plans) on projects, Issues (the default),
-// Activity, Decisions, Board, Metrics, Needs you or Retrospective on milestones, kept in ?tab= so it can be
-// linked to (a #prompt-Q<n> link without it opens Needs you); Everything has no
+// tab: Milestones (the default), Activity, Decisions, Board, Metrics or Plans (feature plans) on projects, Cockpit (the default),
+// Issues, Activity, Decisions, Board, Metrics, Needs you or Retrospective on milestones, kept in ?tab= so it can be
+// linked to (a #prompt-Q<n> link without it opens the Cockpit); Everything has no
 // tabs. A stored milestone has no tasks, so no Board, a milestone shows Needs
 // you only while something needs you and Retrospective only once it has one
-// (milestoneTabsFor). The Needs you tab's badge is the count of its Open
+// (milestoneTabsFor). The Cockpit tab's badge is the count of the Open
 // items (D674-P2). The pilot is a drawer (pilotOpen below), not a tab.
 const route = useRoute()
 // pageMilestone: the loaded milestone, once it is the route's.
@@ -104,13 +105,16 @@ const tabs = computed(() => {
   const problem = !!props.problem || /^#(prompt|problem)-/.test(route.hash)
   return milestoneTabsFor(pageMilestone.value, { needs: needsCount.value, problem })
 })
-const tabBadges = computed(() => (milestoneIID.value && needsCount.value ? { needs: needsCount.value } : undefined))
+// The header's Needs you count is the badge of the Cockpit tab: its link
+// opens the Cockpit, whose top is the pinned cards it counts (R10, R14 of
+// "Desk: the Cockpit").
+const tabBadges = computed(() => (milestoneIID.value && needsCount.value ? { cockpit: needsCount.value } : undefined))
 // A milestone's tab is read against all its tabs while it loads, so a
 // ?tab=needs or ?tab=retrospective link waits for it; once loaded, a hidden
-// tab falls back to the first one, Issues (Decision 7).
+// tab falls back to the first one, the Cockpit (Decision 7).
 const tab = computed((): string => {
   if (everything.value) return 'activity'
-  if (props.problem) return 'needs'
+  if (props.problem) return 'cockpit'
   if (milestoneIID.value) {
     const loaded = milestone.value?.iid === milestoneIID.value || milestoneFailed.value
     return milestoneTabFromRoute(route.query.tab, route.hash, loaded ? tabs.value : milestoneTabs)
@@ -450,7 +454,7 @@ const links = computed(() => {
 // The pilot drawer (Decision 8): MilestonePilot in a sheet from the header's
 // Ask pilot button, over any tab of a milestone. Its open state is
 // ?pilot=1 (D674-P3), so a reload or a link keeps it open; an old
-// ?tab=pilot link becomes Issues plus ?pilot=1. Opening sets the query and
+// ?tab=pilot link becomes the Cockpit plus ?pilot=1. Opening sets the query and
 // pilotOpen follows it; closing (Escape, close button, overlay, Back) pops
 // useBackClose's entry, then drops ?pilot (onClose). Focus returns to the
 // button. The sheet loads with its first opening.
@@ -730,6 +734,23 @@ watch(
             <p v-else-if="everything || !namespace || !name" class="pick muted">Pick a project in the rail to message a pilot or issue.</p>
           </template>
         </DeskChat>
+      </div>
+      <div v-else-if="tab === 'cockpit'" class="scroll board">
+        <!-- The milestone's Cockpit (R10): its problem cards, proposals
+             and prompts pinned, answered in place, then its stream. -->
+        <Cockpit :scope="{ namespace, name, milestoneIID }" :project="project" :prompts="pageMilestone?.prompts" :can-steer="canSteer">
+          <template #pinned>
+            <MilestoneNeeds
+              v-if="namespace && name && pageMilestone"
+              :namespace="namespace"
+              :name="name"
+              :milestone="pageMilestone"
+              :problem="problem"
+            />
+            <UAlert v-else-if="milestoneFailed" :color="alertColor('danger')" variant="subtle" class="mt-3" description="The milestone could not be loaded." />
+            <div v-else class="empty">Loading…</div>
+          </template>
+        </Cockpit>
       </div>
       <div v-else-if="tab === 'issues'" class="scroll board">
         <!-- The full pause card is on the Needs you tab. -->

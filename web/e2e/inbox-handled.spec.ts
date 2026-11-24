@@ -77,11 +77,11 @@ for (const size of widths) {
     expect(problems).toEqual([])
   })
 
-  test(`a row opens the milestone's Needs you tab at the problem@${size.width}`, async ({ page, baseURL }) => {
+  test(`a row opens the milestone's Cockpit at the problem@${size.width}`, async ({ page, baseURL }) => {
     const problems = await open(page, baseURL, '/inbox?view=handled', size)
     await handledRows(page).nth(0).getByRole('link').click()
     await expect(page).toHaveURL(/\/projects\/team-a\/shop\/milestones\/14\/problems\/issue-281$/)
-    await expect(page.getByRole('navigation', { name: 'View' }).getByRole('link', { name: /^Needs you/ })).toHaveAttribute('aria-current', 'page')
+    await expect(page.getByRole('navigation', { name: 'View' }).getByRole('link', { name: 'Cockpit' })).toHaveAttribute('aria-current', 'page')
     expect(problems).toEqual([])
   })
 

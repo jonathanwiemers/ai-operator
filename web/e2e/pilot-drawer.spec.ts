@@ -1,7 +1,7 @@
 // The pilot drawer (Stream.vue; R5 of "Desk: one header and one row of tabs
 // on every page", Decision 8): Ask pilot opens the milestone's pilot in a
 // sheet over any tab, ?pilot=1 keeps it open across reloads, an old
-// ?tab=pilot link opens Issues with it, Escape and Back close it and focus
+// ?tab=pilot link opens the Cockpit with it, Escape and Back close it and focus
 // returns to the button; axe is green with it open.
 // Run with npm run e2e (built UI, Chromium).
 import AxeBuilder from '@axe-core/playwright'
@@ -106,14 +106,14 @@ test('?pilot=1 opens the drawer on load and after a reload; the close button clo
   expect(problems).toEqual([])
 })
 
-test('an old ?tab=pilot link opens Issues with the drawer; Back closes it@1280', async ({ page, baseURL }) => {
+test('an old ?tab=pilot link opens the Cockpit with the drawer; Back closes it@1280', async ({ page, baseURL }) => {
   const { problems } = await open(page, baseURL, `${milestonePath}?tab=pilot`)
   await expect(page).toHaveURL(/\/milestones\/14\?pilot=1$/)
   await expect(drawer(page)).toBeVisible()
   await page.goBack()
   await expect(drawer(page)).toHaveCount(0)
   await expect(page).toHaveURL(/\/milestones\/14$/)
-  await expect(current(page)).toHaveText('Issues')
+  await expect(current(page)).toHaveText(/^Cockpit/)
   expect(problems).toEqual([])
 })
 

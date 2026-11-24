@@ -1552,6 +1552,40 @@ every tab, traps focus, closes on Escape and returns focus, `?pilot=1` across
 a reload, an old `?tab=pilot` link, the stored milestone's button, and axe
 with the drawer open.
 
+### Cockpit
+
+A milestone page opens on the Cockpit (spec "Desk: the Cockpit", R9 and
+R10), `web/src/components/cockpit/Cockpit.vue`, built from Nuxt UI
+components only:
+
+- **Pinned.** The `pinned` slot on top. On a milestone it holds
+  `MilestoneNeeds` with its usual props (see [Needs you tab](#needs-you-tab)):
+  the problem cards, proposals and prompts, answered in place. The
+  `problem` route and the `#problem-`/`#prompt-` links open the Cockpit with
+  that thread open, and the card scrolls into view once it is listed.
+- **Toolbar.** An *Expand all* `USwitch` on the left, the search
+  (`UInput`, run on Enter as `q`) on the right; no filter chips.
+- **Stream.** `useCockpitStream` (`web/src/useCockpitStream.ts`) loads
+  `GET /api/v1/stream` for a scope (`{ namespace?, name?, milestoneIID? }`)
+  with all of its kinds, the chat kinds only with the feature `chat`
+  (`cockpitStreamQuery` in `web/src/stream.ts`). It pages back with
+  *Load older* above the stream, takes newer events on each live change,
+  and sorts them with `cockpitItems`, oldest first: shown events and note
+  threads as [event cards](#which-events-show-where), and the folded events
+  of one issue between two shown events as one group (`cockpitClass`,
+  `groupSummary`).
+- **Groups.** A `UCollapsible`, closed by default, whose trigger is a
+  `UButton` with the summary ("#712 · 3 runs, 2 CI rounds, review clean")
+  and the local time span; Enter or Space opens it to its event cards.
+  *Expand all* opens every group; a group opened or closed by hand keeps
+  that until the switch changes.
+
+The project and Overview Cockpits are to reuse the component and the
+composable with their scopes. The e2e cases in `web/e2e/cockpit.spec.ts`
+at 375 and 1280 px check the order, the closed groups, the keyboard,
+*Expand all*, the search, the problem links and axe; color-contrast is left
+to R6 (#641), as on the Needs you and Activity tabs it reuses.
+
 ### Needs you tab
 
 The milestone's Needs you tab (`web/src/components/MilestoneNeeds.vue`,
@@ -1571,8 +1605,8 @@ problem.
   the same chat command to the pilot task as before, and the pause totals.
   The tab is listed while `needsOpen` counts open items, or a problem
   thread or a `#prompt-`/`#problem-` link is open (`milestoneTabsFor`); the
-  count is its [RouteTabs](#routetabs) badge, the label stays *Needs you*
-  (D674-P2). Otherwise `?tab=needs` opens Issues.
+  count is the [RouteTabs](#routetabs) badge of the *Cockpit* tab, where the
+  same cards are pinned (D674-P2). Otherwise `?tab=needs` opens the Cockpit.
 - **Thread.** `web/src/components/ProblemThread.vue` beside the list from
   1024 px, below it on smaller screens: the heading (a link to the issue)
   with the status, the cause, `ProblemFacts`, then a
@@ -2145,18 +2179,19 @@ a path (decision 13 of the header and tabs milestone).
   *Milestones* (default) *| Activity | Decisions | Board | Metrics*, plus
   *Plans* with the feature `plans` (`?tab=plans` without it opens
   *Milestones*).
-- **Milestone** (`…/milestones/<iid>`, `milestoneTabsFor`): *Issues*
-  (default) *| Activity | Decisions | Board | Metrics*, then *Needs you*
-  while something needs you (see [Needs you tab](#needs-you-tab)) and
-  *Retrospective* once one exists; no *Board* once stored, no *Plans*. While
-  the milestone loads, `?tab=` is read against all its tabs, so a
-  `?tab=needs` or `?tab=retrospective` link waits; once loaded, a hidden tab
-  falls back to *Issues*. A link with a `#prompt-Q<n>` or `#problem-<iid>`
-  hash and no `?tab=` opens *Needs you* (`milestoneTabFromRoute`). The pilot
+- **Milestone** (`…/milestones/<iid>`, `milestoneTabsFor`): *Cockpit*
+  (default, see [Cockpit](#cockpit)) *| Issues | Activity | Decisions |
+  Board | Metrics*, then *Needs you* while something needs you (see
+  [Needs you tab](#needs-you-tab)) and *Retrospective* once one exists; no
+  *Board* once stored, no *Plans*. While the milestone loads, `?tab=` is
+  read against all its tabs, so a `?tab=needs` or `?tab=retrospective`
+  link waits; once loaded, a hidden tab falls back to *Cockpit*. The
+  `problem` route and a link with a `#prompt-Q<n>` or `#problem-<iid>`
+  hash and no `?tab=` open *Cockpit* (`milestoneTabFromRoute`). The pilot
   is a drawer, `?pilot=1` ([Milestone Pilot](#milestone-pilot)).
 - **Aliases** (`tabAlias`), so old links keep working: `stream` →
   `activity` (project, milestone, dashboard), `spend` → `metrics`,
-  `details` → `overview` (task), `pilot` → `issues`, where Stream.vue also
+  `details` → `overview` (task), `pilot` → `cockpit`, where Stream.vue also
   sets `?pilot=1` (`pilotQuery`). Unknown, empty or repeated values fall
   back to the first known one, else the default (`tabFromQuery`).
 - The view tabs are one [RouteTabs](#routetabs) strip; the default tab

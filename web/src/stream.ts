@@ -426,7 +426,7 @@ const allScopeShown: StreamKind[] = [
 
 type CockpitScope = 'milestone' | 'project' | 'all'
 
-type CockpitGroup = {
+export type CockpitGroup = {
   type: 'group'
   key: string
   namespace: string
@@ -439,7 +439,7 @@ type CockpitGroup = {
   summary: string
 }
 
-type CockpitItem =
+export type CockpitItem =
   | { type: 'event'; event: StreamEvent }
   | { type: 'thread'; key: string; at: string; notes: StreamEvent[] }
   | CockpitGroup
@@ -528,4 +528,26 @@ export function groupSummary(events: StreamEvent[], projectName?: string): strin
     projectName ??
     (first?.issueIID != null ? `#${first.issueIID}` : first?.milestoneIID != null ? `%${first.milestoneIID}` : first?.project)
   return prefix ? `${prefix} · ${parts.join(', ')}` : parts.join(', ')
+}
+
+// cockpitStreamQuery is GET /stream's query for a Cockpit's scope (one
+// milestone, a project's milestones, or everything without a namespace):
+// all kinds, the chat kinds only with the chat feature (their ids collide
+// with history ids, so they are named explicitly), the search, a cursor.
+export function cockpitStreamQuery(
+  scope: { namespace?: string; name?: string; milestoneIID?: number },
+  opts: { chat?: boolean; q?: string; before?: string; after?: string } = {},
+): URLSearchParams {
+  const params = new URLSearchParams()
+  if (scope.namespace && scope.name) {
+    params.set('project', `${scope.namespace}/${scope.name}`)
+    if (scope.milestoneIID) params.set('milestone', String(scope.milestoneIID))
+  }
+  params.set('kinds', [...historyStreamKinds, ...(opts.chat ? chatStreamKinds : [])].join(','))
+  const q = opts.q?.trim()
+  if (q) params.set('q', q)
+  if (opts.before) params.set('before', opts.before)
+  if (opts.after) params.set('after', opts.after)
+  params.set('limit', '50')
+  return params
 }

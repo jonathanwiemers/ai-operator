@@ -221,11 +221,10 @@ tablet the *Context* button opens it.
 
 ## A milestone
 
-A milestone page has the tabs *Issues | Activity | Decisions | Board | Metrics*.
-*Needs you* joins them, with a count, while the milestone is paused or a
-problem is open, and *Retrospective* once it is written. The tab is part of
-the address, so you can send a link to it. *Ask pilot* in the header opens
-the [pilot drawer](#ask-pilot) over any tab.
+A milestone page opens on *Cockpit*, which counts what waits for you: problems, proposals and questions pinned on top, answered there,
+then the events, newest at the bottom, with runs, CI and reviews folded into groups (open one, or *Expand all*) and a search.
+Then come *Issues | Activity | Decisions | Board | Metrics*, *Needs you* while the milestone is paused or a problem is open, and
+*Retrospective* once written. The tab is in the address, so you can link to it. *Ask pilot* opens the [pilot drawer](#ask-pilot).
 
 ### Issues
 
@@ -254,8 +253,8 @@ works on the issue, and the issue's own stream.
 
 ![Needs you tab with the pause card, its ways out and an open question](../assets/screenshots/milestone-pilot.webp)
 
-What waits for the milestone's owners; the tab's count is the number of open
-problems and proposals. A `?tab=needs` link opens *Issues* when nothing waits. On the left are the
+What waits for the milestone's owners, as on the Cockpit. A `?tab=needs` link opens *Cockpit*
+when nothing waits. On the left are the
 [problems](../concepts/glossary.md#problem-thread), one per stuck issue and
 one for the milestone (a budget pause), open first, each with its status
 (*Waiting for you*, *Operator acting*, *Pilot looking*, *Resolved*), time and

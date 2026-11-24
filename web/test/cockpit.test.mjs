@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { cockpitClass, cockpitItems, groupSummary, pilotStreamKinds, runtimeStreamKinds } from '../src/stream.ts'
+import { cockpitClass, cockpitItems, cockpitStreamQuery, groupSummary, pilotStreamKinds, runtimeStreamKinds } from '../src/stream.ts'
 
 let id = 0
 // ev builds an event at minute m of a day; the defaults are #712 in %5 of g/p.
@@ -114,4 +114,24 @@ test('groupSummary counts runs, pushes, CI rounds and checkpoints and reads the 
   assert.equal(groupSummary([ev('run.finished', 1), ev('run.finished', 2)]), '#712 · 2 events')
   assert.equal(groupSummary([ev('ci', 1, { issueIID: undefined })]), '%5 · 1 CI round')
   assert.equal(groupSummary([ev('ci', 1)], 'p'), 'p · 1 CI round')
+})
+
+test('cockpitStreamQuery asks for all kinds of a scope, chat kinds only with the chat feature', () => {
+  const kinds = (p) => p.get('kinds').split(',')
+  const all = [...pilotStreamKinds, ...runtimeStreamKinds]
+  const m = cockpitStreamQuery({ namespace: 'ns', name: 'p', milestoneIID: 5 })
+  assert.equal(m.get('project'), 'ns/p')
+  assert.equal(m.get('milestone'), '5')
+  assert.equal(m.get('limit'), '50')
+  assert.deepEqual(kinds(m).sort(), all.filter((k) => !k.startsWith('chat.')).sort())
+  const chat = cockpitStreamQuery({ namespace: 'ns', name: 'p', milestoneIID: 5 }, { chat: true })
+  assert.deepEqual(kinds(chat).sort(), [...all].sort())
+  const p = cockpitStreamQuery({ namespace: 'ns', name: 'p' }, { q: '  refund ', before: 'c1' })
+  assert.equal(p.get('milestone'), null)
+  assert.equal(p.get('q'), 'refund')
+  assert.equal(p.get('before'), 'c1')
+  const everything = cockpitStreamQuery({}, { q: ' ', after: 'c2' })
+  assert.equal(everything.get('project'), null)
+  assert.equal(everything.get('q'), null)
+  assert.equal(everything.get('after'), 'c2')
 })

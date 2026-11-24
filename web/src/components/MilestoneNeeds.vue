@@ -4,7 +4,7 @@ import UAlert from '@nuxt/ui/components/Alert.vue'
 import UBadge from '@nuxt/ui/components/Badge.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { chatPostError } from '../api'
 import { alertColor } from '../badgeTone'
@@ -20,7 +20,8 @@ import LocalText from './LocalText.vue'
 import ProblemThread from './ProblemThread.vue'
 import RelTime from './RelTime.vue'
 
-// MilestoneNeeds is a milestone's Needs you tab (spec desk-problem-thread,
+// MilestoneNeeds is a milestone's Needs you tab and the Cockpit's pinned
+// cards (spec desk-problem-thread,
 // Decision 11): the problems on the left, open first, and the chosen one's
 // thread beside them from 1024 px (stacked below on smaller screens). The
 // pilot's open proposals (P-n) with Accept and Reject and the pause totals
@@ -74,6 +75,23 @@ watch(
   { immediate: true },
 )
 
+// The problem route's card scrolls into view once it is listed, once per
+// problem (the Cockpit has its stream below the pinned cards).
+const nav = ref<HTMLElement | null>(null)
+let scrolled: string | undefined
+watch(
+  () => [props.problem ? problems.value.find((p) => sameProblem(props.problem!, p)) : undefined, nav.value] as const,
+  async ([p]) => {
+    if (!p || scrolled === props.problem) return
+    await nextTick()
+    const el = nav.value?.querySelector(`[data-problem="${CSS.escape(problemParam(p))}"]`)
+    if (!el) return
+    scrolled = props.problem
+    el.scrollIntoView({ block: 'nearest' })
+  },
+  { immediate: true },
+)
+
 const now = useNow()
 const pauses = computed(() => pausesSummary(props.milestone.pauses, now.value))
 
@@ -116,7 +134,7 @@ const chip = { color: 'neutral', variant: 'outline', size: 'sm' } as const
         </h2>
         <UAlert v-if="failed" :color="alertColor('danger')" variant="subtle" description="The problems could not be loaded." />
         <UEmpty v-else-if="!problems.length" icon="i-lucide-inbox" title="Nothing needs you." variant="naked" size="sm" />
-        <nav v-else class="grid gap-1" aria-label="Problems">
+        <nav v-else ref="nav" class="grid gap-1" aria-label="Problems">
           <RouterLink
             v-for="p in problems"
             :key="problemParam(p)"

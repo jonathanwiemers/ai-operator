@@ -61,6 +61,7 @@ const projectReady = {
 // projectMilestonesReady: the project's default tab, Milestones, has loaded.
 const projectMilestonesReady = (page: Page) => expect(page.locator('main [data-finishing-entry]').first()).toBeVisible()
 const milestoneReady = {
+  cockpit: 'Split across captures',
   issues: 'Document the refund flow for support',
   needs: 'Split across captures',
   decisions: 'Refund in the order currency',
@@ -4044,7 +4045,7 @@ test.describe('milestone decisions', () => {
       const json = { features: features.features.filter((f) => f.name !== 'history') }
       await page.route('**/api/v1/features', (r) => r.fulfill({ status: 200, json }))
     }
-    await page.goto('/projects/team-a/shop/milestones/14?view=lanes')
+    await page.goto('/projects/team-a/shop/milestones/14?tab=issues&view=lanes')
     await route.ready(page)
     return problems
   }
@@ -4341,8 +4342,8 @@ test.describe('milestone retrospective', () => {
     const shot = (outputDir: string, name: string) => join(outputDir, '..', 'screenshots', `${name}@${size.width}.png`)
 
     // Decision 12: a milestone without a retrospective has no Retrospective
-    // tab, and a ?tab=retrospective link opens the default tab, Issues.
-    test(`no retrospective: no tab, the link opens Issues@${size.width}`, async ({ page, baseURL }) => {
+    // tab, and a ?tab=retrospective link opens the default tab, the Cockpit.
+    test(`no retrospective: no tab, the link opens the Cockpit@${size.width}`, async ({ page, baseURL }) => {
       const route = routes.find((r) => r.name === 'stream-milestone-retrospective')!
       const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
       await page.setViewportSize(size)
@@ -4356,9 +4357,9 @@ test.describe('milestone retrospective', () => {
       )
       await page.goto(route.path)
       const main = page.locator('main')
-      await expect(main.getByText(milestoneReady.issues).first()).toBeVisible()
+      await expect(main.getByText(milestoneReady.cockpit).first()).toBeVisible()
       const tabs = main.getByRole('navigation', { name: 'View' })
-      await expect(tabs.getByRole('link', { name: 'Issues' })).toHaveAttribute('aria-current', 'page')
+      await expect(tabs.getByRole('link', { name: 'Cockpit' })).toHaveAttribute('aria-current', 'page')
       await expect(tabs.getByRole('link', { name: 'Retrospective' })).toHaveCount(0)
       await expect(tabs.getByRole('link', { name: /^Needs you/ })).toHaveCount(1)
       await expect(tabs.getByRole('link', { name: 'Pilot' })).toHaveCount(0)
@@ -5432,11 +5433,13 @@ test.describe('screen reader flows', () => {
         - navigation "View":
           - list:
             - listitem:
-              - link /^Needs you\\s*3$/
+              - link /^Cockpit\\s*3$/
+            - listitem:
+              - link /^Needs you$/
         - heading "Problems 3" [level=2]
         - navigation "Problems"
       `)
-      await expect(page.locator('main').getByRole('link', { name: /^Needs you\s*3$/ })).toHaveAttribute('aria-current', 'page')
+      await expect(page.locator('main').getByRole('link', { name: /^Needs you$/ })).toHaveAttribute('aria-current', 'page')
 
       const card = page.locator(`#prompt-${refundsPrompt.id}`)
       const option = card.getByRole('button', { name: 'Split across captures', exact: true })
@@ -5501,6 +5504,8 @@ test.describe('screen reader flows', () => {
         - navigation "View":
           - list:
             - listitem:
+              - link /^Cockpit\\s*3$/
+            - listitem:
               - link "Issues"
             - listitem:
               - link "Activity"
@@ -5511,7 +5516,7 @@ test.describe('screen reader flows', () => {
             - listitem:
               - link "Metrics"
             - listitem:
-              - link /^Needs you\\s*3$/
+              - link "Needs you"
             - listitem:
               - link "Retrospective"
       `)

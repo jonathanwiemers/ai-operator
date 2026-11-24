@@ -63,11 +63,14 @@ test('dashboard tabQuery: overview drops the parameter, activity sets it', () =>
   assert.deepEqual(tabQuery({}, 'activity', dashboardTabs), { tab: 'activity' })
 })
 
-test('milestone tabs: Issues is the default', () => {
-  assert.deepEqual(milestoneTabs.map((t) => t.id), ['issues', 'activity', 'decisions', 'board', 'metrics', 'needs', 'retrospective'])
-  assert.equal(tabFromQuery(undefined, milestoneTabs), 'issues')
-  assert.equal(tabFromQuery('', milestoneTabs), 'issues')
+test('milestone tabs: Cockpit is the default', () => {
+  assert.deepEqual(milestoneTabs.map((t) => t.id), ['cockpit', 'issues', 'activity', 'decisions', 'board', 'metrics', 'needs', 'retrospective'])
+  assert.equal(tabFromQuery(undefined, milestoneTabs), 'cockpit')
+  assert.equal(tabFromQuery('', milestoneTabs), 'cockpit')
+  assert.equal(tabFromQuery('cockpit', milestoneTabs), 'cockpit')
   assert.equal(tabFromQuery('issues', milestoneTabs), 'issues')
+  assert.equal(milestoneTabsFor(null)[0].id, 'cockpit')
+  assert.equal(milestoneTabsFor({ stored: true })[0].id, 'cockpit')
 })
 
 test('milestone tabs: old ?tab=stream links open Activity', () => {
@@ -76,24 +79,26 @@ test('milestone tabs: old ?tab=stream links open Activity', () => {
   assert.equal(tabFromQuery('metrics', milestoneTabs), 'metrics')
 })
 
-test('milestone tabs: unknown values fall back to Issues', () => {
-  assert.equal(tabFromQuery('retro', milestoneTabs), 'issues')
-  assert.equal(tabFromQuery('Stream', milestoneTabs), 'issues')
+test('milestone tabs: unknown values fall back to Cockpit', () => {
+  assert.equal(tabFromQuery('retro', milestoneTabs), 'cockpit')
+  assert.equal(tabFromQuery('Stream', milestoneTabs), 'cockpit')
   assert.equal(tabFromQuery(['x', 'metrics'], milestoneTabs), 'metrics')
 })
 
-test('project tabs: issues is unknown there', () => {
+test('project tabs: issues and cockpit are unknown there', () => {
   assert.equal(tabFromQuery('issues', projectTabsFor(true)), 'milestones')
+  assert.equal(tabFromQuery('cockpit', projectTabsFor(true)), 'milestones')
 })
 
-test('milestone tabQuery: Issues drops the parameter, Activity sets it', () => {
-  assert.deepEqual(tabQuery({ tab: 'board', q: 'x' }, 'issues', milestoneTabs), { q: 'x' })
+test('milestone tabQuery: Cockpit drops the parameter, Issues and Activity set it', () => {
+  assert.deepEqual(tabQuery({ tab: 'board', q: 'x' }, 'cockpit', milestoneTabs), { q: 'x' })
+  assert.deepEqual(tabQuery({}, 'issues', milestoneTabs), { tab: 'issues' })
   assert.deepEqual(tabQuery({}, 'activity', milestoneTabs), { tab: 'activity' })
 })
 
-test('stored milestone tabs: no Board, a board link falls back to Issues', () => {
-  assert.deepEqual(storedMilestoneTabs.map((t) => t.id), ['issues', 'activity', 'decisions', 'metrics', 'needs', 'retrospective'])
-  assert.equal(tabFromQuery('board', storedMilestoneTabs), 'issues')
+test('stored milestone tabs: Cockpit, no Board, a board link falls back to Cockpit', () => {
+  assert.deepEqual(storedMilestoneTabs.map((t) => t.id), ['cockpit', 'issues', 'activity', 'decisions', 'metrics', 'needs', 'retrospective'])
+  assert.equal(tabFromQuery('board', storedMilestoneTabs), 'cockpit')
 })
 
 test('milestone tabs: ?tab=decisions opens Decisions on live and stored milestones, also with a #<id> hash', () => {
@@ -102,11 +107,11 @@ test('milestone tabs: ?tab=decisions opens Decisions on live and stored mileston
   assert.deepEqual(tabQuery({ q: 'x' }, 'decisions', milestoneTabs), { q: 'x', tab: 'decisions' })
 })
 
-test('milestone tabs: an old ?tab=pilot link opens Issues (the drawer opens over it)', () => {
-  assert.equal(tabAlias('pilot'), 'issues')
-  assert.equal(tabFromQuery('pilot', milestoneTabs), 'issues')
-  assert.equal(milestoneTabFromRoute('pilot', '', milestoneTabsFor({})), 'issues')
-  assert.equal(milestoneTabFromRoute('pilot', '#prompt-Q3'), 'issues')
+test('milestone tabs: an old ?tab=pilot link opens the Cockpit (the drawer opens over it)', () => {
+  assert.equal(tabAlias('pilot'), 'cockpit')
+  assert.equal(tabFromQuery('pilot', milestoneTabs), 'cockpit')
+  assert.equal(milestoneTabFromRoute('pilot', '', milestoneTabsFor({})), 'cockpit')
+  assert.equal(milestoneTabFromRoute('pilot', '#prompt-Q3'), 'cockpit')
 })
 
 test('pilotFromQuery and pilotQuery: ?pilot=1 is the drawer, ?tab=pilot becomes it', () => {
@@ -121,17 +126,22 @@ test('pilotFromQuery and pilotQuery: ?pilot=1 is the drawer, ?tab=pilot becomes 
   assert.deepEqual(pilotQuery({ tab: 'pilot' }, false), {})
 })
 
-test('milestoneTabFromRoute: a #prompt-Q<n> or #problem-<iid> hash without ?tab= opens Needs you', () => {
-  assert.equal(milestoneTabFromRoute(undefined, '#prompt-Q4'), 'needs')
-  assert.equal(milestoneTabFromRoute(undefined, '#problem-12'), 'needs')
-  assert.equal(milestoneTabFromRoute('', '#prompt-Q4'), 'needs')
-  assert.equal(milestoneTabFromRoute(null, '#prompt-Q12', storedMilestoneTabs), 'needs')
+test('milestoneTabFromRoute: a #prompt-Q<n> or #problem-<iid> hash without ?tab= opens the Cockpit', () => {
+  assert.equal(milestoneTabFromRoute(undefined, '#prompt-Q4'), 'cockpit')
+  assert.equal(milestoneTabFromRoute(undefined, '#problem-12'), 'cockpit')
+  assert.equal(milestoneTabFromRoute('', '#prompt-Q4'), 'cockpit')
+  assert.equal(milestoneTabFromRoute(null, '#prompt-Q12', storedMilestoneTabs), 'cockpit')
+  // Needs you is not among the shown tabs: the hash still opens the Cockpit.
+  assert.equal(milestoneTabFromRoute(undefined, '#problem-12', milestoneTabsFor({}, { needs: 0 })), 'cockpit')
+  // ?tab=needs with a hash still opens Needs you while it shows.
+  assert.equal(milestoneTabFromRoute('needs', '#problem-12'), 'needs')
 })
 
 test('milestoneTabFromRoute: ?tab= wins over the hash, other hashes keep the default', () => {
   assert.equal(milestoneTabFromRoute('stream', '#prompt-Q4'), 'activity')
-  assert.equal(milestoneTabFromRoute(undefined, ''), 'issues')
-  assert.equal(milestoneTabFromRoute(undefined, '#live-transcript'), 'issues')
+  assert.equal(milestoneTabFromRoute(undefined, ''), 'cockpit')
+  assert.equal(milestoneTabFromRoute(undefined, '#live-transcript'), 'cockpit')
+  assert.equal(milestoneTabFromRoute('issues', '#problem-12'), 'issues')
   assert.equal(milestoneTabFromRoute('board', ''), 'board')
 })
 
@@ -182,9 +192,9 @@ test('planPaneTab: the wide right pane shows Decisions only for ?tab=decisions, 
   assert.equal(planPaneTab('decisions'), 'decisions')
 })
 
-test('milestone tabs: Issues · Activity · Decisions · Board · Metrics, then Needs you and Retrospective, also when stored', () => {
-  assert.deepEqual(milestoneTabs.map((t) => t.label), ['Issues', 'Activity', 'Decisions', 'Board', 'Metrics', 'Needs you', 'Retrospective'])
-  assert.deepEqual(storedMilestoneTabs.map((t) => t.label), ['Issues', 'Activity', 'Decisions', 'Metrics', 'Needs you', 'Retrospective'])
+test('milestone tabs: Cockpit · Issues · Activity · Decisions · Board · Metrics, then Needs you and Retrospective, also when stored', () => {
+  assert.deepEqual(milestoneTabs.map((t) => t.label), ['Cockpit', 'Issues', 'Activity', 'Decisions', 'Board', 'Metrics', 'Needs you', 'Retrospective'])
+  assert.deepEqual(storedMilestoneTabs.map((t) => t.label), ['Cockpit', 'Issues', 'Activity', 'Decisions', 'Metrics', 'Needs you', 'Retrospective'])
 })
 
 test('project tabs: Milestones · Activity · Decisions · Board · Metrics, Plans only with the plans feature', () => {
@@ -215,7 +225,7 @@ test('project tabs: Milestones is the default and drops ?tab=, Activity sets it,
 })
 
 test('milestone tabs have no Plans', () => {
-  assert.equal(tabFromQuery('plans', milestoneTabs), 'issues')
+  assert.equal(tabFromQuery('plans', milestoneTabs), 'cockpit')
 })
 
 test('tabFromQuery: ?tab=plans without the feature falls back to the first tab', () => {
@@ -244,25 +254,25 @@ test('Metrics tab: the Spend tab renamed, ?tab=spend still opens it', () => {
 
 test('milestoneTabsFor: Needs you only while something needs you, Retrospective once one exists, no Board once stored', () => {
   const ids = (m, opts) => milestoneTabsFor(m, opts).map((t) => t.id)
-  assert.deepEqual(ids({}), ['issues', 'activity', 'decisions', 'board', 'metrics'], 'running, nothing open')
-  assert.deepEqual(ids({}, { needs: 0 }), ['issues', 'activity', 'decisions', 'board', 'metrics'])
-  assert.deepEqual(ids({}, { needs: 2 }), ['issues', 'activity', 'decisions', 'board', 'metrics', 'needs'], 'paused')
-  assert.deepEqual(ids({}, { problem: true }), ['issues', 'activity', 'decisions', 'board', 'metrics', 'needs'], 'problem route')
-  assert.deepEqual(ids({ retrospective: { text: 'done' } }), ['issues', 'activity', 'decisions', 'board', 'metrics', 'retrospective'])
-  assert.deepEqual(ids({ retrospective: {} }, { needs: 1 }), ['issues', 'activity', 'decisions', 'board', 'metrics', 'needs', 'retrospective'])
-  assert.deepEqual(ids({ stored: true }), ['issues', 'activity', 'decisions', 'metrics'])
-  assert.deepEqual(ids({ stored: true, retrospective: { text: 'done' } }), ['issues', 'activity', 'decisions', 'metrics', 'retrospective'])
-  assert.deepEqual(ids(null), ['issues', 'activity', 'decisions', 'board', 'metrics'], 'hidden while the milestone loads')
-  assert.deepEqual(ids(null, { needs: 3 }), ['issues', 'activity', 'decisions', 'board', 'metrics'], 'no count before it loads')
+  assert.deepEqual(ids({}), ['cockpit', 'issues', 'activity', 'decisions', 'board', 'metrics'], 'running, nothing open')
+  assert.deepEqual(ids({}, { needs: 0 }), ['cockpit', 'issues', 'activity', 'decisions', 'board', 'metrics'])
+  assert.deepEqual(ids({}, { needs: 2 }), ['cockpit', 'issues', 'activity', 'decisions', 'board', 'metrics', 'needs'], 'paused')
+  assert.deepEqual(ids({}, { problem: true }), ['cockpit', 'issues', 'activity', 'decisions', 'board', 'metrics', 'needs'], 'problem route')
+  assert.deepEqual(ids({ retrospective: { text: 'done' } }), ['cockpit', 'issues', 'activity', 'decisions', 'board', 'metrics', 'retrospective'])
+  assert.deepEqual(ids({ retrospective: {} }, { needs: 1 }), ['cockpit', 'issues', 'activity', 'decisions', 'board', 'metrics', 'needs', 'retrospective'])
+  assert.deepEqual(ids({ stored: true }), ['cockpit', 'issues', 'activity', 'decisions', 'metrics'])
+  assert.deepEqual(ids({ stored: true, retrospective: { text: 'done' } }), ['cockpit', 'issues', 'activity', 'decisions', 'metrics', 'retrospective'])
+  assert.deepEqual(ids(null), ['cockpit', 'issues', 'activity', 'decisions', 'board', 'metrics'], 'hidden while the milestone loads')
+  assert.deepEqual(ids(null, { needs: 3 }), ['cockpit', 'issues', 'activity', 'decisions', 'board', 'metrics'], 'no count before it loads')
   assert.deepEqual(milestoneTabsFor({}, { needs: 1 }).find((t) => t.id === 'needs').label, 'Needs you', 'the count is a badge')
 })
 
-test('milestoneTabsFor: a link to a hidden tab opens Issues once loaded, and waits while loading', () => {
-  assert.equal(milestoneTabFromRoute('retrospective', '', milestoneTabsFor({})), 'issues')
+test('milestoneTabsFor: a link to a hidden tab opens the Cockpit once loaded, and waits while loading', () => {
+  assert.equal(milestoneTabFromRoute('retrospective', '', milestoneTabsFor({})), 'cockpit')
   assert.equal(milestoneTabFromRoute('retrospective', '', milestoneTabsFor({ retrospective: {} })), 'retrospective')
-  assert.equal(milestoneTabFromRoute('needs', '', milestoneTabsFor({})), 'issues', 'nothing open')
+  assert.equal(milestoneTabFromRoute('needs', '', milestoneTabsFor({})), 'cockpit', 'nothing open')
   assert.equal(milestoneTabFromRoute('needs', '', milestoneTabsFor({}, { needs: 1 })), 'needs')
   assert.equal(milestoneTabFromRoute('needs', ''), 'needs', 'read against all tabs while loading')
-  assert.equal(milestoneTabFromRoute(undefined, '#prompt-Q3', milestoneTabsFor({})), 'issues')
-  assert.equal(milestoneTabFromRoute(undefined, '#prompt-Q3', milestoneTabsFor({}, { needs: 1 })), 'needs')
+  assert.equal(milestoneTabFromRoute(undefined, '#prompt-Q3', milestoneTabsFor({})), 'cockpit')
+  assert.equal(milestoneTabFromRoute(undefined, '#prompt-Q3', milestoneTabsFor({}, { needs: 1 })), 'cockpit')
 })
