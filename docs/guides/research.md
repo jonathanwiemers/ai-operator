@@ -237,7 +237,8 @@ chosen: cursor/auto (claude limited until 2026-11-13 00:00 UTC)
 ```
 
 **When no candidate qualifies,** the run waits for the first window or
-limit that ends. The Desk shows "waiting for `claude` until 14:00".
+limit that ends. The Desk shows "waiting for `claude` until 14:00", in your time zone (the
+[pauses guide](pauses.md#in-the-desk) explains it).
 
 - A one-off research waits (phase `Waiting`) and runs then.
 - A scheduled run is skipped. Its *skipped* reason names each busy
@@ -252,8 +253,11 @@ above.
 
 - **When.** A research without a schedule runs once, right after you create
   it. A scheduled one runs at the times of its cron schedule, in its time
-  zone. If the operator was down at a scheduled time, the run starts once
-  when it is back, however many times were missed.
+  zone. The schedule words name that zone, for example "daily at 07:15 UTC",
+  because that is when it runs.
+  The Desk shows the next run in your time zone. If the operator was down at
+  a scheduled time, the run starts once when it is back, however many times
+  were missed.
 - **One at a time.** A scheduled time that comes while the previous run is
   still going is skipped ("previous run still in progress").
 - **How long.** A quick run may take 20 minutes, a deep one 2 hours. Its pod

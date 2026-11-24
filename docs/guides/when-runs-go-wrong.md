@@ -96,6 +96,9 @@ reports such a limit, the run is **put off, not failed**:
   until then the issue is blocked
   ```
 
+  The Desk shows these times in your time zone; see
+  [Pauses](pauses.md#in-the-desk).
+
   If the fallback is limited too, the comment names both, and the run goes
   on with whichever is free first.
 - The work of the call that hit the limit is saved as a

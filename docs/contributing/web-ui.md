@@ -435,6 +435,7 @@ headings, focus, the announcer) and keeps the axe check green.
 | BottomTabBar | `web/src/ui/BottomTabBar.vue` | The phone's [bottom bar](#navigation); Nuxt UI has no bottom tab bar. |
 | [DeskChat](#deskchat) | `web/src/ui/DeskChat.vue` | Wraps `UChatMessages` and `UChatPrompt`; they lack *Load older* with a kept scroll anchor and compact operator events. |
 | [Timeline](#timeline) | `web/src/ui/Timeline.vue` | Draws issue bars on a time axis with sticky row labels and a now line. Nothing in Nuxt UI draws a time axis, and Chart.js draws on a canvas that keyboard users cannot reach. Every bar is a link named with its state. |
+| `LocalText` | `web/src/components/LocalText.vue` | Prints server text with each UTC time as a local `<time>`; no Nuxt UI component renders `<time>` parts inside text. |
 
 ### Adding a custom component
 
@@ -2589,6 +2590,38 @@ summaries, notes, research summaries, prompt text, pause and release
 reasons, transcript lines and research prompts; `mode="inline"` renders one
 line for rows that are links already. Machine strings (condition messages,
 exit reasons, API errors, thinking lines) stay plain text.
+
+### Times
+
+Every time the Desk shows is in the browser's time zone. The server keeps UTC
+and the Desk converts it.
+
+- **Server text.** A reason, message or comment that names a clock time
+  writes it with `timefmt.UTCMinute` (`internal/timefmt`), the one form
+  "2006-01-02 15:04 UTC". The scan test in `internal/timefmt` fails on any
+  other string literal with the layout `15:04` in a non-test file under
+  `internal/` or `cmd/`. Its allow-list names each exception with a reason:
+  the research prompt's date and feed entries, which are in the request's
+  zone and go to the agent only.
+- **Markdown.** `localTimes` and `localTimeNodes` in `web/src/localTime.ts`
+  find "YYYY-MM-DD HH:MM UTC" and "YYYY-MM-DD HH:MM:SS UTC" and render a
+  `<time datetime title>` with a local label ("15:05", "Tue 15:05",
+  "13 Nov, 15:05"). The title is the full local time with its zone and
+  "· 2026-11-21 14:05 UTC as written". `renderMarkdown` and `renderInline`
+  call them. `localTimesText` is the plain-string version for attributes and
+  titles.
+- **Plain text.** `LocalText.vue` does the same for server text printed
+  without Markdown (reasons, messages, summaries). It renders no wrapper.
+- **Absolute-time tooltips.** `absTime` in `web/src/format.ts` includes the
+  seconds and the zone name.
+- **Research next run.** `localMinute` shows `nextRun` as a local time; the
+  schedule words keep the schedule's own zone.
+- **Overview.** `getOverview()` sends `tz`, so "Spend today" and "Spend 7
+  days" count from the browser's midnight.
+
+Not converted: code spans and fenced code, times without a date, other zone
+names, ISO text such as `2026-11-21T14:05:00Z`, cron schedule words and
+chart buckets (they are in UTC on purpose).
 
 ### Security
 

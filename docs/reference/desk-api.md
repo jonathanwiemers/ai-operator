@@ -81,7 +81,7 @@ and leave out the cookie:
 |-----------------|---------|-------|
 | `GET /api/v1/projects` | Your projects, with task counts and cost. A project an AgentProjectSet created has `set`, the set's name. | see |
 | `GET /api/v1/projectsets` | Your AgentProjectSets: group, `include` and `exclude`, the last discovery, the counts (`active`, `dormant`, `excluded`, `explicit`, `nameTaken`) and each matched project you may see, with its state and reason. An empty list on a cluster without the AgentProjectSet resource. | see, on the set's name |
-| `GET /api/v1/overview` | The dashboard: what is running, paused and waiting, what needs you, spend today and this week. | see |
+| `GET /api/v1/overview` | The dashboard: what is running, paused and waiting, what needs you, spend today and this week. `?tz=` is an IANA zone such as `Europe/Berlin`: "Spend today" and "Spend 7 days" count from that zone's midnight. A missing or unknown zone, or `Local`, means UTC. | see |
 | `GET /api/v1/milestones` | The milestones of your projects. `?state=open` (default), `done` or `all`; `?project=`, `?limit=`. An open autopilot milestone has `queuePosition`, its place in the project's run order, from 1. | see |
 | `GET /api/v1/search?q=` | Find tasks by `#issue`, `!merge request` or a part of the title. | see |
 | `GET /api/v1/projects/{namespace}/{name}` | One project: its tasks by milestone, the autopilot queue, finishing milestones and cost. | see |

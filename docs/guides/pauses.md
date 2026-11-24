@@ -41,6 +41,11 @@ description lists every hold under its status line.
 
 ## In the Desk
 
+Times in a reason are written in UTC, with the date: "resets 2026-11-21
+16:00 UTC". The Desk shows them in your time zone, so in Berlin you read
+"resets 17:00". Hover over one to see the full local time with the zone and
+the UTC time as written. GitLab comments show the same times in UTC.
+
 ![Pause card on the milestone's Needs you tab: why it paused, the ways out and the pilot's question](../assets/screenshots/milestone-pilot.webp)
 
 The milestone's [*Needs you* tab](desk.md#needs-you) shows a pause that names one issue in that issue's
@@ -174,7 +179,7 @@ An issue is in `agent::needs-input`. The reason names the cause:
 - "#12 needs input: CI is red after the fix rounds: failing jobs `lint`,
   `test` (pipeline link)";
 - "#12 needs input: the run failed: <error> (link)". A usage limit names
-  the engine and its reset time in UTC;
+  the engine and its reset time, for example "resets 2026-11-21 16:00 UTC";
 - "#12 needs input: the agent asks: <question> (link to the report)";
 - "#12 needs input: the run pushed no commits to the merge request (link
   to the report)". The run succeeded, but its merge request has no pushed
@@ -215,7 +220,7 @@ pilot may retry with the findings.
 #### `reviewErrors`
 
 Reviewers failed. The reason names each one and why, such as "bugbot failed
-(usageLimit, resets 16:00 UTC), coderabbit failed (timeout)". When every
+(usageLimit, resets 2026-11-21 16:00 UTC), coderabbit failed (timeout)". When every
 reviewer failed for a passing reason, an outage say, autopilot first waits
 [`agents.review.retryAfter`](../reference/agents-and-models.md#roles) and
 asks for one review again. It pauses only if that fails too. It ends by
