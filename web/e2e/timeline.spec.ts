@@ -78,10 +78,12 @@ test('?view=lanes opens Lanes@1280', async ({ page, baseURL }) => {
   expect(problems).toEqual([])
 })
 
-test('without the history feature the tab shows Lanes and no switch@1280', async ({ page, baseURL }) => {
+test('without the history feature the tab shows Lanes, and the switch only Lanes and Board@1280', async ({ page, baseURL }) => {
   const problems = await open(page, baseURL, { history: false, query: '&view=timeline' })
   await expect(page.locator('main [data-queue]')).toBeVisible()
-  await expect(page.locator('main [data-issues-view-switch]')).toHaveCount(0)
+  const views = page.locator('main [data-issues-view-switch]').getByRole('tab')
+  await expect(views).toHaveText(['Lanes', 'Board'])
+  await expect(views.first()).toHaveAttribute('aria-selected', 'true')
   await expect(timeline(page)).toHaveCount(0)
   expect(problems).toEqual([])
 })

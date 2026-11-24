@@ -43,10 +43,10 @@ box, under the pilot's autonomy, cost and a link to its task. On a phone the
 box stays at the bottom of the screen, above the keyboard. Your message and
 the pilot's answer show in the Cockpit's stream. Old links with `?pilot=1` or
 `?tab=pilot` open the Cockpit.
-Stuck issues have their [problem thread](#the-problem-thread) on *Needs you*. Type your question there; the answer comes in the
+Stuck issues have their [problem thread](#the-problem-thread) among the *Cockpit*'s pinned cards. Type your question there; the answer comes in the
 same thread.
 
-![Pause card on the milestone's Needs you tab: why it paused, the ways out and the pilot's question](../assets/screenshots/milestone-pilot.webp)
+![Pause card pinned in the milestone's Cockpit: why it paused, the ways out and the pilot's question](../assets/screenshots/milestone-pilot.webp)
 
 Answer a prompt with one click on an option. On a prompt with a text box
 you can also write a sentence, such as "do it differently: retry with the
@@ -62,7 +62,7 @@ see the drawer but cannot write in it. See
 
 ## The problem thread
 
-When an issue is stuck, the milestone's *Needs you* tab shows one **problem**
+When an issue is stuck, the milestone's *Cockpit* pins one **problem**
 for it, not a pause, a hold and several questions side by side. Open it to
 see its thread. On top are the status and the cause, for example "the run
 failed: decoding implementer answer: no JSON object in agent result", and the
@@ -155,7 +155,7 @@ acted on its own", with what it did, why, and how many actions are left. The
 audit pings nobody.
 
 The Desk shows the same actions. On the milestone's
-[*Needs you* tab](desk.md#needs-you), each shows in its problem's thread,
+[pinned cards in the *Cockpit*](desk.md#the-pinned-cards), each shows in its problem's thread,
 with what the pilot did, why and the result, marked "Pilot" or with the
 owner who accepted it. The
 [Inbox](desk.md#inbox) shows those of the last 7 days under *Handled*. The

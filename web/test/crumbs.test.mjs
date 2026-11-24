@@ -23,9 +23,9 @@ test('every route has crumbs: links but the last, which names the view', () => {
     for (const c of crumbs.slice(0, -1)) {
       assert.ok(c.to, `${name}: "${c.label}" is no link`)
       assert.ok(isRouteName(c.to.name), `${name}: "${c.label}" links to an unknown route`)
-      // Only the tab crumbs have a query of their own: the project's Plans
-      // tab, the milestone's Needs you tab; /plans (all-plans) has none.
-      const own = c.to.name === 'all-plans' ? undefined : { Plans: { tab: 'plans' }, 'Needs you': { tab: 'needs' } }[c.label]
+      // Only the project's Plans tab crumb has a query of its own; /plans
+      // (all-plans) has none.
+      const own = c.to.name === 'all-plans' ? undefined : { Plans: { tab: 'plans' } }[c.label]
       assert.deepEqual(c.to.query, own, `${name}: "${c.label}" keeps the query`)
       assert.ok(!('tab' in c.to.params), `${name}: "${c.label}" keeps the tab`)
     }
@@ -179,11 +179,9 @@ test('breadcrumbItems: links up, the last item is the current page, the middle h
   }
 })
 
-test('problem: under the milestone and its Needs you tab', () => {
+test('problem: under the milestone, whose Cockpit pins it', () => {
   const trail = crumbsFor({ name: 'problem', params: { ...at, iid: '3', problem: 'issue-12' } })
-  assert.deepEqual(trail.slice(3), [
-    { label: 'Needs you', to: { name: 'stream-milestone', params: { ...at, iid: '3' }, query: { tab: 'needs' } } },
-    { label: 'Problem #12' },
-  ])
+  assert.deepEqual(trail.slice(3), [{ label: 'Problem #12' }])
+  assert.deepEqual(trail[2].to, { name: 'stream-milestone', params: { ...at, iid: '3' } })
   assert.equal(crumbsFor({ name: 'problem', params: { ...at, iid: '3', problem: 'issue-0' } }).at(-1).label, 'Milestone problem')
 })

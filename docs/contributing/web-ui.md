@@ -1227,7 +1227,7 @@ do, and that on a phone a row stacks inside its width
 
 ### Activity header
 
-The header of the project and milestone pages and their Activity tab
+The header of the project and milestone pages and the project's Activity tab
 (`web/src/views/Stream.vue`) are Tailwind utilities and Nuxt UI; only the
 activity heatmap strip keeps scoped CSS (`.heat`, `.cells`).
 
@@ -1447,9 +1447,12 @@ the link heights on a phone (`milestone-issues@<width>.png`); the route checks c
 
 ### Milestone Decisions
 
-The Decisions tab of a milestone (`?tab=decisions` on `stream-milestone`,
-also on stored milestones) and of a project (on `stream-project-decisions`, right
-after *Activity*) is Tailwind utilities and Nuxt UI (a card keeps a little scoped CSS, `DecisionCard.vue`). It
+The project's Decisions tab (on `stream-project-decisions`, right after
+*Activity*; `?milestone=` narrows it to one milestone, also a stored one)
+is Tailwind utilities and Nuxt UI (a card keeps a little scoped CSS, `DecisionCard.vue`). A
+milestone page has no Decisions tab since R14 of the Cockpit spec: its
+decisions are the panel's *Decisions* view (`?panel=decisions`; a `#<id>`
+hash scrolls to that row once loaded), and `?tab=decisions` opens it. It
 reads `GET …/decisions` from the history database only, never GitLab.
 
 - `MilestoneDecisions.vue` is the tab: `milestone` is the IID, 0 for the
@@ -1485,11 +1488,11 @@ reads `GET …/decisions` from the history database only, never GitLab.
 
 The queue's decision IDs (`QueueList.vue` on the Issues tab) link through
 `decisionHref` (`milestoneQueue.ts`): with the `history` feature to the
-milestone page's `?tab=decisions#<id>` as a RouterLink, else to the GitLab
+milestone page's `?panel=decisions#<id>` as a RouterLink, else to the GitLab
 comment. The Revisit button stays. In the context panel (`compact`) the
 rows carry no IDs or Revisit chips: `decisionGroups` sums them into one
 line per kind, *Revisit · n* (decisions an issue revisits), *Open · n* and
-*Superseded · n*, each linking to the milestone's Decisions tab with the
+*Superseded · n*, each linking to the milestone panel's Decisions with the
 `history` feature (`decisionsTabHref`), plain text without.
 
 The e2e cases `milestone decisions › …` (fixture
@@ -1559,7 +1562,7 @@ R10), `web/src/components/cockpit/Cockpit.vue`, built from Nuxt UI
 components only:
 
 - **Pinned.** The `pinned` slot on top. On a milestone it holds
-  `MilestoneNeeds` with its usual props (see [Needs you tab](#needs-you-tab)):
+  `MilestoneNeeds` with its usual props (see [Needs you cards](#needs-you-cards)):
   the problem cards, proposals and prompts, answered in place. The
   `problem` route and the `#problem-`/`#prompt-` links open the Cockpit with
   that thread open, and the card scrolls into view once it is listed.
@@ -1606,15 +1609,15 @@ to R6 (#641), as on the Needs you and Activity tabs it reuses.
 pilot, a stored milestone, the old pilot links, the phone placement and axe;
 `desk.spec.ts` flow 3 sends a message and hears the answer.
 
-### Needs you tab
+### Needs you cards
 
-The milestone's Needs you tab (`web/src/components/MilestoneNeeds.vue`,
-utilities only) is listed after Metrics, and only while something needs
-you (decision 7 of the header and tabs milestone; spec
+The milestone's Needs you cards (`web/src/components/MilestoneNeeds.vue`,
+utilities only), once a tab of their own, are pinned on top of the Cockpit
+(R10 and R14 of the Cockpit spec; spec
 `desk-problem-thread`, Decision 11 for its content). Its route is
 `/projects/:namespace/:name/milestones/:iid/problems/:problem` (name
 `problem`, `:problem` a row id or `issue-<iid>`, `problemParam` in
-`web/src/problemThread.ts`); the tab without one selects the first open
+`web/src/problemThread.ts`); the Cockpit without one selects the first open
 problem.
 
 - **List.** `GET …/milestones/{iid}/problems` (`getProblems`), open ones
@@ -1623,10 +1626,8 @@ problem.
   *Pilot looking*, *Resolved*), its time and the cause. Under the list are
   the pilot's open proposals (P-n) with *Accept* and *Reject*, which post
   the same chat command to the pilot task as before, and the pause totals.
-  The tab is listed while `needsOpen` counts open items, or a problem
-  thread or a `#prompt-`/`#problem-` link is open (`milestoneTabsFor`); the
-  count is the [RouteTabs](#routetabs) badge of the *Cockpit* tab, where the
-  same cards are pinned (D674-P2). Otherwise `?tab=needs` opens the Cockpit.
+  The count of `needsOpen` is the [RouteTabs](#routetabs) badge of the
+  *Cockpit* tab (D674-P2); `?tab=needs` opens the Cockpit (`milestoneAlias`).
 - **Thread.** `web/src/components/ProblemThread.vue` beside the list from
   1024 px, below it on smaller screens: the heading (a link to the issue)
   with the status, the cause, `ProblemFacts`, then a
@@ -1656,7 +1657,7 @@ the three widths.
 ### Pause cards
 
 The full pause card (`web/src/components/PauseCard.vue`, in a problem
-thread's bar on the Needs you tab) and the compact card (`web/src/components/PauseCardCompact.vue`, Inbox, board,
+thread's bar in the Cockpit's pinned cards) and the compact card (`web/src/components/PauseCardCompact.vue`, Inbox, board,
 stream) are Tailwind utilities and Nuxt UI tokens, without scoped CSS.
 
 - The full card's reason is block markdown. Its actions, the Way out's
@@ -1675,7 +1676,8 @@ phone, checks the button height and the sideways scroll, and asserts the
 ### Board
 
 The Board tab of a project (`web/src/components/ProjectBoards.vue`) and of
-a milestone (`web/src/components/Board.vue`), and its cards
+a milestone (`web/src/components/Board.vue`, the *Board* view of the
+Issues tab, `?tab=issues&view=board`, since R14 of the Cockpit spec), and its cards
 (`web/src/components/TaskCard.vue`), are Tailwind utilities and Nuxt UI
 tokens, without scoped CSS.
 
@@ -2200,19 +2202,23 @@ a path (decision 13 of the header and tabs milestone).
   *Plans* with the feature `plans` (`?tab=plans` without it opens
   *Milestones*).
 - **Milestone** (`…/milestones/<iid>`, `milestoneTabsFor`): *Cockpit*
-  (default, see [Cockpit](#cockpit)) *| Issues | Activity | Decisions |
-  Board | Metrics*, then *Needs you* while something needs you (see
-  [Needs you tab](#needs-you-tab)) and *Retrospective* once one exists; no
-  *Board* once stored, no *Plans*. While the milestone loads, `?tab=` is
-  read against all its tabs, so a `?tab=needs` or `?tab=retrospective`
-  link waits; once loaded, a hidden tab falls back to *Cockpit*. The
-  `problem` route and a link with a `#prompt-Q<n>` or `#problem-<iid>`
-  hash and no `?tab=` open *Cockpit* (`milestoneTabFromRoute`). The pilot's
+  (default, see [Cockpit](#cockpit)) *| Issues | Metrics*, then
+  *Retrospective* once one exists; no *Plans*. While the milestone loads,
+  `?tab=` is read against all its tabs, so a `?tab=retrospective` link
+  waits; once loaded, a hidden tab falls back to *Cockpit*. The `problem`
+  route and a `#prompt-Q<n>` or `#problem-<iid>` link open *Cockpit*, where
+  the cards are pinned ([Needs you cards](#needs-you-cards)). The pilot's
   composer is at the bottom of the Cockpit ([Cockpit](#cockpit)).
+- **Milestone aliases** (`milestoneAlias`, R14 of the Cockpit spec,
+  D789-P1/P2): the removed tabs open where their content moved, and
+  Stream.vue replaces the URL on load: `activity`, `stream`, `needs` and
+  `pilot` → *Cockpit*; `decisions` → *Cockpit* with `?panel=decisions`;
+  `board` → `?tab=issues&view=board`, the Board view of the Issues tab
+  (`issuesView`). `?pilot=` goes too. Until the URL is replaced,
+  `milestoneTabFromRoute` reads the old id as its new tab.
 - **Aliases** (`tabAlias`), so old links keep working: `stream` →
-  `activity` (project, milestone, dashboard), `spend` → `metrics`,
-  `details` → `overview` (task), `pilot` → `cockpit`, where Stream.vue also
-  drops `?tab=pilot` and `?pilot=` (`withoutPilot`). Unknown, empty or repeated values fall
+  `activity` (project, dashboard), `spend` → `metrics`, `details` →
+  `overview` (task). Unknown, empty or repeated values fall
   back to the first known one, else the default (`tabFromQuery`).
 - The view tabs are one [RouteTabs](#routetabs) strip; the default tab
   drops `?tab=` (`tabQuery`). Scope tabs keep a chosen view tab where the
@@ -2283,7 +2289,7 @@ Back and Escape close the sheet (`useBackClose` with `keepOnQuery`, so a
 query change inside it keeps it open), focus returns to `opener`, the
 button that opened it, and widening past 1180 px closes it. `column: false`
 keeps the panel a sheet at every width, for content that needs the full
-width: a milestone's Issues tab (the table's fixed columns) and Activity tab
+width: a milestone's Issues tab (the table's fixed columns) and a project's Activity tab
 (the heatmap's day cells). The e2e `context sheet …` cases check the
 project's closed sheet below 1180 px (each way to close it, the long branch
 and URL fitting), the column at 1180 px and that the board beside it does
@@ -2308,7 +2314,7 @@ views, kept in `?panel=issues|queue|decisions` (`panelFromQuery`,
   loaded while the view is open; the superseded ones are in a closed
   `UCollapsible`. Each links to its issue page.
 
-Below 1180 px (and on the Issues and Activity tabs) the header has
+Below 1180 px (and on the Issues tab) the header has
 *Issues*, *Queue* and *Decisions* buttons, on phones too (D786-P2); each
 sets `?panel=` and opens the sheet, titled by the view, on its view. The
 panel's styles are scoped, not Tailwind utilities, and it uses icons the
@@ -2534,7 +2540,11 @@ only count. Each such item notifies once, also across reloads and live updates; 
 already there when the tab opens or when notifications are turned on don't
 notify. An autopilot that pauses again for another cause or issue is a new
 item, as is an issue whose raised budget crosses 80 % again. A click leads
-where the Inbox row does (one mapping, `inboxRoute.ts`). There is no
+where the Inbox row does (one mapping, `inboxRoute.ts`): a milestone's
+entry opens its Cockpit at its card (R17 of the Cockpit spec), problems
+and pauses through the `problem` route, prompts at `#prompt-Q<n>`,
+proposals at their prompt's hash or `#pinned` (`pinnedAnchor`, the pinned
+section's id, scrolled to by the router). There is no
 service worker, no Web Push and no e-mail. The choice is kept per browser.
 
 ### History

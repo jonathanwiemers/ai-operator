@@ -81,7 +81,8 @@ function span(g: CockpitGroup): string {
 
 <template>
   <div class="cockpit" data-cockpit>
-    <section aria-label="Pinned" data-cockpit-pinned>
+    <!-- #pinned: an Inbox proposal without a prompt lands here (inboxRoute). -->
+    <section id="pinned" aria-label="Pinned" class="scroll-mt-3" data-cockpit-pinned>
       <slot name="pinned" />
     </section>
 

@@ -2,21 +2,31 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
-import { inboxRoute } from '../src/inboxRoute.ts'
+import { inboxRoute, pinnedAnchor } from '../src/inboxRoute.ts'
 
 const item = (kind, over = {}) => ({ namespace: 'team', project: 'shop', kind, ...over })
 
 const thread = (problem) => ({ name: 'problem', params: { namespace: 'team', name: 'shop', iid: '3', problem } })
 
-test('inboxRoute: pauses and problems open their problem thread, proposals the Needs you tab', () => {
+const cockpit = (hash) => ({ name: 'stream-milestone', params: { namespace: 'team', name: 'shop', iid: '3' }, hash })
+
+test('inboxRoute: pauses and problems open their problem thread in the Cockpit', () => {
   assert.deepEqual(inboxRoute(item('pause', { task: 'shop-spec-m3', milestoneIID: 3 })), thread('issue-0'))
   assert.deepEqual(inboxRoute(item('pause', { milestoneIID: 3, issueIID: 12 })), thread('issue-12'))
   assert.deepEqual(inboxRoute(item('problem', { milestoneIID: 3, issueIID: 12 })), thread('issue-12'))
-  assert.deepEqual(inboxRoute(item('proposal', { task: 'shop-pilot', milestoneIID: 3 })), {
-    name: 'stream-milestone',
-    params: { namespace: 'team', name: 'shop', iid: '3' },
-    query: { tab: 'needs' },
-  })
+})
+
+test('inboxRoute: proposals open the Cockpit at their prompt, else at the pinned cards', () => {
+  assert.deepEqual(inboxRoute(item('proposal', { task: 'shop-pilot', milestoneIID: 3 })), cockpit(pinnedAnchor))
+  assert.equal(pinnedAnchor, '#pinned')
+  assert.deepEqual(inboxRoute(item('proposal', { task: 'shop-pilot', milestoneIID: 3, promptID: 'Q7' })), cockpit('#prompt-Q7'))
+})
+
+test('inboxRoute: no milestone entry leads to a removed tab', () => {
+  for (const kind of ['pause', 'problem', 'proposal', 'prompt']) {
+    const r = inboxRoute(item(kind, { task: 'shop-spec-m3', milestoneIID: 3, issueIID: 12, promptID: 'Q4' }))
+    assert.equal(r.query, undefined, kind)
+  }
 })
 
 test('inboxRoute: tasks open the task page, even with a milestone', () => {
@@ -40,11 +50,12 @@ test('inboxRoute: the rest opens the project stream', () => {
   assert.deepEqual(inboxRoute(item('proposal', { task: 'shop-pilot' })), want)
 })
 
-test('inboxRoute: prompts open their problem thread, an agent question its task page', () => {
+test('inboxRoute: prompts open the Cockpit at their card, without an ID their problem thread, an agent question its task page', () => {
   assert.deepEqual(
     inboxRoute(item('prompt', { task: 'shop-spec-m3', milestoneIID: 3, issueIID: 12, promptID: 'Q4', reason: 'mainHealth' })),
-    thread('issue-12'),
+    cockpit('#prompt-Q4'),
   )
+  assert.deepEqual(inboxRoute(item('prompt', { milestoneIID: 3, issueIID: 12, reason: 'mainHealth' })), thread('issue-12'))
   assert.deepEqual(inboxRoute(item('prompt', { task: 'shop-impl-12', milestoneIID: 3, promptID: 'Q1', reason: 'needsInput' })), {
     name: 'task',
     params: { namespace: 'team', name: 'shop', task: 'shop-impl-12' },

@@ -48,6 +48,9 @@ async function open(page: Page, baseURL: string | undefined, path: string, size:
 
 const switcher = (page: Page) => page.locator('[data-inbox-view]')
 const handledRows = (page: Page) => page.locator('main [data-handled] > li')
+// openRow is the link of the Open list's row with text.
+const openRow = (page: Page, text: string) =>
+  page.locator('main ul').last().locator(':scope > li').filter({ hasText: text }).locator('a[href^="/projects/"]').first()
 
 for (const size of widths) {
   test(`the switch changes ?view=@${size.width}`, async ({ page, baseURL }) => {
@@ -78,11 +81,31 @@ for (const size of widths) {
     expect(problems).toEqual([])
   })
 
-  test(`a row opens the milestone's Cockpit at the problem@${size.width}`, journeyAt(size.width), async ({ page, baseURL }) => {
+  test(`an Open prompt opens the milestone's Cockpit at its card@${size.width}`, journeyAt(size.width), async ({ page, baseURL }) => {
+    const problems = await open(page, baseURL, '/inbox', size)
+    await openRow(page, 'Support refunds through the payment provider').click()
+    // #prompt-p-281-1 opens the prompt's problem thread among the pinned cards.
+    await expect(page).toHaveURL(/\/projects\/team-a\/shop\/milestones\/14\/problems\/issue-281$/)
+    await expect(page.getByRole('navigation', { name: 'View' }).getByRole('link', { name: 'Cockpit' })).toHaveAttribute('aria-current', 'page')
+    await expect(page.locator('[data-cockpit-pinned] [data-needs-problems] a[aria-current="page"]')).toBeInViewport()
+    expect(problems).toEqual([])
+  })
+
+  test(`an Open proposal opens the milestone's Cockpit at the pinned cards@${size.width}`, async ({ page, baseURL }) => {
+    const problems = await open(page, baseURL, '/inbox', size)
+    await openRow(page, 'Split the address form into its own component').click()
+    await expect(page).toHaveURL(/\/projects\/team-a\/shop\/milestones\/12#pinned$/)
+    await expect(page.getByRole('navigation', { name: 'View' }).getByRole('link', { name: 'Cockpit' })).toHaveAttribute('aria-current', 'page')
+    await expect(page.locator('#pinned')).toBeInViewport()
+    expect(problems).toEqual([])
+  })
+
+  test(`a Handled row opens the milestone's Cockpit at the problem@${size.width}`, async ({ page, baseURL }) => {
     const problems = await open(page, baseURL, '/inbox?view=handled', size)
     await handledRows(page).nth(0).getByRole('link').click()
     await expect(page).toHaveURL(/\/projects\/team-a\/shop\/milestones\/14\/problems\/issue-281$/)
     await expect(page.getByRole('navigation', { name: 'View' }).getByRole('link', { name: 'Cockpit' })).toHaveAttribute('aria-current', 'page')
+    await expect(page.locator('[data-cockpit-pinned] [data-needs-problems] a[aria-current="page"]')).toBeInViewport()
     expect(problems).toEqual([])
   })
 

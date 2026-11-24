@@ -177,3 +177,16 @@ test('switching the view inside the slide-over keeps it open@390', async ({ page
   await expect(headerButton(page, 'Issues')).toBeFocused()
   expect(problems).toEqual([])
 })
+
+// A link to a panel view (?panel=, the old ?tab=decisions, a decision link)
+// opens the slide-over on that view below 1180 px; Escape closes it.
+test('a ?panel=decisions link opens the slide-over on Decisions@390', async ({ page, baseURL }) => {
+  const problems = await open(page, baseURL, `${milestonePath}?panel=decisions`, 390)
+  const sheet = page.getByRole('dialog', { name: 'Decisions' })
+  await expect(sheet).toBeVisible()
+  await expectView(page, 'decisions')
+  await page.keyboard.press('Escape')
+  await expect(sheet).toBeHidden()
+  await expect(page).toHaveURL(/\?panel=decisions$/)
+  expect(problems).toEqual([])
+})

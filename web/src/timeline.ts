@@ -364,11 +364,14 @@ export function windowRange(w: OverviewWindow, now: number): { from: string; to:
   return { from: new Date(now - len).toISOString(), to: new Date(now).toISOString() }
 }
 
-export type IssuesView = 'timeline' | 'lanes'
+export type IssuesView = 'timeline' | 'lanes' | 'board'
 
 // issuesView is the Issues tab's view from ?view= (Decision 15): Timeline
-// by default with the history feature, Lanes without it.
-export function issuesView(q: unknown, history: boolean): IssuesView {
+// by default with the history feature, Lanes without it. ?view=board is the
+// Board while the milestone has its tasks (board; R14 of "Desk: the
+// Cockpit"), else the default.
+export function issuesView(q: unknown, history: boolean, board = false): IssuesView {
+  if (q === 'board' && board) return 'board'
   if (!history) return 'lanes'
   return q === 'lanes' ? 'lanes' : 'timeline'
 }

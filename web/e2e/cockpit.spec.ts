@@ -267,11 +267,40 @@ for (const width of [375, 1280]) {
     expect(problems).toEqual([])
   })
 
+  // R14: a removed milestone tab's old link opens where its content moved,
+  // and the address shows the new place (D789-P1).
+  for (const [old, want, check] of [
+    ['activity', '', '[data-cockpit-stream]'],
+    ['stream', '', '[data-cockpit-stream]'],
+    ['needs', '', '[data-cockpit-pinned]'],
+    ['pilot', '', '[data-cockpit-composer]'],
+    ['decisions', '?panel=decisions', '[data-panel-view="decisions"]'],
+    ['board', '?tab=issues&view=board', '[data-board]'],
+  ] as const) {
+    test(`?tab=${old} opens ${want || 'the Cockpit'}@${width}`, async ({ page, baseURL }) => {
+      const { problems } = await open(page, baseURL, `${milestonePath}?tab=${old}`, width)
+      await expect(page).toHaveURL(new URL(`${milestonePath}${want}`, baseURL).href)
+      // Below 1180 px the panel is a sheet, opened by the link itself on its
+      // view; it hides the page from assistive tech until Escape closes it.
+      if (old === 'decisions' && width < 1180) {
+        await expect(page.getByRole('dialog').locator('[data-panel-view="decisions"]')).toBeVisible()
+        await page.keyboard.press('Escape')
+        await expect(page.getByRole('dialog')).toHaveCount(0)
+      } else {
+        await expect(page.locator(check).first()).toBeVisible()
+      }
+      const tab = want.startsWith('?tab=issues') ? 'Issues' : 'Cockpit'
+      await expect(page.getByRole('navigation', { name: 'View' }).getByRole('link', { name: new RegExp(`^${tab}`) })).toHaveAttribute('aria-current', 'page')
+      if (old === 'board') await expect(page.locator('[data-issues-view-switch]').getByRole('tab', { name: 'Board' })).toHaveAttribute('aria-selected', 'true')
+      expect(problems).toEqual([])
+    })
+  }
+
   // axe (WCAG 2.2 AA) on the whole Cockpit with a group open, light and
   // dark. color-contrast is left out: it is the rule of R6 (#641) that no
   // requirement of this milestone covers, listed in known-a11y.ts for the
-  // pinned cards (stream-milestone-needs) and the event cards
-  // (stream-milestone-activity) the Cockpit reuses unchanged; every other
+  // pinned cards and the event cards (stream-milestone-cockpit, once
+  // stream-milestone-needs and -activity) the Cockpit reuses unchanged; every other
   // rule must pass, and no known-a11y entry is added.
   for (const colorScheme of ['light', 'dark'] as const) {
     test(`axe is green on the Cockpit in ${colorScheme}@${width}`, async ({ page, baseURL }) => {

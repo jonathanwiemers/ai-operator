@@ -4,7 +4,7 @@ import UButton from '@nuxt/ui/components/Button.vue'
 import UCollapsible from '@nuxt/ui/components/Collapsible.vue'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UTabs from '@nuxt/ui/components/Tabs.vue'
-import { computed } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { alertColor } from '../badgeTone'
 import { getDecisions } from '../client'
@@ -63,6 +63,25 @@ const decisions = useResource(() => {
 }, ['task'])
 const active = computed(() => decisions.data.value?.decisions.filter((d) => !d.superseded) ?? [])
 const superseded = computed(() => decisions.data.value?.decisions.filter((d) => d.superseded) ?? [])
+
+// A decision link (#<id>, decisionHref; the old ?tab=decisions#<id>) lands
+// on its row once the decisions have loaded; a superseded one opens its
+// closed group first.
+const supersededOpen = ref(false)
+watch(
+  () => [decisions.data.value, route.hash] as const,
+  async ([, hash]) => {
+    const id = hash.slice(1)
+    if (!id) return
+    const old = superseded.value.some((d) => d.id === id)
+    if (!old && !active.value.some((d) => d.id === id)) return
+    if (old) supersededOpen.value = true
+    await nextTick()
+    await new Promise((r) => requestAnimationFrame(r))
+    document.getElementById(id)?.scrollIntoView({ block: 'nearest' })
+  },
+  { immediate: true },
+)
 
 </script>
 
@@ -124,7 +143,7 @@ const superseded = computed(() => decisions.data.value?.decisions.filter((d) => 
       <UEmpty v-else-if="!active.length && !superseded.length" icon="i-lucide-scale" title="No decisions recorded yet." variant="naked" size="xs" />
       <template v-else>
         <ul>
-          <li v-for="d in active" :key="d.id" data-panel-decision>
+          <li v-for="d in active" :id="d.id" :key="d.id" class="scroll-mt-3" data-panel-decision>
             <RouterLink :to="issueTo(d.issue.iid)" class="row">
               <span class="ref">{{ d.id }}</span>
               <span>{{ d.title }}</span>
@@ -132,7 +151,7 @@ const superseded = computed(() => decisions.data.value?.decisions.filter((d) => 
             <p class="choice">{{ d.choice }}</p>
           </li>
         </ul>
-        <UCollapsible v-if="superseded.length" data-panel-superseded>
+        <UCollapsible v-if="superseded.length" v-model:open="supersededOpen" data-panel-superseded>
           <template #default="{ open }">
             <UButton
               color="neutral"
@@ -145,7 +164,7 @@ const superseded = computed(() => decisions.data.value?.decisions.filter((d) => 
           </template>
           <template #content>
             <ul>
-              <li v-for="d in superseded" :key="d.id">
+              <li v-for="d in superseded" :id="d.id" :key="d.id" class="scroll-mt-3">
                 <RouterLink :to="issueTo(d.issue.iid)" class="row old">
                   <span class="ref">{{ d.id }}</span>
                   <span>{{ d.title }}</span>

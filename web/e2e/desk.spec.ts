@@ -67,10 +67,7 @@ const projectMilestonesReady = (page: Page) => expect(page.locator('main [data-f
 const milestoneReady = {
   cockpit: 'Split across captures',
   issues: 'Document the refund flow for support',
-  needs: 'Split across captures',
-  decisions: 'Refund in the order currency',
   retrospective: 'Retry the registry push in the release job',
-  activity: 'Run 2 needs input',
   board: 'Partial captures for split shipments',
   metrics: 'Cache-read share',
 }
@@ -155,7 +152,14 @@ const routes: Route[] = [
     colorScheme: 'dark',
     ready: projectMilestonesReady,
   },
-  ...(['issues', 'activity', 'decisions', 'board', 'metrics', 'needs', 'retrospective'] as const).map(
+  // The milestone's default tab, the Cockpit: its pinned cards (once the
+  // Needs you tab) and its stream (once Activity), R14 of "Desk: the Cockpit".
+  {
+    name: 'stream-milestone-cockpit',
+    path: '/projects/team-a/shop/milestones/14',
+    ready: (page) => expect(page.locator('main').getByText(milestoneReady.cockpit).first()).toBeVisible(),
+  },
+  ...(['issues', 'metrics', 'retrospective'] as const).map(
     (tab): Route => ({
       name: `stream-milestone-${tab}`,
       path: `/projects/team-a/shop/milestones/14?tab=${tab}`,
@@ -167,6 +171,12 @@ const routes: Route[] = [
     name: 'stream-milestone-lanes',
     path: '/projects/team-a/shop/milestones/14?tab=issues&view=lanes',
     ready: (page) => expect(page.locator('main [data-queue]')).toBeVisible(),
+  },
+  // The Board, a view of the Issues tab since R14 of "Desk: the Cockpit".
+  {
+    name: 'stream-milestone-board',
+    path: '/projects/team-a/shop/milestones/14?tab=issues&view=board',
+    ready: (page) => expect(page.locator('main').getByText(milestoneReady.board).first()).toBeVisible(),
   },
   // The task page and the issue page with a live task: Overview by default,
   // a variant per other tab (TaskBody.vue, R10).
@@ -931,10 +941,11 @@ for (const { width, height, labels } of [
   })
 }
 
-// RouteTabs (src/ui/RouteTabs.vue): on a phone the milestone's tabs are
-// wider than the screen. They scroll inside the strip's list, the page does
-// not, and the tab of ?tab=retrospective, the last one, is scrolled into view on
-// load, inside the list's visible box.
+// RouteTabs (src/ui/RouteTabs.vue): on a phone the milestone's tabs
+// (Cockpit with its badge · Issues · Metrics · Retrospective) are still a
+// little wider than the screen. They scroll inside the strip's list, the
+// page does not, and the tab of ?tab=retrospective, the last one, is
+// scrolled into view on load, inside the list's visible box.
 test('stream-milestone RouteTabs scroll inside the strip@375', async ({ page, baseURL }, testInfo) => {
   const route = routes.find((r) => r.name === 'stream-milestone-retrospective')!
   const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
@@ -949,7 +960,6 @@ test('stream-milestone RouteTabs scroll inside the strip@375', async ({ page, ba
   const active = strip.getByRole('link', { name: 'Retrospective' })
   await expect(active).toHaveAttribute('aria-current', 'page')
   await expect(active).toBeInViewport({ ratio: 1 })
-  await expect(strip.getByRole('link', { name: 'Issues' })).not.toBeInViewport({ ratio: 1 })
   expect(
     await active.evaluate((a) => {
       const list = a.closest('[data-slot="list"]')!.getBoundingClientRect()
@@ -1127,7 +1137,7 @@ for (const { width, height, phone } of [
   // switch, and the page does not scroll sideways.
   for (const [name, pills] of [
     ['stream-project-activity', '[data-stream-filter]'],
-    ['stream-milestone-decisions', '[data-decision-state]'],
+    ['stream-project-decisions', '[data-decision-state]'],
     ['stream-project-metrics', '[data-spend-unit]'],
     ['task-logs', '[aria-label="Container"]'],
     ['inbox', '[data-inbox-view]'],
@@ -2398,7 +2408,7 @@ test.describe('context sheet', () => {
           // The decisions as one line per kind, no IDs or Revisit chips (R10).
           const groups = sheet.locator('[data-decision-groups] li')
           await expect(groups).toHaveText(['Revisit · 1', 'Open · 2', 'Superseded · 1'])
-          await expect(groups.first().getByRole('link')).toHaveAttribute('href', '/projects/team-a/shop/milestones/12?tab=decisions')
+          await expect(groups.first().getByRole('link')).toHaveAttribute('href', '/projects/team-a/shop/milestones/12?panel=decisions')
           await expect(sheet.getByText('D275-P1')).toHaveCount(0)
           await expect(sheet.getByRole('button', { name: 'Revisit' })).toHaveCount(0)
         }
@@ -2710,11 +2720,11 @@ test.describe('landmarks and route focus', () => {
 
     test(`a tab switch keeps focus on the tab@${size.width}`, async ({ page, baseURL }) => {
       const problems = await load(page, baseURL, milestone, size)
-      const tab = page.locator('main').getByRole('navigation', { name: 'View' }).getByRole('link', { name: 'Decisions' })
+      const tab = page.locator('main').getByRole('navigation', { name: 'View' }).getByRole('link', { name: 'Metrics' })
       await tab.focus()
       await page.keyboard.press('Enter')
-      await expect(page).toHaveURL(/\?tab=decisions$/)
-      await expect(page.locator('main').getByText(milestoneReady.decisions).first()).toBeVisible()
+      await expect(page).toHaveURL(/\?tab=metrics$/)
+      await expect(page.locator('main').getByText(milestoneReady.metrics).first()).toBeVisible()
       await frames(page)
       await expect(tab).toBeFocused()
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
@@ -3022,7 +3032,7 @@ test.describe('block markdown', () => {
 // strong and code, shows no literal asterisks, and nests no link in a link.
 test.describe('inline markdown', () => {
   for (const { width, height } of [widths[0]!, widths[2]!]) {
-    for (const name of ['inbox', 'stream-milestone-activity']) {
+    for (const name of ['inbox', 'stream-project-activity']) {
       test(`${name} shows no literal ** and no nested links@${width}`, async ({ page, baseURL }, testInfo) => {
         const route = routes.find((r) => r.name === name)!
         const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
@@ -3297,8 +3307,8 @@ test.describe('prompt card', () => {
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })
 
-    test(`needs you tab answers in free text@${size.width}`, async ({ page, baseURL }, testInfo) => {
-      const { problems, posts } = await open(page, baseURL, 'stream-milestone-needs', size)
+    test(`the Cockpit answers in free text@${size.width}`, async ({ page, baseURL }, testInfo) => {
+      const { problems, posts } = await open(page, baseURL, 'stream-milestone-cockpit', size)
       const card = page.locator(`#prompt-${refundsPrompt.id}`)
       const text = card.getByRole('textbox', { name: `Answer ${refundsPrompt.id} in your words` })
       const send = card.getByRole('button', { name: 'Send', exact: true })
@@ -3316,11 +3326,12 @@ test.describe('prompt card', () => {
     })
 
     test(`stream shows a prompt as one line without buttons@${size.width}`, async ({ page, baseURL }, testInfo) => {
-      const { problems, posts } = await open(page, baseURL, 'stream-milestone-activity', size)
-      // The prompt.posted row of the stream (e2e/fixtures/overview.ts): the
+      const { problems, posts } = await open(page, baseURL, 'stream-milestone-cockpit', size)
+      // The prompt.posted row of the Cockpit's stream (e2e/fixtures/overview.ts): the
       // question from status, its state and a link to the card (R9).
-      await expect(page.locator(`[data-prompt="${refundsPrompt.id}"]`)).toHaveCount(0)
-      const row = page.locator('.ev [data-prompt-row]')
+      const stream = page.locator('main [data-cockpit-stream]')
+      await expect(stream.locator(`[data-prompt="${refundsPrompt.id}"]`)).toHaveCount(0)
+      const row = stream.locator('.ev [data-prompt-row]')
       await expect(row).toHaveCount(1)
       await expect(row.locator('.md-inline strong')).toHaveText('partial refund')
       await expect(row.getByText('open', { exact: true })).toBeVisible()
@@ -3402,7 +3413,7 @@ test.describe('note thread', () => {
     })
 
     test(`stream thread folds earlier notes@${size.width}`, async ({ page, baseURL }, testInfo) => {
-      const route = routes.find((r) => r.name === 'stream-milestone-activity')!
+      const route = routes.find((r) => r.name === 'stream-project-activity')!
       const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
       await page.setViewportSize(size)
       await page.clock.setFixedTime(now)
@@ -3651,17 +3662,19 @@ test.describe('milestone issues', () => {
   }
 })
 
-// The milestone's Decisions tab (MilestoneDecisions.vue, DecisionCard.vue,
+// A milestone's decisions (MilestoneDecisions.vue, DecisionCard.vue, on the
+// project's Decisions tab for ?milestone=14 since the milestone's tab became
+// the Cockpit panel's view, R14 of "Desk: the Cockpit";
 // R11, R12; e2e/fixtures/decisions.ts): cards grouped by issue, Chosen first,
 // agent text as markdown without HTML, a muted superseded card linking to
 // its successor. The search and the state chips live in the URL and survive
 // a reload; a #<id> link scrolls to its card and highlights it. On a phone
 // the cards stack without sideways scroll and taps are 44 px high.
 test.describe('milestone decisions', () => {
-  const path = '/projects/team-a/shop/milestones/14?tab=decisions'
+  const path = '/projects/team-a/shop?milestone=14&tab=decisions'
 
   async function open(page: Page, baseURL: string | undefined, size: { width: number; height: number }, at = path) {
-    const route = routes.find((r) => r.name === 'stream-milestone-decisions')!
+    const route = routes.find((r) => r.name === 'stream-project-decisions')!
     const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
     await page.setViewportSize(size)
     await page.clock.setFixedTime(now)
@@ -3686,8 +3699,8 @@ test.describe('milestone decisions', () => {
     test(`cards, search and state chips@${size.width}`, journeyAt(size.width), async ({ page, baseURL }, testInfo) => {
       const problems = await open(page, baseURL, size)
       const main = page.locator('main')
-      const cards = main.locator('[data-decision]')
-      const groups = main.locator('[data-decision-group]')
+      const cards = main.locator('[data-decisions] [data-decision]')
+      const groups = main.locator('[data-decisions] [data-decision-group]')
       await expect(groups).toHaveCount(2)
       await expect(groups.nth(0).locator('h2')).toContainText('Provider SDK 4 with refund support')
       await expect(groups.nth(0).locator('h2')).toContainText('#280')
@@ -3848,7 +3861,7 @@ test.describe('milestone decisions', () => {
     release()
     await expect(block.getByRole('status')).toContainText('Q9 opened for D280-2.')
     const go = block.getByRole('link', { name: 'Go to Q9' })
-    await expect(go).toHaveAttribute('href', '/projects/team-a/shop/milestones/14?tab=needs#prompt-Q9')
+    await expect(go).toHaveAttribute('href', '/projects/team-a/shop/milestones/14#prompt-Q9')
     // The other cards keep their own state.
     await expect(page.locator('main #D281-2 [role=status]')).toHaveCount(0)
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
@@ -3900,7 +3913,7 @@ test.describe('milestone decisions', () => {
   // GitLab link; the text without an action.
   test('command: the command to copy; no action for a non-owner@375', async ({ page, baseURL, context }) => {
     const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
-    const route = routes.find((r) => r.name === 'stream-milestone-decisions')!
+    const route = routes.find((r) => r.name === 'stream-project-decisions')!
     await page.setViewportSize(widths[0]!)
     await page.clock.setFixedTime(now)
     await watch(page, new URL(baseURL ?? '').origin, problems)
@@ -3930,7 +3943,7 @@ test.describe('milestone decisions', () => {
 
   test('empty and without the history database@1280', async ({ page, baseURL }) => {
     let body: unknown = { available: true, decisions: [] }
-    const route = routes.find((r) => r.name === 'stream-milestone-decisions')!
+    const route = routes.find((r) => r.name === 'stream-project-decisions')!
     const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
     await page.setViewportSize(widths[2]!)
     await page.clock.setFixedTime(now)
@@ -3982,15 +3995,15 @@ test.describe('milestone decisions', () => {
   }
   const gitlabNote = shopDecisions.find((d) => d.id === 'D280-2')!.url ?? ''
 
-  test('a queue decision ID opens the highlighted card@1280', async ({ page, baseURL }) => {
+  test('a queue decision ID opens the decision in the panel@1280', async ({ page, baseURL }) => {
     const problems = await openQueue(page, baseURL, true)
     const link = page.locator('main [data-queue-item]').getByRole('link', { name: 'D280-2' })
-    await expect(link).toHaveAttribute('href', '/projects/team-a/shop/milestones/14?tab=decisions#D280-2')
+    await expect(link).toHaveAttribute('href', '/projects/team-a/shop/milestones/14?panel=decisions#D280-2')
     await link.click()
-    await expect(page).toHaveURL(/\/milestones\/14\?tab=decisions#D280-2$/)
-    const card = page.locator('main #D280-2')
-    await expect(card).toHaveClass(/linked/)
-    await expect(card).toBeInViewport()
+    await expect(page).toHaveURL(/\/milestones\/14\?panel=decisions#D280-2$/)
+    const row = page.locator('[data-milestone-panel] #D280-2')
+    await expect(row).toContainText('Refund retries')
+    await expect(row).toBeInViewport()
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
   })
 
@@ -4200,7 +4213,7 @@ test.describe('milestone pilot', () => {
     const phone = size.width < 760
 
     test(`pause cards: reason opens on tap, Skip posts@${size.width}`, async ({ page, baseURL }, testInfo) => {
-      const route = routes.find((r) => r.name === 'stream-milestone-needs')!
+      const route = routes.find((r) => r.name === 'stream-milestone-cockpit')!
       const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
       await page.setViewportSize(size)
       await page.clock.setFixedTime(now)
@@ -4292,7 +4305,7 @@ test.describe('milestone retrospective', () => {
       const tabs = main.getByRole('navigation', { name: 'View' })
       await expect(tabs.getByRole('link', { name: 'Cockpit' })).toHaveAttribute('aria-current', 'page')
       await expect(tabs.getByRole('link', { name: 'Retrospective' })).toHaveCount(0)
-      await expect(tabs.getByRole('link', { name: /^Needs you/ })).toHaveCount(1)
+      await expect(tabs.getByRole('link', { name: /^Needs you/ })).toHaveCount(0)
       await expect(tabs.getByRole('link', { name: 'Pilot' })).toHaveCount(0)
       expect(problems.pageErrors).toEqual([])
     })
@@ -5345,10 +5358,10 @@ test.describe('screen reader flows', () => {
   const milestoneH1 = `'heading "${paymentsMilestone.title}" [level=1]'`
 
   for (const size of sizes) {
-    // Flow 1: answer a problem card in Needs you.
-    test(`flow 1: answer a problem card in Needs you@${size.width}`, async ({ page, baseURL }) => {
+    // Flow 1: answer a problem card pinned in the Cockpit (once Needs you).
+    test(`flow 1: answer a problem card in the Cockpit@${size.width}`, async ({ page, baseURL }) => {
       const posts: unknown[] = []
-      const problems = await load(page, baseURL, 'stream-milestone-needs', size, () =>
+      const problems = await load(page, baseURL, 'stream-milestone-cockpit', size, () =>
         page.route(
           (url) => url.pathname === chatPath(refundsPrompt.target.task),
           async (r) => {
@@ -5366,11 +5379,12 @@ test.describe('screen reader flows', () => {
             - listitem:
               - link /^Cockpit\\s*3$/
             - listitem:
-              - link /^Needs you$/
-        - heading "Problems 3" [level=2]
-        - navigation "Problems"
+              - link "Issues"
+        - region "Pinned":
+          - heading "Problems 3" [level=2]
+          - navigation "Problems"
       `)
-      await expect(page.locator('main').getByRole('link', { name: /^Needs you$/ })).toHaveAttribute('aria-current', 'page')
+      await expect(page.locator('main').getByRole('link', { name: /^Cockpit/ })).toHaveAttribute('aria-current', 'page')
 
       const card = page.locator(`#prompt-${refundsPrompt.id}`)
       const option = card.getByRole('button', { name: 'Split across captures', exact: true })
@@ -5407,7 +5421,7 @@ test.describe('screen reader flows', () => {
     })
 
     test(`flow 1: a refused answer is said and focus goes back to the options@${size.width}`, async ({ page, baseURL }) => {
-      const problems = await load(page, baseURL, 'stream-milestone-needs', size, () =>
+      const problems = await load(page, baseURL, 'stream-milestone-cockpit', size, () =>
         page.route(
           (url) => url.pathname === chatPath(refundsPrompt.target.task),
           (r) => (r.request().method() === 'POST' ? r.fulfill({ status: 403, json: { error: 'forbidden' } }) : r.fallback()),
@@ -5439,46 +5453,27 @@ test.describe('screen reader flows', () => {
             - listitem:
               - link "Issues"
             - listitem:
-              - link "Activity"
-            - listitem:
-              - link "Decisions"
-            - listitem:
-              - link "Board"
-            - listitem:
               - link "Metrics"
-            - listitem:
-              - link "Needs you"
             - listitem:
               - link "Retrospective"
       `)
       const view = page.locator('main').getByRole('navigation', { name: 'View' })
       await expect(view.getByRole('link', { name: 'Issues' })).toHaveAttribute('aria-current', 'page')
 
-      const decisions = view.getByRole('link', { name: 'Decisions' })
-      await tabTo(page, decisions)
-      await expect(focused(page)).toMatchAriaSnapshot('- link "Decisions"')
+      const metrics = view.getByRole('link', { name: 'Metrics' })
+      await tabTo(page, metrics)
+      await expect(focused(page)).toMatchAriaSnapshot('- link "Metrics"')
       await page.keyboard.press('Enter')
-      await expect(page).toHaveURL(/\?tab=decisions$/)
-      await expect(page.locator('main').getByText(milestoneReady.decisions).first()).toBeVisible()
+      await expect(page).toHaveURL(/\?tab=metrics$/)
+      await expect(page.locator('main').getByText(milestoneReady.metrics).first()).toBeVisible()
       // Focus stays on the tab, which is now the current one.
-      await expect(decisions).toBeFocused()
-      await expect(decisions).toHaveAttribute('aria-current', 'page')
+      await expect(metrics).toBeFocused()
+      await expect(metrics).toHaveAttribute('aria-current', 'page')
       await expect(view.getByRole('link', { name: 'Issues' })).not.toHaveAttribute('aria-current', 'page')
-      await expect(page.locator('main')).toMatchAriaSnapshot(`
-        - ${milestoneH1}
-        - navigation "View"
-        - tablist:
-          - tab "All" [selected]
-        - search:
-          - searchbox "Search decisions"
-        - heading /Provider SDK 4 with refund support/ [level=2]
-        - article:
-          - heading "Refund currency" [level=3]
-      `)
       await expect(page).toHaveTitle(`(${inbox.items.length}) ${paymentsMilestone.title} · Desk`)
       // The next Tab is the next tab, in visual order.
       await page.keyboard.press('Tab')
-      await expect(focused(page)).toMatchAriaSnapshot('- link "Board"')
+      await expect(focused(page)).toMatchAriaSnapshot('- link "Retrospective"')
       // Same page, same title: nothing is said (focus is on the tab).
       await page.waitForTimeout(500)
       expect(await said(page), 'announcements').toEqual([])

@@ -5,21 +5,20 @@
 // Project pages: Milestones (the default: queue, Finishing, the milestone
 // sections) | Activity (the event feed) | Decisions (R14) | Board | Metrics,
 // and Plans with the plans feature (R13). Milestone pages: Cockpit (the
-// default, R10 of "Desk: the Cockpit") | Issues | Activity | Decisions (R11, D546-P1) | Board | Metrics, then Needs you while
-// something needs you and Retrospective once one exists (Decision 7 of
-// "Desk: one header and one row of tabs on every page"); the pilot's
-// composer is at the bottom of the Cockpit (R12 of "Desk: the Cockpit"). The dashboard at /: Overview | Activity. The
-// task page (and the issue page with a live task): Overview | Chat | Live |
-// Logs | Calls (R10; Logs for the task's owners, run watchdog R8).
+// default, R10 of "Desk: the Cockpit") | Issues | Metrics, then
+// Retrospective once one exists (R14 of "Desk: the Cockpit"); the pilot's
+// composer is at the bottom of the Cockpit (R12). The dashboard at /:
+// Overview | Activity. The task page (and the issue page with a live task):
+// Overview | Chat | Live | Logs | Calls (R10; Logs for the task's owners,
+// run watchdog R8).
 // Renamed and merged tabs keep their old ids as aliases (tabAlias): Metrics
 // was named Spend (?tab=spend), Activity was named Stream (?tab=stream), a
-// task's Details went into its Overview (?tab=details), and a milestone's
-// Pilot tab, later a drawer, went into the Cockpit (?tab=pilot, see
-// withoutPilot).
-// BaseTab: the tabs project and milestone pages share.
+// task's Details went into its Overview (?tab=details). A milestone's
+// removed tabs open where their content moved (milestoneAlias).
+// BaseTab: a project page's Activity, Board and Metrics tabs.
 export type BaseTab = 'activity' | 'board' | 'metrics'
 export type StreamTab = 'milestones' | BaseTab | 'decisions' | 'plans'
-export type MilestoneTab = 'cockpit' | 'issues' | 'needs' | 'decisions' | 'retrospective' | BaseTab
+export type MilestoneTab = 'cockpit' | 'issues' | 'metrics' | 'retrospective'
 export type DashboardTab = 'overview' | 'activity'
 export type TaskTab = 'overview' | 'chat' | 'live' | 'logs' | 'calls'
 // A plan's tabs on phones: Chat, Decisions, Draft. Tablet and wider keep
@@ -69,38 +68,22 @@ export function projectTabsFor(plans: boolean): Tab<StreamTab>[] {
 }
 
 // milestoneTabs are all of a milestone's tabs, in their order: Cockpit
-// first, the default.
+// first, the default. Needs you is the Cockpit's pinned cards, Decisions a
+// view of the panel and the Board a view of the Issues tab (R14 of "Desk:
+// the Cockpit"; milestoneAlias).
 export const milestoneTabs: Tab<MilestoneTab>[] = [
   { id: 'cockpit', label: 'Cockpit' },
   { id: 'issues', label: 'Issues' },
-  streamBaseTabs[0]!,
-  { id: 'decisions', label: 'Decisions' },
-  ...streamBaseTabs.slice(1),
-  { id: 'needs', label: 'Needs you' },
+  { id: 'metrics', label: 'Metrics' },
   { id: 'retrospective', label: 'Retrospective' },
 ]
 
-// storedMilestoneTabs are a milestone's tabs once its tasks are gone: the
-// Board needs them. Cockpit and Decisions stay, they read the history
-// database.
-export const storedMilestoneTabs: Tab<MilestoneTab>[] = milestoneTabs.filter((t) => t.id !== 'board')
-
-// milestoneTabsFor are the tabs a milestone shows: no Board once its tasks
-// are gone, Needs you only while something needs you (opts.needs, the
-// count of needsOpen, D674-P1) or a problem thread is open or linked to
-// (opts.problem: the problem route, a #prompt- or #problem- hash), and no
-// Retrospective until one exists. Until the milestone has loaded (null)
-// Needs you and Retrospective stay hidden, so they do not show and vanish;
-// a link to one waits (Stream.vue reads ?tab= against milestoneTabs while
-// loading). The other tabs stay: their content arrives while the milestone
-// runs (D632-P3).
-export function milestoneTabsFor(
-  m: { stored?: boolean; retrospective?: unknown } | null,
-  opts: { needs?: number; problem?: boolean } = {},
-): Tab<MilestoneTab>[] {
-  const list = m?.stored ? storedMilestoneTabs : milestoneTabs
-  const needs = !!opts.problem || (!!m && (opts.needs ?? 0) > 0)
-  return list.filter((t) => (t.id !== 'needs' || needs) && (t.id !== 'retrospective' || !!m?.retrospective))
+// milestoneTabsFor are the tabs a milestone shows: no Retrospective until
+// one exists. Until the milestone has loaded (null) it stays hidden, so it
+// does not show and vanish; a link to it waits (Stream.vue reads ?tab=
+// against milestoneTabs while loading).
+export function milestoneTabsFor(m: { retrospective?: unknown } | null): Tab<MilestoneTab>[] {
+  return milestoneTabs.filter((t) => t.id !== 'retrospective' || !!m?.retrospective)
 }
 
 export const dashboardTabs: Tab<DashboardTab>[] = [
@@ -124,10 +107,22 @@ type QueryValue = string | null | (string | null)[] | undefined
 // working: the Spend tab became Metrics (R17 of the milestone "Desk: one
 // Metrics page"), the Stream tab became Activity (R4 of "Desk: one header
 // and one row of tabs on every page"), and a task's Details tab went into
-// its Overview (R6 of the same milestone), and a milestone's Pilot tab,
-// later the pilot drawer, went into the Cockpit's composer (R12 of "Desk:
-// the Cockpit").
-const tabAliases: Readonly<Record<string, string>> = { spend: 'metrics', stream: 'activity', details: 'overview', pilot: 'cockpit' }
+// its Overview (R6 of the same milestone). A milestone's removed tabs are
+// in milestoneTabAliases.
+const tabAliases: Readonly<Record<string, string>> = { spend: 'metrics', stream: 'activity', details: 'overview' }
+
+// milestoneTabAliases are where a milestone's removed tabs went (R14 of
+// "Desk: the Cockpit", D789-P2): Activity (once Stream), Needs you and the
+// Pilot tab into the Cockpit, Decisions into the Cockpit's panel, the Board
+// into the Issues tab's view switch.
+const milestoneTabAliases: Readonly<Record<string, { tab?: string; panel?: string; view?: string }>> = {
+  activity: {},
+  stream: {},
+  needs: {},
+  pilot: {},
+  decisions: { panel: 'decisions' },
+  board: { tab: 'issues', view: 'board' },
+}
 
 // tabAlias is the current id of a ?tab= value: the renamed tab's id for an
 // old one, the value itself otherwise.
@@ -151,13 +146,13 @@ export function tabFromQuery(v: QueryValue, tabs: readonly Tab<string>[] = strea
 }
 
 // milestoneTabFromRoute is a milestone page's tab: ?tab= as tabFromQuery
-// reads it, but a prompt or problem link (#prompt-Q<n>, #problem-<iid>)
-// without ?tab= opens the Cockpit, where the card is pinned (R10).
-export function milestoneTabFromRoute(v: QueryValue, hash: string, tabs: readonly Tab<string>[] = milestoneTabs): string {
-  const none = v == null || v === '' || (Array.isArray(v) && !v.length)
-  const card = hash.startsWith('#prompt-') || hash.startsWith('#problem-')
-  if (none && card && tabs.some((t) => t.id === 'cockpit')) return 'cockpit'
-  return tabFromQuery(v, tabs)
+// reads it, a removed tab's id as the tab its content moved to
+// (milestoneTabAliases), until Stream.vue has rewritten the URL. A prompt
+// or problem link (#prompt-Q<n>, #problem-<iid>) without ?tab= opens the
+// Cockpit, the default, where the card is pinned (R10).
+export function milestoneTabFromRoute(v: QueryValue, tabs: readonly Tab<string>[] = milestoneTabs): string {
+  const list = (Array.isArray(v) ? v : [v ?? null]).map((s) => (s != null && Object.hasOwn(milestoneTabAliases, s) ? (milestoneTabAliases[s]!.tab ?? 'cockpit') : s))
+  return tabFromQuery(list, tabs)
 }
 
 // taskTabFromRoute is a task's tab among those available: ?tab= as
@@ -169,16 +164,19 @@ export function taskTabFromRoute(v: QueryValue, hash: string, available: readonl
   return tabFromQuery(v, available)
 }
 
-// withoutPilot is the query of an old pilot link without its pilot
-// parameters, null when it has none: the pilot drawer (?pilot=1) and the
-// Pilot tab (?tab=pilot) are gone, the pilot's composer is at the bottom
-// of the Cockpit (R12 of "Desk: the Cockpit"), so both open the Cockpit
-// and Stream.vue drops them on load.
-export function withoutPilot<V>(query: Record<string, V>): Record<string, V> | null {
+// milestoneAlias is the query of an old milestone link at the place its
+// content moved to (milestoneTabAliases), null when it needs no change;
+// Stream.vue replaces the URL with it on load, so the address shows the
+// new place (D789-P1). The pilot drawer's ?pilot= goes too: the pilot's
+// composer is at the bottom of the Cockpit (R12 of "Desk: the Cockpit").
+// A repeated ?tab= is read by its first value; other parameters stay.
+export function milestoneAlias<V>(query: Record<string, V>): Record<string, V | string> | null {
   const { pilot: _, ...rest } = query
-  const tab = rest.tab === 'pilot'
-  if (tab) delete rest.tab
-  return tab || Object.hasOwn(query, 'pilot') ? rest : null
+  const tab: unknown = Array.isArray(rest.tab) ? rest.tab[0] : rest.tab
+  const to = typeof tab === 'string' && Object.hasOwn(milestoneTabAliases, tab) ? milestoneTabAliases[tab]! : null
+  if (!to) return Object.hasOwn(query, 'pilot') ? rest : null
+  const { tab: _old, ...next } = rest
+  return { ...next, ...to }
 }
 
 // A milestone's context panel (R13 of "Desk: the Cockpit"): its views,

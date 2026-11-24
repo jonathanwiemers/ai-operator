@@ -55,8 +55,8 @@ export type HandledRoute =
   | { name: 'problem'; params: { namespace: string; name: string; iid: string; problem: string } }
   | { name: 'stream-project'; params: { namespace: string; name: string }; hash?: string }
 
-// handledRoute opens the row's problem thread on the milestone's Needs you
-// tab; a
+// handledRoute opens the row's problem thread in the milestone's Cockpit
+// (pinned cards); a
 // row without a milestone opens the project page at the prompt.
 export function handledRoute(item: HandledItem): HandledRoute {
   const base = { namespace: item.namespace, name: item.project }

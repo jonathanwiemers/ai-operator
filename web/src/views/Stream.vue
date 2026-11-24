@@ -14,7 +14,6 @@ import Badge from '../components/Badge.vue'
 import { hasFeature } from '../api'
 import { getInbox, getMilestone, getProject, getProjectHistory, getStream, LoginRequiredError, NotFoundError } from '../client'
 import { setCrumbNames } from '../crumbNames'
-import Board from '../components/Board.vue'
 import ContextLayout from '../components/ContextLayout.vue'
 import ContextPanel from '../components/ContextPanel.vue'
 import CostChip from '../components/CostChip.vue'
@@ -48,8 +47,6 @@ import {
   heatLevel,
   heatSummary,
   kindsForFilter,
-  runtimeKindsForFilter,
-  runtimeStreamFilters,
   slashSuggestions,
   streamEventKey,
   streamFilters,
@@ -75,7 +72,7 @@ import {
   panelFromQuery,
   panelQuery,
   panelViews,
-  withoutPilot,
+  milestoneAlias,
   projectTabsFor,
   tabFromQuery,
   tabQuery,
@@ -100,11 +97,11 @@ const everything = computed(() => !props.namespace || !props.name)
 const milestoneIID = computed(() => (props.iid ? Number(props.iid) : undefined))
 
 // tab: Milestones (the default), Activity, Decisions, Board, Metrics or Plans (feature plans) on projects, Cockpit (the default),
-// Issues, Activity, Decisions, Board, Metrics, Needs you or Retrospective on milestones, kept in ?tab= so it can be
+// Issues, Metrics or Retrospective on milestones, kept in ?tab= so it can be
 // linked to (a #prompt-Q<n> link without it opens the Cockpit); Everything has no
-// tabs. A stored milestone has no tasks, so no Board, a milestone shows Needs
-// you only while something needs you and Retrospective only once it has one
-// (milestoneTabsFor). The Cockpit tab's badge is the count of the Open
+// tabs. A milestone shows Retrospective only once it has one
+// (milestoneTabsFor); its removed tabs' links open where their content moved
+// (milestoneAlias). The Cockpit tab's badge is the count of the Open
 // items (D674-P2). The pilot's composer is at the bottom of the Cockpit.
 const route = useRoute()
 // pageMilestone: the loaded milestone, once it is the route's.
@@ -113,24 +110,21 @@ const needsCount = computed(() => (pageMilestone.value ? needsOpen(pageMilestone
 const tabs = computed(() => {
   if (everything.value) return []
   if (!milestoneIID.value) return projectTabsFor(hasFeature('plans'))
-  // A problem thread, or a #prompt- or #problem- link to one (MilestoneNeeds
-  // redirects it to the thread), keeps the Needs you tab, also once handled.
-  const problem = !!props.problem || /^#(prompt|problem)-/.test(route.hash)
-  return milestoneTabsFor(pageMilestone.value, { needs: needsCount.value, problem })
+  return milestoneTabsFor(pageMilestone.value)
 })
 // The header's Needs you count is the badge of the Cockpit tab: its link
 // opens the Cockpit, whose top is the pinned cards it counts (R10, R14 of
 // "Desk: the Cockpit").
 const tabBadges = computed(() => (milestoneIID.value && needsCount.value ? { cockpit: needsCount.value } : undefined))
 // A milestone's tab is read against all its tabs while it loads, so a
-// ?tab=needs or ?tab=retrospective link waits for it; once loaded, a hidden
-// tab falls back to the first one, the Cockpit (Decision 7).
+// ?tab=retrospective link waits for it; once loaded, a hidden tab falls
+// back to the first one, the Cockpit (Decision 7).
 const tab = computed((): string => {
   if (everything.value) return 'activity'
   if (props.problem) return 'cockpit'
   if (milestoneIID.value) {
     const loaded = milestone.value?.iid === milestoneIID.value || milestoneFailed.value
-    return milestoneTabFromRoute(route.query.tab, route.hash, loaded ? tabs.value : milestoneTabs)
+    return milestoneTabFromRoute(route.query.tab, loaded ? tabs.value : milestoneTabs)
   }
   return tabFromQuery(route.query.tab, tabs.value)
 })
@@ -157,8 +151,6 @@ const decisionsMilestoneItems = computed(() => {
 function setDecisionsMilestone(iid: number) {
   void router.replace({ query: decisionsQuery(route.query, { milestone: iid }) })
 }
-// A milestone's Activity tab has the runtime kinds only; the Cockpit all.
-const filters = computed(() => (milestoneIID.value ? runtimeStreamFilters : streamFilters))
 const q = ref('')
 const qDraft = ref('')
 const beforeJump = ref<string | undefined>()
@@ -232,7 +224,9 @@ const panelOpener = ref<HTMLElement | null>(null)
 const panelView = computed(() => panelFromQuery(route.query.panel))
 const panelLabel = computed(() => panelViews.find((v) => v.id === panelView.value)!.label)
 function setPanel(view: PanelView) {
-  if (view !== panelView.value) void router.replace({ query: panelQuery(route.query, view) })
+  if (view === panelView.value) return
+  panelBySwitch = true
+  void router.replace({ query: panelQuery(route.query, view) })
 }
 function openContext(e: MouseEvent, view?: PanelView) {
   panelOpener.value = e.currentTarget as HTMLElement
@@ -240,6 +234,24 @@ function openContext(e: MouseEvent, view?: PanelView) {
   contextOpen.value = true
 }
 
+// A link that names a panel view (?panel=, also the aliased
+// ?tab=decisions, a decision link or the tracking issue's) opens the sheet
+// where the panel is one, so the view shows; the view switch inside the
+// sheet (setPanel) and closing the sheet do not reopen it.
+const panelColumn = computed(() => !milestoneIID.value || tab.value !== 'issues')
+let panelBySwitch = false
+watch(
+  () => [milestoneIID.value, route.query.panel] as const,
+  ([iid, panel]) => {
+    if (panelBySwitch) return void (panelBySwitch = false)
+    if (!iid || !panel || route.query.tab === 'decisions') return
+    if (!panelColumn.value || window.matchMedia('(max-width: 1179.98px)').matches) {
+      panelOpener.value = null
+      contextOpen.value = true
+    }
+  },
+  { immediate: true },
+)
 const canSteer = computed(() => !!milestone.value?.permissions?.steer)
 
 // paused: the loaded milestone's paused autopilot, pinned above the composer
@@ -263,25 +275,17 @@ const pauseProps = computed(() => {
     prompt: pausePrompt(m.autopilot?.pauseKind, m.prompts),
     namespace: props.namespace,
     projectName: props.name,
-    to: { name: 'stream-milestone', params: { namespace: props.namespace, name: props.name, iid: String(m.iid) }, query: { tab: 'needs' } },
+    to: { name: 'stream-milestone', params: { namespace: props.namespace, name: props.name, iid: String(m.iid) } },
   }
 })
 
-// holdProps: one compact card per held issue (Activity tab; the Issues tab has
-// the Held lane, the Needs you tab the full cards), also while the milestone runs.
+// holdProps: one compact card per held issue (a project's Activity tab; the Issues tab has
+// the Held lane, the Cockpit the full cards), also while the milestone runs.
 const holdProps = computed(() => {
   const m = milestone.value
   if (everything.value || !m || m.stored || !props.namespace || !props.name) return []
-  const to = { name: 'stream-milestone', params: { namespace: props.namespace, name: props.name, iid: String(m.iid) }, query: { tab: 'needs' } }
+  const to = { name: 'stream-milestone', params: { namespace: props.namespace, name: props.name, iid: String(m.iid) } }
   return (m.autopilot?.holds ?? []).map((h) => ({ kind: h.kind, reason: h.reason, issue: h.iid, hold: true, milestoneTitle: m.title, exits: h.exits, to }))
-})
-
-// milestoneTasks: the Board of a milestone stream, as the milestone page
-// shows it (the project's copy until the milestone loaded).
-const milestoneTasks = computed(() => {
-  const m = milestone.value
-  if (m && m.iid === milestoneIID.value) return m.tasks
-  return project.value?.milestones.find((x) => x.iid === milestoneIID.value)?.tasks ?? []
 })
 
 // The stream as a chat (DeskChat): oldest first, new events at the bottom.
@@ -321,7 +325,7 @@ function streamQuery(extra: Record<string, string | undefined> = {}): URLSearchP
   if (milestoneIID.value) params.set('milestone', String(milestoneIID.value))
   // Chat kinds collide with history ids: only with the chat feature, and
   // only when "all" names them explicitly (other chips unchanged).
-  const kinds = milestoneIID.value ? runtimeKindsForFilter(filter.value) : kindsForFilter(filter.value, hasFeature('chat'))
+  const kinds = kindsForFilter(filter.value, hasFeature('chat'))
   if (kinds) params.set('kinds', kinds.join(','))
   if (q.value.trim()) params.set('q', q.value.trim())
   for (const [k, v] of Object.entries(extra)) {
@@ -480,13 +484,13 @@ const links = computed(() => {
   return [{ label: 'Milestone in GitLab', href: m?.webURL }]
 })
 
-// An old link to the pilot drawer (?pilot=1) or the Pilot tab (?tab=pilot)
-// opens the Cockpit, whose bottom is the composer to the pilot (R12): the
-// parameters go on load.
+// An old link to a removed milestone tab (?tab=activity, needs, pilot,
+// decisions, board) or to the pilot drawer (?pilot=1) opens where its
+// content moved (milestoneAlias, R12 and R14): the URL is replaced on load.
 watch(
   () => [milestoneIID.value, route.query] as const,
   ([iid, query]) => {
-    const next = iid ? withoutPilot(query) : null
+    const next = iid ? milestoneAlias(query) : null
     if (next) void router.replace({ query: next, hash: route.hash })
   },
   { immediate: true },
@@ -523,9 +527,8 @@ watch(
   () => [props.namespace, props.name, props.iid] as const,
   () => {
     beforeJump.value = undefined
-    if (!filters.value.some((f) => f.id === filter.value)) filter.value = 'all'
     void loadProject()
-    void loadInitial()
+    if (!milestoneIID.value) void loadInitial()
     void loadHistory()
   },
   { immediate: true },
@@ -554,7 +557,7 @@ watch(
   <ContextLayout
     v-else
     v-model:open="contextOpen"
-    :column="!milestoneIID || !['issues', 'activity'].includes(tab)"
+    :column="panelColumn"
     :title="milestoneIID ? panelLabel : 'Context'"
     :description="
       milestoneIID ? 'The milestone\'s issues, the project\'s queue and the milestone\'s decisions' : 'Needs you, the milestone\'s queue and companions, the last 30 days'
@@ -639,7 +642,7 @@ watch(
           <template #left>
             <UTabs
               :model-value="filter"
-              :items="filters.map((f) => ({ label: f.label, value: f.id }))"
+              :items="streamFilters.map((f) => ({ label: f.label, value: f.id }))"
               variant="pill"
               size="sm"
               :content="false"
@@ -783,7 +786,7 @@ watch(
         </Cockpit>
       </div>
       <div v-else-if="tab === 'issues'" class="scroll board">
-        <!-- The full pause card is on the Needs you tab. -->
+        <!-- The full pause card is pinned in the Cockpit. -->
         <PauseCardCompact v-if="pauseProps" class="pause" v-bind="pauseProps" />
         <MilestoneIssues
           v-if="namespace && name && milestone && milestone.iid === milestoneIID"
@@ -795,22 +798,9 @@ watch(
         <UAlert v-else-if="milestoneFailed" :color="alertColor('danger')" variant="subtle" class="mt-3" description="The milestone could not be loaded." />
         <div v-else class="empty">Loading…</div>
       </div>
-      <div v-else-if="tab === 'needs'" class="scroll board">
-        <MilestoneNeeds
-          v-if="namespace && name && milestone && milestone.iid === milestoneIID"
-          :namespace="namespace"
-          :name="name"
-          :milestone="milestone"
-          :problem="problem"
-        />
-        <UAlert v-else-if="milestoneFailed" :color="alertColor('danger')" variant="subtle" class="mt-3" description="The milestone could not be loaded." />
-        <div v-else class="empty">Loading…</div>
-      </div>
       <div v-else-if="tab === 'decisions'" class="scroll board">
-        <!-- From the history database, so also on stored milestones. -->
-        <MilestoneDecisions v-if="namespace && name && milestoneIID" :namespace="namespace" :name="name" :milestone="milestoneIID" />
         <MilestoneDecisions
-          v-else-if="namespace && name"
+          v-if="namespace && name"
           :namespace="namespace"
           :name="name"
           :milestone="decisionsMilestone"
@@ -857,8 +847,7 @@ watch(
       </div>
       <div v-else class="scroll board">
         <template v-if="namespace && name">
-          <Board v-if="milestoneIID" :tasks="milestoneTasks" />
-          <ProjectBoards v-else-if="project" :namespace="namespace" :name="name" :project="project" />
+          <ProjectBoards v-if="project" :namespace="namespace" :name="name" :project="project" />
         </template>
         <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
         <div v-if="!project && !error" class="empty">Loading…</div>

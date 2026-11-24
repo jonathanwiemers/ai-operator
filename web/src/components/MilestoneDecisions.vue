@@ -80,7 +80,7 @@ function setState(v: string | number) {
 
 function milestoneTo(g: DecisionGroup) {
   const { namespace, name } = props
-  return { name: 'stream-milestone' as const, params: { namespace, name, iid: String(g.milestoneIID) }, query: { tab: 'decisions' } }
+  return { name: 'stream-milestone' as const, params: { namespace, name, iid: String(g.milestoneIID) }, query: { panel: 'decisions' } }
 }
 
 function issueTo(g: DecisionGroup) {

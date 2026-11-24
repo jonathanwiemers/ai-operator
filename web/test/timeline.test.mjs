@@ -251,6 +251,13 @@ test('issuesView: Timeline by default with history, Lanes without', () => {
   assert.equal(issuesView(undefined, false), 'lanes')
 })
 
+test('issuesView: the Board by ?view=board while the milestone has its tasks', () => {
+  assert.equal(issuesView('board', true, true), 'board')
+  assert.equal(issuesView('board', false, true), 'board')
+  assert.equal(issuesView('board', true), 'timeline')
+  assert.equal(issuesView('board', false, false), 'lanes')
+})
+
 test('overviewGroups: one row per project with bars, linked to the project', () => {
   const rows = [
     row({ issueIID: 1, deskURL: '/i/1', segments: [{ kind: 'running', start: at(60), end: at(120) }] }),

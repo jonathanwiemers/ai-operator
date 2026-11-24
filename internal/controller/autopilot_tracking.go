@@ -264,7 +264,7 @@ func (a *autopilot) renderTracking() string {
 	b.WriteString("\n### Decisions\n\n")
 	if a.r != nil {
 		if u := desklink.Milestone(a.r.DeskURL, a.st.Namespace, a.st.Spec.ProjectRef, a.st.Spec.Milestone.IID); u != "" {
-			fmt.Fprintf(&b, "[All decisions on the Desk](%s?tab=decisions)\n\n", u)
+			fmt.Fprintf(&b, "[All decisions on the Desk](%s?panel=decisions)\n\n", u)
 		}
 	}
 	if len(decisions) == 0 {

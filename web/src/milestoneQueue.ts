@@ -48,12 +48,12 @@ export function canRevisit(d: DecisionRef, permissions?: Pick<MilestonePermissio
 }
 
 // decisionHref is where a decision ID in the queue links (R14): with the
-// history feature, the Decisions tab of its milestone's Desk page
-// (milestonePath) at the card, "<path>?tab=decisions#<id>"; without it, the
+// history feature, the Decisions view of its milestone Cockpit's panel
+// (milestonePath) at the decision, "<path>?panel=decisions#<id>"; without it, the
 // GitLab comment (d.url, "" when there is none).
 export function decisionHref(d: Pick<DecisionRef, 'id' | 'url'>, milestonePath: string, history: boolean): string {
   const id = d.id.trim()
-  if (history && id && milestonePath) return `${milestonePath}?tab=decisions#${encodeURIComponent(id)}`
+  if (history && id && milestonePath) return `${milestonePath}?panel=decisions#${encodeURIComponent(id)}`
   return d.url ?? ''
 }
 
@@ -88,10 +88,10 @@ export function decisionGroups(rows: readonly Pick<QueueRow, 'decisions' | 'revi
 }
 
 // decisionsTabHref is where the context panel's decision lines link: the
-// milestone's Decisions tab with the history feature, which it reads; ''
+// Decisions view of the milestone's panel with the history feature, which it reads; ''
 // without (the lines are text).
 export function decisionsTabHref(milestonePath: string, history: boolean): string {
-  return history && milestonePath ? `${milestonePath}?tab=decisions` : ''
+  return history && milestonePath ? `${milestonePath}?panel=decisions` : ''
 }
 
 // revisitPromptID finds the prompt id ("Q7") the operator's answer to a

@@ -149,9 +149,9 @@ commands. See [Security](security.md#who-may-command).
 
 ### Needs you
 
-A milestone's tab in the [Desk](#desk) for what waits for its owners: the
+What waits for a milestone's owners, pinned on top of its Cockpit in the [Desk](#desk) (once a tab of its own): the
 open and resolved [problems](#problem-thread), each with its thread, and
-the pilot's proposals. See [The Desk](../guides/desk.md#needs-you).
+the pilot's proposals. See [The Desk](../guides/desk.md#the-pinned-cards).
 
 ### Pause
 
@@ -186,8 +186,8 @@ The agent that turns a milestone [spec](#spec) into
 
 ### Problem thread
 
-One stuck issue, or the milestone's own pause, on a milestone's *Needs you*
-tab, as a chat: its status, the cause and the
+One stuck issue, or the milestone's own pause, pinned in a milestone's *Cockpit*
+as a chat: its status, the cause and the
 [problem facts](#problem-facts) on top, everything that happened oldest
 first, and one place to act at the bottom, with the pilot chat. See
 [The problem thread](../guides/pilot.md#the-problem-thread).

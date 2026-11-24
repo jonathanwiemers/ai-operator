@@ -7,6 +7,7 @@ import { darkQuery, themeController, themeInjectionKey, type ThemeStorage } from
 import { costsRedirect } from './costsRedirect'
 import type { RouteName } from './routeNames'
 import { listenForSheets } from './ui/useBackClose'
+import { pinnedAnchor } from './inboxRoute'
 import './style.css'
 
 // Reading window.localStorage itself throws where storage is blocked; the
@@ -104,7 +105,7 @@ const router = createRouter({
   // hash names scrolls itself into view (MilestoneDecisions.vue).
   scrollBehavior: (to, from, saved) => {
     if (saved) return saved
-    if (to.hash.startsWith('#prompt-')) return { el: to.hash, top: 12 }
+    if (to.hash.startsWith('#prompt-') || to.hash === pinnedAnchor) return { el: to.hash, top: 12 }
     if (to.hash && to.hash !== from.hash && to.fullPath.split('#')[0] === from.fullPath.split('#')[0]) return false
     return { top: 0 }
   },

@@ -43,10 +43,10 @@ A new run that starts before you answer, for example from a comment or a
 retry, closes the open questions. The agent then reads your comments
 instead.
 
-### Answer on Needs you
+### Answer in the Cockpit
 
 The pilot's and the operator's questions about a milestone wait on the
-milestone's [*Needs you* tab](desk.md#needs-you), in the issue's
+milestone's [pinned cards in the *Cockpit*](desk.md#the-pinned-cards), in the issue's
 [problem thread](pilot.md#the-problem-thread). The open question's options
 sit at the bottom of the thread. Click an option or write your answer, then
 send it. Your answer shows in the thread at once, *sending* and then *sent*;

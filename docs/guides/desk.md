@@ -159,13 +159,13 @@ count also shows in the browser tab's title, as `(3) Desk`:
 - issues that spent 80 % of their own [budget](../concepts/glossary.md#budget);
 - a status write of the pilot that the cluster refused, for a day.
 
-A row opens where you act: a milestone's *Needs you* tab, or the task page.
+A row opens where you act: the milestone's *Cockpit* with its card open and in view, or the task page.
 
 The *Open | Handled* switch on top changes the list. *Handled* shows up to
 50 rows that closed in the last 7 days, newest first: the prompts, with who
 closed them and why, and the actions the pilot ran on its own or after an
-owner accepted them. A row opens the issue's problem on the milestone's
-*Needs you* tab; `/inbox?view=handled` opens *Handled* directly.
+owner accepted them. A row opens its card in the milestone's *Cockpit*;
+`/inbox?view=handled` opens *Handled* directly.
 
 ### Browser notifications
 
@@ -223,9 +223,24 @@ tablet the *Context* button opens it.
 
 A milestone page opens on *Cockpit*, which counts what waits for you: problems, proposals and questions pinned on top, answered there,
 then the events, newest at the bottom, with runs, CI and reviews folded into groups (open one, or *Expand all*) and a search.
-Then come *Issues | Activity | Decisions | Board | Metrics*, *Needs you* while the milestone is paused or a problem is open, and
-*Retrospective* once written. The tab is in the address, so you can link to it. The Cockpit ends with the [message box to the pilot](#message-the-pilot).
-A panel on the right switches between *Issues* (the issues by state: running, waiting, next, merged, skipped; *Open table* opens the Issues tab), *Queue* (the project's milestones, this one marked) and *Decisions* (superseded ones folded). Below 1180 px, and on the Issues and Activity tabs, the *Issues*, *Queue* and *Decisions* buttons in the header open it from the right; Escape closes it. The open view is in the address (`?panel=queue`).
+Then come *Issues* and *Metrics*, and *Retrospective* once written. The tab is in the address, so you can link to it. The Cockpit ends with the [message box to the pilot](#message-the-pilot).
+A panel on the right switches between *Issues* (the issues by state: running, waiting, next, merged, skipped; *Open table* opens the Issues tab), *Queue* (the project's milestones, this one marked) and *Decisions* (superseded ones folded). Below 1180 px, and on the Issues tab, the *Issues*, *Queue* and *Decisions* buttons in the header open it from the right; Escape closes it. The open view is in the address (`?panel=queue`).
+
+Old links to the former tabs open where their content is now, and the address changes to match: `?tab=activity`, `stream`, `needs` and `pilot` open *Cockpit*, `?tab=decisions` the panel's *Decisions* (`?panel=decisions`), and `?tab=board` the *Board* view of *Issues* (`?tab=issues&view=board`).
+
+### The pinned cards
+
+![The Cockpit's pinned cards with the pause card, its ways out and an open question](../assets/screenshots/milestone-pilot.webp)
+
+What waits for the milestone's owners, on top of the Cockpit; the *Cockpit* tab's count says how many. On the left are the
+[problems](../concepts/glossary.md#problem-thread), one per stuck issue and
+one for the milestone (a budget pause), open first, each with its status
+(*Waiting for you*, *Operator acting*, *Pilot looking*, *Resolved*), time and
+cause. Under them are the pilot's proposals with *Accept* and *Reject*, and
+the pause totals. Click a problem to open its **thread** beside the list
+(below on a phone): what happened, oldest first, and one place to act at the
+bottom ([The problem thread](pilot.md#the-problem-thread)). Each problem has
+its own address; `#prompt-Q3` or `#problem-280` links open it.
 
 ### Issues
 
@@ -239,44 +254,31 @@ Between the issues sit the releases, at the point they were decided:
 *Release after #N*, *Releasing…* with its pipeline, or the version with a
 link to the GitLab release.
 
-Below, *Timeline* shows when each issue ran, waited and was held (see
-[The issue timeline](milestone-order-and-timeline.md#the-issue-timeline)).
-*Lanes* groups the issues: *Running*, *Landing*, *Ready to land*, *Waiting*, *Held* and *Done*, with the
-[waves](../concepts/glossary.md#wave) of the plan. Each item shows its merge
-request, task and [decisions](../concepts/glossary.md#decision). Owners set
-how many issues run at a time here. A milestone with companion merge
-requests lists them under *Companions*.
+Below, a switch picks the view, kept in the address (`?view=`):
+
+- *Timeline* shows when each issue ran, waited and was held (see
+  [The issue timeline](milestone-order-and-timeline.md#the-issue-timeline)).
+- *Lanes* groups the issues: *Running*, *Landing*, *Ready to land*, *Waiting*, *Held* and *Done*, with the
+  [waves](../concepts/glossary.md#wave) of the plan. Each item shows its merge
+  request, task and [decisions](../concepts/glossary.md#decision). Owners set
+  how many issues run at a time here.
+- *Board* shows the milestone's tasks in columns: *In progress*, *Needs you*, *CI* and *Review*.
+
+A milestone with companion merge requests lists them under *Companions*.
 
 Click a row to open the **issue page**: the same figures, the task while one
 works on the issue, and the issue's own stream.
 
-### Needs you
-
-![Needs you tab with the pause card, its ways out and an open question](../assets/screenshots/milestone-pilot.webp)
-
-What waits for the milestone's owners, as on the Cockpit. A `?tab=needs` link opens *Cockpit*
-when nothing waits. On the left are the
-[problems](../concepts/glossary.md#problem-thread), one per stuck issue and
-one for the milestone (a budget pause), open first, each with its status
-(*Waiting for you*, *Operator acting*, *Pilot looking*, *Resolved*), time and
-cause. Under them are the pilot's proposals with *Accept* and *Reject*, and
-the pause totals. Click a problem to open its **thread** beside the list
-(below on a phone): what happened, oldest first, and one place to act at the
-bottom ([The problem thread](pilot.md#the-problem-thread)). Each problem has
-its own address; old `#prompt-Q3` or `#problem-280` links open it.
-
 ### Decisions
 
-Every [decision](../concepts/glossary.md#decision) of the milestone's
-issues, grouped by issue. A card shows the question, the option chosen
-(*Chosen*), the alternatives, why, the run and a link to the comment on
-GitLab. The tab needs the history database. A replaced decision is muted and links
-to the one that replaced it. Search the ID or text, or pick *Active* or
-*Superseded*. A link ending in `#D42-3` opens that card.
+The panel's *Decisions* lists every [decision](../concepts/glossary.md#decision) of the milestone's
+issues, with the option chosen; replaced ones are folded. It needs the history database. A link ending in `#D42-3` opens that line.
+The project's *Decisions* tab, with the milestone picked, shows the full cards: the
+question, the option chosen (*Chosen*), the alternatives, why, the run and a link to the comment on
+GitLab, a search, and *Active* or *Superseded*.
 
 A revisited decision shows its chain: who asked, what for, the comment or
-follow-up issue, and the decision that replaced it. A line says what a
-revisit does. Owners get *Revisit* (opens the prompt in *Needs you*),
+follow-up issue, and the decision that replaced it. Owners get *Revisit* (opens the prompt in the milestone's *Cockpit*),
 *Comment* (on an open issue, in your GitLab name) or a command to copy.
 See [Read and revisit decisions](decisions.md).
 
@@ -296,11 +298,9 @@ the cost drivers (the issues and roles that cost most), and the leftovers
 with their state. Owners turn leftovers into a follow-up milestone here, see
 [The retrospective](pilot.md#the-retrospective).
 
-### Activity, Board and Metrics
+### Metrics
 
-*Activity* is the runtime (runs, pushes, CI, reviews, merges), filtered by
-*All*, *Runs*, *CI & review* and *Merged*; the pilot's events are in the
-drawer. *Board* is the milestone's board, *Metrics* its cost and
+*Metrics* is the milestone's cost and
 [lines](budgets-and-spend.md#lines-of-code); `?tab=spend` still opens it.
 
 ### Done milestones

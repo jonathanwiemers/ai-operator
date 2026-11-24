@@ -10,7 +10,7 @@ place where the decisions are written.
 The refund issue #42 of the milestone *Payments* is merged. You want to
 know which currency the agent picked for refunds:
 
-1. Open the milestone in the Desk and click the *Decisions* tab.
+1. Open the project in the Desk, click the *Decisions* tab and pick *Payments* in the *Milestone* select.
 2. Type `currency` in the search box. One card is left:
 
    > **How refunds are booked** `D42-3` *Implementation*
@@ -28,22 +28,23 @@ know which currency the agent picked for refunds:
    the planned issues. D42-3 is marked superseded when the follow-up posts
    its new decision."
 4. Click *Revisit*, then pick *Switch to The order currency* in the prompt
-   on the *Needs you* tab.
+   pinned in the milestone's *Cockpit*.
 
 The operator creates the follow-up #57. Once its agent posts D57-1, the card
 of D42-3 is muted, reads *Superseded by D57-1* and shows the steps in
 between.
 
-## The two tabs
+## Where decisions show
 
-- **A milestone's *Decisions* tab**, after *Needs you*: every decision of
-  the milestone's issues, from the [planner](../concepts/glossary.md#planner)
-  and from the implementers, open issues included. It is there on a done
-  milestone too, as long as its record is kept.
-- **A project's *Decisions* tab**, after *Activity*: the decisions of all its
-  milestones, newest milestone first. Each issue's header names its
-  milestone. Pick one in the *Milestone* select to narrow the list; *All
-  milestones* shows them all again.
+- **A project's *Decisions* tab**: the decisions of all its milestones,
+  newest milestone first, from the [planner](../concepts/glossary.md#planner)
+  and from the implementers, open issues included. Each issue's header names its
+  milestone. Pick one in the *Milestone* select to narrow the list to it; *All
+  milestones* shows them all again. A done milestone's decisions stay as long
+  as its record is kept.
+- **A milestone's panel**: *Decisions* beside its *Cockpit* lists the
+  milestone's decisions with the option chosen, replaced ones folded.
+  `?panel=decisions` opens it; old `?tab=decisions` links open it too.
 
 The cards are grouped by issue, in the order of the plan. The issue's title
 opens its issue page.
@@ -79,8 +80,8 @@ A replaced decision is muted and reads *Superseded by D57-1*; the ID opens
 that card. The text is the agent's text, shown as markdown without HTML.
 On a phone the card stacks, so nothing scrolls sideways.
 
-A link that ends in `#D42-3` opens the tab at that card and highlights it
-for a moment.
+A link that ends in `#D42-3` opens the project tab at that card and highlights it
+for a moment; on a milestone page it shows that line in the panel.
 
 ## The chain of a revisit
 
@@ -106,7 +107,7 @@ picks one of four ways for each decision:
 | anything else | the command to copy and *Comment on GitLab* | "Comment this command on #42 or the tracking issue." |
 | already replaced, or a follow-up is open for it | nothing | "Already replaced by D57-1." or "#57 already revisits D42-3; comment there." |
 
-- *Revisit* opens the revisit prompt in the milestone's *Needs you* tab:
+- *Revisit* opens the revisit prompt, pinned in the milestone's *Cockpit*:
   *Keep …*, one *Switch to …* per alternative, and a text box. See
   [Revisit a decision](steer-from-the-desk.md#revisit-a-decision).
 - *Comment* posts `/agent revisit D42-3 <your text>` on the issue, in your
@@ -122,9 +123,9 @@ see the line without them.
 ## Links to a decision
 
 - A decision ID in the milestone's queue, on the *Issues* tab and in the
-  project's context panel, opens the *Decisions* tab at its card.
-- The tracking issue's *Decisions* list links to the milestone's
-  *Decisions* tab.
+  project's context panel, opens the milestone panel's *Decisions* at its line.
+- The tracking issue's *Decisions* list links to the milestone panel's
+  *Decisions*.
 - Each card keeps *on GitLab* for the comment itself.
 
 ## When the tab is empty

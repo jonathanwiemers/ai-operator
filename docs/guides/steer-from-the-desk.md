@@ -138,10 +138,10 @@ nothing" option.
 You find prompts:
 
 - in the Inbox, with a browser notification if you turned them on;
-- on the milestone's *Needs you* tab, at the bottom of their issue's
+- pinned on top of the milestone's *Cockpit*, at the bottom of their issue's
   [problem thread](pilot.md#the-problem-thread); closed ones stay in the
   thread's history;
-- in the *Activity* feed, as a short card with the recommended option;
+- in a project's *Activity* feed, as a short card with the recommended option;
 - on a task page, above the chat, for an agent's questions;
 - on the pause card of a red default branch or a spent budget.
 
@@ -188,12 +188,12 @@ card has a text box and *Comment*, or write
 ## Pause and hold cards
 
 When autopilot [pauses](../concepts/glossary.md#pause), the milestone's
-*Needs you* tab shows the pause card: why it paused, the paused issue with its
+*Cockpit* pins the pause card on top: why it paused, the paused issue with its
 merge request and pushed head, and *Way out*: first what ends the pause by
 itself, with its state, then what you can do. Each
 [hold](../concepts/glossary.md#hold) of a single issue has a card of its own
-with *Resume*. The Inbox, the *Activity* feed and the *Issues* tab show a short card
-with *Open*, which leads to *Needs you*.
+with *Resume*. The Inbox, a project's *Activity* feed and the *Issues* tab show a short card
+with *Open*, which leads to the *Cockpit*.
 
 The buttons depend on the kind of pause:
 

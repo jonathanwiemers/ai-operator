@@ -6,6 +6,7 @@ import { computed, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { hasFeature } from '../api'
 import Badge from './Badge.vue'
+import Board from './Board.vue'
 import CompanionsList from './CompanionsList.vue'
 import ExtLink from './ExtLink.vue'
 import QueueList from './QueueList.vue'
@@ -54,22 +55,26 @@ const progress = computed(() => issueProgress(props.milestone.issues ?? []))
 const pct = computed(() => progressPct({ progress: progress.value }))
 const waiting = computed(() => waitingForTurn(props.milestone.autopilot?.queuedBehind, props.milestones))
 
-// Below the table: the Timeline or the Lanes (Decision 15). With the
-// history feature a pill switch in the section's toolbar picks one, kept
-// in ?view= (Timeline by default); without it only Lanes, with no switch.
-// The Timeline loads in its own chunk.
+// Below the table: the Timeline, the Lanes or the Board (Decision 15; the
+// Board since R14 of "Desk: the Cockpit"), picked by a pill switch in the
+// section's toolbar and kept in ?view= (Timeline by default). The Timeline
+// needs the history feature, the Board the milestone's tasks (not once
+// stored); with one view left there is no switch. The Timeline loads in its
+// own chunk.
 const MilestoneTimeline = defineAsyncComponent(() => import('./MilestoneTimeline.vue'))
 const route = useRoute()
 const router = useRouter()
 const history = computed(() => hasFeature('history'))
-const view = computed(() => issuesView(route.query.view, history.value))
-const viewItems = [
-  { value: 'timeline', label: 'Timeline' },
+const board = computed(() => !props.milestone.stored)
+const view = computed(() => issuesView(route.query.view, history.value, board.value))
+const viewItems = computed(() => [
+  ...(history.value ? [{ value: 'timeline', label: 'Timeline' }] : []),
   { value: 'lanes', label: 'Lanes' },
-]
+  ...(board.value ? [{ value: 'board', label: 'Board' }] : []),
+])
 const queued = computed(() => !props.milestone.stored && !!props.milestone.autopilot?.items?.length)
 function setView(v: string | number) {
-  if (v !== 'timeline' && v !== 'lanes') return
+  if (!viewItems.value.some((i) => i.value === v)) return
   void router.replace({ query: { ...route.query, view: v } })
 }
 
@@ -268,11 +273,12 @@ const viewHead = `${headText} gap-2`
         </small>
       </p>
     </template>
-    <section v-if="history || queued" class="mt-[18px]" aria-labelledby="issues-view-head" data-issues-view>
+    <section v-if="viewItems.length > 1 || queued" class="mt-[18px]" aria-labelledby="issues-view-head" data-issues-view>
       <UDashboardToolbar class="mb-2 min-h-0 flex-wrap border-0 px-0 sm:px-0" :ui="{ left: 'min-w-0' }">
         <template #left>
           <h2 id="issues-view-head" :class="viewHead">
             <template v-if="view === 'timeline'">Timeline</template>
+            <template v-else-if="view === 'board'">Board</template>
             <template v-else>
               Queue
               <span v-if="queued">{{ queueDone(milestone.autopilot!.items!) }} / {{ milestone.autopilot!.items!.length }}</span>
@@ -281,7 +287,7 @@ const viewHead = `${headText} gap-2`
         </template>
         <template #right>
           <UTabs
-            v-if="history"
+            v-if="viewItems.length > 1"
             :model-value="view"
             :items="viewItems"
             variant="pill"
@@ -294,6 +300,7 @@ const viewHead = `${headText} gap-2`
         </template>
       </UDashboardToolbar>
       <MilestoneTimeline v-if="view === 'timeline'" :namespace="namespace" :name="name" :milestone="milestone.iid" />
+      <Board v-else-if="view === 'board'" :tasks="milestone.tasks" />
       <div v-else-if="queued" data-queue>
         <QueueList :namespace="namespace" :name="name" :milestone="milestone" grouped />
       </div>

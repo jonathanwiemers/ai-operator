@@ -395,7 +395,7 @@ func TestTrackingDecisionsLinkTheDesk(t *testing.T) {
 		_, section, _ := strings.Cut(body, "\n### Decisions\n\n")
 		return section
 	}
-	link := "[All decisions on the Desk](https://desk.example/projects/agents/shop/milestones/9?tab=decisions)\n\n"
+	link := "[All decisions on the Desk](https://desk.example/projects/agents/shop/milestones/9?panel=decisions)\n\n"
 	list := "- [D1-1](https://gitlab.example/group/app/-/issues/1#note_50) Protocol (#1)\n"
 	placeholder := "_Listed here once an issue is merged; until then they are on the issue._\n"
 	desk := &AgentProjectReconciler{DeskURL: "https://desk.example"}

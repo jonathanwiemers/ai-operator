@@ -74,10 +74,10 @@ test('canRevisit: owners on live decisions only', () => {
 test('decisionHref: the Decisions tab with the history feature, GitLab without', () => {
   const d = { id: 'D42-3', url: 'https://gitlab.example/g/p/-/issues/42#note_7' }
   const path = '/projects/team-a/shop/milestones/14'
-  assert.equal(decisionHref(d, path, true), '/projects/team-a/shop/milestones/14?tab=decisions#D42-3')
+  assert.equal(decisionHref(d, path, true), '/projects/team-a/shop/milestones/14?panel=decisions#D42-3')
   assert.equal(decisionHref(d, path, false), d.url)
   assert.equal(decisionHref({ id: 'D42-3' }, path, false), '')
-  assert.equal(decisionHref({ id: ' D42-P1 ' }, path, true), `${path}?tab=decisions#D42-P1`)
+  assert.equal(decisionHref({ id: ' D42-P1 ' }, path, true), `${path}?panel=decisions#D42-P1`)
   // No ID or no milestone page: GitLab.
   assert.equal(decisionHref({ id: '', url: d.url }, path, true), d.url)
   assert.equal(decisionHref(d, '', true), d.url)
@@ -222,7 +222,7 @@ test('decisionGroups: kinds without a decision are left out, none for an empty q
 })
 
 test('decisionsTabHref: the Decisions tab with history, none without', () => {
-  assert.equal(decisionsTabHref('/projects/a/b/milestones/3', true), '/projects/a/b/milestones/3?tab=decisions')
+  assert.equal(decisionsTabHref('/projects/a/b/milestones/3', true), '/projects/a/b/milestones/3?panel=decisions')
   assert.equal(decisionsTabHref('/projects/a/b/milestones/3', false), '')
   assert.equal(decisionsTabHref('', true), '')
 })

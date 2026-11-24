@@ -10,7 +10,6 @@ const widths = [
   { width: 1280, height: 800 },
 ]
 
-const needsTab = '/projects/team-a/shop/milestones/14?tab=needs'
 const cockpit = '/projects/team-a/shop/milestones/14'
 const chatPath = `/api/v1/projects/team-a/shop/tasks/${refundsPrompt.target.task}/chat`
 
@@ -76,7 +75,7 @@ const command = (cmd: Record<string, string>) => ({ body: JSON.stringify(cmd), c
 
 for (const size of widths) {
   test(`a click hides the buttons and shows sending@${size.width}`, journeyAt(size.width), async ({ page, baseURL }) => {
-    const { problems, posts } = await open(page, baseURL, needsTab, size)
+    const { problems, posts } = await open(page, baseURL, cockpit, size)
     const card = page.locator(`#prompt-${refundsPrompt.id}`)
     await card.getByRole('button', { name: 'Refuse above one capture', exact: true }).click()
 
@@ -88,7 +87,7 @@ for (const size of widths) {
   })
 
   test(`a refused answer brings the buttons back with the error@${size.width}`, async ({ page, baseURL }) => {
-    const { problems, posts } = await open(page, baseURL, needsTab, size, { status: 403, json: { error: 'forbidden' } })
+    const { problems, posts } = await open(page, baseURL, cockpit, size, { status: 403, json: { error: 'forbidden' } })
     const card = page.locator(`#prompt-${refundsPrompt.id}`)
     await card.getByRole('button', { name: 'Split across captures', exact: true }).click()
 
@@ -102,7 +101,7 @@ for (const size of widths) {
   })
 
   test(`the answer shows as the owner's message in the thread@${size.width}`, journeyAt(size.width), async ({ page, baseURL }) => {
-    const { problems, posts } = await open(page, baseURL, needsTab, size)
+    const { problems, posts } = await open(page, baseURL, cockpit, size)
     const card = page.locator(`#prompt-${refundsPrompt.id}`)
     await card.getByRole('button', { name: 'Refuse above one capture', exact: true }).click()
     const thread = page.locator('[data-problem-thread]')
