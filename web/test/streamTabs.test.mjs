@@ -6,6 +6,9 @@ import {
   milestoneTabFromRoute,
   milestoneTabs,
   milestoneTabsFor,
+  panelFromQuery,
+  panelQuery,
+  panelViews,
   pilotFromQuery,
   pilotQuery,
   planPaneTab,
@@ -275,4 +278,23 @@ test('milestoneTabsFor: a link to a hidden tab opens the Cockpit once loaded, an
   assert.equal(milestoneTabFromRoute('needs', ''), 'needs', 'read against all tabs while loading')
   assert.equal(milestoneTabFromRoute(undefined, '#prompt-Q3', milestoneTabsFor({})), 'cockpit')
   assert.equal(milestoneTabFromRoute(undefined, '#prompt-Q3', milestoneTabsFor({}, { needs: 1 })), 'cockpit')
+})
+
+test('panelFromQuery: issues by default, queue and decisions by ?panel=', () => {
+  assert.deepEqual(
+    panelViews.map((v) => v.id),
+    ['issues', 'queue', 'decisions'],
+  )
+  assert.equal(panelFromQuery(undefined), 'issues')
+  assert.equal(panelFromQuery(''), 'issues')
+  assert.equal(panelFromQuery('nope'), 'issues')
+  assert.equal(panelFromQuery('queue'), 'queue')
+  assert.equal(panelFromQuery('decisions'), 'decisions')
+  assert.equal(panelFromQuery(['nope', 'decisions']), 'decisions')
+})
+
+test('panelQuery: keeps the other parameters, Issues drops ?panel=', () => {
+  assert.deepEqual(panelQuery({ tab: 'issues', panel: 'queue' }, 'decisions'), { tab: 'issues', panel: 'decisions' })
+  assert.deepEqual(panelQuery({ tab: 'metrics', panel: 'queue' }, 'issues'), { tab: 'metrics' })
+  assert.deepEqual(panelQuery({}, 'queue'), { panel: 'queue' })
 })

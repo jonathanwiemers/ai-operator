@@ -225,6 +225,7 @@ A milestone page opens on *Cockpit*, which counts what waits for you: problems, 
 then the events, newest at the bottom, with runs, CI and reviews folded into groups (open one, or *Expand all*) and a search.
 Then come *Issues | Activity | Decisions | Board | Metrics*, *Needs you* while the milestone is paused or a problem is open, and
 *Retrospective* once written. The tab is in the address, so you can link to it. *Ask pilot* opens the [pilot drawer](#ask-pilot).
+A panel on the right switches between *Issues* (the issues by state: running, waiting, next, merged, skipped; *Open table* opens the Issues tab), *Queue* (the project's milestones, this one marked) and *Decisions* (superseded ones folded). Below 1180 px, and on the Issues and Activity tabs, the *Issues*, *Queue* and *Decisions* buttons in the header open it from the right; Escape closes it. The open view is in the address (`?panel=queue`).
 
 ### Issues
 

@@ -890,8 +890,10 @@ left with the rail's content (`components/RailNav.vue`, which the sidebar
 renders on tablet and desktop). It is the `UDashboardSidebar`'s own slideover
 (see [Navigation](#navigation)). A project row reads the state line (`projectStateLine`) and
 `milestoneCounts` (`N active · M settling`, zero parts left out). Below 1180 px the stream header's
-*Context* button opens the context panel (`components/ContextPanel.vue`)
-from the right, the side it has on desktop; widening the window to 1180 px
+*Context* button opens the project's context panel (`components/ContextPanel.vue`)
+from the right, the side it has on desktop, and on a milestone page the
+*Issues*, *Queue* and *Decisions* buttons open the milestone panel on that
+view (`components/MilestonePanel.vue`); widening the window to 1180 px
 closes the sheet. Dialogs (`UModal`) close the same ways, for example the
 Retrospective tab's dismiss confirmation.
 
@@ -2245,7 +2247,7 @@ threads, so a prompt shows once.
 
 ### Context panel and pause history
 
-The context panel (from 1180 px, project pages only) shows the project's
+The project's context panel (`ContextPanel.vue`) shows the project's
 needs-you items, the active milestone's queue (a milestone waiting for its
 turn says *⏳ Waiting for its turn: Guest checkout (%7), %9 go first*,
 from `autopilot.queuedBehind` with the titles of the project's milestones; it is running, not paused, so it has no pause card
@@ -2258,13 +2260,44 @@ Every page with a panel uses one layout, `components/ContextLayout.vue`
 1180 px its `panel` slot is a 320 px column beside the content; below, the
 content has the full width and the panel is a `USlideover` from the right,
 closed by default and loaded only there. The page binds `v-model:open` to
-its *Context* button and shows the button only while the default slot's
-`sheet` is true; Back closes the sheet (`useBackClose`), and widening past
-1180 px closes it. `column: false` (the milestone page, whose tabs take the
-full width) keeps the panel a sheet below 1180 px and shows none from
-1180 px. The e2e `context sheet …` cases check the closed sheet below
-1180 px (each way to close it, the long branch and URL fitting), the column
-at 1180 px and that the board beside it does not scroll sideways.
+its buttons and shows them only while the default slot's `sheet` is true;
+Back and Escape close the sheet (`useBackClose` with `keepOnQuery`, so a
+query change inside it keeps it open), focus returns to `opener`, the
+button that opened it, and widening past 1180 px closes it. `column: false`
+keeps the panel a sheet at every width, for content that needs the full
+width: a milestone's Issues tab (the table's fixed columns) and Activity tab
+(the heatmap's day cells). The e2e `context sheet …` cases check the
+project's closed sheet below 1180 px (each way to close it, the long branch
+and URL fitting), the column at 1180 px and that the board beside it does
+not scroll sideways.
+
+### Milestone panel
+
+A milestone page's panel is `components/MilestonePanel.vue` (R13 of
+"Desk: the Cockpit"). A `UTabs` pill switch at its top picks one of three
+views, kept in `?panel=issues|queue|decisions` (`panelFromQuery`,
+`panelQuery` in `streamTabs.ts`; Issues is the default and left out):
+
+- **Issues**: the milestone's issues by state, running, waiting, next,
+  merged and skipped (`panelIssueGroups` in `milestoneRows.ts`: the row
+  state, and for an open issue its autopilot queue lane, a waiting or held
+  lane before an active state). Each row links to its issue page; *Open
+  table* goes to the Issues tab.
+- **Queue**: the project's milestone queue (`project.queue`, the data of
+  `ProjectQueue`), this milestone marked with `aria-current="page"`.
+  Moves and Pause stay on the project's Milestones tab.
+- **Decisions**: the milestone's stored decisions (`GET …/decisions`),
+  loaded while the view is open; the superseded ones are in a closed
+  `UCollapsible`. Each links to its issue page.
+
+Below 1180 px (and on the Issues and Activity tabs) the header has
+*Issues*, *Queue* and *Decisions* buttons, on phones too (D786-P2); each
+sets `?panel=` and opens the sheet, titled by the view, on its view. The
+panel's styles are scoped, not Tailwind utilities, and it uses icons the
+initial bundle already has: the initial budget is at its cap (see
+[Bundle budget](#bundle-budget)). `e2e/milestone-panel.spec.ts` checks each
+view at 1280 px and 390 px, `?panel=` across a reload, Escape, focus
+return and axe.
 
 The milestone API carries the **pause history** (`pauses`, from the
 `autopilot.paused`/`autopilot.resumed` events within the history

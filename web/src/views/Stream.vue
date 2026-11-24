@@ -28,6 +28,7 @@ import EventCard from '../components/stream/EventCard.vue'
 import MilestoneDecisions from '../components/MilestoneDecisions.vue'
 import MilestoneIssues from '../components/MilestoneIssues.vue'
 import MilestoneNeeds from '../components/MilestoneNeeds.vue'
+import MilestonePanel from '../components/MilestonePanel.vue'
 import MilestonePilot from '../components/MilestonePilot.vue'
 import MilestoneRetro from '../components/MilestoneRetro.vue'
 import MilestoneSections from '../components/MilestoneSections.vue'
@@ -66,7 +67,20 @@ import { pageHeaderUi, searchToolbarUi } from '../pageHeader'
 import { headerCost, keepCost, totalsCost } from '../headerCost'
 import { useStreamNote } from '../streamNote'
 import { decisionsQuery, milestoneFromQuery } from '../decisions'
-import { milestoneTabFromRoute, milestoneTabs, milestoneTabsFor, pilotFromQuery, pilotQuery, projectTabsFor, tabFromQuery, tabQuery } from '../streamTabs'
+import {
+  milestoneTabFromRoute,
+  milestoneTabs,
+  milestoneTabsFor,
+  panelFromQuery,
+  panelQuery,
+  panelViews,
+  pilotFromQuery,
+  pilotQuery,
+  projectTabsFor,
+  tabFromQuery,
+  tabQuery,
+  type PanelView,
+} from '../streamTabs'
 import { useBackClose } from '../ui/useBackClose'
 import NotFound from './NotFound.vue'
 import { announceChange } from '../ui/useAnnounce'
@@ -205,11 +219,27 @@ const projectInbox = computed(() => {
 })
 
 // The context panel (docs/contributing/web-ui.md, "Context panel and pause history"), laid out by
-// ContextLayout: beside a project stream from 1180 px; below, on project
-// and milestone pages, the Context button opens it as a sheet. The
-// button's count is projectInbox's, so the sheet loads nothing of its own.
+// ContextLayout: a column from 1180 px; below, a sheet. A project's is
+// ContextPanel, opened by the Context button, whose count is projectInbox's,
+// so the sheet loads nothing of its own. A milestone's is MilestonePanel
+// (R13 of "Desk: the Cockpit"), opened by the Issues, Queue and Decisions
+// buttons on that view; its view is ?panel=. Focus returns to the button
+// that opened the sheet (panelOpener). A milestone's Issues tab (a table
+// of fixed columns) and Activity tab (the heatmap's day cells) need the
+// full width: there the panel is a sheet at every width.
 const hasContext = computed(() => !everything.value && !!props.namespace && !!props.name)
 const contextOpen = ref(false)
+const panelOpener = ref<HTMLElement | null>(null)
+const panelView = computed(() => panelFromQuery(route.query.panel))
+const panelLabel = computed(() => panelViews.find((v) => v.id === panelView.value)!.label)
+function setPanel(view: PanelView) {
+  if (view !== panelView.value) void router.replace({ query: panelQuery(route.query, view) })
+}
+function openContext(e: MouseEvent, view?: PanelView) {
+  panelOpener.value = e.currentTarget as HTMLElement
+  if (view) setPanel(view)
+  contextOpen.value = true
+}
 
 const canSteer = computed(() => !!milestone.value?.permissions?.steer)
 
@@ -549,8 +579,12 @@ watch(
   <ContextLayout
     v-else
     v-model:open="contextOpen"
-    :column="!milestoneIID"
-    description="Needs you, the milestone's queue and companions, the last 30 days"
+    :column="!milestoneIID || !['issues', 'activity'].includes(tab)"
+    :title="milestoneIID ? panelLabel : 'Context'"
+    :description="
+      milestoneIID ? 'The milestone\'s issues, the project\'s queue and the milestone\'s decisions' : 'Needs you, the milestone\'s queue and companions, the last 30 days'
+    "
+    :opener="panelOpener"
   >
     <template #default="{ sheet }">
     <div class="stream">
@@ -584,8 +618,24 @@ watch(
                 data-ask-pilot
                 @click="openPilot"
               />
+              <!-- A milestone's panel views (below 1180 px, phones too). -->
+              <template v-if="sheet && milestoneIID">
+                <UButton
+                  v-for="v in panelViews"
+                  :key="v.id"
+                  color="neutral"
+                  variant="outline"
+                  size="sm"
+                  class="min-h-11 justify-center tablet:min-h-0"
+                  :label="v.label"
+                  aria-haspopup="dialog"
+                  :aria-expanded="contextOpen && panelView === v.id"
+                  :data-panel-open="v.id"
+                  @click="openContext($event, v.id)"
+                />
+              </template>
               <UButton
-                v-if="sheet"
+                v-else-if="sheet"
                 color="neutral"
                 variant="outline"
                 icon="i-lucide-panel-right"
@@ -593,7 +643,7 @@ watch(
                 aria-haspopup="dialog"
                 :aria-expanded="contextOpen"
                 :aria-label="projectInbox.length ? `Context, ${projectInbox.length} need you` : 'Context'"
-                @click="contextOpen = true"
+                @click="openContext($event)"
               >
                 <template v-if="projectInbox.length" #trailing>
                   <Badge tone="warning">{{ projectInbox.length }}</Badge>
@@ -862,10 +912,22 @@ watch(
     </div>
     </template>
 
-    <!-- A project's or a milestone's context: a column from 1180 px on
-         project pages, a sheet below on both. -->
+    <!-- A project's or a milestone's context: a column from 1180 px, a
+         sheet below. -->
     <template v-if="hasContext" #panel="{ sheet }">
+      <MilestonePanel
+        v-if="milestoneIID"
+        :namespace="namespace!"
+        :name="name!"
+        :iid="milestoneIID"
+        :milestone="pageMilestone"
+        :queue="pageProject?.queue ?? []"
+        :view="panelView"
+        :sheet="sheet"
+        @update:view="setPanel"
+      />
       <ContextPanel
+        v-else
         :class="{ 'ctx-sheet': sheet }"
         :namespace="namespace!"
         :name="name!"

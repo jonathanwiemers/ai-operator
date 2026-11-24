@@ -2405,17 +2405,17 @@ test.describe('rail sheet', () => {
 // The context layout (ContextLayout.vue, docs/contributing/web-ui.md "Sheets"): below
 // 1180 px the panel is closed and the content has the full width; the
 // Context button in the header carries the Needs-you count and opens the
-// context panel from the right, on project and milestone pages. The sheet
+// project's context panel from the right (a milestone page's panel has a
+// spec of its own, e2e/milestone-panel.spec.ts). The sheet
 // shows Needs you, the milestone's queue, its companions and the last 30
 // days, fits the width with the long branch and URL of a Needs-you card
 // (e2e/fixtures/long.ts), and back (or scrim, close button, Escape) closes it
 // without leaving an entry. From 1180 px the project page keeps the panel at
 // its side without a click, the board beside it does not scroll sideways,
-// and neither page has the button.
+// and the page has no button.
 test.describe('context sheet', () => {
   const pages = [
     { page: 'project', route: routes.find((r) => r.name === 'stream-project-activity')!, milestone: /^Checkout without account/ },
-    { page: 'milestone', route: routes.find((r) => r.name === 'stream-milestone-issues')!, milestone: /^Payment providers/ },
   ]
   const sections = (m: RegExp) => [/^Needs you/, m, /^Companions/, /^Last 30 days/]
   const sheetEntry = (page: Page) => page.evaluate(() => (history.state as Record<string, unknown> | null)?.__sheet)
@@ -2527,16 +2527,11 @@ test.describe('context sheet', () => {
 
   for (const size of [edgeWidths[2]!, widths[2]!]) {
     for (const { page: name, route, milestone } of pages) {
-      const project = name === 'project'
-      test(`${name} page ${project ? 'keeps the side panel' : 'has no panel'} and no button@${size.width}`, async ({ page, baseURL }) => {
+      test(`${name} page keeps the side panel and no button@${size.width}`, async ({ page, baseURL }) => {
         const problems = await load(page, baseURL, route, size)
         await expect(page.locator('main').getByRole('button', { name: /^Context/ })).toHaveCount(0)
         const panel = page.locator('aside.ctxp')
-        if (project) {
-          for (const heading of sections(milestone)) await expect(panel.getByRole('heading', { name: heading })).toBeVisible()
-        } else {
-          await expect(panel).toHaveCount(0)
-        }
+        for (const heading of sections(milestone)) await expect(panel.getByRole('heading', { name: heading })).toBeVisible()
         expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
       })
     }
@@ -2817,9 +2812,11 @@ test.describe('landmarks and route focus', () => {
       await expect(page.getByRole('main')).toHaveCount(1)
       await expect(page.getByRole('banner'), 'no top bar at desktop width').toHaveCount(0)
       await expect(page.getByRole('navigation', { name: 'Sections' })).toHaveCount(0)
-      // A column on the project page only: the milestone page's tabs take
-      // the full width, its panel is a sheet below 1180 px (ContextLayout).
-      await expect(page.getByRole('complementary', { name: 'Context' })).toHaveCount(route === project ? 1 : 0)
+      // A column on the project page; the milestone route is its Issues
+      // tab, whose table takes the full width, so its panel is a sheet
+      // (ContextLayout; the Cockpit's column: e2e/milestone-panel.spec.ts).
+      await expect(page.getByRole('complementary', { name: 'Context', exact: true })).toHaveCount(route === project ? 1 : 0)
+      await expect(page.getByRole('complementary', { name: 'Milestone context', exact: true })).toHaveCount(0)
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })
 
@@ -2833,12 +2830,12 @@ test.describe('landmarks and route focus', () => {
     })
   }
 
-  test('the milestone page context sheet is the Context landmark@760', async ({ page, baseURL }) => {
+  test('the milestone page panel sheet is the Milestone context landmark@760', async ({ page, baseURL }) => {
     const problems = await load(page, baseURL, milestone, { width: 760, height: 1024 })
-    await expect(page.getByRole('complementary', { name: 'Context' }), 'closed').toHaveCount(0)
-    await page.locator('main').getByRole('button', { name: /^Context/ }).click()
-    const sheet = page.getByRole('dialog', { name: 'Context' })
-    await expect(sheet.getByRole('complementary', { name: 'Context' })).toBeVisible()
+    await expect(page.getByRole('complementary', { name: 'Milestone context' }), 'closed').toHaveCount(0)
+    await page.locator('main').getByRole('button', { name: 'Issues', exact: true }).click()
+    const sheet = page.getByRole('dialog', { name: 'Issues' })
+    await expect(sheet.getByRole('complementary', { name: 'Milestone context' })).toBeVisible()
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
   })
 

@@ -1,5 +1,5 @@
 import { cost, durationShort, plural, tokenCount, type Tone } from './format.ts'
-import type { MilestoneIssueRow, MilestoneProgress, MilestoneRow, MilestoneState } from './types'
+import type { MilestoneIssueRow, MilestoneProgress, MilestoneRow, MilestoneState, QueueItem } from './types'
 
 // The dashboard's and the project page's milestone rows (decision 5).
 
@@ -109,6 +109,57 @@ export function milestoneRowKey(r: Pick<MilestoneRow, 'namespace' | 'project' | 
 export function issueProgress(issues: readonly Pick<MilestoneIssueRow, 'state'>[]): MilestoneProgress {
   const merged = issues.filter((i) => i.state === 'merged' || i.state === 'skipped' || i.state === 'closed').length
   return { merged, total: issues.length, open: issues.length - merged }
+}
+
+// PanelIssueState is an issue's state in the milestone panel's Issues view
+// (R13): running, waiting (on dependencies or a hold), next (planned or
+// ready, its turn to come), merged and skipped (or closed unmerged).
+export type PanelIssueState = 'running' | 'waiting' | 'next' | 'merged' | 'skipped'
+
+export interface PanelIssueGroup {
+  state: PanelIssueState
+  label: string
+  issues: Pick<MilestoneIssueRow, 'iid' | 'title'>[]
+}
+
+const panelIssueLabels: Record<PanelIssueState, string> = {
+  running: 'Running',
+  waiting: 'Waiting',
+  next: 'Next',
+  merged: 'Merged',
+  skipped: 'Skipped',
+}
+
+// panelIssueState is an issue's panel state: its row state, and for an
+// open one the lane of its autopilot queue item (QueueItem.lane), if any:
+// a waiting or held lane before an active state.
+export function panelIssueState(state: MilestoneIssueRow['state'], lane?: QueueItem['lane']): PanelIssueState {
+  if (state === 'merged') return 'merged'
+  if (state === 'skipped' || state === 'closed') return 'skipped'
+  // A held issue waits, even while its task is active (a red CI hold).
+  if (lane === 'waiting' || lane === 'held') return 'waiting'
+  if (state === 'active' || lane === 'running' || lane === 'landing') return 'running'
+  return 'next'
+}
+
+// panelIssueGroups are a milestone's issues by panel state, in the order
+// running, waiting, next, merged, skipped, each in the milestone's order;
+// empty states are left out.
+export function panelIssueGroups(
+  issues: readonly Pick<MilestoneIssueRow, 'iid' | 'title' | 'state'>[],
+  queue: readonly Pick<QueueItem, 'iid' | 'lane'>[] = [],
+): PanelIssueGroup[] {
+  const lanes = new Map(queue.map((q) => [q.iid, q.lane]))
+  const groups = (Object.keys(panelIssueLabels) as PanelIssueState[]).map((state) => ({
+    state,
+    label: panelIssueLabels[state],
+    issues: [] as Pick<MilestoneIssueRow, 'iid' | 'title'>[],
+  }))
+  for (const i of issues) {
+    const s = panelIssueState(i.state, lanes.get(i.iid))
+    groups.find((g) => g.state === s)!.issues.push({ iid: i.iid, title: i.title })
+  }
+  return groups.filter((g) => g.issues.length)
 }
 
 // issueStateTone is an issue row's state badge tone.

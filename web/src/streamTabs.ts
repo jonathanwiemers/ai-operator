@@ -184,6 +184,29 @@ export function pilotQuery<V>(query: Record<string, V>, open: boolean): Record<s
   return open ? { ...rest, pilot: '1' } : rest
 }
 
+// A milestone's context panel (R13 of "Desk: the Cockpit"): its views,
+// switched at the top of the panel and kept in ?panel= (D786-P1), Issues
+// the default and left out.
+export type PanelView = 'issues' | 'queue' | 'decisions'
+export const panelViews: Tab<PanelView>[] = [
+  { id: 'issues', label: 'Issues' },
+  { id: 'queue', label: 'Queue' },
+  { id: 'decisions', label: 'Decisions' },
+]
+
+// panelFromQuery reads ?panel= as tabFromQuery reads ?tab=: unknown, empty
+// or repeated values fall back to the first known one, else to Issues.
+export function panelFromQuery(v: QueryValue): PanelView {
+  return tabFromQuery(v, panelViews)
+}
+
+// panelQuery is the query with the panel on view, keeping the other
+// parameters; Issues drops ?panel=.
+export function panelQuery<V>(query: Record<string, V>, view: PanelView): Record<string, V | string> {
+  const { panel: _, ...rest } = query
+  return view === panelViews[0]!.id ? rest : { ...rest, panel: view }
+}
+
 // tabQuery is the query for a tab, keeping the other parameters; the
 // list's first tab (Milestones on the project tabs, Activity on the
 // default list) drops the parameter.

@@ -8,6 +8,8 @@ import {
   leftoversLabel,
   milestoneRowKey,
   milestoneStatus,
+  panelIssueGroups,
+  panelIssueState,
   progressBar,
   progressPct,
   rowCost,
@@ -108,4 +110,40 @@ test('progressBar: merged of total, capped, an empty bar without issues, the nam
   assert.deepEqual(progressBar({ merged: 3, total: 5 }, 'Desk'), { value: 3, max: 5, label: 'Desk: 3 of 5 merged' })
   assert.deepEqual(progressBar({ merged: 0, total: 0 }), { value: 0, max: 1, label: '0 of 0 merged' })
   assert.deepEqual(progressBar({ merged: 5, total: 4 }), { value: 4, max: 4, label: '5 of 4 merged' })
+})
+
+test('panelIssueState: the row state first, then the queue lane of an open issue', () => {
+  assert.equal(panelIssueState('merged', 'done'), 'merged')
+  assert.equal(panelIssueState('skipped'), 'skipped')
+  assert.equal(panelIssueState('closed'), 'skipped')
+  assert.equal(panelIssueState('active'), 'running')
+  assert.equal(panelIssueState('pending', 'landing'), 'running')
+  assert.equal(panelIssueState('pending', 'waiting'), 'waiting')
+  assert.equal(panelIssueState('pending', 'held'), 'waiting')
+  assert.equal(panelIssueState('active', 'held'), 'waiting')
+  assert.equal(panelIssueState('active', 'running'), 'running')
+  assert.equal(panelIssueState('pending', 'ready'), 'next')
+  assert.equal(panelIssueState('planned'), 'next')
+})
+
+test('panelIssueGroups: running, waiting, next, merged, skipped, empty ones left out, milestone order kept', () => {
+  const issues = [
+    { iid: 1, title: 'a', state: 'merged' },
+    { iid: 2, title: 'b', state: 'pending' },
+    { iid: 3, title: 'c', state: 'active' },
+    { iid: 4, title: 'd', state: 'planned' },
+    { iid: 5, title: 'e', state: 'pending' },
+    { iid: 6, title: 'f', state: 'merged' },
+  ]
+  const queue = [
+    { iid: 2, lane: 'waiting' },
+    { iid: 5, lane: 'ready' },
+  ]
+  assert.deepEqual(panelIssueGroups(issues, queue), [
+    { state: 'running', label: 'Running', issues: [{ iid: 3, title: 'c' }] },
+    { state: 'waiting', label: 'Waiting', issues: [{ iid: 2, title: 'b' }] },
+    { state: 'next', label: 'Next', issues: [{ iid: 4, title: 'd' }, { iid: 5, title: 'e' }] },
+    { state: 'merged', label: 'Merged', issues: [{ iid: 1, title: 'a' }, { iid: 6, title: 'f' }] },
+  ])
+  assert.deepEqual(panelIssueGroups([]), [])
 })

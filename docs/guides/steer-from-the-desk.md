@@ -281,7 +281,9 @@ researches, engine usage, sign out), and *Metrics* and *Research* where you
 have them. The bar hides while you type.
 
 - Tables become cards, and every button is big enough to tap.
-- The context panel opens with the *Context* button in the header.
+- The context panel opens with the *Context* button in the header. On a
+  milestone page, the *Issues*, *Queue* and *Decisions* buttons open the
+  milestone panel on that view.
 - Text that is cut off opens with a tap.
 - Prompts, pause cards, chat and *Restart run* work as on a desktop.
 
