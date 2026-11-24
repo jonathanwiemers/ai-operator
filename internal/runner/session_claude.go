@@ -136,13 +136,7 @@ func (s *ClaudeSession) Prompt(ctx context.Context, text string, fn func(Event))
 			drained = true
 		}
 	}
-	if err := s.writeJSON(map[string]any{
-		"type": "user",
-		"message": map[string]any{
-			"role":    "user",
-			"content": []map[string]any{{"type": "text", "text": text}},
-		},
-	}); err != nil {
+	if err := s.writeJSON(claudeUserMessage(text)); err != nil {
 		s.markDead()
 		return nil, err
 	}
@@ -323,6 +317,18 @@ func (s *ClaudeSession) Close() error {
 		}
 	}()
 	return s.waitErr
+}
+
+// claudeUserMessage is a user turn as claude's --input-format stream-json
+// takes it: one line on stdin per message.
+func claudeUserMessage(text string) map[string]any {
+	return map[string]any{
+		"type": "user",
+		"message": map[string]any{
+			"role":    "user",
+			"content": []map[string]any{{"type": "text", "text": text}},
+		},
+	}
 }
 
 func (s *ClaudeSession) writeJSON(v any) error {

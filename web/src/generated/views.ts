@@ -2194,9 +2194,10 @@ export interface Entry {
   time?: string;
   run?: string;
   /**
-   * Kind: step, cli, thinks, says, tool, answers, prompt.
+   * Kind: step, cli, thinks, says, tool, answers, prompt, and user: a
+   * message written into the running call that the agent took in.
    */
-  kind: 'step' | 'cli' | 'thinks' | 'says' | 'tool' | 'answers' | 'prompt';
+  kind: 'step' | 'cli' | 'thinks' | 'says' | 'tool' | 'answers' | 'prompt' | 'user';
   /**
    * Step: its number, name and status (started, done, failed, deferred)
    * and result.
@@ -2213,7 +2214,7 @@ export interface Entry {
   model?: string;
   readOnly?: boolean;
   /**
-   * Text of thinks and says; tool and its main argument.
+   * Text of thinks, says and user; tool and its main argument.
    */
   text?: string;
   tool?: string;

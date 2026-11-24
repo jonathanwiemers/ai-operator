@@ -18,8 +18,9 @@ import (
 type Entry struct {
 	Time string `json:"time,omitempty"`
 	Run  string `json:"run,omitempty"`
-	// Kind: step, cli, thinks, says, tool, answers, prompt.
-	Kind string `json:"kind" tstype:"'step' | 'cli' | 'thinks' | 'says' | 'tool' | 'answers' | 'prompt'"`
+	// Kind: step, cli, thinks, says, tool, answers, prompt, and user: a
+	// message written into the running call that the agent took in.
+	Kind string `json:"kind" tstype:"'step' | 'cli' | 'thinks' | 'says' | 'tool' | 'answers' | 'prompt' | 'user'"`
 	// Step: its number, name and status (started, done, failed, deferred)
 	// and result.
 	StepNo int    `json:"stepNo,omitempty"`
@@ -31,7 +32,7 @@ type Entry struct {
 	Engine   string `json:"engine,omitempty"`
 	Model    string `json:"model,omitempty"`
 	ReadOnly bool   `json:"readOnly,omitempty"`
-	// Text of thinks and says; tool and its main argument.
+	// Text of thinks, says and user; tool and its main argument.
 	Text  string `json:"text,omitempty"`
 	Tool  string `json:"tool,omitempty"`
 	Input string `json:"input,omitempty"`
@@ -104,6 +105,8 @@ func parseLogLine(line []byte) (Entry, bool) {
 		e.Kind, e.Text = "thinks", str("text")
 	case "agent says":
 		e.Kind, e.Text = "says", str("text")
+	case "user says":
+		e.Kind, e.Text = "user", str("text")
 	case "agent uses a tool":
 		e.Kind, e.Tool, e.Input = "tool", str("tool"), str("input")
 	case "agent answers":

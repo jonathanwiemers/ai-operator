@@ -62,6 +62,10 @@ type Agent interface {
 	// PlanContext replaces the home checkout's .plan-context folder with a
 	// copy of src, a directory inside the exchange directory.
 	PlanContext(ctx context.Context, src string) error
+	// Message writes a user message into the running stream-input call
+	// (Invocation.StreamInput) and says whether its replay showed up; an
+	// error without such a call.
+	Message(ctx context.Context, req MessageRequest) (MessageResult, error)
 }
 
 // LocalAgent implements Agent in-process. The agent server wraps it; the
@@ -88,6 +92,10 @@ type LocalAgent struct {
 	mu      sync.Mutex
 	session Session
 	sessEng aiv1.Engine
+
+	// live is the stream-input call in flight, for Message.
+	liveMu sync.Mutex
+	live   *liveInput
 }
 
 var _ Agent = (*LocalAgent)(nil)
@@ -114,6 +122,10 @@ func (a *LocalAgent) Run(ctx context.Context, engine aiv1.Engine, inv Invocation
 	// Sessions are resumed across calls and the gate's count is per
 	// session: the call's nudges are the difference.
 	nudgesBefore := StepGateNudges(a.StepGateDir, inv.Resume)
+	if inv.StreamInput {
+		ctx = context.WithValue(ctx, liveInputKey{}, a.setLive)
+		defer a.setLive(nil)
+	}
 	res, err := eng.Run(ctx, inv)
 	if inv.CountLines && !inv.ReadOnly && res != nil && a.Workspace.exists() {
 		a.countLines(ctx, res)
@@ -488,6 +500,11 @@ type runResponse struct {
 	Error  string  `json:"error,omitempty"`
 }
 
+type messageResponse struct {
+	MessageResult
+	Error string `json:"error,omitempty"`
+}
+
 type commitResponse struct {
 	Committed bool   `json:"committed"`
 	Error     string `json:"error,omitempty"`
@@ -685,6 +702,16 @@ func (s *AgentServer) Handler() http.Handler {
 			kv = append(kv, "session", res.SessionID, "costUSD", res.CostUSD, "isError", res.IsError)
 		}
 		return reply{runResponse{Result: res, Error: errString(err)}, err, kv}
+	})
+	handle("message", func(ctx context.Context, body []byte) reply {
+		var req MessageRequest
+		if err := json.Unmarshal(body, &req); err != nil {
+			return reply{messageResponse{Error: err.Error()}, err, nil}
+		}
+		// The text is the owner's: only its ID and size are logged.
+		res, err := s.Agent.Message(ctx, req)
+		return reply{messageResponse{MessageResult: res, Error: errString(err)}, err,
+			[]any{"message", req.ID, "bytes", len(req.Text), "delivered", res.Delivered, "reason", res.Reason}}
 	})
 	handle("refs", func(ctx context.Context, body []byte) reply {
 		var req repoRequest

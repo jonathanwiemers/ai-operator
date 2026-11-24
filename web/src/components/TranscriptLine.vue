@@ -32,6 +32,11 @@ const time = (t?: string) => (t ? new Date(t).toLocaleTimeString() : '')
       <span class="who">says</span>
       <Markdown class="text says" :text="e.text ?? ''" />
     </template>
+    <template v-else-if="e.kind === 'user'">
+      <!-- A message written into the running call, which the agent took in. -->
+      <span class="who">user</span>
+      <span class="text user-text">{{ e.text }}</span>
+    </template>
     <template v-else-if="e.kind === 'tool'">
       <span class="who faint">tool</span>
       <code class="tool">{{ e.tool }}</code>
@@ -85,6 +90,10 @@ const time = (t?: string) => (t ? new Date(t).toLocaleTimeString() : '')
 
 .says {
   white-space: normal;
+}
+
+.user-text {
+  font-weight: 500;
 }
 
 .thinking {

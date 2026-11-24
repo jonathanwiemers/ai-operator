@@ -385,6 +385,45 @@ Only the final result line is parsed. With `spec.agents.logPrompts` the
 agent server also logs each call's role, system prompt and prompt (64 KiB
 each at most), which the web UI's live transcript shows; off by default.
 
+**Stream input.** Claude implementer calls (implement, fix rounds,
+conflict) take messages while they work. `invokeOn` sets
+`Invocation.StreamInput` for them, and claude then runs with
+`--input-format stream-json --replay-user-messages`
+(`internal/runner/stream_input.go`):
+
+1. The agent container writes the prompt to stdin as the first stream-json
+   user message, the same line shape as the chat session uses
+   (`claudeUserMessage`).
+2. Stdin stays open until the first result line, then closes, so the CLI
+   exits. Answer grace, structured output, cost and checkpoints are the
+   same as for a call without stream input.
+3. While the call runs, `LocalAgent` holds it in one slot (implementer
+   calls are sequential). `POST /message` (`AgentClient.Message`) writes
+   one more user line into it. It answers `delivered: true` only once the
+   CLI replays that text (a user line with `isReplay: true`). If the result
+   comes first, or no replay arrives within 60 s, it answers
+   `delivered: false` with a reason. Without a call in flight it errors at
+   once. The server logs the message's ID and size, never its text.
+4. A replayed message is a user turn of the transcript, logged as
+   "user says". It is never counted as a tool result. The prompt's own
+   replay is not logged.
+
+The unit tests drive a fake claude, `internal/runner/testdata/fake-claude-stream`.
+It replays later stdin lines unless `FAKE_CLAUDE_NO_REPLAY=1`.
+`FAKE_CLAUDE_SIGINT=1` makes it stop on SIGINT with a partial stream.
+An opt-in probe checks the real CLI. It needs a claude login
+(`CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY`), costs one model call,
+and never runs in CI:
+
+```sh
+go test -tags claudeprobe -run TestClaudeProbe -v ./internal/runner/
+```
+
+It writes a second message during a slow Bash call. It passes when that
+message (a) comes back as a replay and (b) is acted on before the single
+result line. Run it again when the claude CLI in `Dockerfile.agent` changes
+how it streams.
+
 ### Stall detection
 
 A run that stops making progress is noticed without an LLM call per task.

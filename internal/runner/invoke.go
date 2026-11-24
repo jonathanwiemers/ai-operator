@@ -48,6 +48,8 @@ func (r *Runner) invokeOn(ctx context.Context, role aiv1.RoleSpec, inv Invocatio
 	inv = r.withStepGate(role, r.withReadGate(role, r.withSubagents(role, inv)))
 	inv.LogPrompt = r.logPrompts
 	inv.CountLines = implementerKind(inv.Kind)
+	// A running claude implementer call can take a message (LocalAgent.Message).
+	inv.StreamInput = role.Engine == aiv1.EngineClaude && implementerKind(inv.Kind)
 	if len(r.changedPins) > 0 && r.run != nil {
 		inv.PerRunToolchains = toolchainsRunName(r.run.id)
 	}

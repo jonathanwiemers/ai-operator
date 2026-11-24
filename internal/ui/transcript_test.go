@@ -34,6 +34,8 @@ func TestParseLogLine(t *testing.T) {
 		{`{"msg":"agent thinks","text":"hmm"}`, true, Entry{Kind: "thinks", Text: "hmm"}},
 		{`{"msg":"agent uses a tool","tool":"shell","input":"go test ./..."}`, true, Entry{Kind: "tool", Tool: "shell", Input: "go test ./..."}},
 		{`{"msg":"agent answers"}`, true, Entry{Kind: "answers"}},
+		// A message written into the running call, replayed by claude.
+		{`{"msg":"user says","text":"Use the retry helper.","run":"t#1"}`, true, Entry{Run: "t#1", Kind: "user", Text: "Use the retry helper."}},
 		// Subagents: the tool line that starts one, and its lines.
 		{`{"msg":"agent uses a tool","tool":"Agent","input":"Find callers","toolUseID":"toolu_2","subagent":"Explore"}`,
 			true, Entry{Kind: "tool", Tool: "Agent", Input: "Find callers", ToolUseID: "toolu_2", Subagent: "Explore"}},

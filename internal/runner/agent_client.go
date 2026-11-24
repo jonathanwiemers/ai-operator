@@ -103,6 +103,16 @@ func (c *AgentClient) Run(ctx context.Context, engine aiv1.Engine, inv Invocatio
 	return resp.Result, remoteErr(resp.Error)
 }
 
+// Message writes a user message into the agent's running stream-input call
+// (LocalAgent.Message).
+func (c *AgentClient) Message(ctx context.Context, req MessageRequest) (MessageResult, error) {
+	var resp messageResponse
+	if err := c.call(ctx, "message", req, &resp); err != nil {
+		return MessageResult{}, err
+	}
+	return resp.MessageResult, remoteErr(resp.Error)
+}
+
 func (c *AgentClient) OpenSession(ctx context.Context, engine aiv1.Engine, inv Invocation) (string, error) {
 	var resp openSessionResponse
 	if err := c.call(ctx, "session/open", openSessionRequest{Engine: engine, Invocation: inv}, &resp); err != nil {

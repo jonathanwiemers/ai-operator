@@ -164,7 +164,11 @@ agent thinks       text="The endpoint needs a test first."
 agent says         text="Adding the test."
 agent uses a tool  tool=Bash input="go test ./..."
 agent uses a tool  tool=Grep input="func handleCheckout"
+user says          text="Use the existing retry helper."
 ```
+
+A `user says` line is a message passed on to a running claude implementer.
+It shows up once claude has taken the message in.
 
 Thinking shows up when the model thinks, depending on the model and its
 effort; the CLI may summarize it. Tool output, the contents of edits and

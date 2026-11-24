@@ -73,6 +73,11 @@ type Invocation struct {
 	Resume string
 	// NoPersistence skips writing a session to disk (one-shot reviewers).
 	NoPersistence bool
+	// StreamInput (claude only) writes the prompt as the first stream-json
+	// user message and keeps stdin open until the result line, so the agent
+	// container can write more messages into the running call
+	// (LocalAgent.Message). The runner sets it for claude implementer calls.
+	StreamInput bool `json:"streamInput,omitempty"`
 	// Role names the agent for the logs: implement, spec, bugbot,
 	// security, describe.
 	Role string
@@ -289,6 +294,10 @@ func (c *ClaudeCLI) Args(inv Invocation) []string {
 	if inv.NoPersistence {
 		args = append(args, "--no-session-persistence")
 	}
+	if inv.StreamInput {
+		// The replays tell which written message claude took in.
+		args = append(args, "--input-format", "stream-json", "--replay-user-messages")
+	}
 	return args
 }
 
@@ -300,7 +309,7 @@ func (c *ClaudeCLI) Run(ctx context.Context, inv Invocation) (*Result, error) {
 	if err := checkEngineArgs(inv); err != nil {
 		return nil, err
 	}
-	res, err := runCLI(ctx, orDefault(c.Binary, "claude"), c.Args(inv), inv.Dir, append(slices.Clip(c.Env), inv.Env...), inv.Prompt, true)
+	res, err := runCLI(ctx, orDefault(c.Binary, "claude"), c.Args(inv), inv.Dir, append(slices.Clip(c.Env), inv.Env...), inv.Prompt, true, inv.StreamInput)
 	if res != nil {
 		sinceLastResult(res)
 	}
@@ -433,7 +442,7 @@ func (c *CursorCLI) Run(ctx context.Context, inv Invocation) (*Result, error) {
 		f.Close() // #nosec G104 -- the unbuffered write's error is checked above; closing a regular file loses no data
 		prompt = fmt.Sprintf("Your full task is in the file %s. Read it completely and follow it exactly.", f.Name())
 	}
-	return runCLI(ctx, orDefault(c.Binary, "cursor-agent"), c.Args(inv, prompt), inv.Dir, append(slices.Clip(c.Env), inv.Env...), "", true)
+	return runCLI(ctx, orDefault(c.Binary, "cursor-agent"), c.Args(inv, prompt), inv.Dir, append(slices.Clip(c.Env), inv.Env...), "", true, false)
 }
 
 // turnReader consumes stream-json lines for one agent turn: held-message
@@ -462,6 +471,10 @@ type turnReader struct {
 	// thread; toolResults sums the results by name (see countTools).
 	toolNames   map[string]string
 	toolResults map[string]aiv1.ToolResultUsage
+	// prompt (trimmed) and replayed are set for a stream-input call (see
+	// userTurn).
+	prompt   string
+	replayed func(string)
 }
 
 func (t *turnReader) flush() {
@@ -493,6 +506,12 @@ func (t *turnReader) consume(line []byte) bool {
 		}
 	case "tool_call", "user":
 		if ev.Type == "user" {
+			if text, ok := replayText(line); ok {
+				// A message written on stdin, not a tool result.
+				t.flush()
+				t.userTurn(text)
+				return false
+			}
 			t.track(line)
 			t.gateBlocks += readGateBlocks(line)
 			t.countTools(line, true)
@@ -720,11 +739,23 @@ var answerGrace = 60 * time.Second
 
 // runCLI runs an agent CLI. With stream, its output is a line per event: each
 // is logged (see logEvent); it keeps the answer and adds up the usage (addUsage).
-func runCLI(ctx context.Context, bin string, args []string, dir string, env []string, stdin string, stream bool) (*Result, error) {
+// With streamInput too, stdin goes in as the first stream-json user message,
+// and stdin stays open for more (see liveInput) until the first result line.
+func runCLI(ctx context.Context, bin string, args []string, dir string, env []string, stdin string, stream, streamInput bool) (*Result, error) {
 	cmd := exec.CommandContext(ctx, bin, args...) // #nosec G204 G702 -- bin is "claude" or "cursor-agent" (only tests set Binary), no shell; model, effort, session ID and tools are checked first (checkEngineArgs, R12 of the lean-codebase spec)
 	cmd.Dir = dir
 	cmd.Env = env
-	cmd.Stdin = strings.NewReader(stdin)
+	var in *liveInput
+	if stream && streamInput {
+		w, err := cmd.StdinPipe()
+		if err != nil {
+			return nil, err
+		}
+		in = newLiveInput(w)
+		defer in.close()
+	} else {
+		cmd.Stdin = strings.NewReader(stdin)
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	var runErr error
@@ -739,12 +770,18 @@ func runCLI(ctx context.Context, bin string, args []string, dir string, env []st
 		if err := cmd.Start(); err != nil {
 			return nil, fmt.Errorf("%s failed: %w", filepath.Base(bin), err)
 		}
+		if in != nil {
+			in.start(ctx, tr, stdin)
+		}
 		var stopped atomic.Bool
 		var grace *time.Timer
 		rd := bufio.NewReader(pipe)
 		for {
 			line, err := rd.ReadBytes('\n')
 			if line = bytes.TrimSpace(line); len(line) > 0 && tr.consume(line) {
+				if in != nil {
+					in.close() // the answer is in: the CLI may exit
+				}
 				if r, perr := ParseResult(line); perr != nil {
 					tr.log.Info("skipping an unreadable result line", "error", perr.Error())
 				} else if last, usage = r, addUsage(usage, r.CallUsage); !r.IsError && r.Structured != nil {

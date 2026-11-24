@@ -75,6 +75,9 @@ func TestCIFixRun(t *testing.T) {
 	if len(engine.calls) != 2 || engine.calls[0].ReadOnly || engine.calls[1].JSONSchema != describeSchema {
 		t.Fatalf("a CI fix run is one implementer call without reviewers, then the describer, got %d calls", len(engine.calls))
 	}
+	if !engine.calls[0].StreamInput || engine.calls[1].StreamInput {
+		t.Error("only the claude implementer call takes stream input")
+	}
 	prompt := engine.calls[0].Prompt
 	for _, want := range []string{"CI pipeline for your last push failed", "untrusted", "Job `test`", "expected 400, got 500"} {
 		if !strings.Contains(prompt, want) {

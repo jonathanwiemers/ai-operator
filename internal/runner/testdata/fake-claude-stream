@@ -1,0 +1,57 @@
+#!/bin/sh
+# A fake `claude -p --output-format stream-json` for the runner's unit tests,
+# shaped on the stream-json input behaviour the CLI documents (the R4 probe,
+# claude_probe_test.go, checks it against the real CLI).
+#
+# With --input-format stream-json it reads user lines on stdin: the first is
+# the task, which "works" for FAKE_CLAUDE_WORK seconds (default 1). Each later
+# line is replayed on stdout (isReplay, --replay-user-messages) and answered
+# with an assistant line; the result counts them. After the result it waits
+# for stdin to close, as the real CLI waits for more input. Without that flag
+# it reads the prompt as plain text, as `claude -p` does.
+#
+# Knobs:
+#   FAKE_CLAUDE_ARGS=<file>   write the arguments to the file
+#   FAKE_CLAUDE_WORK=<s>      how long the task's tool call runs
+#   FAKE_CLAUDE_NO_REPLAY=1   take later messages in without replaying them
+#   FAKE_CLAUDE_SIGINT=1      on SIGINT print one more assistant line and exit
+#                             130 without a result (a partial stream)
+sid=fake-session
+[ -z "$FAKE_CLAUDE_ARGS" ] || echo "$@" >"$FAKE_CLAUDE_ARGS"
+stream=
+case " $* " in *" --input-format stream-json "*) stream=1 ;; esac
+seen=$(mktemp)
+trap 'rm -f "$seen"' EXIT
+if [ -n "$FAKE_CLAUDE_SIGINT" ]; then
+	trap 'echo "{\"type\":\"assistant\",\"message\":{\"id\":\"msg_int\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Interrupted.\"}]},\"session_id\":\"$sid\"}"; exit 130' INT
+fi
+
+replay() {
+	[ -n "$FAKE_CLAUDE_NO_REPLAY" ] || printf '%s\n' "$1" | sed "s/}\$/,\"session_id\":\"$sid\",\"isReplay\":true}/"
+}
+
+echo "{\"type\":\"system\",\"subtype\":\"init\",\"session_id\":\"$sid\",\"model\":\"claude-fake\"}"
+if [ -n "$stream" ]; then
+	IFS= read -r first || exit 1
+	replay "$first"
+	# An asynchronous list reads /dev/null unless stdin is given explicitly.
+	exec 3<&0
+	while IFS= read -r line <&3; do
+		[ -n "$line" ] || continue
+		echo x >>"$seen"
+		replay "$line"
+		echo "{\"type\":\"assistant\",\"message\":{\"id\":\"msg_note$(wc -l <"$seen" | tr -d ' ')\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Taking the new message into account.\"}]},\"session_id\":\"$sid\"}"
+	done &
+	reader=$!
+else
+	cat >/dev/null
+fi
+
+echo "{\"type\":\"assistant\",\"message\":{\"id\":\"msg_1\",\"role\":\"assistant\",\"content\":[{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"Bash\",\"input\":{\"command\":\"sleep 20 && echo done\"}}],\"usage\":{\"input_tokens\":10,\"cache_read_input_tokens\":100,\"cache_creation_input_tokens\":0,\"output_tokens\":5}},\"session_id\":\"$sid\"}"
+sleep "${FAKE_CLAUDE_WORK:-1}" &
+wait $!
+echo "{\"type\":\"user\",\"message\":{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"toolu_1\",\"content\":\"done\"}]},\"session_id\":\"$sid\"}"
+n=$(wc -l <"$seen" | tr -d ' ')
+echo "{\"type\":\"assistant\",\"message\":{\"id\":\"msg_2\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Done, with $n later messages.\"}],\"usage\":{\"input_tokens\":12,\"cache_read_input_tokens\":120,\"cache_creation_input_tokens\":0,\"output_tokens\":7}},\"session_id\":\"$sid\"}"
+echo "{\"type\":\"result\",\"subtype\":\"success\",\"is_error\":false,\"num_turns\":2,\"duration_ms\":1000,\"result\":\"done\",\"session_id\":\"$sid\",\"total_cost_usd\":0.25,\"structured_output\":{\"status\":\"done\",\"messages\":$n},\"usage\":{\"input_tokens\":22,\"cache_read_input_tokens\":220,\"cache_creation_input_tokens\":0,\"output_tokens\":12},\"modelUsage\":{\"claude-fake\":{\"inputTokens\":22,\"outputTokens\":12,\"cacheReadInputTokens\":220,\"cacheCreationInputTokens\":0,\"costUSD\":0.25}},\"model_usage_since_last_result\":{\"claude-fake\":{\"inputTokens\":22,\"outputTokens\":12,\"cacheReadInputTokens\":220,\"cacheCreationInputTokens\":0,\"costUSD\":0.25}}}"
+[ -z "$stream" ] || wait "$reader"

@@ -352,6 +352,8 @@ The *Live* tab follows the task's pod while it runs:
 - which agent runs: role, engine, model, read-only or not;
 - what the agent says and thinks (thinking: claude only), and the tools it
   calls with their main argument;
+- a message passed on to a running claude implementer, as a *user* line,
+  once claude has taken it in;
 - a subagent's work as one folded row with its name, model and tokens, which
   opens to its own lines;
 - with `spec.agents.logPrompts: true` in the project, every prompt the
