@@ -41,11 +41,76 @@ spec:
 | `include` | Project path globs, at least one. `*` within a path segment, `**` across segments, without case. | – |
 | `exclude` | Path globs the set never works in. They win over `include`. Archived projects are always skipped. | none |
 | `template` | Any [`AgentProject`](agentproject.md) `spec` field except `gitlab`. Unknown fields are refused. It needs `webhook.enabled`, `webhook.secretRef` and `webhook.url`. | empty |
+| `projects` | [Project entries](../concepts/glossary.md#project-entry): projects the set names, each with its own settings. See [`spec.projects`](#specprojects). | none |
 | `pollInterval` | How often the set discovers the group. | `2m` |
 | `dormantAfter` | How long a child stays without work before the set removes it. | `168h` |
 
 The API server defaults the children's fields as for any AgentProject. A
-change to `template` reaches the children on the next poll.
+change to `template` or `projects` reaches the children on the next poll.
+
+## `spec.projects`
+
+Each entry names one project of the group and gives its child its own
+settings:
+
+```yaml
+spec:
+  template:
+    maxConcurrentRuns: 1
+    milestones:
+      specMarker: /agent spec
+    release:
+      mode: "Off"
+    webhook:
+      enabled: true
+      url: https://ai-operator.example.com/hooks/gitlab
+      secretRef: {name: gitlab-webhook, key: token}
+  projects:
+    - path: my-group/shop
+      name: shop
+      spec:
+        maxConcurrentRuns: 2
+        release:
+          mode: null
+    - path: my-group/tools/cli
+```
+
+The child of `my-group/shop` is called `shop`, runs two issues at once and
+drops the template's `release.mode`, so it releases with the AgentProject
+default. The child of `my-group/tools/cli`
+gets the template as it is; the entry only keeps the project active.
+
+| Field | Meaning | Default |
+|-------|---------|---------|
+| `path` | The project's full path below `gitlab.group`. No globs. Each path appears once, without case. | – |
+| `name` | The child's name, a DNS label of at most 63 characters, unique in the list. It applies when the child is created; an existing child keeps its name. | the slug of the path, as for any child |
+| `spec` | Any AgentProject `spec` field except `gitlab`, merged onto `template`. | empty: the template as it is |
+
+The set merges `spec` onto `template` as a JSON Merge Patch (RFC 7386):
+
+- Objects merge key by key, at every depth.
+- `null` deletes the template's key.
+- Lists and plain values replace the template's: an entry's
+  `crossRepo.targets` is the whole list.
+
+The set then decodes the result as strictly as the template. The merged
+spec still needs `webhook.enabled`, `webhook.secretRef` and `webhook.url`.
+
+A named project is never dormant: it has a child whether or not it has
+work, and that child is not removed after `dormantAfter`. `include`,
+`exclude` and archiving still apply. When two projects would get the same
+child name, the named one gets it.
+
+A broken entry stops the whole set, like a broken template:
+
+| Reason | Message, for example |
+|--------|----------------------|
+| `InvalidSpec` | `projects[0]: path is empty`, `projects[1]: path "my-group/*" is a glob, name one project`, `path "other/x" is not below gitlab.group "my-group"`, `path "my-group/shop" is already projects[0]`, `name "Shop": …` (no DNS label), `name "shop" is already projects[0]` |
+| `InvalidTemplate` | `projects[1].spec: json: unknown field "maxRuns"` (refused even with a `null` value), `projects[1].spec.gitlab is set by the set`, or the merged spec does not decode |
+| `WebhookRequired` | `projects[1]: set children need webhooks: webhook.url is not set` |
+
+Remove an entry and its child gets the template on the next poll. From
+then on the dormant rules apply: without work it goes after `dormantAfter`.
 
 ## `status`
 
@@ -78,6 +143,29 @@ counts until it is deleted by hand or by the operator's plan retention. The
 - `kept: 2 plans; not matched by include`
 - `kept: 2 open tasks, 1 plan; no work for 168h`
 
+Reasons of a project that `spec.projects` names:
+
+| Reason | Meaning |
+|--------|---------|
+| `named in spec.projects` | `active`: the child is written from the entry. |
+| `named in spec.projects; the child keeps its name shop-api, name shop applies only to a new child` | The entry's `name` differs from the existing child's. |
+| `adopted from AgentProject agents/shop` | The set adopted that AgentProject in this poll. From the next poll on the reason is `named in spec.projects`. |
+| `named in spec.projects, but archived` | No child. The tail is any reason an unnamed project would have: `matches exclude …`, `not matched by include`, `not found in the group` (state `dormant`), `watched by AgentProject …`. |
+
+A named project that an AgentProject outside the set watches stays
+`explicit` until the set can adopt that AgentProject. The reason then ends
+with what is missing:
+
+- `; annotate it with ai.wiemers.me/project-set=my-group to hand it to the set`
+- `; not adopted: annotated for set other-set`
+- `; not adopted: in namespace team-a, the set is in agents`
+- `; not adopted: controlled by AgentProjectSet/other-set`
+- `; not adopted: also watched by team-a/shop-copy`
+- `; not adopted: name shop-old, the entry's child name is shop`
+
+Adoption keeps the object: the set becomes its controller, adds the label
+and writes the entry's spec onto it. Its tasks, plans and GitLab hook stay.
+
 An AgentPlan created by the Desk for a dormant entry carries the label
 `ai.wiemers.me/project-set` with the set's name. Its creation wakes the set,
 which discovers at once instead of waiting for `pollInterval`.
@@ -87,9 +175,9 @@ which discovers at once instead of waiting for `pollInterval`.
 | Type | Status | Reason | Meaning |
 |------|--------|--------|---------|
 | `Ready` | True | `Ready` | The set discovers its group. |
-| `Ready` | False | `InvalidSpec` | An empty group or include, or a glob that does not parse. |
-| `Ready` | False | `InvalidTemplate` | The template has an unknown field or sets `gitlab`. |
-| `Ready` | False | `WebhookRequired` | The template lacks `webhook.enabled`, `secretRef` or `url`. |
+| `Ready` | False | `InvalidSpec` | An empty group or include, a glob that does not parse, or a broken `projects` entry. |
+| `Ready` | False | `InvalidTemplate` | The template or an entry's `spec` has an unknown field or sets `gitlab`. |
+| `Ready` | False | `WebhookRequired` | The template, or an entry's merged spec, lacks `webhook.enabled`, `secretRef` or `url`. |
 | `Ready` | False | `TooComplex` | The query's score passes 200. Split the set. |
 | `Discovered` | False | `DiscoveryFailed` | The last discovery failed; the set keeps the last status and retries. |
 
@@ -97,13 +185,14 @@ which discovers at once instead of waiting for `pollInterval`.
 
 A child is an AgentProject in the set's namespace, named by the slug of the
 path below the group, cut to 50 characters plus a 6-character hash when
-longer. It carries:
+longer, unless its entry in `spec.projects` gives a `name`. It carries:
 
 | Key | Meaning |
 |-----|---------|
 | label `ai.wiemers.me/project-set` | The set's name. |
-| annotation `ai.wiemers.me/template-hash` | The template the child was last written from. |
+| annotation `ai.wiemers.me/template-hash` | The spec the child was last written from: the template, merged with its entry if it has one. |
 | annotation `ai.wiemers.me/removing` | The set is removing the child: its webhook is off and it goes once the hook is gone. |
+| annotation `ai.wiemers.me/project-set` | On an AgentProject the set does not own: the name of the set it is handed to. The set adopts it as the child of its entry in `spec.projects`. |
 
 The set owns its children: deleting the set deletes them. On a child, and
 on an AgentProject the set lists as `explicit`, the `WebhookDeliveries`

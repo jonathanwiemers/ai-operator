@@ -205,6 +205,15 @@ A named implementer setup, with its own engine, model and effort, that an
 issue selects with an `agent-profile::<name>` label. The planner picks one
 per issue; see [Roles](roles.md#implementer).
 
+### Project entry
+
+One project a [project set](#project-set) names in `spec.projects`, with
+its own settings on top of the set's template. A named project always has
+a [set child](#set-child), and the set can adopt an existing AgentProject
+for it. See
+[Settings for one project](../guides/project-sets.md#settings-for-one-project)
+and the [reference](../reference/agentprojectset.md#specprojects).
+
 ### Project set
 
 An `AgentProjectSet`: one resource that makes the operator work in every

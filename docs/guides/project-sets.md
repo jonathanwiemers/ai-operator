@@ -5,8 +5,9 @@ work in every project of a GitLab group, so you do not write one
 [AgentProject](../concepts/glossary.md#agentproject) per repository. This
 page shows a complete set, how its globs match, when a project gets its own
 AgentProject and when it loses it, why webhooks are required, what a set
-costs in GitLab requests, how the Desk shows it, and how you move an
-explicit AgentProject into a set. Every field is in the
+costs in GitLab requests, how the Desk shows it, how you give one project its
+own settings, and how you hand an explicit AgentProject to the set. Every
+field is in the
 [AgentProjectSet reference](../reference/agentprojectset.md).
 
 ## An example
@@ -101,11 +102,48 @@ under its set. The new plan wakes the set, which creates the child within
 seconds; the plan waits for it, see
 [Pick the project](write-a-milestone.md#pick-the-project).
 
+## Settings for one project
+
+Most projects of a group want the same settings. When one needs its own,
+name it in `spec.projects` as a
+[project entry](../concepts/glossary.md#project-entry). You write only what
+differs from the template:
+
+```yaml
+spec:
+  template:
+    maxConcurrentRuns: 1
+    # … the rest of the template above
+  projects:
+    - path: my-group/shop
+      name: shop
+      spec:
+        maxConcurrentRuns: 2
+        agents:
+          credentialsSecretName: shop-credentials
+```
+
+The child of `my-group/shop` is called `shop`. It gets the whole template,
+with `maxConcurrentRuns` and the credentials Secret replaced. Objects merge
+key by key, a `null` removes a template key, and a list replaces the
+template's list.
+
+A named project always has a child, with or without work: it is never
+dormant. `exclude` and archiving still win, and the status says
+`named in spec.projects, but …` with the cause. A typo in an entry, such
+as an unknown field or a path outside the group, stops the whole set with
+`Ready=False`, so a broken entry never writes a child with wrong settings.
+The [reference](../reference/agentprojectset.md#specprojects) lists the
+rules and messages.
+
 ## Explicit AgentProjects win
 
 If an AgentProject that the set does not own already watches a project (the
 same `spec.gitlab.project`, any namespace, without case), the set skips it
-and shows it as `explicit`. That AgentProject keeps its settings.
+and shows it as `explicit`. That AgentProject keeps its settings. This
+stays true for a project that `spec.projects` does not name. For a named
+project the set can take the AgentProject over, see
+[Hand an explicit AgentProject to the set](#hand-an-explicit-agentproject-to-the-set).
 
 If the child's name belongs to an object the set does not own, the set skips
 the project and shows it as `nameTaken` with the name in the reason. Rename
@@ -149,13 +187,48 @@ is false shows the reason in the warning tone. In Kubernetes,
 `kubectl -n agents get agentprojectset` (short name `aps`) shows the same
 counts.
 
-## Move an explicit AgentProject into a set
+## Hand an explicit AgentProject to the set
 
-1. Wait until the project's tasks are done: deleting an AgentProject deletes
-   its tasks.
-2. Delete the explicit AgentProject. Its GitLab hook stays behind; the set's
-   child registers its own, so delete the old one in the project's settings.
-3. The set picks the project up on its next poll, if it has work.
+You do not delete the AgentProject: deleting it deletes its tasks. The set
+adopts it instead and keeps its tasks, plans and GitLab hook. Say the
+AgentProject `shop` in the set's namespace watches `my-group/shop`:
+
+1. Add an entry with the settings `shop` has today. The set writes this
+   spec onto it, so leave nothing out:
+
+   ```yaml
+   projects:
+     - path: my-group/shop
+       name: shop
+       spec:
+         maxConcurrentRuns: 2
+   ```
+
+   The `name` must be the AgentProject's name.
+2. Annotate the AgentProject with the set's name, in its manifest:
+
+   ```yaml
+   metadata:
+     name: shop
+     annotations:
+       ai.wiemers.me/project-set: my-group
+   ```
+
+3. Stop your GitOps tool from pruning it, or it deletes the object when you
+   remove the manifest. With Flux, add the annotation
+   `kustomize.toolkit.fluxcd.io/prune: disabled` as well.
+4. Check the set's status. After the next poll the project's entry reads
+   `adopted from AgentProject agents/shop`, and `named in spec.projects`
+   from then on. If it stays `explicit`, the reason says what is missing,
+   for example another AgentProject on the same path.
+5. Remove the AgentProject's manifest from your repository.
+
+## Remove an entry
+
+Delete the entry from `spec.projects`. On the next poll the child gets the
+template without the entry's settings. From then on it follows the
+[dormant rules](#active-and-dormant): without work it goes after
+`dormantAfter`, with an open task or a plan it stays.
 
 ## Next
 

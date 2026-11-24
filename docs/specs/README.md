@@ -27,6 +27,7 @@ git history does; otherwise "no milestone".
 11. [Cost levers: fresh step sessions, effort and Sonnet arms, context by tool](cost-levers.spec.md) — Experiment arms for the implementer, cost per merged line per arm, and context by tool. Milestone: Cost levers: fresh step sessions, effort and Sonnet arms, context by tool.
 12. [Webhooks tell of milestones too, so idle projects stop polling GitLab](milestone-webhooks.spec.md) — Milestone events, heartbeats, explicit projects covered by the set, set hooks on dormant projects. Milestone: no milestone.
 13. [Agents write in one language](agent-language.spec.md) — One chart value, `agent.language`, sets the language every agent writes in. Milestone: Agents write in English, set by one chart value.
+14. [Project sets: per-project settings inside the set](project-set-entries.spec.md) — Entries in `spec.projects` merged onto the template, named projects never dormant, adoption of an annotated AgentProject. Milestone: Project sets: per-project settings inside the set, no Kustomize patches.
 
 ## Autopilot and the pilot
 

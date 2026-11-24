@@ -301,3 +301,10 @@ R1 → R2 → R3 → R4 → R5 → R5b → R6 → R7 → R8 → R10 → R9 (afte
   `docs/reference/agentprojectset.md`, and the links come from the
   guides, reference and getting-started pages, the glossary, the design
   page and the chart README.
+- 2026-11-24: [project-set-entries](project-set-entries.spec.md)
+  Decision 1 reverses Decisions 1–2 here for named projects: a project
+  named in the set's `spec.projects` gets its own settings there, merged
+  onto the template, and the set adopts an explicit AgentProject annotated
+  with `ai.wiemers.me/project-set` instead of skipping it. The non-goal
+  "per-project overrides inside a set" is delivered there; unnamed projects
+  keep the rules above.
