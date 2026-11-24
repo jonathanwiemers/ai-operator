@@ -25,6 +25,13 @@ spec:
   # removes it.
   pollInterval: 2m
   dormantAfter: 168h
+  # Projects the set names, each with its own settings merged onto the
+  # template. name is the child AgentProject's name (optional).
+  projects:
+    - path: my-group/shop
+      name: shop
+      spec:
+        maxConcurrentRuns: 2
   # The spec of every child AgentProject: any AgentProject field except
   # gitlab, which the set fills in. Children need an enabled webhook.
   template:

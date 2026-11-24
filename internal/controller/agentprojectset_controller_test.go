@@ -131,13 +131,13 @@ func (e *setEnv) child(name string) *aiv1.AgentProject {
 	return &p
 }
 
-func setEntry(set *aiv1.AgentProjectSet, path string) aiv1.ProjectSetEntry {
+func setEntry(set *aiv1.AgentProjectSet, path string) aiv1.ProjectSetProjectStatus {
 	for _, e := range set.Status.Projects {
 		if e.Path == path {
 			return e
 		}
 	}
-	return aiv1.ProjectSetEntry{}
+	return aiv1.ProjectSetProjectStatus{}
 }
 
 func setCondition(t *testing.T, set *aiv1.AgentProjectSet, typ string) metav1.Condition {
@@ -207,6 +207,28 @@ func TestProjectSetReconcileCreate(t *testing.T) {
 	}
 	if c := setCondition(t, set, aiv1.ConditionDiscovered); c.Status != metav1.ConditionTrue {
 		t.Errorf("Discovered = %+v", c)
+	}
+}
+
+// Entries change no child yet: the child of a named project keeps the
+// template's spec, name and hash (R2 merges the entry).
+func TestProjectSetReconcileEntriesChangeNoChild(t *testing.T) {
+	disc := &gitlab.GroupDiscovery{Projects: []gitlab.DiscoveredProject{activeProject("jo.wiemers/shop")}}
+	plain := newSetEnv(t, nil)
+	plain.disc.disc = disc
+	plain.reconcile()
+	named := newSetEnv(t, func(s *aiv1.AgentProjectSet) {
+		s.Spec.Projects = []aiv1.ProjectSetEntry{{Path: "jo.wiemers/shop", Name: "renamed",
+			Spec: setTemplate(map[string]any{"maxConcurrentRuns": 3})}}
+	})
+	named.disc.disc = disc
+	named.reconcile()
+	want, got := plain.child("shop"), named.child("shop")
+	if got.Spec.MaxConcurrentRuns != want.Spec.MaxConcurrentRuns || got.Annotations[aiv1.AnnotationTemplateHash] != want.Annotations[aiv1.AnnotationTemplateHash] {
+		t.Errorf("child with entry = %+v, want %+v", got, want)
+	}
+	if c := setCondition(t, named.set(), aiv1.ConditionReady); c.Status != metav1.ConditionTrue {
+		t.Errorf("Ready = %+v", c)
 	}
 }
 
@@ -322,6 +344,12 @@ func TestProjectSetReconcileInvalid(t *testing.T) {
 			s.Spec.Template = &runtime.RawExtension{Raw: []byte(`{"agents":{"image":"agent:1"}}`)}
 		}, aiv1.ReasonWebhookRequired},
 		"empty include": {func(s *aiv1.AgentProjectSet) { s.Spec.Include = nil }, aiv1.ReasonInvalidSpec},
+		"entry outside group": {func(s *aiv1.AgentProjectSet) {
+			s.Spec.Projects = []aiv1.ProjectSetEntry{{Path: "other/shop"}}
+		}, aiv1.ReasonInvalidSpec},
+		"entry unknown field": {func(s *aiv1.AgentProjectSet) {
+			s.Spec.Projects = []aiv1.ProjectSetEntry{{Path: "jo.wiemers/shop", Spec: setTemplate(map[string]any{"bogus": 1})}}
+		}, aiv1.ReasonInvalidTemplate},
 	} {
 		t.Run(name, func(t *testing.T) {
 			e := newSetEnv(t, tc.mutate)
@@ -338,6 +366,9 @@ func TestProjectSetReconcileInvalid(t *testing.T) {
 			c := setCondition(t, e.set(), aiv1.ConditionReady)
 			if c.Status != metav1.ConditionFalse || c.Reason != tc.reason || c.Message == "" {
 				t.Errorf("Ready = %+v, want False %s", c, tc.reason)
+			}
+			if strings.HasPrefix(name, "entry") && !strings.HasPrefix(c.Message, "projects[0]") {
+				t.Errorf("message %q does not name projects[0]", c.Message)
 			}
 		})
 	}

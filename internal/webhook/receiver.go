@@ -217,7 +217,7 @@ func (r *Receiver) owners(ctx context.Context, token string, log logr.Logger) ([
 func (r *Receiver) wakeSets(sets []*aiv1.AgentProjectSet, path string) []string {
 	var woken []string
 	for _, set := range sets {
-		hooked := slices.ContainsFunc(set.Status.Projects, func(e aiv1.ProjectSetEntry) bool {
+		hooked := slices.ContainsFunc(set.Status.Projects, func(e aiv1.ProjectSetProjectStatus) bool {
 			return e.HookID != 0 && strings.EqualFold(e.Path, path)
 		})
 		if !hooked {

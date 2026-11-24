@@ -48,6 +48,15 @@ func TestProjectSetValidate(t *testing.T) {
 		{"bad include glob", func(s *AgentProjectSetSpec) { s.Include = []string{"my-group/**", "my-group/a**b"} }, []string{"include[1]", "a**b"}},
 		{"bad exclude glob", func(s *AgentProjectSetSpec) { s.Exclude = []string{"my-group/?"} }, []string{"exclude[0]", "my-group/?"}},
 		{"several", func(s *AgentProjectSetSpec) { s.GitLab.Group = ""; s.Include = nil; s.Exclude = []string{""} }, []string{"gitlab.group is empty", "include is empty", "exclude[0]"}},
+		{"valid entries", entries(ProjectSetEntry{Path: "my-group/shop", Name: "shop"}, ProjectSetEntry{Path: "/My-Group/sub/api/"}), nil},
+		{"entry empty path", entries(ProjectSetEntry{Path: " "}), []string{"projects[0]: path is empty"}},
+		{"entry glob", entries(ProjectSetEntry{Path: "my-group/*"}), []string{"projects[0]", "glob"}},
+		{"entry outside group", entries(ProjectSetEntry{Path: "my-group-2/shop"}), []string{"projects[0]", "not below gitlab.group"}},
+		{"entry is the group", entries(ProjectSetEntry{Path: "my-group"}), []string{"projects[0]", "not below gitlab.group"}},
+		{"duplicate path", entries(ProjectSetEntry{Path: "my-group/shop"}, ProjectSetEntry{Path: "My-Group/Shop"}), []string{"projects[1]", "already projects[0]"}},
+		{"bad name", entries(ProjectSetEntry{Path: "my-group/shop", Name: "Shop_1"}), []string{"projects[0]", `name "Shop_1"`}},
+		{"duplicate name", entries(ProjectSetEntry{Path: "my-group/a", Name: "shop"}, ProjectSetEntry{Path: "my-group/b", Name: "shop"}), []string{"projects[1]", `name "shop" is already projects[0]`}},
+		{"one problem per entry", entries(ProjectSetEntry{Path: ""}, ProjectSetEntry{Path: "x/y", Name: "_"}), []string{"projects[0]", "projects[1]: path"}},
 	} {
 		s := valid
 		tc.edit(&s)
@@ -64,6 +73,56 @@ func TestProjectSetValidate(t *testing.T) {
 				t.Errorf("%s: problems %q lack %q", tc.name, joined, w)
 			}
 		}
+	}
+}
+
+// entries returns an edit that sets the spec's projects.
+func entries(e ...ProjectSetEntry) func(*AgentProjectSetSpec) {
+	return func(s *AgentProjectSetSpec) { s.Projects = e }
+}
+
+func TestProjectSetValidateOneProblemPerEntry(t *testing.T) {
+	s := AgentProjectSetSpec{GitLab: ProjectSetGitLab{Group: "g"}, Include: []string{"g/**"},
+		Projects: []ProjectSetEntry{{Path: "x/*", Name: "_"}, {Path: "g/a", Name: "a"}}}
+	if got := s.Validate(); len(got) != 1 || !strings.HasPrefix(got[0], "projects[0]: ") {
+		t.Errorf("problems %q", got)
+	}
+}
+
+func TestProjectSetDecodeEntries(t *testing.T) {
+	set := func(raws ...string) AgentProjectSetSpec {
+		var s AgentProjectSetSpec
+		for i, raw := range raws {
+			e := ProjectSetEntry{Path: "g/p" + string(rune('a'+i))}
+			if raw != "" {
+				e.Spec = &runtime.RawExtension{Raw: []byte(raw)}
+			}
+			s.Projects = append(s.Projects, e)
+		}
+		return s
+	}
+	for _, tc := range []struct {
+		name string
+		spec AgentProjectSetSpec
+		want string
+	}{
+		{"unknown field", set(`{}`, `{"workflw":{}}`), `projects[1].spec: json: unknown field "workflw"`},
+		{"gitlab", set(`{"gitlab":{"project":"x"}}`), "projects[0].spec.gitlab is set by the set"},
+		{"array", set(`[{"maxConcurrentRuns":1}]`), "projects[0].spec: "},
+	} {
+		if _, err := tc.spec.DecodeEntries(); err == nil || !strings.Contains(err.Error(), tc.want) {
+			t.Errorf("%s: error %v, want %q", tc.name, err, tc.want)
+		}
+	}
+	got, err := set(`{"maxConcurrentRuns":2,"webhook":{"url":null},"budget":null}`, "", `{}`).DecodeEntries()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 || got[0].MaxConcurrentRuns != 2 || got[1].MaxConcurrentRuns != 0 || got[2].Webhook.Enabled {
+		t.Errorf("decoded %+v", got)
+	}
+	if got, err := (AgentProjectSetSpec{}).DecodeEntries(); err != nil || len(got) != 0 {
+		t.Errorf("no entries: %v, %v", got, err)
 	}
 }
 

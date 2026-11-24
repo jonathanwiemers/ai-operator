@@ -3,7 +3,6 @@ package v1alpha1
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -11,6 +10,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/validation"
 
 	"github.com/jonathanwiemers/ai-operator/internal/projectglob"
 )
@@ -45,6 +45,14 @@ type AgentProjectSetSpec struct {
 	// +optional
 	Template *runtime.RawExtension `json:"template,omitempty"`
 
+	// Projects are projects of the group the set names, each with its own
+	// settings merged onto template. Each path lies below gitlab.group and
+	// appears once.
+	// +listType=map
+	// +listMapKey=path
+	// +optional
+	Projects []ProjectSetEntry `json:"projects,omitempty"`
+
 	// PollInterval is how often the set discovers the group's projects.
 	// +kubebuilder:default="2m"
 	// +optional
@@ -56,6 +64,30 @@ type AgentProjectSetSpec struct {
 	// +kubebuilder:default="168h"
 	// +optional
 	DormantAfter metav1.Duration `json:"dormantAfter,omitempty"`
+}
+
+// ProjectSetEntry is one project the set names, with its own settings.
+type ProjectSetEntry struct {
+	// Path is the project's full path below gitlab.group, e.g.
+	// "my-group/shop". No globs.
+	// +kubebuilder:validation:MinLength=1
+	Path string `json:"path"`
+
+	// Name is the name of the project's child AgentProject. Empty, the set
+	// derives it from the path.
+	// +kubebuilder:validation:MaxLength=63
+	// +optional
+	Name string `json:"name,omitempty"`
+
+	// Spec are the project's settings, merged onto template: any
+	// AgentProject spec field except gitlab. A null value removes the
+	// template's key. Unknown fields make the set Ready=False, reason
+	// InvalidTemplate.
+	// +kubebuilder:validation:Schemaless
+	// +kubebuilder:pruning:PreserveUnknownFields
+	// +kubebuilder:validation:Type=object
+	// +optional
+	Spec *runtime.RawExtension `json:"spec,omitempty"`
 }
 
 // ProjectSetGitLab describes how the set reaches GitLab.
@@ -96,8 +128,8 @@ const (
 	ProjectSetNameTaken ProjectSetState = "nameTaken"
 )
 
-// ProjectSetEntry is one project the set's include matched.
-type ProjectSetEntry struct {
+// ProjectSetProjectStatus is one project the set's include matched.
+type ProjectSetProjectStatus struct {
 	// Path is the project's full path.
 	Path string `json:"path"`
 
@@ -174,7 +206,7 @@ type AgentProjectSetStatus struct {
 
 	// Projects are the projects include matched, with their state.
 	// +optional
-	Projects []ProjectSetEntry `json:"projects,omitempty"`
+	Projects []ProjectSetProjectStatus `json:"projects,omitempty"`
 
 	// DroppedTargets are template crossRepo targets the set's exclude
 	// matches: the set drops them from its children.
@@ -293,7 +325,54 @@ func (s AgentProjectSetSpec) Validate() []string {
 			problems = append(problems, fmt.Sprintf("exclude[%d]: %v", i, err))
 		}
 	}
+	return append(problems, s.entryProblems()...)
+}
+
+// entryProblems returns one problem per broken entry of projects: an empty
+// path, a glob, a path not below the group, a duplicate path (in any case),
+// a name that is no DNS label, and a duplicate name.
+func (s AgentProjectSetSpec) entryProblems() []string {
+	var problems []string
+	group := NormalizeProject(s.GitLab.Group)
+	paths, names := map[string]int{}, map[string]int{}
+	for i, e := range s.Projects {
+		path := NormalizeProject(e.Path)
+		first, dupPath := paths[path]
+		var problem string
+		switch {
+		case path == "":
+			problem = "path is empty"
+		case strings.Contains(path, "*"):
+			problem = fmt.Sprintf("path %q is a glob, name one project", e.Path)
+		case group != "" && !strings.HasPrefix(path, group+"/"):
+			problem = fmt.Sprintf("path %q is not below gitlab.group %q", e.Path, s.GitLab.Group)
+		case dupPath:
+			problem = fmt.Sprintf("path %q is already projects[%d]", e.Path, first)
+		default:
+			paths[path] = i
+			problem = entryNameProblem(e.Name, names, i)
+		}
+		if problem != "" {
+			problems = append(problems, fmt.Sprintf("projects[%d]: %s", i, problem))
+		}
+	}
 	return problems
+}
+
+// entryNameProblem checks entry i's optional child name against the names
+// of the entries before it, and records it.
+func entryNameProblem(name string, names map[string]int, i int) string {
+	if name == "" {
+		return ""
+	}
+	if errs := validation.IsDNS1123Label(name); len(errs) > 0 {
+		return fmt.Sprintf("name %q: %s", name, strings.Join(errs, "; "))
+	}
+	if first, dup := names[name]; dup {
+		return fmt.Sprintf("name %q is already projects[%d]", name, first)
+	}
+	names[name] = i
+	return ""
 }
 
 // DecodeTemplate decodes the template strictly into an AgentProjectSpec:
@@ -301,23 +380,45 @@ func (s AgentProjectSetSpec) Validate() []string {
 // empty spec. It applies no AgentProject defaults; the API server defaults
 // the children.
 func (s AgentProjectSetSpec) DecodeTemplate() (AgentProjectSpec, error) {
+	return decodeStrict("template", s.Template)
+}
+
+// DecodeEntries decodes each entry's spec alone, strictly, as DecodeTemplate
+// decodes the template. Null values pass: they remove template keys. The
+// error names the entry, e.g. "projects[1].spec: …".
+func (s AgentProjectSetSpec) DecodeEntries() ([]AgentProjectSpec, error) {
+	specs := make([]AgentProjectSpec, 0, len(s.Projects))
+	for i, e := range s.Projects {
+		spec, err := decodeStrict(fmt.Sprintf("projects[%d].spec", i), e.Spec)
+		if err != nil {
+			return nil, err
+		}
+		specs = append(specs, spec)
+	}
+	return specs, nil
+}
+
+// decodeStrict decodes raw, the value of field, strictly into an
+// AgentProjectSpec: invalid JSON, a non-object, unknown fields and a gitlab
+// key are refused. Missing or empty raw is the empty spec. The error starts
+// with field.
+func decodeStrict(field string, raw *runtime.RawExtension) (AgentProjectSpec, error) {
 	var spec AgentProjectSpec
-	if s.Template == nil || len(bytes.TrimSpace(s.Template.Raw)) == 0 {
+	if raw == nil || len(bytes.TrimSpace(raw.Raw)) == 0 {
 		return spec, nil
 	}
-	raw := s.Template.Raw
 	// Unmarshal refuses invalid JSON, a non-object and trailing data.
 	var top map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &top); err != nil {
-		return spec, fmt.Errorf("template: %w", err)
+	if err := json.Unmarshal(raw.Raw, &top); err != nil {
+		return spec, fmt.Errorf("%s: %w", field, err)
 	}
 	if _, ok := top["gitlab"]; ok {
-		return spec, errors.New("template.gitlab is set by the set")
+		return spec, fmt.Errorf("%s.gitlab is set by the set", field)
 	}
-	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec := json.NewDecoder(bytes.NewReader(raw.Raw))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&spec); err != nil {
-		return AgentProjectSpec{}, fmt.Errorf("template: %w", err)
+		return AgentProjectSpec{}, fmt.Errorf("%s: %w", field, err)
 	}
 	return spec, nil
 }

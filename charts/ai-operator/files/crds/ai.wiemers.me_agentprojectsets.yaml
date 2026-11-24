@@ -138,6 +138,42 @@ spec:
                 description: PollInterval is how often the set discovers the group's
                   projects.
                 type: string
+              projects:
+                description: |-
+                  Projects are projects of the group the set names, each with its own
+                  settings merged onto template. Each path lies below gitlab.group and
+                  appears once.
+                items:
+                  description: ProjectSetEntry is one project the set names, with
+                    its own settings.
+                  properties:
+                    name:
+                      description: |-
+                        Name is the name of the project's child AgentProject. Empty, the set
+                        derives it from the path.
+                      maxLength: 63
+                      type: string
+                    path:
+                      description: |-
+                        Path is the project's full path below gitlab.group, e.g.
+                        "my-group/shop". No globs.
+                      minLength: 1
+                      type: string
+                    spec:
+                      description: |-
+                        Spec are the project's settings, merged onto template: any
+                        AgentProject spec field except gitlab. A null value removes the
+                        template's key. Unknown fields make the set Ready=False, reason
+                        InvalidTemplate.
+                      type: object
+                      x-kubernetes-preserve-unknown-fields: true
+                  required:
+                  - path
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - path
+                x-kubernetes-list-type: map
               template:
                 description: |-
                   Template is the spec of every child AgentProject: any AgentProject
@@ -266,7 +302,8 @@ spec:
                 description: Projects are the projects include matched, with their
                   state.
                 items:
-                  description: ProjectSetEntry is one project the set's include matched.
+                  description: ProjectSetProjectStatus is one project the set's include
+                    matched.
                   properties:
                     child:
                       description: Child is the name of the child AgentProject, if

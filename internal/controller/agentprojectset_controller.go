@@ -202,6 +202,9 @@ func checkProjectSet(spec aiv1.AgentProjectSetSpec) (tmpl aiv1.AgentProjectSpec,
 	if err != nil {
 		return tmpl, aiv1.ReasonInvalidTemplate, textutil.Truncate(err.Error(), 1024)
 	}
+	if _, err := spec.DecodeEntries(); err != nil {
+		return tmpl, aiv1.ReasonInvalidTemplate, textutil.Truncate(err.Error(), 1024)
+	}
 	if problem := spec.WebhookProblem(tmpl); problem != "" {
 		return tmpl, aiv1.ReasonWebhookRequired, "set children need webhooks: " + problem
 	}

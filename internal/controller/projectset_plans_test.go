@@ -56,7 +56,7 @@ func TestProjectSetPlanPlansCountAsWork(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			s := set.DeepCopy()
-			s.Status.Projects = []aiv1.ProjectSetEntry{{Path: tc.path, State: aiv1.ProjectSetDormant, LastActiveTime: ago(500 * time.Hour)}}
+			s.Status.Projects = []aiv1.ProjectSetProjectStatus{{Path: tc.path, State: aiv1.ProjectSetDormant, LastActiveTime: ago(500 * time.Hour)}}
 			var ready []gitlab.DiscoveredIssue
 			if tc.ready {
 				ready = []gitlab.DiscoveredIssue{{Project: tc.path, IID: 7}}

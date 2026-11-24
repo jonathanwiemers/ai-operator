@@ -1575,7 +1575,7 @@ export interface ProjectSetSummary {
   pollInterval: string;
   lastDiscoveryTime?: string;
   counts: aiv1.ProjectSetCounts;
-  projects: aiv1.ProjectSetEntry[];
+  projects: aiv1.ProjectSetProjectStatus[];
   droppedTargets?: string[];
   conditions?: aiv1.Condition[];
 }

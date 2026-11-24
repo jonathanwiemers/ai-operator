@@ -290,7 +290,7 @@ func (r *AgentProjectReconciler) setDiscoveryCurrent(ctx context.Context, projec
 		if set.UID != ref.UID {
 			return ref.Name, false
 		}
-		return ref.Name, setWatches(&set, func(e aiv1.ProjectSetEntry) bool { return e.Child == project.Name }, now)
+		return ref.Name, setWatches(&set, func(e aiv1.ProjectSetProjectStatus) bool { return e.Child == project.Name }, now)
 	}
 	var sets aiv1.AgentProjectSetList
 	if err := r.List(ctx, &sets); err != nil {
@@ -300,7 +300,7 @@ func (r *AgentProjectReconciler) setDiscoveryCurrent(ctx context.Context, projec
 	path := aiv1.NormalizeProject(project.Spec.GitLab.Project)
 	for i := range sets.Items {
 		set := &sets.Items[i]
-		if setWatches(set, func(e aiv1.ProjectSetEntry) bool {
+		if setWatches(set, func(e aiv1.ProjectSetProjectStatus) bool {
 			return e.State == aiv1.ProjectSetExplicit && aiv1.NormalizeProject(e.Path) == path
 		}, now) {
 			return set.Name, true
@@ -311,7 +311,7 @@ func (r *AgentProjectReconciler) setDiscoveryCurrent(ctx context.Context, projec
 
 // setWatches reports whether the set discovered its group within twice its
 // pollInterval and its entry that match picks holds a milestones hash.
-func setWatches(set *aiv1.AgentProjectSet, match func(aiv1.ProjectSetEntry) bool, now time.Time) bool {
+func setWatches(set *aiv1.AgentProjectSet, match func(aiv1.ProjectSetProjectStatus) bool, now time.Time) bool {
 	last := set.Status.LastDiscoveryTime
 	if last == nil || now.Sub(last.Time) >= 2*set.Spec.WithDefaults().PollInterval.Duration {
 		return false

@@ -205,7 +205,7 @@ func TestProjectSetRemovalStaleResourceVersion(t *testing.T) {
 	e.hook("shop", 0, "", "")
 	stale := e.child("shop")
 	e.hook("shop", 9, "Registered", "a sync still running registered it")
-	entry := aiv1.ProjectSetEntry{Child: "shop"}
+	entry := aiv1.ProjectSetProjectStatus{Child: "shop"}
 	deleted, err := e.r.removeChild(context.Background(), stale, &entry, e.now)
 	if err != nil || deleted || e.gone("shop") {
 		t.Fatalf("stale child deleted: %v, %v", deleted, err)

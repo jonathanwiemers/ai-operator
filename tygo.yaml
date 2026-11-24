@@ -161,7 +161,7 @@ packages:
       aiv1.PromptKind: aiv1.PromptKind
       aiv1.PromptState: aiv1.PromptState
       aiv1.ProjectSetCounts: aiv1.ProjectSetCounts
-      aiv1.ProjectSetEntry: aiv1.ProjectSetEntry
+      aiv1.ProjectSetProjectStatus: aiv1.ProjectSetProjectStatus
       aiv1.ReleaseBy: aiv1.ReleaseBy
       aiv1.ReleaseState: aiv1.ReleaseState
       aiv1.ResearchAgent: aiv1.ResearchAgent

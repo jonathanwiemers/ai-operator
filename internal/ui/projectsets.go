@@ -14,24 +14,24 @@ import (
 // ProjectSetSummary is an AgentProjectSet with the result of its last
 // discovery.
 type ProjectSetSummary struct {
-	Namespace         string                 `json:"namespace"`
-	Name              string                 `json:"name"`
-	Group             string                 `json:"group"`
-	Include           []string               `json:"include"`
-	Exclude           []string               `json:"exclude,omitempty"`
-	PollInterval      string                 `json:"pollInterval"`
-	LastDiscoveryTime *metav1.Time           `json:"lastDiscoveryTime,omitempty"`
-	Counts            aiv1.ProjectSetCounts  `json:"counts"`
-	Projects          []aiv1.ProjectSetEntry `json:"projects"`
-	DroppedTargets    []string               `json:"droppedTargets,omitempty"`
-	Conditions        []metav1.Condition     `json:"conditions,omitempty"`
+	Namespace         string                         `json:"namespace"`
+	Name              string                         `json:"name"`
+	Group             string                         `json:"group"`
+	Include           []string                       `json:"include"`
+	Exclude           []string                       `json:"exclude,omitempty"`
+	PollInterval      string                         `json:"pollInterval"`
+	LastDiscoveryTime *metav1.Time                   `json:"lastDiscoveryTime,omitempty"`
+	Counts            aiv1.ProjectSetCounts          `json:"counts"`
+	Projects          []aiv1.ProjectSetProjectStatus `json:"projects"`
+	DroppedTargets    []string                       `json:"droppedTargets,omitempty"`
+	Conditions        []metav1.Condition             `json:"conditions,omitempty"`
 }
 
 // summarizeSet builds the summary of set.
 func summarizeSet(set *aiv1.AgentProjectSet) ProjectSetSummary {
 	projects := set.Status.Projects
 	if projects == nil {
-		projects = []aiv1.ProjectSetEntry{}
+		projects = []aiv1.ProjectSetProjectStatus{}
 	}
 	return ProjectSetSummary{
 		Namespace:         set.Namespace,
@@ -70,7 +70,7 @@ func (s *Server) projectSets(w http.ResponseWriter, r *http.Request) {
 		sum := summarizeSet(set)
 		// The set's name grants the set, not its children: keep the
 		// entries of the projects the user may see.
-		sum.Projects = slices.DeleteFunc(sum.Projects, func(e aiv1.ProjectSetEntry) bool {
+		sum.Projects = slices.DeleteFunc(sum.Projects, func(e aiv1.ProjectSetProjectStatus) bool {
 			return e.Child != "" && !s.authz.CanView(p, set.Namespace, e.Child)
 		})
 		out = append(out, sum)

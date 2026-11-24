@@ -101,7 +101,7 @@ func (s *setHooks) remove(ctx context.Context, path string, id int64) bool {
 
 // ensure looks the entry's hook up and creates or updates it. Any outcome
 // stamps HookCheckedAt, so a failing project waits for the next recheck.
-func (s *setHooks) ensure(ctx context.Context, e *aiv1.ProjectSetEntry, opts gitlab.ProjectHookOptions, now time.Time) {
+func (s *setHooks) ensure(ctx context.Context, e *aiv1.ProjectSetProjectStatus, opts gitlab.ProjectHookOptions, now time.Time) {
 	if s.budget < 2 {
 		return
 	}
@@ -147,7 +147,7 @@ func (s *setHooks) ensure(ctx context.Context, e *aiv1.ProjectSetEntry, opts git
 
 // setHookDue: the entry's hook was never checked, or not for an hour plus a
 // jitter by path, so the projects are not all checked at once.
-func setHookDue(e *aiv1.ProjectSetEntry, now time.Time) bool {
+func setHookDue(e *aiv1.ProjectSetProjectStatus, now time.Time) bool {
 	return e.HookCheckedAt == nil || now.Sub(e.HookCheckedAt.Time) >= webhookRecheck+jitter(e.Path, webhookRecheck/4)
 }
 
@@ -163,7 +163,7 @@ func (r *AgentProjectSetReconciler) syncSetHooks(ctx context.Context, set *aiv1.
 		return
 	}
 	s := &setHooks{r: r, set: set, gl: gl, budget: setHookBudget}
-	prev := map[string]aiv1.ProjectSetEntry{}
+	prev := map[string]aiv1.ProjectSetProjectStatus{}
 	for _, e := range set.Status.Projects {
 		if e.HookID != 0 || e.HookCheckedAt != nil {
 			prev[aiv1.NormalizeProject(e.Path)] = e
@@ -206,7 +206,7 @@ func (r *AgentProjectSetReconciler) syncSetHooks(ctx context.Context, set *aiv1.
 	// hook is deleted.
 	for _, p := range prev {
 		if p.HookID != 0 && !s.remove(ctx, p.Path, p.HookID) {
-			plan.Entries = append(plan.Entries, aiv1.ProjectSetEntry{Path: p.Path, State: aiv1.ProjectSetExcluded,
+			plan.Entries = append(plan.Entries, aiv1.ProjectSetProjectStatus{Path: p.Path, State: aiv1.ProjectSetExcluded,
 				Reason: "not found in the group; deleting the set's project hook", HookID: p.HookID, HookCheckedAt: p.HookCheckedAt})
 		}
 	}
@@ -262,7 +262,7 @@ func (r *AgentProjectSetReconciler) finalize(ctx context.Context, set *aiv1.Agen
 	}
 	orig := set.DeepCopy()
 	s := &setHooks{r: r, set: set, budget: setHookBudget}
-	if slices.ContainsFunc(set.Status.Projects, func(e aiv1.ProjectSetEntry) bool { return e.HookID != 0 }) {
+	if slices.ContainsFunc(set.Status.Projects, func(e aiv1.ProjectSetProjectStatus) bool { return e.HookID != 0 }) {
 		d, err := r.gitlabClient(ctx, set, set.Spec.WithDefaults())
 		if err != nil {
 			log.FromContext(ctx).Info("No GitLab client to delete the set's hooks", "error", err.Error())

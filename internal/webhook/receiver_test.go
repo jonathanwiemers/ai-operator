@@ -289,10 +289,10 @@ func projectSet(t *testing.T, ns, name, secretName string, hooked ...string) *ai
 	s := &aiv1.AgentProjectSet{ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: name}}
 	s.Spec.Template = &runtime.RawExtension{Raw: []byte(`{"webhook":{"enabled":true,"url":"https://hooks.example","secretRef":{"name":"` + secretName + `","key":"token"}}}`)}
 	for i, p := range hooked {
-		s.Status.Projects = append(s.Status.Projects, aiv1.ProjectSetEntry{Path: p, State: aiv1.ProjectSetDormant, HookID: int64(i + 1)})
+		s.Status.Projects = append(s.Status.Projects, aiv1.ProjectSetProjectStatus{Path: p, State: aiv1.ProjectSetDormant, HookID: int64(i + 1)})
 	}
 	// An entry without a hook does not count.
-	s.Status.Projects = append(s.Status.Projects, aiv1.ProjectSetEntry{Path: "group/nohook", State: aiv1.ProjectSetDormant})
+	s.Status.Projects = append(s.Status.Projects, aiv1.ProjectSetProjectStatus{Path: "group/nohook", State: aiv1.ProjectSetDormant})
 	return s
 }
 

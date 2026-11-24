@@ -165,7 +165,7 @@ func secretObjects() []client.Object {
 			Spec:   aiv1.AgentPlanSpec{ProjectRef: "p", Title: "zq7 plan", CreatedBy: "ada@example.com"},
 			Status: aiv1.AgentPlanStatus{Phase: aiv1.AgentPlanIdle, Draft: "# zq7"}},
 		&aiv1.AgentProjectSet{ObjectMeta: metav1.ObjectMeta{Namespace: "ns", Name: "visible"},
-			Status: aiv1.AgentProjectSetStatus{Projects: []aiv1.ProjectSetEntry{
+			Status: aiv1.AgentProjectSetStatus{Projects: []aiv1.ProjectSetProjectStatus{
 				{Path: "acme/zq7", State: aiv1.ProjectSetActive, Child: "p"}}}},
 	}
 }

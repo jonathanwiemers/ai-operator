@@ -30,7 +30,7 @@ func testProjectSet(namespace, name string) *aiv1.AgentProjectSet {
 		Status: aiv1.AgentProjectSetStatus{
 			LastDiscoveryTime: &discovered,
 			Counts:            aiv1.ProjectSetCounts{Active: 1, Excluded: 1},
-			Projects: []aiv1.ProjectSetEntry{
+			Projects: []aiv1.ProjectSetProjectStatus{
 				{Path: "acme/web", State: aiv1.ProjectSetActive, Child: "web"},
 				{Path: "acme/archived/old", State: aiv1.ProjectSetExcluded, Reason: "matches exclude acme/archived/**"},
 			},

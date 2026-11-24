@@ -54,7 +54,7 @@ func (r *AgentProjectSetReconciler) removeChildren(ctx context.Context, set *aiv
 
 // removeChild takes the next removal step of a child without cached tasks
 // and plans and reports whether it deleted the child.
-func (r *AgentProjectSetReconciler) removeChild(ctx context.Context, p *aiv1.AgentProject, e *aiv1.ProjectSetEntry, now time.Time) (bool, error) {
+func (r *AgentProjectSetReconciler) removeChild(ctx context.Context, p *aiv1.AgentProject, e *aiv1.ProjectSetProjectStatus, now time.Time) (bool, error) {
 	// Start: webhook off. The spec change makes the child full-sync, which
 	// deletes the hook. The delete waits for a later poll at the earliest.
 	if p.Spec.Webhook.Enabled || p.Annotations[aiv1.AnnotationRemoving] == "" {

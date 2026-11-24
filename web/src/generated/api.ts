@@ -2268,6 +2268,15 @@ export interface AgentProjectSetSpec {
    */
   template?: unknown;
   /**
+   * Projects are projects of the group the set names, each with its own
+   * settings merged onto template. Each path lies below gitlab.group and
+   * appears once.
+   * +listType=map
+   * +listMapKey=path
+   * +optional
+   */
+  projects?: ProjectSetEntry[];
+  /**
    * PollInterval is how often the set discovers the group's projects.
    * +kubebuilder:default="2m"
    * +optional
@@ -2281,6 +2290,35 @@ export interface AgentProjectSetSpec {
    * +optional
    */
   dormantAfter?: string;
+}
+/**
+ * ProjectSetEntry is one project the set names, with its own settings.
+ */
+export interface ProjectSetEntry {
+  /**
+   * Path is the project's full path below gitlab.group, e.g.
+   * "my-group/shop". No globs.
+   * +kubebuilder:validation:MinLength=1
+   */
+  path: string;
+  /**
+   * Name is the name of the project's child AgentProject. Empty, the set
+   * derives it from the path.
+   * +kubebuilder:validation:MaxLength=63
+   * +optional
+   */
+  name?: string;
+  /**
+   * Spec are the project's settings, merged onto template: any
+   * AgentProject spec field except gitlab. A null value removes the
+   * template's key. Unknown fields make the set Ready=False, reason
+   * InvalidTemplate.
+   * +kubebuilder:validation:Schemaless
+   * +kubebuilder:pruning:PreserveUnknownFields
+   * +kubebuilder:validation:Type=object
+   * +optional
+   */
+  spec?: unknown;
 }
 /**
  * ProjectSetGitLab describes how the set reaches GitLab.
@@ -2334,9 +2372,9 @@ export const ProjectSetExplicit: ProjectSetState = "explicit";
  */
 export const ProjectSetNameTaken: ProjectSetState = "nameTaken";
 /**
- * ProjectSetEntry is one project the set's include matched.
+ * ProjectSetProjectStatus is one project the set's include matched.
  */
-export interface ProjectSetEntry {
+export interface ProjectSetProjectStatus {
   /**
    * Path is the project's full path.
    */
@@ -2439,7 +2477,7 @@ export interface AgentProjectSetStatus {
    * Projects are the projects include matched, with their state.
    * +optional
    */
-  projects?: ProjectSetEntry[];
+  projects?: ProjectSetProjectStatus[];
   /**
    * DroppedTargets are template crossRepo targets the set's exclude
    * matches: the set drops them from its children.

@@ -354,7 +354,7 @@ func setPlan() *aiv1.AgentPlan {
 	return plan
 }
 
-func testSet(entries ...aiv1.ProjectSetEntry) *aiv1.AgentProjectSet {
+func testSet(entries ...aiv1.ProjectSetProjectStatus) *aiv1.AgentProjectSet {
 	return &aiv1.AgentProjectSet{
 		ObjectMeta: metav1.ObjectMeta{Name: "jo-wiemers", Namespace: ns},
 		Spec:       aiv1.AgentProjectSetSpec{GitLab: aiv1.ProjectSetGitLab{Group: "jo.wiemers"}},
@@ -394,15 +394,15 @@ func TestPlanWaitingClearedWithoutMessage(t *testing.T) {
 }
 
 func TestPlanSetProjectTimesOut(t *testing.T) {
-	discoveryFailed := testSet(aiv1.ProjectSetEntry{Path: "jo.wiemers/shop", State: aiv1.ProjectSetDormant, Reason: "no work"})
+	discoveryFailed := testSet(aiv1.ProjectSetProjectStatus{Path: "jo.wiemers/shop", State: aiv1.ProjectSetDormant, Reason: "no work"})
 	discoveryFailed.Status.Conditions = []metav1.Condition{{Type: aiv1.ConditionDiscovered, Status: metav1.ConditionFalse, Reason: "GitLabError", Message: "GitLab answered 401"}}
 	for _, tc := range []struct {
 		name   string
 		set    *aiv1.AgentProjectSet // nil: no set
 		reason string
 	}{
-		{name: "entry by path", set: testSet(aiv1.ProjectSetEntry{Path: "jo.wiemers/shop", State: aiv1.ProjectSetDormant, Reason: "archived"}), reason: "archived"},
-		{name: "entry by child", set: testSet(aiv1.ProjectSetEntry{Path: "jo.wiemers/other", Child: "shop", State: aiv1.ProjectSetActive}), reason: "the entry is active"},
+		{name: "entry by path", set: testSet(aiv1.ProjectSetProjectStatus{Path: "jo.wiemers/shop", State: aiv1.ProjectSetDormant, Reason: "archived"}), reason: "archived"},
+		{name: "entry by child", set: testSet(aiv1.ProjectSetProjectStatus{Path: "jo.wiemers/other", Child: "shop", State: aiv1.ProjectSetActive}), reason: "the entry is active"},
 		{name: "discovery failed", set: discoveryFailed, reason: "GitLab answered 401"},
 		{name: "no entry", set: testSet(), reason: "the set has no entry for it"},
 		{name: "no set", reason: "set jo-wiemers not found"},

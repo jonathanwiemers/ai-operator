@@ -745,6 +745,22 @@ func TestProjectSetSampleAdmitted(t *testing.T) {
 		if deep := tmpl["agents"].(map[string]any)["custom"].(map[string]any)["deep"]; deep == nil {
 			t.Errorf("template lost nested fields: %v", tmpl)
 		}
+		entry := spec(obj)["projects"].([]any)[0].(map[string]any)
+		if entry["path"] != "my-group/shop" || entry["name"] != "shop" || entry["spec"] == nil {
+			t.Errorf("projects[0] %v", entry)
+		}
+
+		obj, errs = crd.admit(map[string]any{"spec": map[string]any{
+			"gitlab":   map[string]any{"group": "g", "tokenSecretRef": map[string]any{"name": "gitlab", "key": "token"}},
+			"include":  []any{"g/**"},
+			"projects": []any{map[string]any{"path": "g/p", "spec": map[string]any{"custom": map[string]any{"deep": []any{1}}, "budget": nil}}},
+		}})
+		if len(errs) > 0 {
+			t.Fatalf("set with entry rejected: %v", errs)
+		}
+		if es := spec(obj)["projects"].([]any)[0].(map[string]any)["spec"].(map[string]any); es["custom"] == nil {
+			t.Errorf("entry spec lost unknown fields: %v", es)
+		}
 
 		obj, errs = crd.admit(map[string]any{"spec": map[string]any{
 			"gitlab":  map[string]any{"group": "g", "tokenSecretRef": map[string]any{"name": "gitlab", "key": "token"}},
@@ -773,6 +789,9 @@ func TestProjectSetSchemaRejects(t *testing.T) {
 		{"empty group", map[string]any{"gitlab": map[string]any{"group": "", "tokenSecretRef": ref}, "include": []any{"g/**"}}, "spec.gitlab.group in body should be at least 1 chars long"},
 		{"no token", map[string]any{"gitlab": map[string]any{"group": "g"}, "include": []any{"g/**"}}, "spec.gitlab.tokenSecretRef in body is required"},
 		{"template not an object", map[string]any{"gitlab": map[string]any{"group": "g", "tokenSecretRef": ref}, "include": []any{"g/**"}, "template": "x"}, "spec.template in body must be of type object"},
+		{"entry without path", map[string]any{"gitlab": map[string]any{"group": "g", "tokenSecretRef": ref}, "include": []any{"g/**"}, "projects": []any{map[string]any{"name": "p"}}}, "spec.projects[0].path"},
+		{"entry spec not an object", map[string]any{"gitlab": map[string]any{"group": "g", "tokenSecretRef": ref}, "include": []any{"g/**"}, "projects": []any{map[string]any{"path": "g/p", "spec": []any{}}}}, "spec.projects[0].spec in body must be of type object"},
+		{"entry name too long", map[string]any{"gitlab": map[string]any{"group": "g", "tokenSecretRef": ref}, "include": []any{"g/**"}, "projects": []any{map[string]any{"path": "g/p", "name": strings.Repeat("a", 64)}}}, "spec.projects[0].name"},
 	} {
 		if _, errs := crd.admit(map[string]any{"spec": tc.spec}); !strings.Contains(strings.Join(errs, "\n"), tc.want) {
 			t.Errorf("%s: errors %v, want %q", tc.name, errs, tc.want)

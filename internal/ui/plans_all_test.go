@@ -246,7 +246,7 @@ func setPlansEnv(t *testing.T, roles ...string) *testEnv {
 			Spec: aiv1.AgentPlanSpec{ProjectRef: "tools-foo", CreatedBy: "ada@example.com"}},
 		&aiv1.AgentProjectSet{ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "acme"},
 			Spec: aiv1.AgentProjectSetSpec{GitLab: aiv1.ProjectSetGitLab{Group: "acme"}},
-			Status: aiv1.AgentProjectSetStatus{Projects: []aiv1.ProjectSetEntry{
+			Status: aiv1.AgentProjectSetStatus{Projects: []aiv1.ProjectSetProjectStatus{
 				{Path: "acme/web", State: aiv1.ProjectSetActive, Child: "web"},
 				{Path: "acme/tools/foo", State: aiv1.ProjectSetDormant},
 				{Path: "acme/legacy", State: aiv1.ProjectSetDormant},
@@ -256,7 +256,7 @@ func setPlansEnv(t *testing.T, roles ...string) *testEnv {
 			}}},
 		&aiv1.AgentProjectSet{ObjectMeta: metav1.ObjectMeta{Namespace: "team-b", Name: "hidden"},
 			Spec:   aiv1.AgentProjectSetSpec{GitLab: aiv1.ProjectSetGitLab{Group: "beta"}},
-			Status: aiv1.AgentProjectSetStatus{Projects: []aiv1.ProjectSetEntry{{Path: "beta/api", State: aiv1.ProjectSetDormant}}}},
+			Status: aiv1.AgentProjectSetStatus{Projects: []aiv1.ProjectSetProjectStatus{{Path: "beta/api", State: aiv1.ProjectSetDormant}}}},
 	}
 	for _, o := range objects {
 		if err := env.reader.Create(context.Background(), o); err != nil {

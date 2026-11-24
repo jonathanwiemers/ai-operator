@@ -45,7 +45,7 @@ type plannedChild struct {
 // projectSetPlan is what the set writes: its children and its status.
 type projectSetPlan struct {
 	Children []plannedChild
-	Entries  []aiv1.ProjectSetEntry
+	Entries  []aiv1.ProjectSetProjectStatus
 	Counts   aiv1.ProjectSetCounts
 	// Dropped are the template's crossRepo targets the set's exclude matches.
 	Dropped []string
@@ -76,7 +76,7 @@ func planProjectSet(in projectSetInput) projectSetPlan {
 			byName[p.Name] = p
 		}
 	}
-	prev := map[string]aiv1.ProjectSetEntry{}
+	prev := map[string]aiv1.ProjectSetProjectStatus{}
 	for _, e := range set.Status.Projects {
 		prev[aiv1.NormalizeProject(e.Path)] = e
 	}
@@ -106,7 +106,7 @@ func planProjectSet(in projectSetInput) projectSetPlan {
 			}
 			continue
 		}
-		e := aiv1.ProjectSetEntry{Path: dp.FullPath, LastActiveTime: prev[path].LastActiveTime}
+		e := aiv1.ProjectSetProjectStatus{Path: dp.FullPath, LastActiveTime: prev[path].LastActiveTime}
 		if child != nil {
 			e.Child = child.Name
 		}
@@ -169,7 +169,7 @@ func planProjectSet(in projectSetInput) projectSetPlan {
 		}
 	}
 
-	slices.SortFunc(plan.Entries, func(a, b aiv1.ProjectSetEntry) int {
+	slices.SortFunc(plan.Entries, func(a, b aiv1.ProjectSetProjectStatus) int {
 		return strings.Compare(aiv1.NormalizeProject(a.Path), aiv1.NormalizeProject(b.Path))
 	})
 	slices.SortFunc(plan.Children, func(a, b plannedChild) int {
@@ -180,7 +180,7 @@ func planProjectSet(in projectSetInput) projectSetPlan {
 }
 
 func (p *projectSetPlan) add(path string, state aiv1.ProjectSetState, child, reason string, last *metav1.Time) {
-	p.Entries = append(p.Entries, aiv1.ProjectSetEntry{Path: path, State: state, Child: child, Reason: reason, LastActiveTime: last})
+	p.Entries = append(p.Entries, aiv1.ProjectSetProjectStatus{Path: path, State: state, Child: child, Reason: reason, LastActiveTime: last})
 }
 
 type projectSetReason struct {
@@ -270,7 +270,7 @@ func planChild(name, path string, tmpl aiv1.AgentProjectSpec, spec aiv1.AgentPro
 }
 
 // projectSetCounts counts the entries by state.
-func projectSetCounts(entries []aiv1.ProjectSetEntry) aiv1.ProjectSetCounts {
+func projectSetCounts(entries []aiv1.ProjectSetProjectStatus) aiv1.ProjectSetCounts {
 	var c aiv1.ProjectSetCounts
 	for _, e := range entries {
 		switch e.State {

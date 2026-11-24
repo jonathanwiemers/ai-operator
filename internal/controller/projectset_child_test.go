@@ -34,7 +34,7 @@ func newChildEnv(t *testing.T) *childEnv {
 	e.r.NewGitLab = func(string, string) gitlab.API { c.clients++; return gl }
 	set := &aiv1.AgentProjectSet{ObjectMeta: metav1.ObjectMeta{Name: "jo", Namespace: ns, UID: "set-uid"}}
 	set.Status.LastDiscoveryTime = &metav1.Time{Time: clk.Now()}
-	set.Status.Projects = []aiv1.ProjectSetEntry{{Path: e.project().Spec.GitLab.Project, State: aiv1.ProjectSetActive, Child: "shop", Milestones: "hash"}}
+	set.Status.Projects = []aiv1.ProjectSetProjectStatus{{Path: e.project().Spec.GitLab.Project, State: aiv1.ProjectSetActive, Child: "shop", Milestones: "hash"}}
 	if err := e.c.Create(e.ctx, set); err != nil {
 		t.Fatal(err)
 	}
@@ -206,7 +206,7 @@ func TestSetChildWithOnlySettlingMilestonesSyncsADeliveryAtOnce(t *testing.T) {
 }
 
 // setEntries replaces the set's status entries.
-func (c *childEnv) setEntries(entries ...aiv1.ProjectSetEntry) {
+func (c *childEnv) setEntries(entries ...aiv1.ProjectSetProjectStatus) {
 	c.t.Helper()
 	var set aiv1.AgentProjectSet
 	if err := c.c.Get(c.ctx, types.NamespacedName{Namespace: ns, Name: "jo"}, &set); err != nil {
@@ -222,7 +222,7 @@ func TestSetChildWithTruncatedMilestonesPollsOnItsOwn(t *testing.T) {
 	c := newChildEnv(t)
 	c.childPolls(skip)
 	path := c.project().Spec.GitLab.Project
-	c.setEntries(aiv1.ProjectSetEntry{Path: path, State: aiv1.ProjectSetActive, Child: "shop", MilestonesTruncated: true})
+	c.setEntries(aiv1.ProjectSetProjectStatus{Path: path, State: aiv1.ProjectSetActive, Child: "shop", MilestonesTruncated: true})
 	c.clk.Step(time.Minute)
 	c.discovered(time.Minute)
 	if !c.poll(c.gl) {
@@ -237,7 +237,7 @@ func TestExplicitProjectWatchedByTheSetSkipsPolls(t *testing.T) {
 	set := &aiv1.AgentProjectSet{ObjectMeta: metav1.ObjectMeta{Name: "jo", Namespace: ns, UID: "set-uid"}}
 	set.Status.LastDiscoveryTime = &metav1.Time{Time: clk.Now()}
 	// The set normalizes paths: case does not matter.
-	set.Status.Projects = []aiv1.ProjectSetEntry{{Path: strings.ToUpper(e.project().Spec.GitLab.Project),
+	set.Status.Projects = []aiv1.ProjectSetProjectStatus{{Path: strings.ToUpper(e.project().Spec.GitLab.Project),
 		State: aiv1.ProjectSetExplicit, Milestones: "hash"}}
 	if err := e.c.Create(e.ctx, set); err != nil {
 		t.Fatal(err)

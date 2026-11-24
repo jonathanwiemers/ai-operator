@@ -71,7 +71,7 @@ func TestProjectSetPlanStates(t *testing.T) {
 		ready     []gitlab.DiscoveredIssue
 		existing  []aiv1.AgentProject
 		tasks     map[string]int
-		prev      []aiv1.ProjectSetEntry
+		prev      []aiv1.ProjectSetProjectStatus
 		want      map[string]want
 		wantChild []string
 	}{
@@ -167,7 +167,7 @@ func TestProjectSetPlanStates(t *testing.T) {
 			name:      "inactive child within dormantAfter stays active",
 			projects:  []gitlab.DiscoveredProject{{FullPath: "jo.wiemers/shop"}},
 			existing:  []aiv1.AgentProject{agentProject("agents", "shop", "jo.wiemers/shop", set)},
-			prev:      []aiv1.ProjectSetEntry{{Path: "jo.wiemers/shop", State: aiv1.ProjectSetActive, Child: "shop", LastActiveTime: ago(167 * time.Hour)}},
+			prev:      []aiv1.ProjectSetProjectStatus{{Path: "jo.wiemers/shop", State: aiv1.ProjectSetActive, Child: "shop", LastActiveTime: ago(167 * time.Hour)}},
 			want:      map[string]want{"jo.wiemers/shop": {aiv1.ProjectSetActive, "shop", ""}},
 			wantChild: []string{"shop"},
 		},
@@ -175,7 +175,7 @@ func TestProjectSetPlanStates(t *testing.T) {
 			name:     "inactive child after dormantAfter is dormant with its child, not planned",
 			projects: []gitlab.DiscoveredProject{{FullPath: "jo.wiemers/shop"}},
 			existing: []aiv1.AgentProject{agentProject("agents", "shop", "jo.wiemers/shop", set)},
-			prev:     []aiv1.ProjectSetEntry{{Path: "jo.wiemers/shop", State: aiv1.ProjectSetActive, Child: "shop", LastActiveTime: ago(168 * time.Hour)}},
+			prev:     []aiv1.ProjectSetProjectStatus{{Path: "jo.wiemers/shop", State: aiv1.ProjectSetActive, Child: "shop", LastActiveTime: ago(168 * time.Hour)}},
 			want:     map[string]want{"jo.wiemers/shop": {aiv1.ProjectSetDormant, "shop", "no work for 168h"}},
 		},
 		{
@@ -384,7 +384,7 @@ func TestProjectSetPlanSettlingChildIsIdle(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			s := set.DeepCopy()
-			s.Status.Projects = []aiv1.ProjectSetEntry{{Path: "jo.wiemers/shop", State: aiv1.ProjectSetActive, Child: "shop", LastActiveTime: ago(tc.since)}}
+			s.Status.Projects = []aiv1.ProjectSetProjectStatus{{Path: "jo.wiemers/shop", State: aiv1.ProjectSetActive, Child: "shop", LastActiveTime: ago(tc.since)}}
 			var ready []gitlab.DiscoveredIssue
 			if tc.ready {
 				ready = []gitlab.DiscoveredIssue{{Project: "jo.wiemers/shop", IID: 7}}
