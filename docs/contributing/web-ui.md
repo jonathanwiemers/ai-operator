@@ -173,8 +173,10 @@ The checks come in two sets:
   `web` job runs it on merge requests that change the web UI. A check joins
   when its failure would block the owner's daily loop, not for coverage.
 - **Full set**: every check at every width. CI runs it when a merge request
-  changes `web/e2e` or `web/playwright.config.ts`, on pipelines started by
-  hand, and with `FORCE_CI_ALL=true` or `[ci-all]` in the commit message.
+  changes `web/e2e` or `web/playwright.config.ts`, in the nightly `main`
+  pipeline (schedule `nightly-full`), on pipelines started by hand, and with
+  `FORCE_CI_ALL=true` or `[ci-all]` in the commit message. A push to `main`
+  runs no browser checks: its tree is the one the merge request tested.
 
 ```sh
 make ui-e2e                  # make ui, install Chromium, npm run e2e

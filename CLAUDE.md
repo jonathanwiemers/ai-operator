@@ -14,7 +14,8 @@
   the packages you changed only: `go test ./internal/<pkg>/...`, narrowed with
   `-run` in big packages such as `internal/runner`, without `-race`. Do not
   run `make test` (the whole suite with `-race`) locally: on the shared agent
-  node it takes up to an hour, and CI runs it on every push. After changing
+  node it takes up to an hour. CI runs the suite on merge requests that
+  change Go (without `-race`) and with `-race` in the nightly pipeline. After changing
   Markdown or a `docs/….md` ref, also run `go test ./internal/docscheck/`
   (links, anchors, page caps); a change to docs only needs no other tests.
   After changing Go code, also run `make deadcode` and `make vulncheck`;

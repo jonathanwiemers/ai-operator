@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#MISE description="Go tests with the race detector and a cover profile, then the per-package coverage gate"
+#MISE description="Go tests with the race detector (GO_TEST_RACE=0 skips it) and a cover profile, then the per-package coverage gate"
 # A file task, not a change to [tasks.test] in mise.toml: the CI toolchain
 # image bakes mise.toml, and any change there rebuilds it (CI job test).
 set -euo pipefail
@@ -12,6 +12,9 @@ if [ -n "${CI:-}" ]; then
     sleep 2
   done
 fi
-go test -race -coverprofile=coverage.out -covermode=atomic ./...
+# CI merge requests set GO_TEST_RACE=0 (faster); the nightly keeps -race.
+race=-race
+[ "${GO_TEST_RACE:-1}" = 0 ] && race=
+go test $race -coverprofile=coverage.out -covermode=atomic ./...
 # Fails when a package is more than 0.2 points below hack/coverage-baseline.txt.
 go run ./hack/coverage -profile coverage.out -baseline hack/coverage-baseline.txt

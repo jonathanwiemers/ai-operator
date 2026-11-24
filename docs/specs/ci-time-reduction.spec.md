@@ -166,7 +166,7 @@ Order 1 → 2 → 3; 4 independent after 3.
 |---|---|---|---|
 | 1 | ci: one check job and path gates for test, ui, knip and e2e | [!801](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/801) | open |
 | 2 | ci: one web job with a journey and a full browser-check set | [!802](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/802) | open |
-| 3 | | | |
+| 3 | ci: thin main, nightly full pipeline, race detector nightly only | [!804](https://gitlab.com/jo.wiemers/ai-operator/-/merge_requests/804) | open |
 | 4 | | | |
 
 ## 11. Steering log
@@ -180,3 +180,8 @@ Order 1 → 2 → 3; 4 independent after 3.
   tag (`journeyAt`) instead of an `E2E_WIDTHS` env: no spec reads env, and `--grep` alone
   picks the set. Chromium still installs in the job (`--with-deps`); baking it into an image
   (§5.2) waits for the timings of the first runs.
+- 2026-11-24 (MR 3): the schedule rule in `workflow` sets `auto_cancel: on_new_commit: none`:
+  with `interruptible` jobs a night-time autopilot merge would cancel the nightly, and main
+  health skips a canceled pipeline when its SHA already has a green (thin) one. Main health
+  and the release sweep list `main` pipelines by ref, not by source, so the schedule's
+  pipelines count. `GO_TEST_RACE` defaults to 1 (local `mise run test-coverage` unchanged).

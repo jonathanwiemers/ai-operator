@@ -26,6 +26,12 @@ workflow:
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_PIPELINE_SOURCE =~ /^(web|api)$/ && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
     - if: $CI_COMMIT_TAG
+    # nightly-full (03:00 Europe/Berlin, FORCE_CI_ALL=true): every job, with
+    # the race detector and the full browser-check set. A merge at night must
+    # not cancel it (auto_cancel: none), or main health never sees it.
+    - if: $CI_PIPELINE_SOURCE == "schedule" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+      auto_cancel:
+        on_new_commit: none
 
 stages: [check, release]
 
@@ -58,9 +64,12 @@ default:
       when: never
     - when: on_success
 
-# Path gates: a job runs on a merge request or main push only when its inputs
-# changed. FORCE_CI_ALL=true or [ci-all] in the commit message runs it anyway;
-# web/api pipelines run everything (no changes to compare).
+# Path gates: a job runs on a merge request only when its inputs changed.
+# FORCE_CI_ALL=true (the nightly-full schedule) or [ci-all] in the commit
+# message runs it anyway; web/api pipelines run everything (no changes to
+# compare). Thin main: a main push runs toolchain:image and check only. With
+# fast-forward merges main's head is the tree the merge request tested, and
+# the nightly runs test and web on it (docs/specs/ci-time-reduction.spec.md).
 .go-test-paths: &go-test-paths
   - "**/*.go"
   - go.mod
@@ -83,8 +92,11 @@ default:
     - if: $CI_COMMIT_TAG
       when: never
     - if: $FORCE_CI_ALL == "true" || $CI_COMMIT_MESSAGE =~ /\[ci-all\]/i
-    - if: $CI_PIPELINE_SOURCE =~ /^(merge_request_event|push)$/
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes: *go-test-paths
+      # Without the race detector on merge requests (2-5x faster); the
+      # nightly and web/api pipelines keep it.
+      variables: { GO_TEST_RACE: "0" }
     - if: $CI_PIPELINE_SOURCE =~ /^(web|api)$/
 
 .go:
@@ -130,6 +142,8 @@ test:
     # baseline: fails when a package drops more than 0.2 points. A file task
     # in mise-tasks/, as a change to mise.toml rebuilds the toolchain image.
     MISE_TASK: test-coverage
+    # Read by mise-tasks/test-coverage; the merge request rule sets 0.
+    GO_TEST_RACE: "1"
     # Per package: under -race on a busy shared runner internal/controller
     # can pass go test's default 10m (about 7.5m on main on an agent node).
     # Set here, not in mise.toml: a change there rebuilds the toolchain image.
@@ -155,9 +169,10 @@ test:
 # drift step of check, so this job needs no Go.
 # Browser checks come in two sets (web/e2e/journey.ts):
 #   - journey: the critical user journeys at 1280 px (`--grep @journey`), on
-#     merge requests and main pushes that change the web UI;
+#     merge requests that change the web UI;
 #   - full: every check at 375, 768 and 1280 px, when the checks themselves
-#     change (web/e2e, the Playwright config), and on web/api pipelines.
+#     change (web/e2e, the Playwright config), nightly and on web/api pipelines.
+# Like test, it does not run on a main push (thin main, see the path gates).
 # The Playwright image is on mcr.microsoft.com, which the Dependency Proxy
 # does not serve, so the node image installs Chromium and its libraries.
 .e2e-paths: &e2e-paths
@@ -175,10 +190,10 @@ web:
       variables: { E2E_SET: full }
     - if: $CI_PIPELINE_SOURCE =~ /^(web|api)$/
       variables: { E2E_SET: full }
-    - if: $CI_PIPELINE_SOURCE =~ /^(merge_request_event|push)$/
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes: *e2e-paths
       variables: { E2E_SET: full }
-    - if: $CI_PIPELINE_SOURCE =~ /^(merge_request_event|push)$/
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes: *web-paths
       variables: { E2E_SET: journey }
   variables:
