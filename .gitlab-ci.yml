@@ -1,4 +1,5 @@
-# The checks of .github/workflows/ci.yml, one job per check, and the release
+# The checks of .github/workflows/ci.yml, in few jobs (check, test, ui, knip,
+# ui-e2e; docs/specs/ci-time-reduction.spec.md), and the release
 # job, the GitLab counterpart of .github/workflows/release.yml: on a release
 # tag it publishes the images and the chart to registry.gitlab.com and adds
 # the install section to the GitLab release (docs/contributing/releasing.md).
@@ -57,6 +58,44 @@ default:
       when: never
     - when: on_success
 
+# Path gates: a job runs on a merge request or main push only when its inputs
+# changed. FORCE_CI_ALL=true or [ci-all] in the commit message runs it anyway;
+# web/api pipelines run everything (no changes to compare).
+.go-test-paths: &go-test-paths
+  - "**/*.go"
+  - go.mod
+  - go.sum
+  - mise.toml
+  - mise.lock
+  - mise-tasks/**/*
+  - hack/coverage-baseline.txt
+  - .gitlab-ci.yml
+.web-paths: &web-paths
+  - web/**/*
+  - internal/ui/**/*
+  - go.mod
+  - mise.toml
+  - mise.lock
+  - .gitlab-ci.yml
+
+.go-test-rules:
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - if: $FORCE_CI_ALL == "true" || $CI_COMMIT_MESSAGE =~ /\[ci-all\]/i
+    - if: $CI_PIPELINE_SOURCE =~ /^(merge_request_event|push)$/
+      changes: *go-test-paths
+    - if: $CI_PIPELINE_SOURCE =~ /^(web|api)$/
+
+.web-rules:
+  rules:
+    - if: $CI_COMMIT_TAG
+      when: never
+    - if: $FORCE_CI_ALL == "true" || $CI_COMMIT_MESSAGE =~ /\[ci-all\]/i
+    - if: $CI_PIPELINE_SOURCE =~ /^(merge_request_event|push)$/
+      changes: *web-paths
+    - if: $CI_PIPELINE_SOURCE =~ /^(web|api)$/
+
 .go:
   extends: [.check, .mise-task]
   # The multiarch runner (infra/cluster gitlab-runner) prefers native arm64 (mac-ci-arm) and
@@ -75,40 +114,19 @@ default:
       files: [go.sum]
     paths: [.cache/go-mod, .cache/go-build]
 
-# No cache: controller-gen's paths=./... also walks .cache and trips over
-# go.work files inside the module cache. So every run downloads controller-gen
-# and all modules (the drift task retries those downloads).
-drift:
+# gofmt, vet, drift, build, deadcode, vulncheck and helm-lint in one job
+# (mise-tasks/check): one runner wait and one toolchain pull instead of seven.
+# Every step runs after a failure too; the log ends with the failed steps.
+# Runs on every MR and main push: it is quick and covers docs, chart and
+# generated files that no path gate would catch.
+check:
   extends: .go
-  variables:
-    MISE_TASK: drift
-    GOMODCACHE: /tmp/go-mod
-    GOCACHE: /tmp/go-build
-  cache: []
-
-gofmt:
-  extends: .go
-  variables: { MISE_TASK: gofmt }
-  cache: []
-
-vet:
-  extends: .go
-  variables: { MISE_TASK: vet }
-
-# Known vulnerabilities in the code the binaries reach; blocking.
-vulncheck:
-  extends: .go
-  variables: { MISE_TASK: vulncheck }
-
-# Unused Go code (staticcheck U1000 and deadcode); fails on any finding.
-deadcode:
-  extends: .go
-  variables: { MISE_TASK: deadcode }
+  variables: { MISE_TASK: check }
 
 # The research store tests need a real Postgres; with
 # AI_TEST_REQUIRE_DATABASE they fail instead of skipping without one.
 test:
-  extends: .go
+  extends: [.go, .go-test-rules]
   services:
     - name: ${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}/postgres:17
       alias: postgres
@@ -139,15 +157,9 @@ test:
     expire_in: 1 week
     paths: [coverage.out]
 
-# web/dist/.gitkeep is committed, so go:embed compiles without the ui job's
-# output; this job checks the Go build, the ui job the web build.
-build:
-  extends: .go
-  variables: { MISE_TASK: build }
-
 # make ui also regenerates the UI types (ts-types), so it shares the Go cache.
 ui:
-  extends: .go
+  extends: [.go, .web-rules]
   variables:
     MISE_TASK: ui
     npm_config_cache: $CI_PROJECT_DIR/.cache/npm
@@ -163,7 +175,7 @@ ui:
 # Unused files, exports and dependencies of the web UI (web/knip.json):
 # blocking, a new unused export fails the pipeline.
 knip:
-  extends: [.check, .mise-task]
+  extends: [.check, .mise-task, .web-rules]
   variables:
     MISE_TASK: knip
     npm_config_cache: $CI_PROJECT_DIR/.cache/npm
@@ -178,7 +190,7 @@ knip:
 # Playwright image is on mcr.microsoft.com, which the Dependency Proxy does
 # not serve, so the node image installs Chromium and its libraries.
 ui-e2e:
-  extends: .check
+  extends: [.check, .web-rules]
   image: ${CI_DEPENDENCY_PROXY_GROUP_IMAGE_PREFIX}/node:22-bookworm
   variables:
     npm_config_cache: $CI_PROJECT_DIR/.cache/npm
@@ -200,10 +212,6 @@ ui-e2e:
     expire_in: 2 weeks
     expose_as: Desk screenshots
     paths: [web/e2e-results/]
-
-helm-lint:
-  extends: [.check, .mise-task]
-  variables: { MISE_TASK: helm-lint }
 
 # A release is a decision, not a side effect of a merge (docs/contributing/releasing.md):
 # pushes to main run the checks only. A release is a tag YEAR.MONTH.N on main

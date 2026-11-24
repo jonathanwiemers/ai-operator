@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+#MISE description="All Go and chart checks in one run: gofmt, vet, drift, build, deadcode, vulncheck, helm-lint"
+# One CI job (check) instead of one per step: each job waited for a runner and
+# loaded the toolchain on its own. Every step runs even after a failure, and
+# the summary at the end names the failed ones. A file task, not a [tasks]
+# entry in mise.toml: the CI toolchain image bakes mise.toml, and any change
+# there rebuilds it. Locally: `mise run check`, or one step: `mise run check vet`.
+set -uo pipefail
+
+steps=(gofmt vet drift build deadcode vulncheck helm-lint)
+[ "$#" -gt 0 ] && steps=("$@")
+
+# controller-gen's paths=./... (drift) walks every directory below the module
+# root, the Go caches in .cache included, and trips over go.work files inside
+# the module cache. CI keeps the caches in .cache (GitLab caches only paths
+# inside the project), so drift moves them beside the project for its run: a
+# rename on the same volume, nothing is copied.
+drift() {
+	local aside="" mod="${GOMODCACHE:-}" build="${GOCACHE:-}"
+	if [ -d .cache ]; then
+		aside="$(dirname "$PWD")/.check-go-cache-$$"
+		mv .cache "$aside" || return 1
+		mod="${mod/#$PWD\/.cache/$aside}"
+		build="${build/#$PWD\/.cache/$aside}"
+	fi
+	local status=0
+	(
+		export GOMODCACHE="$mod" GOCACHE="$build"
+		[ -n "$mod" ] || unset GOMODCACHE
+		[ -n "$build" ] || unset GOCACHE
+		# controller-gen and the modules come from proxy.golang.org, which now
+		# and then breaks off ("stream error ... INTERNAL_ERROR"): retry the
+		# downloads first, so a real drift below still fails at once.
+		for i in 1 2 3; do
+			make "$PWD/bin/controller-gen" && go mod download && break
+			[ "$i" = 3 ] && { echo "downloading the Go tools and modules failed 3 times"; exit 1; }
+			echo "download failed (attempt $i), retrying in 15 s"
+			sleep 15
+		done
+		make generate manifests ts-types && git diff --exit-code
+	) || status=$?
+	[ -z "$aside" ] || mv "$aside" .cache || status=1
+	return "$status"
+}
+
+run_step() {
+	case "$1" in
+	gofmt)
+		local out
+		out="$(gofmt -l api cmd internal)" || return 1
+		[ -z "$out" ] || { echo "not gofmt-formatted:"; echo "$out"; return 1; }
+		;;
+	vet) go vet ./... ;;
+	drift) drift ;;
+	build | deadcode | vulncheck | helm-lint) make "$1" ;;
+	*) echo "unknown step $1"; return 2 ;;
+	esac
+}
+
+failed=()
+for step in "${steps[@]}"; do
+	start=$(date +%s)
+	# Collapsible sections in the GitLab job log, one per step.
+	printf '\e[0Ksection_start:%s:%s[collapsed=false]\r\e[0K== %s\n' "$start" "${step//-/_}" "$step"
+	run_step "$step"
+	status=$?
+	end=$(date +%s)
+	printf '\e[0Ksection_end:%s:%s\r\e[0K' "$end" "${step//-/_}"
+	if [ "$status" -ne 0 ]; then
+		failed+=("$step")
+		echo "== $step FAILED (exit $status, $((end - start)) s)"
+	else
+		echo "== $step ok ($((end - start)) s)"
+	fi
+done
+
+if [ "${#failed[@]}" -gt 0 ]; then
+	echo "check failed: ${failed[*]}"
+	exit 1
+fi
+echo "check ok: ${steps[*]}"

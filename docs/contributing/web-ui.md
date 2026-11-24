@@ -46,7 +46,7 @@ without importing `api/v1alpha1`: a `tstype` tag names the union
 (`aiv1.PauseKind | 'unknown'`). A cost that may be unknown is a `store.Money`: the
 amount with 2 decimals in the JSON, `""` when unknown, never `"0.00"`
 (`Money` in TypeScript is a string). All three files are committed. After
-changing a view struct, run `make ts-types`; the CI `drift` job runs it and fails when the
+changing a view struct, run `make ts-types`; the drift step of the CI `check` job runs it and fails when the
 files change. `tygo.yaml` lists the files with views (server-only types such
 as the GitLab cookie and the log source live in other files) and the type
 mappings; a Go type without a mapping becomes `Unmapped`, which fails the

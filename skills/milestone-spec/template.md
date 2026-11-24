@@ -53,7 +53,7 @@ What exists:
   in the steering log; every R has an issue or a steering log line.
 - No new dependencies.
 - `make test`, `go vet ./...`, `gofmt`, `make helm-lint`, `make ui`,
-  `make ts-types`; CI and the drift job green.
+  `make ts-types`; CI and the `check` job (drift step) green.
 
 ## Non-goals
 

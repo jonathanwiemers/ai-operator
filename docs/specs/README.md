@@ -88,3 +88,4 @@ git history does; otherwise "no milestone".
 ## Codebase and CI
 
 1. [Lean codebase: no dead code, audited security, tests that check behaviour](lean-codebase.spec.md) — govulncheck, dead-code and knip gates, removal of what nothing reads, files under 1000 lines, a gosec audit and four boundary reviews, per-package coverage with a baseline that only rises, and an upgrade guide for what was removed. Milestone: Lean codebase: dead code, unused dependencies and security findings caught by CI.
+2. [CI time reduction: fewer jobs, fewer pipelines, cheaper web checks](ci-time-reduction.spec.md) — One `check` job for the Go gates, one `web` job, path gates, a thin `main` pipeline with a nightly full run, `-race` nightly, e2e as a journey set on MRs and the full set nightly. Draft.

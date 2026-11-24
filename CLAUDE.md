@@ -18,7 +18,8 @@
   Markdown or a `docs/….md` ref, also run `go test ./internal/docscheck/`
   (links, anchors, page caps); a change to docs only needs no other tests.
   After changing Go code, also run `make deadcode` and `make vulncheck`;
-  both must print no finding, as their CI jobs block. After changing the web
+  both must print no finding, as the CI `check` job blocks on them
+  (`mise run check` runs all its steps locally). After changing the web
   UI (`web/`): `make ui` (type-check and build) and `cd web && npm run knip`
   (unused files, exports and dependencies; blocking in CI).
 - CI measures Go statement coverage per package against
@@ -38,8 +39,8 @@
 - The web UI's view types (`web/src/generated/`) are generated from Go by
   tygo (`tygo.yaml`). After changing view structs in `internal/ui` or the CRD
   types the views embed, run `make ts-types` (`make ui` does it when Go is
-  installed); the CI `drift` job fails on stale files. Do not mirror Go views
-  in `web/src/types.ts`, it keeps only web-only types.
+  installed); the drift step of the CI `check` job fails on stale files.
+  Do not mirror Go views in `web/src/types.ts`, it keeps only web-only types.
 - The web UI's service account is defined by hand in the chart
   (`templates/ui-rbac.yaml`): never put kubebuilder RBAC markers into
   `internal/ui`, `make manifests` would grant them to the operator.
