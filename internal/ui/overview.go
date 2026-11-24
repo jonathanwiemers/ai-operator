@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"context"
 	"net/http"
+	"net/url"
 	"slices"
 	"time"
 
@@ -14,7 +15,7 @@ import (
 // OverviewView is the answer of GET /api/v1/overview: the dashboard's
 // summary strip and Working now. Running, paused and waiting count the
 // visible milestones by state; NeedsYou is the Inbox's count. SpendToday
-// (the UTC day) and Spend7d (it and the 6 days before) are absent without
+// (the browser's day from tz, UTC when it is missing or unknown) and Spend7d (it and the 6 days before) are absent without
 // the history database: unknown, not $0. History: the database answered.
 type OverviewView struct {
 	Running    int          `json:"running"`
@@ -89,12 +90,11 @@ func (s *Server) overview(w http.ResponseWriter, r *http.Request) {
 		for _, ap := range visible {
 			keys = append(keys, store.ProjectKey{Namespace: ap.Namespace, Name: ap.Name})
 		}
-		y, mo, d := now.UTC().Date()
-		today := time.Date(y, mo, d, 0, 0, 0, 0, time.UTC)
+		today, weekStart := overviewDays(now, r.URL.Query())
 		day, err := st.SpendSince(r.Context(), keys, today)
 		var week store.SpendTotals
 		if err == nil {
-			week, err = st.SpendSince(r.Context(), keys, today.AddDate(0, 0, -6))
+			week, err = st.SpendSince(r.Context(), keys, weekStart)
 		}
 		if err != nil {
 			s.log.Error(err, "cannot read the overview's spend")
@@ -103,6 +103,20 @@ func (s *Server) overview(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+// overviewDays returns the start of the browser's day and of the week (6 days
+// before it) from the tz query. A missing, unknown or "Local" zone is UTC:
+// the dashboard never fails over it.
+func overviewDays(now time.Time, q url.Values) (today, weekStart time.Time) {
+	loc := time.UTC
+	if name := q.Get("tz"); name != "" && name != "Local" {
+		if l, err := time.LoadLocation(name); err == nil {
+			loc = l
+		}
+	}
+	today = localDay(now, loc)
+	return today, today.AddDate(0, 0, -6)
 }
 
 // overviewCost is a cost chip without the breakdown.

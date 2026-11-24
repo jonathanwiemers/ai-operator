@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
 	"slices"
 	"testing"
 	"time"
@@ -120,6 +121,41 @@ func TestOverviewWithoutDatabase(t *testing.T) {
 	}
 	if w := o.Working[1]; w.Since == nil || !w.Since.Equal(since) || w.MilestoneIID != 4 || w.Title != "Issue 3" || w.Namespace != "team-a" {
 		t.Errorf("running #43 = %+v", w)
+	}
+}
+
+func TestOverviewDays(t *testing.T) {
+	now := time.Date(2026, 11, 21, 23, 30, 0, 0, time.UTC)
+	utcDay := time.Date(2026, 11, 21, 0, 0, 0, 0, time.UTC)
+	berlin := time.Date(2026, 11, 21, 23, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		name, query string
+		today       time.Time
+		week        time.Time
+	}{
+		{"berlin", "tz=Europe/Berlin", berlin, time.Date(2026, 11, 15, 23, 0, 0, 0, time.UTC)},
+		{"missing", "", utcDay, utcDay.AddDate(0, 0, -6)},
+		{"unknown", "tz=Nowhere/Else", utcDay, utcDay.AddDate(0, 0, -6)},
+		{"local", "tz=Local", utcDay, utcDay.AddDate(0, 0, -6)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			q, _ := url.ParseQuery(tc.query)
+			today, week := overviewDays(now, q)
+			if !today.Equal(tc.today) || !week.Equal(tc.week) {
+				t.Errorf("got %v, %v; want %v, %v", today, week, tc.today, tc.week)
+			}
+		})
+	}
+}
+
+func TestOverviewTZUnknownAnswers200(t *testing.T) {
+	env, _ := overviewEnv(t)
+	env.server.overviewSpend = &fakeSpendSince{}
+	for _, q := range []string{"", "?tz=Nowhere/Else", "?tz=Local", "?tz=Europe/Berlin"} {
+		var o OverviewView
+		if code := env.get(t, "/api/v1/overview"+q, &o); code != http.StatusOK || !o.History {
+			t.Errorf("%q: status %d, history %v", q, code, o.History)
+		}
 	}
 }
 

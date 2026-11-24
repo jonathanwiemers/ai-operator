@@ -1245,7 +1245,7 @@ export interface ResearchCreated {
  * OverviewView is the answer of GET /api/v1/overview: the dashboard's
  * summary strip and Working now. Running, paused and waiting count the
  * visible milestones by state; NeedsYou is the Inbox's count. SpendToday
- * (the UTC day) and Spend7d (it and the 6 days before) are absent without
+ * (the browser's day from tz, UTC when it is missing or unknown) and Spend7d (it and the 6 days before) are absent without
  * the history database: unknown, not $0. History: the database answered.
  */
 export interface OverviewView {

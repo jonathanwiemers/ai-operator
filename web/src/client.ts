@@ -233,7 +233,8 @@ export function getResearchForm(): Promise<ResearchForm> {
 
 // getOverview: GET /overview, the dashboard's Overview tab.
 export function getOverview(): Promise<OverviewView> {
-  return get<OverviewView>('/overview')
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+  return get<OverviewView>(`/overview?tz=${encodeURIComponent(tz)}`)
 }
 
 function projectPath(namespace: string, name: string): string {
