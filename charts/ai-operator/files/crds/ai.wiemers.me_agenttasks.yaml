@@ -635,6 +635,37 @@ spec:
                   mergeRequestUpdatedAt:
                     format: date-time
                     type: string
+                  ownerMessages:
+                    description: |-
+                      OwnerMessages are an owner's words for the running implementer, passed
+                      on by the pilot; the runner reports each one in
+                      status.run.deliveredMessages. The last MaxOwnerMessages are kept.
+                    items:
+                      description: |-
+                        OwnerMessage is an owner's words for a running implementer, passed on by
+                        the pilot.
+                      properties:
+                        at:
+                          format: date-time
+                          type: string
+                        id:
+                          description: |-
+                            ID is a stable key from the source (tell/<noteID>, chat/<messageID>),
+                            so a retried reconcile never appends it twice.
+                          type: string
+                        owner:
+                          type: string
+                        text:
+                          maxLength: 4000
+                          type: string
+                      required:
+                      - at
+                      - id
+                      - owner
+                      - text
+                      type: object
+                    maxItems: 20
+                    type: array
                   pilotEvents:
                     description: |-
                       PilotEvents are the events the operator woke the pilot for
@@ -4221,6 +4252,11 @@ spec:
                             StepSession is the step-session mode (resume or fresh) of an
                             implement-kind call of a stepwise run; empty otherwise.
                           type: string
+                        stoppedForMessage:
+                          description: |-
+                            StoppedForMessage: the call was stopped gracefully so an owner message
+                            could be resumed into it.
+                          type: boolean
                         subagentCalls:
                           description: SubagentCalls is how many subagents the call
                             started.
@@ -4404,6 +4440,38 @@ spec:
                       or its agent ran out of memory: the run is retried after this time.
                     format: date-time
                     type: string
+                  deliveredMessages:
+                    description: DeliveredMessages says where each owner message went.
+                    items:
+                      description: DeliveredMessage records where an owner message
+                        went.
+                      properties:
+                        at:
+                          format: date-time
+                          type: string
+                        call:
+                          description: Call is the AgentCall.Seq of the call that
+                            took the message.
+                          format: int64
+                          type: integer
+                        how:
+                          description: DeliveryHow is the way an owner message reached
+                            the implementer.
+                          enum:
+                          - stream
+                          - resume
+                          - nextRun
+                          type: string
+                        id:
+                          type: string
+                      required:
+                      - at
+                      - call
+                      - how
+                      - id
+                      type: object
+                    maxItems: 20
+                    type: array
                   engineUsage:
                     description: |-
                       EngineUsage is the newest usage reading per engine the runner got

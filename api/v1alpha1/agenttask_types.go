@@ -405,6 +405,13 @@ type SourceState struct {
 	// (Implement tasks), for the run of its request.
 	// +optional
 	PilotInstruction *PilotInstruction `json:"pilotInstruction,omitempty"`
+
+	// OwnerMessages are an owner's words for the running implementer, passed
+	// on by the pilot; the runner reports each one in
+	// status.run.deliveredMessages. The last MaxOwnerMessages are kept.
+	// +kubebuilder:validation:MaxItems=20
+	// +optional
+	OwnerMessages []OwnerMessage `json:"ownerMessages,omitempty"`
 }
 
 // FollowUpDraftRequest asks the pilot for a draft of a follow-up milestone.
@@ -721,6 +728,11 @@ type RunStatus struct {
 	// runner stopped. After MaxInterruptions the run fails.
 	// +optional
 	Interruptions int32 `json:"interruptions,omitempty"`
+
+	// DeliveredMessages says where each owner message went.
+	// +kubebuilder:validation:MaxItems=20
+	// +optional
+	DeliveredMessages []DeliveredMessage `json:"deliveredMessages,omitempty"`
 
 	// PushedSHA is the commit the runner last pushed to the agent's branch.
 	// +optional

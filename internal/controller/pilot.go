@@ -38,7 +38,7 @@ type pilotNote struct {
 const rejectEvery = 24 * time.Hour
 
 // maxPilotMessage bounds a message handed to the pilot.
-const maxPilotMessage = 4000
+const maxPilotMessage = aiv1.MaxOwnerMessageText
 
 // pilotNotes picks the comments addressed to the pilot that are newer than
 // since. The bot's own comments and system notes never are.

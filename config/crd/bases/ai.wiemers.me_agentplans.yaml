@@ -338,6 +338,11 @@ spec:
                         StepSession is the step-session mode (resume or fresh) of an
                         implement-kind call of a stepwise run; empty otherwise.
                       type: string
+                    stoppedForMessage:
+                      description: |-
+                        StoppedForMessage: the call was stopped gracefully so an owner message
+                        could be resumed into it.
+                      type: boolean
                     subagentCalls:
                       description: SubagentCalls is how many subagents the call started.
                       format: int32

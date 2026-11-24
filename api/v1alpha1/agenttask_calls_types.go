@@ -120,6 +120,11 @@ type AgentCall struct {
 	// +optional
 	CheckpointSHA string `json:"checkpointSHA,omitempty"`
 
+	// StoppedForMessage: the call was stopped gracefully so an owner message
+	// could be resumed into it.
+	// +optional
+	StoppedForMessage bool `json:"stoppedForMessage,omitempty"`
+
 	// LinesAdded and LinesDeleted are the uncommitted diff the implementer
 	// call left in the work tree (git diff --numstat HEAD plus untracked
 	// text files): the lines of the step commit that follows it. Other

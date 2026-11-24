@@ -435,3 +435,48 @@ type PilotIntervention struct {
 	Head  string `json:"head,omitempty"`
 	Count int32  `json:"count"`
 }
+
+// Limits of owner messages.
+const (
+	// MaxOwnerMessages bounds spec.source.ownerMessages and
+	// status.run.deliveredMessages (the newest are kept).
+	MaxOwnerMessages = 20
+	// MaxOwnerMessageText bounds the text of an owner message, in characters.
+	MaxOwnerMessageText = 4000
+	// MaxMidRunDeliveries bounds the messages delivered mid-run per run.
+	MaxMidRunDeliveries = 5
+)
+
+// OwnerMessage is an owner's words for a running implementer, passed on by
+// the pilot.
+type OwnerMessage struct {
+	// ID is a stable key from the source (tell/<noteID>, chat/<messageID>),
+	// so a retried reconcile never appends it twice.
+	ID    string `json:"id"`
+	Owner string `json:"owner"`
+	// +kubebuilder:validation:MaxLength=4000
+	Text string      `json:"text"`
+	At   metav1.Time `json:"at"`
+}
+
+// DeliveryHow is the way an owner message reached the implementer.
+// +kubebuilder:validation:Enum=stream;resume;nextRun
+type DeliveryHow string
+
+const (
+	// DeliveryStream: written into the running claude call.
+	DeliveryStream DeliveryHow = "stream"
+	// DeliveryResume: the call stopped and resumed with the message.
+	DeliveryResume DeliveryHow = "resume"
+	// DeliveryNextRun: the message went into the next run's prompt.
+	DeliveryNextRun DeliveryHow = "nextRun"
+)
+
+// DeliveredMessage records where an owner message went.
+type DeliveredMessage struct {
+	ID string `json:"id"`
+	// Call is the AgentCall.Seq of the call that took the message.
+	Call int64       `json:"call"`
+	How  DeliveryHow `json:"how"`
+	At   metav1.Time `json:"at"`
+}

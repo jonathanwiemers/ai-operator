@@ -3924,6 +3924,12 @@ export interface AgentCall {
    */
   checkpointSHA?: string;
   /**
+   * StoppedForMessage: the call was stopped gracefully so an owner message
+   * could be resumed into it.
+   * +optional
+   */
+  stoppedForMessage?: boolean;
+  /**
    * LinesAdded and LinesDeleted are the uncommitted diff the implementer
    * call left in the work tree (git diff --numstat HEAD plus untracked
    * text files): the lines of the step commit that follows it. Other
@@ -5039,6 +5045,69 @@ export interface PilotIntervention {
   head?: string;
   count: number /* int32 */;
 }
+/**
+ * MaxOwnerMessages bounds spec.source.ownerMessages and
+ * status.run.deliveredMessages (the newest are kept).
+ */
+export const MaxOwnerMessages = 20;
+/**
+ * MaxOwnerMessageText bounds the text of an owner message, in characters.
+ */
+export const MaxOwnerMessageText = 4000;
+/**
+ * MaxMidRunDeliveries bounds the messages delivered mid-run per run.
+ */
+export const MaxMidRunDeliveries = 5;
+/**
+ * Limits of owner messages.
+ */
+export type Max = typeof MaxOwnerMessages | typeof MaxOwnerMessageText | typeof MaxMidRunDeliveries;
+/**
+ * OwnerMessage is an owner's words for a running implementer, passed on by
+ * the pilot.
+ */
+export interface OwnerMessage {
+  /**
+   * ID is a stable key from the source (tell/<noteID>, chat/<messageID>),
+   * so a retried reconcile never appends it twice.
+   */
+  id: string;
+  owner: string;
+  /**
+   * +kubebuilder:validation:MaxLength=4000
+   */
+  text: string;
+  at: string;
+}
+/**
+ * DeliveryHow is the way an owner message reached the implementer.
+ * +kubebuilder:validation:Enum=stream;resume;nextRun
+ */
+export type DeliveryHow = string;
+/**
+ * DeliveryStream: written into the running claude call.
+ */
+export const DeliveryStream: DeliveryHow = "stream";
+/**
+ * DeliveryResume: the call stopped and resumed with the message.
+ */
+export const DeliveryResume: DeliveryHow = "resume";
+/**
+ * DeliveryNextRun: the message went into the next run's prompt.
+ */
+export const DeliveryNextRun: DeliveryHow = "nextRun";
+/**
+ * DeliveredMessage records where an owner message went.
+ */
+export interface DeliveredMessage {
+  id: string;
+  /**
+   * Call is the AgentCall.Seq of the call that took the message.
+   */
+  call: number /* int64 */;
+  how: DeliveryHow;
+  at: string;
+}
 
 //////////
 // source: agenttask_spend_types.go
@@ -5655,6 +5724,14 @@ export interface SourceState {
    * +optional
    */
   pilotInstruction?: PilotInstruction;
+  /**
+   * OwnerMessages are an owner's words for the running implementer, passed
+   * on by the pilot; the runner reports each one in
+   * status.run.deliveredMessages. The last MaxOwnerMessages are kept.
+   * +kubebuilder:validation:MaxItems=20
+   * +optional
+   */
+  ownerMessages?: OwnerMessage[];
 }
 /**
  * FollowUpDraftRequest asks the pilot for a draft of a follow-up milestone.
@@ -6046,6 +6123,12 @@ export interface RunStatus {
    * +optional
    */
   interruptions?: number /* int32 */;
+  /**
+   * DeliveredMessages says where each owner message went.
+   * +kubebuilder:validation:MaxItems=20
+   * +optional
+   */
+  deliveredMessages?: DeliveredMessage[];
   /**
    * PushedSHA is the commit the runner last pushed to the agent's branch.
    * +optional
