@@ -133,3 +133,39 @@ AgentProjects. `infra-cluster` runs with `release.mode: Auto`.
   - The adoption annotation stays on the adopted object; the set does not
     remove it.
   - A failed update by conflict is left to the next poll.
+- R6 (#766): not applied yet. The issue carries no companion label
+  `agent-repo::jo.wiemers/infra/cluster`, so its merge request holds only
+  this line; the infra MR is still to do, by hand or by a follow-up issue
+  with that label. Precondition, unchecked: the checkout had no tags, so
+  no release containing R4 (`0630ab6b`) could be named. First run
+  `git tag --contains 0630ab6b` and check that infra's operator image and
+  chart are at least that release; do not bump them in the cutover MR. The
+  change, in one infra MR, in
+  `clusters/netcup01/applications/ai-operator/projects/` or wherever the
+  manifests now are:
+  - in the set `jo-wiemers`, `spec.projects`: one entry per project that
+    has a patch today, `path` its full path, `name` its AgentProject's
+    name, `spec` exactly what its patch adds to the defaults carrier
+    (`null` for a key the patch removes), among them `jo.wiemers/bloop`
+    (`bloop`) and `jo.wiemers/ai-operator` (`ai-operator`);
+  - an entry `{path: jo.wiemers/infra/cluster, name: infra-cluster,
+    spec: {release: {mode: Off}}}`; if `infra-cluster` is an explicit
+    AgentProject, also set `release.mode: Off` in its manifest and give it
+    the two annotations below;
+  - on the explicit AgentProjects `bloop` and `ai-operator`, the
+    annotations `ai.wiemers.me/project-set: jo-wiemers` and
+    `kustomize.toolkit.fluxcd.io/prune: disabled` (Flux), their manifests
+    kept, their spec equal to the template merged with their entry, so Flux
+    and the set write the same values;
+  - the defaults carrier, the `replacements` and the patches stay; R7
+    removes them with the adopted manifests. This deviates from R6 above,
+    which named them gone: removing them before the no-prune marker is live
+    risks a prune, and deleting an AgentProject deletes its tasks.
+
+  Checks for the owner after rollout: `kubectl -n agents get aps
+  jo-wiemers -o yaml` lists `bloop` and `ai-operator` under
+  `status.projects` with `state: active`, their own names as `child` and
+  the reason `adopted from AgentProject agents/<name>` in the adopting
+  poll (`named in spec.projects` after it); their `ownerReferences` name
+  the set as controller; and `kubectl -n agents get agentproject
+  infra-cluster -o jsonpath='{.spec.release.mode}'` prints `Off`.
