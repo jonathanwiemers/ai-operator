@@ -188,3 +188,9 @@ func TestProjectSetWebhookProblem(t *testing.T) {
 		}
 	}
 }
+
+func TestAnnotationProjectSetIsTheLabelKey(t *testing.T) {
+	if AnnotationProjectSet != LabelProjectSet {
+		t.Errorf("AnnotationProjectSet = %q, want the label key %q", AnnotationProjectSet, LabelProjectSet)
+	}
+}

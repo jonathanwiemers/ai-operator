@@ -2516,6 +2516,14 @@ export interface AgentProjectSetList extends metav1.TypeMeta {
  */
 export const LabelProjectSet = "ai.wiemers.me/project-set";
 /**
+ * AnnotationProjectSet on an AgentProject the set does not own hands it
+ * to the set named in its value: the set adopts it as the child of the
+ * entry in spec.projects for its project. Same key as LabelProjectSet,
+ * written out: tygo would emit an alias, which knip flags as a duplicate
+ * export (TestAnnotationProjectSetIsTheLabelKey keeps them equal).
+ */
+export const AnnotationProjectSet = "ai.wiemers.me/project-set";
+/**
  * AnnotationTemplateHash is the hash of the template a child was last
  * written from.
  */

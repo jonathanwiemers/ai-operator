@@ -258,6 +258,12 @@ const (
 	// LabelProjectSet is the label on a set's child AgentProjects: the set's
 	// name.
 	LabelProjectSet = "ai.wiemers.me/project-set"
+	// AnnotationProjectSet on an AgentProject the set does not own hands it
+	// to the set named in its value: the set adopts it as the child of the
+	// entry in spec.projects for its project. Same key as LabelProjectSet,
+	// written out: tygo would emit an alias, which knip flags as a duplicate
+	// export (TestAnnotationProjectSetIsTheLabelKey keeps them equal).
+	AnnotationProjectSet = "ai.wiemers.me/project-set"
 	// AnnotationTemplateHash is the hash of the template a child was last
 	// written from.
 	AnnotationTemplateHash = "ai.wiemers.me/template-hash"

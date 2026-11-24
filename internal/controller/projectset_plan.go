@@ -43,6 +43,9 @@ type plannedChild struct {
 	Spec       aiv1.AgentProjectSpec
 	// Hash is the hex sha256 of the spec's JSON, for AnnotationTemplateHash.
 	Hash string
+	// Adopt is set when the child is an AgentProject the set does not own
+	// yet: the annotated explicit project of a named entry.
+	Adopt bool
 }
 
 // projectSetPlan is what the set writes: its children and its status.
@@ -82,16 +85,15 @@ func planProjectSet(in projectSetInput) projectSetPlan {
 
 	// Ownership and watchers, by normalized project path and by name.
 	owned := map[string]*aiv1.AgentProject{}
-	watchers := map[string]*aiv1.AgentProject{}
+	watchers := map[string][]*aiv1.AgentProject{}
 	byName := map[string]*aiv1.AgentProject{}
 	for i := range in.Projects {
 		p := &in.Projects[i]
 		path := aiv1.NormalizeProject(p.Spec.GitLab.Project)
-		switch {
-		case metav1.IsControlledBy(p, set):
+		if metav1.IsControlledBy(p, set) {
 			owned[path] = p
-		case watchers[path] == nil:
-			watchers[path] = p
+		} else {
+			watchers[path] = append(watchers[path], p)
 		}
 		if p.Namespace == set.Namespace {
 			byName[p.Name] = p
@@ -128,11 +130,6 @@ func planProjectSet(in projectSetInput) projectSetPlan {
 		if child != nil {
 			e.Child = child.Name
 		}
-		if reason, ok := projectSetSkip(dp, spec.Exclude, watchers[path]); ok {
-			e.State, e.Reason = reason.state, namedBut(isNamed, reason.text)
-			plan.Entries = append(plan.Entries, e)
-			continue
-		}
 		// An owned child keeps its name: a rename would delete its tasks.
 		name := aiv1.ProjectSetChildName(spec.GitLab.Group, dp.FullPath)
 		if entry.Name != "" {
@@ -141,6 +138,24 @@ func planProjectSet(in projectSetInput) projectSetPlan {
 		if child != nil {
 			name = child.Name
 		}
+		// A named project may adopt the AgentProject that watches it; an
+		// unnamed one leaves it explicit.
+		var adopt, watcher *aiv1.AgentProject
+		var refusal string
+		if ws := watchers[path]; len(ws) > 0 {
+			watcher = ws[0]
+			if isNamed {
+				adopt, watcher, refusal = projectSetAdoption(set, ws, name)
+			}
+		}
+		if reason, ok := projectSetSkip(dp, spec.Exclude, watcher); ok {
+			e.State, e.Reason = reason.state, namedBut(isNamed, reason.text)
+			if reason.state == aiv1.ProjectSetExplicit && refusal != "" {
+				e.Reason += "; " + refusal
+			}
+			plan.Entries = append(plan.Entries, e)
+			continue
+		}
 		// A child whose milestones all settle is idle: their tasks and
 		// markers do not count, a ready issue does.
 		work := ready[path] || !onlySettling(child) && (in.TaskCounts[name] > 0 ||
@@ -148,7 +163,7 @@ func planProjectSet(in projectSetInput) projectSetPlan {
 		// Plans count always, settling or not: the child keeps them. Plans of
 		// an AgentProject outside the set that holds the name are its own.
 		var plans int
-		if p := byName[name]; p == nil || metav1.IsControlledBy(p, set) {
+		if p := byName[name]; p == nil || p == adopt || metav1.IsControlledBy(p, set) {
 			plans = in.PlanCounts[name]
 		}
 		// A named project needs no work: it is never dormant.
@@ -157,7 +172,12 @@ func planProjectSet(in projectSetInput) projectSetPlan {
 		switch {
 		case active && child == nil:
 			e.LastActiveTime = &now
-			if reason := projectSetNameTaken(name, path, byName[name], planned, set); reason != "" {
+			existing := byName[name]
+			if existing == adopt {
+				existing = nil // the adopted object holds the name already
+			}
+			if reason := projectSetNameTaken(name, path, existing, planned, set); reason != "" {
+				adopt = nil
 				e.State, e.Reason = aiv1.ProjectSetNameTaken, reason
 				break
 			}
@@ -177,6 +197,8 @@ func planProjectSet(in projectSetInput) projectSetPlan {
 		}
 		switch {
 		case e.State != aiv1.ProjectSetActive:
+		case adopt != nil:
+			e.Reason = fmt.Sprintf("adopted from AgentProject %s/%s", adopt.Namespace, adopt.Name)
 		case isNamed:
 			e.Reason = namedReason
 			if child != nil && entry.Name != "" && entry.Name != child.Name {
@@ -193,7 +215,9 @@ func planProjectSet(in projectSetInput) projectSetPlan {
 			if !ok {
 				childSpec = tmpl
 			}
-			plan.Children = append(plan.Children, planChild(name, dp.FullPath, childSpec, spec))
+			c := planChild(name, dp.FullPath, childSpec, spec)
+			c.Adopt = adopt != nil
+			plan.Children = append(plan.Children, c)
 		}
 		plan.Entries = append(plan.Entries, e)
 	}
@@ -291,6 +315,45 @@ func projectSetSkip(dp gitlab.DiscoveredProject, exclude []string, watcher *aiv1
 		return projectSetReason{aiv1.ProjectSetExplicit, fmt.Sprintf("watched by AgentProject %s/%s", watcher.Namespace, watcher.Name)}, true
 	}
 	return projectSetReason{}, false
+}
+
+// projectSetAdoption decides whether a named project adopts one of the
+// AgentProjects outside the set that watch it (at least one), as the child
+// called name. It returns the adopted object, or the watcher the project stays
+// explicit for and why it is not adopted. The annotated watcher is checked
+// first; adoption needs it in the set's namespace, without a controller,
+// alone on the path and under the child's name, so nothing is deleted.
+func projectSetAdoption(set *aiv1.AgentProjectSet, watchers []*aiv1.AgentProject, name string) (adopt, watcher *aiv1.AgentProject, why string) {
+	w := watchers[0]
+	for _, p := range watchers {
+		if p.Annotations[aiv1.AnnotationProjectSet] == set.Name {
+			w = p
+			break
+		}
+	}
+	refuse := func(format string, args ...any) (*aiv1.AgentProject, *aiv1.AgentProject, string) {
+		return nil, w, "not adopted: " + fmt.Sprintf(format, args...)
+	}
+	switch v := w.Annotations[aiv1.AnnotationProjectSet]; {
+	case v == "":
+		return nil, w, fmt.Sprintf("annotate it with %s=%s to hand it to the set", aiv1.AnnotationProjectSet, set.Name)
+	case v != set.Name:
+		return refuse("annotated for set %s", v)
+	case w.Namespace != set.Namespace:
+		return refuse("in namespace %s, the set is in %s", w.Namespace, set.Namespace)
+	}
+	if ref := metav1.GetControllerOf(w); ref != nil {
+		return refuse("controlled by %s/%s", ref.Kind, ref.Name)
+	}
+	for _, p := range watchers {
+		if p != w {
+			return refuse("also watched by %s/%s", p.Namespace, p.Name)
+		}
+	}
+	if w.Name != name {
+		return refuse("name %s, the entry's child name is %s", w.Name, name)
+	}
+	return w, nil, ""
 }
 
 // projectSetSelects reports whether a child would plan one of the milestones:

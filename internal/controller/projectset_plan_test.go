@@ -617,3 +617,102 @@ func TestProjectSetPlanNamedProjects(t *testing.T) {
 		})
 	}
 }
+
+func annotated(p aiv1.AgentProject, set string) aiv1.AgentProject {
+	metav1.SetMetaDataAnnotation(&p.ObjectMeta, aiv1.AnnotationProjectSet, set)
+	return p
+}
+
+func TestProjectSetPlanAdoption(t *testing.T) {
+	set := planSet()
+	shop := []aiv1.ProjectSetEntry{{Path: "jo.wiemers/shop"}}
+	idleShop := []gitlab.DiscoveredProject{{FullPath: "jo.wiemers/shop"}}
+	mine := agentProject("agents", "shop", "jo.wiemers/shop", nil)
+	explicit := func(reason string) aiv1.ProjectSetProjectStatus {
+		return aiv1.ProjectSetProjectStatus{State: aiv1.ProjectSetExplicit, Reason: reason}
+	}
+	cases := []struct {
+		name     string
+		entries  []aiv1.ProjectSetEntry
+		projects []gitlab.DiscoveredProject
+		existing []aiv1.AgentProject
+		want     aiv1.ProjectSetProjectStatus
+	}{
+		{
+			name: "annotated, same namespace and name: adopted", entries: shop, projects: idleShop,
+			existing: []aiv1.AgentProject{annotated(mine, "jo")},
+			want:     aiv1.ProjectSetProjectStatus{State: aiv1.ProjectSetActive, Child: "shop", Reason: "adopted from AgentProject agents/shop"},
+		},
+		{
+			name: "the entry's name is the child name", entries: []aiv1.ProjectSetEntry{{Path: "jo.wiemers/shop", Name: "my-shop"}}, projects: idleShop,
+			existing: []aiv1.AgentProject{annotated(agentProject("agents", "my-shop", "jo.wiemers/shop", nil), "jo")},
+			want:     aiv1.ProjectSetProjectStatus{State: aiv1.ProjectSetActive, Child: "my-shop", Reason: "adopted from AgentProject agents/my-shop"},
+		},
+		{
+			name: "without the annotation", entries: shop, projects: idleShop, existing: []aiv1.AgentProject{mine},
+			want: explicit("named in spec.projects, but watched by AgentProject agents/shop; annotate it with ai.wiemers.me/project-set=jo to hand it to the set"),
+		},
+		{
+			name: "annotated for another set", entries: shop, projects: idleShop, existing: []aiv1.AgentProject{annotated(mine, "other")},
+			want: explicit("named in spec.projects, but watched by AgentProject agents/shop; not adopted: annotated for set other"),
+		},
+		{
+			name: "in another namespace", entries: shop, projects: idleShop,
+			existing: []aiv1.AgentProject{annotated(agentProject("team", "shop", "jo.wiemers/shop", nil), "jo")},
+			want:     explicit("named in spec.projects, but watched by AgentProject team/shop; not adopted: in namespace team, the set is in agents"),
+		},
+		{
+			name: "controlled by another set", entries: shop, projects: idleShop,
+			existing: []aiv1.AgentProject{annotated(agentProject("agents", "shop", "jo.wiemers/shop", otherSet()), "jo")},
+			want:     explicit("named in spec.projects, but watched by AgentProject agents/shop; not adopted: controlled by AgentProjectSet/other"),
+		},
+		{
+			name: "under another name", entries: shop, projects: idleShop,
+			existing: []aiv1.AgentProject{annotated(agentProject("agents", "my-shop", "jo.wiemers/shop", nil), "jo")},
+			want:     explicit("named in spec.projects, but watched by AgentProject agents/my-shop; not adopted: name my-shop, the entry's child name is shop"),
+		},
+		{
+			name: "a second watcher in another namespace", entries: shop, projects: idleShop,
+			existing: []aiv1.AgentProject{agentProject("team", "a-shop", "jo.wiemers/Shop", nil), annotated(mine, "jo")},
+			want:     explicit("named in spec.projects, but watched by AgentProject agents/shop; not adopted: also watched by team/a-shop"),
+		},
+		{
+			name: "an unnamed project ignores the annotation", projects: []gitlab.DiscoveredProject{activeProject("jo.wiemers/shop")},
+			existing: []aiv1.AgentProject{annotated(mine, "jo")},
+			want:     explicit("watched by AgentProject agents/shop"),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := set.DeepCopy()
+			s.Spec.Projects = tc.entries
+			entries := map[string]aiv1.AgentProjectSpec{}
+			for _, e := range tc.entries {
+				entries[aiv1.NormalizeProject(e.Path)] = aiv1.AgentProjectSpec{Workflow: aiv1.WorkflowSpec{ReadyLabel: "entry-ready"}}
+			}
+			plan := planProjectSet(projectSetInput{
+				Set: s, Entries: entries, Discovery: &gitlab.GroupDiscovery{Projects: tc.projects}, Projects: tc.existing, Now: planNow,
+			})
+			if len(plan.Entries) != 1 {
+				t.Fatalf("entries = %+v, want 1", plan.Entries)
+			}
+			e := plan.Entries[0]
+			if e.State != tc.want.State || e.Child != tc.want.Child || e.Reason != tc.want.Reason {
+				t.Errorf("entry = %s/%q/%q, want %s/%q/%q", e.State, e.Child, e.Reason, tc.want.State, tc.want.Child, tc.want.Reason)
+			}
+			if tc.want.Child == "" {
+				if len(plan.Children) != 0 {
+					t.Errorf("children = %+v, want none", plan.Children)
+				}
+				return
+			}
+			if len(plan.Children) != 1 {
+				t.Fatalf("children = %+v, want 1", plan.Children)
+			}
+			c := plan.Children[0]
+			if c.Name != tc.want.Child || !c.Adopt || c.Spec.Workflow.ReadyLabel != "entry-ready" || c.Spec.GitLab.Project != "jo.wiemers/shop" {
+				t.Errorf("child = %+v, want an adoption of %s with the entry's merged spec", c, tc.want.Child)
+			}
+		})
+	}
+}

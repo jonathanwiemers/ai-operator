@@ -273,6 +273,9 @@ func (r *AgentProjectSetReconciler) applyChild(ctx context.Context, set *aiv1.Ag
 		return false, err
 	}
 	if !metav1.IsControlledBy(cur, set) {
+		if c.Adopt && metav1.GetControllerOf(cur) == nil && cur.Annotations[aiv1.AnnotationProjectSet] == set.Name {
+			return false, r.adoptChild(ctx, set, c, cur)
+		}
 		return true, nil // the planner skips these; a guard all the same
 	}
 	// A removal in progress leaves the hash but switches the webhook off: the
@@ -286,6 +289,28 @@ func (r *AgentProjectSetReconciler) applyChild(ctx context.Context, set *aiv1.Ag
 	metav1.SetMetaDataAnnotation(&cur.ObjectMeta, aiv1.AnnotationTemplateHash, c.Hash)
 	metav1.SetMetaDataLabel(&cur.ObjectMeta, aiv1.LabelProjectSet, set.Name)
 	return false, r.Update(ctx, cur)
+}
+
+// adoptChild makes the set the controller of an annotated AgentProject and
+// writes the planned spec onto it, in one update. The object is never deleted
+// or recreated: its UID, and with it its AgentTasks, plans and GitLab hook,
+// stay. A conflict leaves it to the next poll, which plans the adoption again.
+func (r *AgentProjectSetReconciler) adoptChild(ctx context.Context, set *aiv1.AgentProjectSet, c plannedChild, cur *aiv1.AgentProject) error {
+	if err := controllerutil.SetControllerReference(set, cur, r.Scheme); err != nil {
+		return err
+	}
+	cur.Spec = c.Spec
+	metav1.SetMetaDataAnnotation(&cur.ObjectMeta, aiv1.AnnotationTemplateHash, c.Hash)
+	metav1.SetMetaDataLabel(&cur.ObjectMeta, aiv1.LabelProjectSet, set.Name)
+	err := r.Update(ctx, cur)
+	if apierrors.IsConflict(err) {
+		log.FromContext(ctx).V(1).Info("AgentProject changed since it was read, adopting it on the next poll", "child", cur.Name)
+		return nil
+	}
+	if err == nil {
+		log.FromContext(ctx).Info("Adopted AgentProject", "child", cur.Name, "project", c.Path)
+	}
+	return err
 }
 
 // nameTaken marks the entry of a child whose create found the name taken.

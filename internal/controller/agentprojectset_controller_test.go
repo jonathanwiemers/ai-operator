@@ -16,6 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/utils/ptr"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -498,4 +499,120 @@ func TestProjectSetReconcileTaskKeepsActive(t *testing.T) {
 		t.Errorf("entry = %+v, want active through its task", got)
 	}
 	e.child("quiet")
+}
+
+// adoptEnv is a set that names jo.wiemers/shop, and the annotated explicit
+// AgentProject shop that watches it, with a registered hook and a task.
+func adoptEnv(t *testing.T) (*setEnv, *aiv1.AgentProject) {
+	t.Helper()
+	own := annotated(agentProject("agents", "shop", "jo.wiemers/shop", nil), "jo")
+	own.UID = "shop-uid"
+	own.Spec.MaxConcurrentRuns = 7
+	own.Status.Webhook = &aiv1.WebhookStatus{HookID: 42}
+	task := &aiv1.AgentTask{ObjectMeta: metav1.ObjectMeta{Name: "shop-1", Namespace: "agents", Labels: map[string]string{LabelProject: "shop"},
+		OwnerReferences: []metav1.OwnerReference{{APIVersion: "ai.wiemers.me/v1alpha1", Kind: "AgentProject", Name: "shop", UID: own.UID, Controller: ptr.To(true)}}}}
+	e := newSetEnv(t, func(s *aiv1.AgentProjectSet) {
+		s.Spec.Projects = []aiv1.ProjectSetEntry{{Path: "jo.wiemers/shop", Spec: &runtime.RawExtension{Raw: []byte(`{"maxConcurrentRuns":3}`)}}}
+	}, &own, task)
+	e.discover(gitlab.DiscoveredProject{FullPath: "jo.wiemers/shop"})
+	return e, &own
+}
+
+func TestProjectSetReconcileAdopt(t *testing.T) {
+	e, own := adoptEnv(t)
+	e.reconcile()
+	got := e.child("shop")
+	if got.UID != own.UID || !metav1.IsControlledBy(got, e.set()) || got.Labels[aiv1.LabelProjectSet] != "jo" ||
+		got.Annotations[aiv1.AnnotationTemplateHash] == "" || got.Annotations[aiv1.AnnotationProjectSet] != "jo" {
+		t.Fatalf("not adopted: %+v", got.ObjectMeta)
+	}
+	if got.Spec.MaxConcurrentRuns != 3 || got.Spec.Agents.Image != "agent:1" || !got.Spec.Webhook.Enabled {
+		t.Errorf("spec = %+v, want the entry's merged spec", got.Spec)
+	}
+	if got.Status.Webhook == nil || got.Status.Webhook.HookID != 42 {
+		t.Errorf("webhook status = %+v, want hook 42 kept", got.Status.Webhook)
+	}
+	var task aiv1.AgentTask
+	if err := e.c.Get(context.Background(), types.NamespacedName{Namespace: "agents", Name: "shop-1"}, &task); err != nil {
+		t.Fatalf("task: %v", err)
+	}
+	if entry := setEntry(e.set(), "jo.wiemers/shop"); entry.State != aiv1.ProjectSetActive || entry.Child != "shop" ||
+		entry.Reason != "adopted from AgentProject agents/shop" {
+		t.Errorf("entry = %+v", entry)
+	}
+
+	// The next poll sees an ordinary named child and writes nothing.
+	e.poll()
+	if again := e.child("shop"); again.ResourceVersion != got.ResourceVersion {
+		t.Errorf("adopted child rewritten: %s -> %s", got.ResourceVersion, again.ResourceVersion)
+	}
+	if entry := setEntry(e.set(), "jo.wiemers/shop"); entry.Reason != namedReason {
+		t.Errorf("entry after adoption = %+v", entry)
+	}
+}
+
+func TestProjectSetReconcileAdoptConflict(t *testing.T) {
+	e, _ := adoptEnv(t)
+	conflicts := 1
+	e.r.Client = interceptor.NewClient(e.c.(client.WithWatch), interceptor.Funcs{
+		Update: func(ctx context.Context, c client.WithWatch, obj client.Object, opts ...client.UpdateOption) error {
+			if _, ok := obj.(*aiv1.AgentProject); ok && conflicts > 0 {
+				conflicts--
+				return apierrors.NewConflict(schema.GroupResource{Group: "ai.wiemers.me", Resource: "agentprojects"}, obj.GetName(), nil)
+			}
+			return c.Update(ctx, obj, opts...)
+		},
+	})
+	e.reconcile()
+	if got := e.child("shop"); len(got.OwnerReferences) != 0 || got.Spec.MaxConcurrentRuns != 7 {
+		t.Fatalf("a conflicting adoption changed the object: %+v", got)
+	}
+	e.poll()
+	if got := e.child("shop"); !metav1.IsControlledBy(got, e.set()) || got.UID != "shop-uid" {
+		t.Errorf("not adopted on the next poll: %+v", got.ObjectMeta)
+	}
+}
+
+func TestProjectSetReconcileEntryRemoved(t *testing.T) {
+	e, _ := adoptEnv(t)
+	e.reconcile()
+	adopted := e.child("shop")
+
+	// The entry goes: the child stays owned and gets the template alone.
+	set := e.set()
+	set.Spec.Projects, set.Generation = nil, 2
+	if err := e.c.Update(context.Background(), set); err != nil {
+		t.Fatal(err)
+	}
+	e.poll()
+	got := e.child("shop")
+	if got.UID != adopted.UID || !metav1.IsControlledBy(got, e.set()) || got.Spec.MaxConcurrentRuns != 0 ||
+		got.Annotations[aiv1.AnnotationTemplateHash] == adopted.Annotations[aiv1.AnnotationTemplateHash] {
+		t.Fatalf("after the entry is removed: %+v %+v", got.ObjectMeta, got.Spec)
+	}
+
+	// No milestone past dormantAfter: its task keeps it active.
+	dormantAfter := e.set().Spec.WithDefaults().DormantAfter.Duration
+	e.now = e.now.Add(dormantAfter)
+	e.poll()
+	if entry := setEntry(e.set(), "jo.wiemers/shop"); entry.State != aiv1.ProjectSetActive || removing(e.child("shop")) {
+		t.Fatalf("entry = %+v, want a child with a task active and kept", entry)
+	}
+
+	// Without the task the dormant rules remove it.
+	if err := e.c.Delete(context.Background(), &aiv1.AgentTask{ObjectMeta: metav1.ObjectMeta{Name: "shop-1", Namespace: "agents"}}); err != nil {
+		t.Fatal(err)
+	}
+	e.poll()
+	if removing(e.child("shop")) {
+		t.Fatal("removed before dormantAfter")
+	}
+	e.now = e.now.Add(dormantAfter)
+	e.poll()
+	if entry := setEntry(e.set(), "jo.wiemers/shop"); entry.State != aiv1.ProjectSetDormant {
+		t.Errorf("entry = %+v, want dormant", entry)
+	}
+	if !removing(e.child("shop")) {
+		t.Error("dormant child without tasks is not being removed")
+	}
 }
