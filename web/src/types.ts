@@ -111,6 +111,7 @@ export type StreamKind =
   | 'release.decided'
   | 'release.started'
   | 'release.ended'
+  | 'milestone.started'
   | 'problem.opened'
   | 'problem.resolved'
   | 'hold.set'
@@ -167,11 +168,14 @@ export interface StreamEventData {
   // release.decided / release.started / release.ended (also by, state,
   // reason, pipelineID and pipelineURL); why and reason are untrusted.
   releaseID?: number
+  // autopilot, milestone.started and release.*: the milestone's title.
+  title?: string
   afterIssue?: number
   final?: boolean
   why?: string
   releasedSHA?: string
-  issues?: number[]
+  // A started release's issues; milestone.started: the number planned.
+  issues?: number[] | number
   mergeRequests?: number[]
   attempt?: number
   version?: string

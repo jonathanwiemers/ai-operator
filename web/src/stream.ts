@@ -21,6 +21,7 @@ export const pilotStreamKinds = [
   'release.decided',
   'release.started',
   'release.ended',
+  'milestone.started',
   'problem.opened',
   'problem.resolved',
   'hold.set',
@@ -362,6 +363,7 @@ export const cockpitClass: Record<StreamKind, CockpitClass> = {
   'release.decided': 'shown',
   'release.started': 'shown',
   'release.ended': 'shown',
+  'milestone.started': 'shown',
   retrospective: 'shown',
   'problem.resolved': 'shown',
   'prompt.answered': 'shown',
@@ -387,6 +389,7 @@ const allScopeShown: StreamKind[] = [
   'release.decided',
   'release.started',
   'release.ended',
+  'milestone.started',
   'retrospective',
 ]
 

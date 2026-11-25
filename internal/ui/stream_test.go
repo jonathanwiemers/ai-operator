@@ -272,7 +272,8 @@ func TestInboxBudgetWarning(t *testing.T) {
 		t.Fatalf("80 %% of the issue's budget is one item: %+v", got)
 	}
 	want := InboxItem{Namespace: "agents", Project: "orbit", Kind: "budgetWarning", Task: "impl-7", IssueIID: 7, MilestoneIID: 5,
-		Title: "Lobby chat", Reason: "80 % of the issue's budget of $20.00 spent", URL: "https://gitlab.example/i/7"}
+		Title: "Lobby chat", Reason: "80 % of the issue's budget of $20.00 spent", URL: "https://gitlab.example/i/7",
+		Key: "agents/orbit/budgetWarning/5/7/80 % of the issue's budget of $20.00 spent", Notify: "budget"}
 	w := got[0]
 	if w.At == nil || !w.At.Equal(alerted.Time) {
 		t.Errorf("the item is from the heads-up: at = %v, want %v", w.At, alerted.Time)

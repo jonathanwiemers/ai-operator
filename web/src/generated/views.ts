@@ -2094,6 +2094,15 @@ export interface InboxItem {
    * milestone may run on, lifted by "resume #IssueIID".
    */
   hold?: boolean;
+  /**
+   * Key identifies the item, stable across loads (inboxKey).
+   */
+  key: string;
+  /**
+   * Notify is the item's notification category, empty for none
+   * (notifyCategory).
+   */
+  notify?: 'problem' | 'question' | 'proposal' | 'companion' | 'budget' | 'failed';
 }
 /**
  * InboxResponse is GET /api/v1/inbox.

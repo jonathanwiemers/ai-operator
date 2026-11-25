@@ -77,7 +77,8 @@ export function releaseEventBadge(e: ReleaseEvent): { label: string; tone: Tone 
 
 // releaseEventIssues lists the issues a started release contains: "#3, #4".
 export function releaseEventIssues(e: ReleaseEvent): string {
-  return (e.data.issues ?? []).map((n) => `#${n}`).join(', ')
+  const issues = e.data.issues
+  return (Array.isArray(issues) ? issues : []).map((n) => `#${n}`).join(', ')
 }
 
 // isReleaseEvent: one of the three release kinds.

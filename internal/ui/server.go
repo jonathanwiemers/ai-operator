@@ -318,9 +318,15 @@ func (s *Server) app(w http.ResponseWriter, r *http.Request) {
 	name := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
 	if name != "" && name != "index.html" {
 		if st, err := fs.Stat(s.static, name); err == nil && !st.IsDir() {
-			if strings.HasPrefix(name, "assets/") {
+			switch {
+			case strings.HasPrefix(name, "assets/"):
 				// File names carry a content hash.
 				w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+			case name == "sw.js":
+				// The service worker's name is fixed: a new build must reach it.
+				w.Header().Set("Cache-Control", "no-cache")
+			case name == "manifest.webmanifest":
+				w.Header().Set("Content-Type", "application/manifest+json")
 			}
 			// #nosec G703 -- name is path.Clean'ed and read from the embedded app's fs.FS, which rejects ".." and absolute names
 			http.ServeFileFS(w, r, s.static, name)
@@ -364,9 +370,11 @@ func localHostOnly(next http.Handler) http.Handler {
 	})
 }
 
-// contentSecurityPolicy allows only the app's own scripts, styles and API.
+// contentSecurityPolicy allows only the app's own scripts, styles, API,
+// service worker and manifest.
 const contentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; " +
-	"font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
+	"font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; " +
+	"worker-src 'self'; manifest-src 'self'"
 
 func securityHeaders(secure bool, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

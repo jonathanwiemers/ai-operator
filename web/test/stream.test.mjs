@@ -146,7 +146,7 @@ test('pilot and runtime kinds partition every StreamKind', () => {
     'note', 'run.started', 'run.finished', 'push', 'ci', 'review', 'needs', 'merged', 'closed',
     'autopilot', 'proposal', 'autopilot.paused', 'autopilot.resumed', 'pilot.writeFailed',
     'retrospective', 'prompt.posted', 'prompt.answered', 'prompt.closed', 'chat.user', 'chat.agent', 'checkpoint',
-    'release.decided', 'release.started', 'release.ended',
+    'release.decided', 'release.started', 'release.ended', 'milestone.started',
     'problem.opened', 'problem.resolved', 'hold.set', 'hold.cleared', 'pilot.acted', 'item.skipped',
   ]
   for (const k of pilotStreamKinds) assert.ok(!runtimeStreamKinds.includes(k), `${k} is in both lists`)

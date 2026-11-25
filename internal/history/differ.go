@@ -67,6 +67,10 @@ const (
 	KindReleaseDecided = "release.decided"
 	KindReleaseStarted = "release.started"
 	KindReleaseEnded   = "release.ended"
+
+	// KindMilestoneStarted is a spec task's status.plan going from empty to
+	// non-empty: the milestone's issues are planned.
+	KindMilestoneStarted = "milestone.started"
 )
 
 // maxText bounds the texts copied from the status into an event.
@@ -252,6 +256,11 @@ func (d *Differ) Update(old, cur *aiv1.AgentTask, now time.Time) []store.Event {
 		add(fmt.Sprintf("needs/phase/%d", ns.Run.RunCount), KindNeeds, needsSummary("stopped", ref),
 			map[string]any{"reason": "stopped", "message": textutil.Truncate(ns.Message, maxText)})
 	}
+	if cur.Spec.Type == aiv1.TaskTypeSpec && cur.Spec.Milestone != nil && len(prev.Plan) == 0 && len(ns.Plan) > 0 {
+		add("milestone/started/"+cur.ResourceVersion, KindMilestoneStarted,
+			fmt.Sprintf("Milestone planned: %d issues", len(ns.Plan)),
+			map[string]any{"issues": len(ns.Plan), "title": cur.Spec.Milestone.Title})
+	}
 	out = append(out, d.autopilot(cur, prev.Autopilot, ns.Autopilot, now)...)
 	out = append(out, pauses(cur, prev.Autopilot, ns.Autopilot, now)...)
 	out = append(out, releases(cur, prev.Autopilot, ns.Autopilot, now)...)
@@ -302,6 +311,9 @@ func (d *Differ) autopilot(t *aiv1.AgentTask, old, cur *aiv1.AutopilotStatus, no
 		e.Data = map[string]any{"phase": string(cur.Phase)}
 		if cur.PausedReason != "" {
 			e.Data["reason"] = textutil.Truncate(cur.PausedReason, maxText)
+		}
+		if t.Spec.Milestone != nil {
+			e.Data["title"] = t.Spec.Milestone.Title
 		}
 		out = append(out, e)
 	}
@@ -421,6 +433,9 @@ func releases(t *aiv1.AgentTask, old, cur *aiv1.AutopilotStatus, now time.Time) 
 			e.At = at.Time
 		}
 		data["releaseID"], data["by"], data["afterIssue"], data["final"] = r.ID, string(r.By), r.AfterIssue, r.Final
+		if t.Spec.Milestone != nil {
+			data["title"] = t.Spec.Milestone.Title
+		}
 		e.Data = data
 		out = append(out, e)
 	}

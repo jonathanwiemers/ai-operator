@@ -57,7 +57,7 @@ var (
 		history.KindProposal, history.KindPilotWriteFailed, history.KindNote, "chat.user", "chat.agent",
 		history.KindRetrospective, history.KindReleaseDecided, history.KindReleaseStarted, history.KindReleaseEnded,
 		history.KindProblemOpened, history.KindProblemResolved, history.KindHoldSet, history.KindHoldCleared,
-		history.KindPilotActed}
+		history.KindPilotActed, history.KindMilestoneStarted}
 	runtimeKinds = []string{history.KindRunStarted, history.KindRunFinished, history.KindPush, history.KindCI,
 		history.KindReview, history.KindMerged, history.KindClosed, history.KindItemSkipped, history.KindCheckpoint}
 )
@@ -536,6 +536,11 @@ type InboxItem struct {
 	// Hold: the pause item is the hold of one issue (IssueIID) while the
 	// milestone may run on, lifted by "resume #IssueIID".
 	Hold bool `json:"hold,omitempty"`
+	// Key identifies the item, stable across loads (inboxKey).
+	Key string `json:"key"`
+	// Notify is the item's notification category, empty for none
+	// (notifyCategory).
+	Notify string `json:"notify,omitempty" tstype:"'problem' | 'question' | 'proposal' | 'companion' | 'budget' | 'failed'"`
 }
 
 // InboxResponse is GET /api/v1/inbox.
@@ -720,7 +725,77 @@ func inboxOf(projects map[string]*aiv1.AgentProject, tasks []aiv1.AgentTask, now
 		}
 		return a.After(*b)
 	})
+	for i := range items {
+		items[i].Key, items[i].Notify = inboxKey(items[i]), notifyCategory(items[i])
+	}
 	return items
+}
+
+// inboxKey identifies it across loads: namespace/project/kind and the parts
+// of its kind, joined by "/", a zero number or empty string as an empty part.
+// A problem is keyed by milestone, issue and pause kind ("open" without one),
+// never by its reason, which changes over time.
+func inboxKey(it InboxItem) string {
+	num := func(n int64) string {
+		if n == 0 {
+			return ""
+		}
+		return strconv.FormatInt(n, 10)
+	}
+	parts := []string{it.Namespace, it.Project, it.Kind}
+	switch it.Kind {
+	case "task":
+		parts = append(parts, it.Task)
+	case "proposal":
+		parts = append(parts, num(it.MilestoneIID), num(it.ProposalID))
+	case "prompt":
+		parts = append(parts, it.Task, it.PromptID)
+	case "pause":
+		parts = append(parts, num(it.MilestoneIID), num(it.IssueIID), string(it.PauseKind))
+		// A hold of one issue is not the milestone's pause over it.
+		if it.Hold {
+			parts = append(parts, "hold")
+		}
+	case "pilotError":
+		parts = append(parts, it.Task, it.Title, it.Reason)
+	case "companionReady":
+		parts = append(parts, num(it.IssueIID), it.Title)
+	case "budgetWarning":
+		// The reason names the budget: a raised one crossed again is new.
+		parts = append(parts, num(it.MilestoneIID), num(it.IssueIID), it.Reason)
+	case "problem":
+		kind := string(it.PauseKind)
+		if kind == "" {
+			kind = "open"
+		}
+		parts = append(parts, num(it.MilestoneIID), num(it.IssueIID), kind)
+	}
+	return strings.Join(parts, "/")
+}
+
+// notifyCategory is the notification category of it, empty for none
+// (pilotError).
+func notifyCategory(it InboxItem) string {
+	switch it.Kind {
+	case "problem", "pause":
+		return "problem"
+	case "prompt":
+		return "question"
+	case "proposal":
+		return "proposal"
+	case "companionReady":
+		return "companion"
+	case "budgetWarning":
+		return "budget"
+	case "task":
+		switch it.Reason {
+		case string(StageNeedsInput):
+			return "question"
+		case string(StageFailed), string(StageBlocked):
+			return "failed"
+		}
+	}
+	return ""
 }
 
 // problemItems are the Inbox items of t's open problems, one per issue (0:

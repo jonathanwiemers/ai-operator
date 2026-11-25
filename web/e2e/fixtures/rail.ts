@@ -111,6 +111,8 @@ export const inbox: InboxResponse = {
       reason: 'question',
       at: ago(25),
       url: 'https://gitlab.example.com/team-a/shop/-/issues/281',
+      key: 'team-a/shop/prompt/shop-281-implement/p-281-1',
+      notify: 'question',
     },
     {
       namespace: 'team-a',
@@ -123,6 +125,8 @@ export const inbox: InboxResponse = {
       at: ago(24),
       pauseKind: 'needsInput',
       pausedSince: ago(24),
+      key: 'team-a/shop/pause/14//needsInput',
+      notify: 'problem',
     },
     {
       namespace: 'team-a',
@@ -137,6 +141,8 @@ export const inbox: InboxResponse = {
         'The merge request has 2 blocking review findings: **the address step drops the cart** when the session expires, and the guest e-mail is not checked before the payment step starts.',
       at: ago(90),
       url: 'https://gitlab.example.com/team-a/shop/-/merge_requests/301',
+      // Its reason is no stage, so it has no notify category.
+      key: 'team-a/shop/task/shop-277-implement',
     },
     {
       namespace: 'team-a',
@@ -147,6 +153,8 @@ export const inbox: InboxResponse = {
       title: 'Split the address form into its own component',
       reason: 'proposal',
       at: ago(60 * 5),
+      key: 'team-a/shop/proposal/12/9',
+      notify: 'proposal',
     },
   ],
   // The Handled view: newest first, one of each label.
