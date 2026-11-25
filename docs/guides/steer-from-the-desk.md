@@ -224,7 +224,7 @@ nothing" option.
 
 You find prompts:
 
-- in the Inbox, with a browser notification if you turned them on;
+- in the Inbox, with a [browser notification](notifications.md) if you turned them on;
 - pinned on top of the milestone's *Cockpit*, at the bottom of their issue's
   [problem thread](pilot.md#the-problem-thread); closed ones stay in the
   thread's history;
@@ -375,8 +375,9 @@ have them. The bar hides while you type.
 - Text that is cut off opens with a tap.
 - Prompts, pause cards, chat and *Restart run* work as on a desktop.
 
-Turn on [browser notifications](desk.md#browser-notifications) to hear of a
-pause or a prompt while a Desk tab is open.
+Turn on [notifications](notifications.md) to hear of a problem or a prompt
+while a Desk tab is open, and
+[install the Desk](notifications.md#install-the-desk) for its own icon.
 
 ## Next
 

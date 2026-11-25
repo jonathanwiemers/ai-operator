@@ -2669,13 +2669,40 @@ the series was tracked show no chart.
 
 ### Notifications
 
-Only some Inbox items notify (`notifiable` in `inboxNotify.ts`): pauses,
-proposals, prompts, ready companions, budget warnings and tasks that need
-input. Failed and blocked tasks and rejected pilot writes (`pilotError`)
-only count. Each such item notifies once, also across reloads and live updates; items
-already there when the tab opens or when notifications are turned on don't
-notify. An autopilot that pauses again for another cause or issue is a new
-item, as is an issue whose raised budget crosses 80 % again. A click leads
+The server owns an Inbox item's identity and category: `InboxItem.key`
+(`inboxKey` in `internal/ui`, stable across loads) and `InboxItem.notify`
+(`notifyCategory`, empty for none). The web computes neither. A problem is
+keyed by milestone, issue and pause kind (`open` without one), never by its
+reason text. `pilotError` has no category and never notifies. The
+categories and their defaults are in
+[Notifications](../reference/notifications.md#categories).
+
+- **Settings.** `notify.ts` keeps `{on, categories}` in `localStorage`
+  (`desk-notify`), with only the categories that differ from their default.
+  The old value `on` reads as on with the defaults; a broken value or a
+  storage that throws is off. `wants(category)` is false while the switch
+  is off or the permission is missing. The dialog
+  (`components/NotifySettings.vue`, labels in `notifyCategories.ts`) is
+  lazy and opened through `notifyDialog` from the account menu and the
+  Inbox button.
+- **Inbox items.** `onInbox` in `App.vue` seeds the seen keys on the first
+  load. On each later load `newNotifications` (`inboxNotify.ts`) returns
+  the wanted items whose key is new, each key once, and `seenKeys` keeps
+  exactly the keys of the load: a key that left the Inbox is forgotten, so
+  its item notifies again when it comes back. `notificationText` gives the
+  title and body; bodies go through `localTimesText`.
+- **Events.** While `milestoneStarted`, `milestoneDone` or `release` is
+  wanted, `pollEvents` (`deskWorker.ts`) fetches `GET /stream` with
+  `kinds=autopilot,milestone.started,release.ended` and `after=<newest>`, on
+  every `task` change event and every 60 s. `eventPoller`
+  (`eventNotify.ts`) seeds while its cursor is empty, so neither events
+  from before the tab opened nor the first event of an empty stream
+  notify. `eventCategory` narrows `autopilot` to phase `Done` and
+  `release.ended` to `Released` and `Failed`. The tag is `event/<id>`.
+  Without the history database (`StreamPage.history` false) the poller
+  stops and the dialog disables the three switches.
+
+A click leads
 where the Inbox row does (one mapping, `inboxRoute.ts`): a milestone's
 entry opens its Cockpit at its card (R17 of the Cockpit spec), problems
 and pauses through the `problem` route, prompts at `#prompt-Q<n>`,
@@ -2699,7 +2726,8 @@ window. It has no `fetch` handler and caches nothing: no offline use.
   clashes with `DOM`, so `tsconfig.json` leaves it out. `npm run
   typecheck` and `npm run build` run both.
 - **Shared code.** `notifyOpen.ts` is imported by the worker and the app:
-  `NotifyOpen` (what a click opens, `{ item }`), `openURL`, `parseOpen` and
+  `NotifyOpen` (what a click opens, `{ item }` or `{ event }`; an event
+  opens its milestone through `milestoneRoute()`), `openURL`, `parseOpen` and
   `clickTarget`. Keep it free of DOM and Vue. The worker has no route
   logic; the app routes with `inboxRoute()`.
 - **Lifecycle.** `skipWaiting` on install and `clients.claim` on activate:
@@ -2716,9 +2744,19 @@ window. It has no `fetch` handler and caches nothing: no offline use.
   runs `router.push(inboxRoute(item))`. Without a window it opens
   `/?open=<JSON>`, which the app reads once and replaces with the item's
   route, so the query goes.
+- **Install.** `public/manifest.webmanifest` (`display: standalone`, start
+  and scope `/`) and the `apple-touch-icon` and `theme-color` tags in
+  `index.html` make the Desk installable. The server sends the manifest as
+  `application/manifest+json`, and the CSP allows `manifest-src 'self'`.
+  The PNG icons in `public/icons/` (180, 192, 512 and 512 maskable) are
+  committed. `scripts/icons.mjs` renders them from `public/logo.svg` with
+  Playwright's Chromium; run `node scripts/icons.mjs` by hand after the
+  logo or the light theme's `--surface` changes. It is not part of the
+  build.
 - **Checks.** `test/notifyOpen.test.mjs` covers the click target and the
   `?open=` round trip, `e2e/service-worker.spec.ts` the registration and
-  the `?open=` landing.
+  the `?open=` landing, `e2e/installable.spec.ts` the manifest and its
+  icons.
 
 ### History
 

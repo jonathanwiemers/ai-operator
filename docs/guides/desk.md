@@ -165,13 +165,9 @@ closed them and why, and the actions the pilot ran on its own or after an
 owner accepted them. A row opens its card in the milestone's *Cockpit*;
 `/inbox?view=handled` opens *Handled* directly.
 
-### Browser notifications
-
-Open **Notifications** in the account menu, or click *Notify me* in the
-Inbox header. Turn on *Notifications in this browser* and allow them, then
-pick the categories you want. Each new item of a picked category raises one
-notification; a click opens the row's place. They only come while a Desk tab
-is open, and the choices are kept per browser.
+*Notify me* in the Inbox header, or **Notifications** in the account menu,
+picks what raises a browser notification:
+see [Notifications and the Desk on your phone](notifications.md).
 
 ## Overview
 

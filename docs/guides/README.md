@@ -33,28 +33,31 @@ In the order you need them for a milestone:
 11. [Steer from the Desk](steer-from-the-desk.md): chat with an agent, ask
     the pilot, answer prompts, revisit decisions, pause cards, the queue,
     the planner, costs and the Desk on a phone.
-12. [Order milestones and read the timeline](milestone-order-and-timeline.md):
+12. [Notifications and the Desk on your phone](notifications.md): turn on
+    browser notifications, pick categories, and install the Desk on a
+    computer, Android or iPhone.
+13. [Order milestones and read the timeline](milestone-order-and-timeline.md):
     drag milestones into run order, `/agent move`, and the issue and
     Overview timelines.
-13. [Read and revisit decisions](decisions.md): the Decisions tabs, search,
+14. [Read and revisit decisions](decisions.md): the Decisions tabs, search,
     the card, the chain of revisits and what Revisit does.
-14. [Budgets and spend](budgets-and-spend.md): what counts as spend, budgets
+15. [Budgets and spend](budgets-and-spend.md): what counts as spend, budgets
     for a milestone and its issues, and the Metrics tab and Metrics page.
-15. [Cost levers](cost-levers.md): try fresh step sessions, a lower effort
+16. [Cost levers](cost-levers.md): try fresh step sessions, a lower effort
     and a cheaper profile side by side in an experiment, and read the arm
     table and the Context panel.
-16. [Releases](releases.md): release points in the plan, `/agent release`,
+17. [Releases](releases.md): release points in the plan, `/agent release`,
     the final release, the sweep and the version format.
-17. [Cross-repo changes](cross-repo-changes.md): a change that spans a
+18. [Cross-repo changes](cross-repo-changes.md): a change that spans a
     companion repository, and how its merge request lands.
-18. [Watch from Kubernetes](watch-from-kubernetes.md): `kubectl` views of
+19. [Watch from Kubernetes](watch-from-kubernetes.md): `kubectl` views of
     projects and tasks, run logs, and what happens when an agent container
     or a pod is lost.
-19. [Research](research.md): news flashes and one-off reports, turning
+20. [Research](research.md): news flashes and one-off reports, turning
     research on, choosing agents, retention and troubleshooting.
-20. [Project sets](project-sets.md): one AgentProjectSet for a whole GitLab
+21. [Project sets](project-sets.md): one AgentProjectSet for a whole GitLab
     group, active and dormant projects, globs and the request budget.
-21. [Upgrade](upgrade.md): move to a new release, and what each release
+22. [Upgrade](upgrade.md): move to a new release, and what each release
     removed from manifests and Helm values.
 
 ## Next

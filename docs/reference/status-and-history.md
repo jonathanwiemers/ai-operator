@@ -158,6 +158,14 @@ numbers where they apply (`milestone_iid`, `issue_iid`, `mr_iid`), a
 | `hold.set` | An issue of an autopilot milestone got a [hold](../concepts/glossary.md#hold), or its hold restarted. Its time is the hold's start. | `holdKind`, `reason`, and `since`, the hold's start (RFC 3339). |
 | `hold.cleared` | The hold ended: it was lifted, or the issue merged, was skipped or left the milestone. | The same as its `hold.set`. |
 | `item.skipped` | Autopilot skipped an issue. Written once per issue. | None. |
+| `milestone.started` | A milestone's issues are planned: its spec task's plan went from empty to non-empty. Written once; a later re-plan writes no second event. Summary "Milestone planned: N issues". | `issues` (the planned count) and `title`. |
+| `autopilot` | A milestone's autopilot changed its phase (`Running`, `Paused`, `Done`, `Off`). Recorded on the tracking issue. | `phase`, `reason` while paused, and `title`. |
+| `release.decided`, `release.started`, `release.ended` | A release of the milestone was decided, its pipeline started, or it ended. | `releaseID`, `by`, `afterIssue`, `final` and `title`; `release.ended` also `state` (`Released`, `Failed`, …), `version` and `reason`. |
+
+`title` is the milestone's title. The Desk's
+[milestone and release notifications](notifications.md#categories) come
+from `milestone.started`, `autopilot` with phase `Done`, and `release.ended`
+with state `Released` or `Failed`.
 
 An issue's merged lines are the sum of the `lines` of its `merged` and
 `companion.merged` events; per project, companion lines count under the

@@ -31,3 +31,6 @@ here once, and the guides link to them. The Helm chart values are in the
 10. **[Status and history events](status-and-history.md)**: the
     `mergedLines` status fields of tasks and companions, and the history
     events behind the Desk's lines and pauses.
+11. **[Notifications](notifications.md)**: the Desk's notification
+    categories with their defaults, the events behind them, and which
+    browsers show what.

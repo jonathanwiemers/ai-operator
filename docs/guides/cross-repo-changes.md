@@ -93,7 +93,7 @@ See [Labels](../reference/labels.md) and
 **In the Desk**, a milestone with companion merge requests lists them under
 *Companions* on its *Issues* tab, also after the issue's task is gone. A
 task's header links its companion merge request. A companion that is ready
-for you to merge is an Inbox item, with a browser notification. On the
+for you to merge is an Inbox item, with a [browser notification](notifications.md). On the
 *Metrics* tab, an issue with a companion has a *companion* marker: its calls
 edit both trees and count to the home issue. See [The Desk](desk.md).
 

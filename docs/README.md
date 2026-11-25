@@ -23,6 +23,7 @@ get [your first milestone](getting-started/first-milestone.md) planned.
 [pauses](guides/pauses.md), work with [the pilot](guides/pilot.md),
 know what happens [when runs go wrong](guides/when-runs-go-wrong.md), use
 [the Desk](guides/desk.md) and [steer from it](guides/steer-from-the-desk.md),
+turn on [notifications and install the Desk](guides/notifications.md),
 [order milestones and read the timeline](guides/milestone-order-and-timeline.md),
 [read and revisit decisions](guides/decisions.md) there,
 watch [budgets and spend](guides/budgets-and-spend.md), try
@@ -44,7 +45,8 @@ release.
 [lifecycle and CI](reference/lifecycle-and-ci.md) and the
 [agent image](reference/agent-image.md), the
 [`AgentResearch` fields](reference/agentresearch.md), the
-[status fields and history events](reference/status-and-history.md) and the
+[status fields and history events](reference/status-and-history.md), the
+[notification categories](reference/notifications.md) and the
 [Desk API](reference/desk-api.md), for looking things up.
 
 ## Concepts

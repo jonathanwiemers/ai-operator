@@ -167,7 +167,7 @@ get one, for the higher); a new value arms it again. An
 issue that jumps past its budget in one poll gets only the pause.
 
 The 80 % heads-up is also an Inbox item ("80 % of the issue's budget of
-$20.00 spent") with a browser notification. It opens the issue's task, where
+$20.00 spent") with a [browser notification](notifications.md). It opens the issue's task, where
 the chat's `budget <usd>` raises it. It leaves the Inbox when the issue
 merges or is skipped, its budget is raised, or the budget pause takes over.
 
