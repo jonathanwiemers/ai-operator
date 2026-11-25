@@ -3,7 +3,7 @@ import { hasFeature } from './api'
 import { getStream, LoginRequiredError } from './client'
 import { errorMessage } from './format'
 import { live } from './live'
-import { chatAnswer, cockpitItems, cockpitStreamQuery, streamEventKey } from './stream'
+import { chatAnswer, cockpitStreamQuery, cockpitThreads, streamEventKey } from './stream'
 import { firstSentence } from './chatView'
 import { announce } from './ui/useAnnounce'
 import type { StreamEvent } from './types'
@@ -21,9 +21,10 @@ export interface CockpitStreamScope {
 
 // useCockpitStream loads a Cockpit's stream (R10 of "Desk: the Cockpit"):
 // the newest page, older pages on request, newer events on each live
-// change, and a search. items are the events sorted by cockpitItems,
-// oldest first. The milestone Cockpit uses it now, the project and
-// Overview Cockpits later (D785-P2).
+// change, and a search. conversation and threads are the loaded events
+// sorted by cockpitThreads, both newest first, so a sent message and its
+// answer show as the first exchange; nothing scrolls. The milestone,
+// project and Overview Cockpits use it.
 export function useCockpitStream(scope: () => CockpitStreamScope) {
   const events = ref<StreamEvent[]>([])
   const older = ref<string | undefined>()
@@ -155,7 +156,10 @@ export function useCockpitStream(scope: () => CockpitStreamScope) {
   onScopeDispose(stopAnswer)
 
   const kind = (s: CockpitStreamScope) => (s.milestoneIID ? 'milestone' : s.namespace ? 'project' : 'all')
-  const items = computed(() => cockpitItems(events.value, { scope: kind(scope()) }))
+  const scopeKind = computed(() => kind(scope()))
+  const sorted = computed(() => cockpitThreads(events.value, { scope: scopeKind.value }))
+  const conversation = computed(() => sorted.value.conversation)
+  const threads = computed(() => sorted.value.threads)
 
   watch(
     () => {
@@ -176,5 +180,5 @@ export function useCockpitStream(scope: () => CockpitStreamScope) {
     },
   )
 
-  return { items, older, historyOn, loading, loadingOlder, error, q, search, reload, loadOlder, expectAnswer }
+  return { scopeKind, conversation, threads, older, historyOn, loading, loadingOlder, error, q, search, reload, loadOlder, expectAnswer }
 }

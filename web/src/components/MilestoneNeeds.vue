@@ -181,7 +181,7 @@ const chip = { color: 'neutral', variant: 'outline', size: 'sm' } as const
 
     <ProblemThread
       v-if="selected"
-      class="min-[1024px]:sticky min-[1024px]:top-2 min-[1024px]:h-[calc(100dvh-160px)]"
+      class="min-[1024px]:sticky min-[1024px]:top-2 min-[1024px]:h-[calc(100dvh-160px)] min-[1024px]:overflow-y-auto"
       :namespace="namespace"
       :name="name"
       :milestone="milestone"

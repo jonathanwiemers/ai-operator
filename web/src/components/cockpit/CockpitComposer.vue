@@ -9,13 +9,14 @@ import type { MilestoneView, ProjectDetail } from '../../types'
 import Badge from '../Badge.vue'
 import Composer, { type ComposerSend } from '../Composer.vue'
 
-// CockpitComposer is the bottom of a milestone's Cockpit (R12 of "Desk: the
-// Cockpit"): the pilot line (autonomy, cost, Pilot task) as its header, then
+// CockpitComposer is the top of a milestone's Cockpit (R12 of "Desk: the
+// Cockpit"; first since "the Cockpit newest first by issue", D1): the pilot line (autonomy, cost, Pilot task) as its header, then
 // the Desk chat to the pilot task with the chat grant, else a /pilot note on
 // the tracking issue with steer, else a read-only line. The conversation is
-// not shown here: the owner's messages and the pilot's answers are items of
-// the Cockpit stream (D787-P1), so after a send it emits sent and the
-// Cockpit reloads and waits for the answer. A stored milestone has none.
+// not shown here: the owner's messages and the pilot's answers are the
+// Cockpit's conversation under it (CockpitConversation), so after a send it
+// emits sent and the Cockpit reloads and waits for the answer. It scrolls
+// with the page, on phones too. A stored milestone has none.
 const props = defineProps<{ namespace: string; name: string; milestone: MilestoneView; project: ProjectDetail | null }>()
 // sent: a chat message went to the pilot task (its id), so the Cockpit
 // waits for the answer; posted: a /pilot note went to GitLab, whose reply
@@ -95,24 +96,10 @@ const tap = 'inline-flex min-h-11 items-center tablet:min-h-0'
 </template>
 
 <style scoped>
-/* The composer stays at the bottom while the stream scrolls; on a phone
-   above the bottom bar or, while typing, above the keyboard
-   (--keyboard-inset, useKeyboardInset.ts, which Composer starts), as
-   DeskChat's prompt does. */
 .dock {
-  position: sticky;
-  bottom: 0;
-  z-index: 4;
   display: grid;
   gap: 6px;
-  margin-top: 8px;
-  padding: 10px 0 4px;
-  border-top: 1px solid var(--border);
-  background: var(--bg);
-}
-@media (max-width: 759.98px) {
-  .dock {
-    bottom: max(var(--keyboard-inset, 0px), calc(var(--bottombar, 0px) + env(safe-area-inset-bottom)));
-  }
+  padding: 0 0 10px;
+  border-bottom: 1px solid var(--border);
 }
 </style>

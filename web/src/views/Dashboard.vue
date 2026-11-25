@@ -118,7 +118,7 @@ function openPanel(e: MouseEvent) {
             </template>
             <!-- The live lines of Working now (all projects), each a link to
                  its milestone's Cockpit or its task. -->
-            <template #composer>
+            <template #live>
               <section v-if="lines.length" aria-label="Running now" class="grid gap-1 border-t border-(--border) pt-2" data-cockpit-live>
                 <UButton
                   v-for="l in lines"

@@ -176,9 +176,10 @@ the [Cockpit](../concepts/glossary.md#cockpit) across all your projects:
 
 - **Pinned**: the open items of the [Inbox](#inbox) of every project. A click
   opens the item's card in its milestone's Cockpit, where you answer it.
-- **The stream**: merges and milestone state changes. The rest folds into one
-  closed line per project; click it, or switch on *Expand all*.
 - **Running now**: one line per running issue; it opens the milestone's Cockpit.
+- **The threads**: one per project, the newest activity on top, with merges
+  and milestone state changes. The rest folds into closed lines; click one,
+  or switch on *Expand all*.
 
 There is no message box. The panel *Working now* beside the stream (on a narrow
 screen *Working now* in the header opens it) has the summary (milestones
@@ -199,7 +200,7 @@ A project page has the tabs *Cockpit | Milestones | Metrics*, and *Plans* with D
 
 - **Cockpit**: the stream of all the project's milestones. On top are the pinned cards of every milestone that waits for you, each under the milestone's name: its problems, proposals and questions, answered there.
   *Talk to the pilot* opens that milestone's Cockpit, which has the message box; the project page has none.
-  Below come the events, newest at the bottom, with runs, CI and reviews folded into one group per milestone and issue (open one, or *Expand all*), a search, and a line per running issue that links to its milestone.
+  Below come a line per running issue that links to its milestone, a search, and one thread per milestone and issue, the newest activity on top, with runs, CI and reviews folded into groups (open one, or *Expand all*).
 - **Milestones**: the project's [run-order queue](milestone-order-and-timeline.md#the-queue),
   which owners drag into order, the [milestones that are finishing](steer-from-the-desk.md#the-queue-and-finishing),
   and its milestones in progress and recently done. The switch on top shows the *Board* instead: one board per milestone, plus the issues without one (`?view=board`).
@@ -214,9 +215,9 @@ Old links to the former tabs open where their content is now: `?tab=activity` an
 
 ## A milestone
 
-A milestone page opens on *Cockpit*, which counts what waits for you: problems, proposals and questions pinned on top, answered there,
-then the events, newest at the bottom, with runs, CI and reviews folded into groups (open one, or *Expand all*), a search, and a live line per running agent that opens its transcript.
-Then come *Issues* and *Metrics*, and *Retrospective* once written. The tab is in the address, so you can link to it. The Cockpit ends with the [message box to the pilot](#message-the-pilot).
+A milestone page opens on *Cockpit*, which counts what waits for you. It starts with the [message box to the pilot](#message-the-pilot) and your latest exchange with it, then the problems, proposals and questions, pinned and answered there,
+a live line per running agent that opens its transcript, a search, and one thread per issue, the newest activity on top, with runs, CI and reviews folded into groups (open one, or *Expand all*).
+Then come *Issues* and *Metrics*, and *Retrospective* once written. The tab is in the address, so you can link to it.
 A panel on the right switches between *Issues* (the issues by state: running, waiting, next, merged, skipped; *Open table* opens the Issues tab), *Queue* (the project's milestones, this one marked) and *Decisions* (superseded ones folded). Below 1180 px, and on the Issues tab, the *Issues*, *Queue* and *Decisions* buttons in the header open it from the right; Escape closes it. The open view is in the address (`?panel=queue`).
 
 Old links to the former tabs open where their content is now, and the address changes to match: `?tab=activity`, `stream`, `needs` and `pilot` open *Cockpit*, `?tab=decisions` the panel's *Decisions* (`?panel=decisions`), and `?tab=board` the *Board* view of *Issues* (`?tab=issues&view=board`).
@@ -275,9 +276,9 @@ See [Read and revisit decisions](decisions.md).
 
 ### Message the pilot
 
-The Cockpit ends with *Message the pilot*: the pilot's autonomy, cost and
-task link, then the box. Your messages and the pilot's answers show in the
-stream; on a phone the box stays above the keyboard. A done milestone has
+The Cockpit starts with *Message the pilot*: the pilot's autonomy, cost and
+task link, then the box. Your latest message and the pilot's answer show
+right under it; *Show earlier* shows older exchanges. A done milestone has
 none. See [Talk to the pilot](steer-from-the-desk.md#talk-to-the-pilot).
 
 ### Retrospective

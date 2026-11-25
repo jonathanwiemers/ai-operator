@@ -1,7 +1,10 @@
-// The milestone Cockpit (R10 of "Desk: the Cockpit"): the pinned cards
-// first, then the stream with its folded groups closed, a group opened by
-// keyboard, a problem link opening at its card, search, Expand all, the
-// live line of a running issue (R11), axe.
+// The milestone Cockpit (R10 of "Desk: the Cockpit", R3 of "Desk: the
+// Cockpit newest first by issue"): the pinned cards above the stream, one
+// thread per issue with the newest on top and its folded groups closed, a
+// group opened by keyboard, a problem link opening at its card, search,
+// Expand all, the live line of a running issue (R11) under the pinned
+// cards, axe. The composer, the conversation and Load older are
+// cockpit-composer.spec.ts's.
 // The fixture milestone %14 has a stuck issue (#281) and two merged ones
 // (#279, #280). The live lines (R11) put #282's running implementer into
 // it. Run with npm run e2e (built UI, Chromium).
@@ -45,10 +48,11 @@ const oldestFirst: StreamEvent[] = [
   ev('ci', 14, 281, 'Pipeline failed on #281', { state: 'failed' }),
   ev('run.finished', 10, 281, 'Run 2 needs input', { result: 'needsInput' }),
 ]
-// splitIssue: #281's events split by a pause into two groups of one key.
+// splitIssue: #281's events split by a pilot action into two groups of
+// one thread.
 const splitIssue: StreamEvent[] = [
   ev('run.started', 20, 281, 'Run 2 started on #281'),
-  { ...ev('autopilot.paused', 16, 281, 'Autopilot paused: issue #281 needs input'), issueIID: undefined },
+  ev('pilot.acted', 16, 281, 'Pilot asked #281 to retry'),
   ev('ci', 14, 281, 'Pipeline failed on #281', { state: 'failed' }),
 ]
 
@@ -132,7 +136,7 @@ const row = (page: Page, iid: number) =>
   pinned(page).locator(`[data-problem="issue-${iid}"], [data-problem="${1000 + iid}"], [data-problem="${2000 + iid}"]`)
 
 for (const width of [375, 1280]) {
-  test(`the milestone opens on the Cockpit: pinned cards first, then the stream with closed groups@${width}`, journeyAt(width), async ({ page, baseURL }) => {
+  test(`the milestone opens on the Cockpit: pinned cards, then the threads newest on top with closed groups@${width}`, journeyAt(width), async ({ page, baseURL }) => {
     const { problems } = await open(page, baseURL, milestonePath, width)
     await expect(view(page).getByRole('link', { name: /^Cockpit/ })).toHaveAttribute('aria-current', 'page')
     await expect(row(page, 281)).toBeVisible()
@@ -141,17 +145,19 @@ for (const width of [375, 1280]) {
     const streamBox = (await stream(page).boundingBox())!
     expect(pinnedBox.y).toBeLessThan(streamBox.y)
 
-    // Oldest first, newest at the bottom: #279's group, its merge, #280's
-    // group and merge, then #281's group.
+    // One thread per issue, the newest activity on top: #281's group, then
+    // #280's merge and group, then #279's merge and group.
+    const threads = stream(page).locator('[data-cockpit-thread]')
+    await expect(threads).toHaveCount(3)
+    for (const [i, name] of ['#281', '#280', '#279'].entries()) await expect(threads.nth(i)).toHaveAttribute('aria-label', name)
     await expect(groups(page).getByRole('button')).toHaveText([
-      /^#279 · 1 run, 1 CI round/,
-      /^#280 · 1 run, 1 CI round, review clean/,
       /^#281 · 1 run, 1 CI round/,
+      /^#280 · 1 run, 1 CI round, review clean/,
+      /^#279 · 1 run, 1 CI round/,
     ])
-    const items = stream(page).locator('ol.items > li')
-    await expect(items).toHaveCount(5)
-    await expect(items.nth(1)).toContainText('Merged !303 Refund API')
-    await expect(items.nth(3)).toContainText('Merged !304 Partial captures')
+    await expect(stream(page).locator('ol.items > li')).toHaveCount(5)
+    await expect(threads.nth(1).locator('ol.items > li').first()).toContainText('Merged !304 Partial captures')
+    await expect(threads.nth(2).locator('ol.items > li').first()).toContainText('Merged !303 Refund API')
     for (let i = 0; i < 3; i++) await expect(trigger(page, i)).toHaveAttribute('aria-expanded', 'false')
     await expect(stream(page).getByText('Pipeline failed on #281')).toHaveCount(0)
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0)
@@ -160,17 +166,17 @@ for (const width of [375, 1280]) {
 
   test(`a group opens with Enter and Space on its trigger@${width}`, async ({ page, baseURL }) => {
     const { problems } = await open(page, baseURL, milestonePath, width)
-    await trigger(page, 2).focus()
-    await page.keyboard.press('Enter')
-    await expect(trigger(page, 2)).toHaveAttribute('aria-expanded', 'true')
-    await expect(groups(page).nth(2).getByText('Pipeline failed on #281')).toBeVisible()
-    await expect(groups(page).nth(2).getByText('Run 2 needs input')).toBeVisible()
-    await page.keyboard.press('Space')
-    await expect(trigger(page, 2)).toHaveAttribute('aria-expanded', 'false')
     await trigger(page, 0).focus()
-    await page.keyboard.press('Space')
+    await page.keyboard.press('Enter')
     await expect(trigger(page, 0)).toHaveAttribute('aria-expanded', 'true')
-    await expect(groups(page).nth(0).getByText('Pipeline passed on #279')).toBeVisible()
+    await expect(groups(page).nth(0).getByText('Pipeline failed on #281')).toBeVisible()
+    await expect(groups(page).nth(0).getByText('Run 2 needs input')).toBeVisible()
+    await page.keyboard.press('Space')
+    await expect(trigger(page, 0)).toHaveAttribute('aria-expanded', 'false')
+    await trigger(page, 2).focus()
+    await page.keyboard.press('Space')
+    await expect(trigger(page, 2)).toHaveAttribute('aria-expanded', 'true')
+    await expect(groups(page).nth(2).getByText('Pipeline passed on #279')).toBeVisible()
     expect(problems).toEqual([])
   })
 
@@ -223,16 +229,18 @@ for (const width of [375, 1280]) {
   }
 
   // The live lines (R11): #282's running implementer is one line between
-  // the stream and the composer, and the finished runs of #280 and #281
-  // have none.
+  // the pinned cards and the stream, and the finished runs of #280 and
+  // #281 have none.
   test(`a running issue's line opens its transcript with the owner's message, by keyboard@${width}`, async ({ page, baseURL }) => {
     const opened = await open(page, baseURL, milestonePath, width, oldestFirst, { transcript: true })
     await expect(liveLines(page)).toHaveCount(1)
     const line = liveLines(page).getByRole('button', { name: '#282 implementing · 4 min' })
     await expect(line).toHaveAttribute('aria-expanded', 'false')
+    const pinnedBox = (await pinned(page).boundingBox())!
     const streamBox = (await stream(page).boundingBox())!
     const lineBox = (await line.boundingBox())!
-    expect(lineBox.y).toBeGreaterThan(streamBox.y)
+    expect(lineBox.y).toBeGreaterThan(pinnedBox.y)
+    expect(lineBox.y).toBeLessThan(streamBox.y)
     // Closed, the line opens no transcript stream.
     expect(opened.transcripts).toEqual([])
 
@@ -312,7 +320,7 @@ for (const width of [375, 1280]) {
       // and #282's live line open on its transcript.
       await liveLines(page).getByRole('button').click()
       await expect(liveLines(page).locator('[data-owner-message]')).toBeVisible()
-      await expect(groups(page).nth(0).getByText('Pipeline passed on #279')).toBeVisible()
+      await expect(groups(page).nth(0).getByText('Pipeline failed on #281')).toBeVisible()
       const results = await new AxeBuilder({ page })
         .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
         .disableRules(['color-contrast'])

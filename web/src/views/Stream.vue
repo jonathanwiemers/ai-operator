@@ -476,8 +476,8 @@ watch(
         <!-- The project's Cockpit (R15): the pinned cards of every milestone
              with open needs under its name, the stream across the
              milestones folded per milestone and issue, the live lines of
-             all running issues, each a link to its milestone's Cockpit; no
-             composer (D9). -->
+             all running issues under the pinned cards, each a link to its
+             milestone's Cockpit; no composer (D9). -->
         <UAlert
           v-if="cockpitBefore"
           :color="alertColor('info')"
@@ -491,12 +491,12 @@ watch(
           <template #pinned>
             <ProjectPinned :namespace="namespace" :name="name" :project="pageProject" :inbox="projectInbox" />
           </template>
-          <template #composer>
+          <template #live>
             <CockpitLive :namespace="namespace" :name="name" :tasks="projectTasks.tasks" :milestones="projectTasks.milestones" />
           </template>
         </Cockpit>
       </div>
-      <div v-else-if="tab === 'cockpit'" class="scroll board cockpit-tab">
+      <div v-else-if="tab === 'cockpit'" class="scroll board">
         <!-- The milestone's Cockpit (R10): its problem cards, proposals
              and prompts pinned, answered in place, then its stream. -->
         <Cockpit :scope="{ namespace, name, milestoneIID }" :project="project" :prompts="pageMilestone?.prompts" :can-steer="canSteer">
@@ -511,16 +511,9 @@ watch(
             <UAlert v-else-if="milestoneFailed" :color="alertColor('danger')" variant="subtle" class="mt-3" description="The milestone could not be loaded." />
             <div v-else class="empty">Loading…</div>
           </template>
-          <!-- The live lines of running issues (R11), then the composer to
-               the pilot (R12); a stored milestone has neither. -->
+          <!-- The composer to the pilot (R12) on top; a stored milestone has
+               none. -->
           <template #composer="{ sent, reload }">
-            <CockpitLive
-              v-if="namespace && name && pageMilestone"
-              :namespace="namespace"
-              :name="name"
-              :tasks="pageMilestone.tasks"
-              :transcript="!!pageMilestone.permissions?.transcript"
-            />
             <CockpitComposer
               v-if="namespace && name && pageMilestone && !pageMilestone.stored"
               :namespace="namespace"
@@ -529,6 +522,16 @@ watch(
               :project="project"
               @sent="sent"
               @posted="reload"
+            />
+          </template>
+          <!-- The live lines of running issues (R11), under the pinned cards. -->
+          <template #live>
+            <CockpitLive
+              v-if="namespace && name && pageMilestone"
+              :namespace="namespace"
+              :name="name"
+              :tasks="pageMilestone.tasks"
+              :transcript="!!pageMilestone.permissions?.transcript"
             />
           </template>
         </Cockpit>
@@ -622,12 +625,6 @@ watch(
 .scroll.board {
   padding-top: 18px;
 }
-/* The Cockpit's composer is sticky at the bottom (CockpitComposer.vue):
-   no padding under it. On a phone the page scrolls, not this pane, so the
-   composer sticks to the screen above the bottom bar and the keyboard. */
-.scroll.cockpit-tab {
-  padding-bottom: 0;
-}
 .milestones {
   padding-top: 4px;
 }
@@ -640,9 +637,6 @@ watch(
   .scroll {
     padding-left: 16px;
     padding-right: 16px;
-  }
-  .scroll.cockpit-tab {
-    overflow-y: visible;
   }
 }
 </style>

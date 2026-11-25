@@ -8,7 +8,7 @@ import { useNow } from '../../live'
 import LiveTranscript from '../LiveTranscript.vue'
 
 // CockpitLive is the Cockpit's live lines (R11 of "Desk: the Cockpit"),
-// between the stream and the composer: one line per issue whose implementer
+// in its live slot under the pinned cards: one line per issue whose implementer
 // runs now, "#712 implementing · 4 min". The tasks come from the page's
 // milestone, which live updates reload, so a line goes when its run ends.
 // With the transcript grant a line opens the task's LiveTranscript inline

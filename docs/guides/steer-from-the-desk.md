@@ -18,30 +18,33 @@ Everything you do here, you can also do with a comment in GitLab; the
 
 ## The Cockpit
 
-A milestone page opens on its *Cockpit*: everything about the milestone in
-one stream, newest at the bottom.
+A milestone page opens on its *Cockpit*: everything about the milestone,
+read from the top like a pull request.
 
-- **Pinned cards** sit on top: open problems, the pilot's proposals and
+- **The composer** comes first: the message box to the pilot, see
+  [Talk to the pilot](#talk-to-the-pilot). It scrolls with the page.
+- **The latest exchange** with the pilot sits under it: your last message
+  and the pilot's answer. *Show earlier* shows older exchanges, 5 at a time.
+- **Pinned cards** follow: open problems, the pilot's proposals and
   open questions. You answer each one in place: pick an option, click
   *Accept* or *Reject*, or write in its thread. A link with `#problem-…` or
   `#prompt-…`, and every Inbox entry, opens the Cockpit with that card open
   and in view.
-- **Shown events** follow in time order: what the pilot did and why,
-  merges, the owners' messages, the pilot's answers and the milestone's
-  state changes.
-- **Folded groups** hold the rest. The runs, CI rounds, reviews and
-  checkpoints of one issue between two shown events become one closed line,
-  such as *#712 · 3 runs, 2 CI rounds, review clean*. Click it, or press
-  Enter on it, to open its event cards. *Expand all* in the toolbar opens
-  every group; *Search the Cockpit* on the right finds an event.
-- **Live lines** come last: one line per issue whose agent works now, such
+- **Live lines** come next: one line per issue whose agent works now, such
   as *#712 implementing · 4 min*. With the `transcript` grant the line opens
   the agent's [live transcript](desk.md#live-transcript) in place; without
   it, the line links to the task. The line goes away when the run ends.
-- **The composer** is at the bottom: the message box to the pilot, see
-  [Talk to the pilot](#talk-to-the-pilot).
+- **Threads** come below the toolbar: one per issue, and a *Milestone*
+  thread for events without an issue. The thread with the newest activity
+  is on top, and each lists its events newest first. **Shown events** are
+  what the pilot did and why, merges and the milestone's state changes.
+- **Folded groups** hold the rest. The runs, CI rounds, reviews and
+  checkpoints of a thread between two shown events become one closed line,
+  such as *#712 · 3 runs, 2 CI rounds, review clean*. Click it, or press
+  Enter on it, to open its event cards. *Expand all* in the toolbar opens
+  every group; *Search the Cockpit* on the right finds an event.
 
-*Load older* pages back in time.
+*Load older* at the bottom pages back in time.
 
 ### The panel
 
@@ -76,10 +79,11 @@ same pinned cards, folded groups and panel, but no composer:
 The pilot is the only chat of a milestone. Task pages have no chat of
 their own: talk to the pilot, and it passes your words on.
 
-1. Open the milestone's *Cockpit*. Its bottom is *Message the pilot*, with
+1. Open the milestone's *Cockpit*. Its top is *Message the pilot*, with
    the pilot's autonomy, its cost and a link to the pilot's task above it.
 2. Write your message and press Ctrl+Enter (Cmd+Enter on a Mac) or *Send*.
-3. Your message and the pilot's answer show in the stream.
+3. Your message and the pilot's answer show right under the box, as the
+   latest exchange.
 
 Ask where things stand, why the milestone is paused, or what an issue waits
 for. Ask it to act: retry an issue, review it again, skip it, or pause the
@@ -94,7 +98,7 @@ accept, is in [The pilot](pilot.md).
 - A milestone without a pilot says *No pilot for this milestone.* A done
   milestone read from history has no composer.
 
-On a phone the box stays at the bottom of the screen, above the keyboard.
+The box scrolls with the page, on a phone too.
 
 ## Tell a running implementer something
 

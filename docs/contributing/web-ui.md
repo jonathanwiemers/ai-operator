@@ -1118,7 +1118,7 @@ sessionStorage until a 2xx, and the text survives a sign-in.
   `clientKey` in session storage until a 2xx.
 
 Where it sits: at the bottom of its `DeskChat`, below the history, or at
-the bottom of the Cockpit. On a phone `DeskChat` keeps its text box
+the top of the Cockpit, where it scrolls with the page. On a phone `DeskChat` keeps its text box
 sticky at the bottom of the screen, inside the chat: above the bottom bar,
 and while typing above the keyboard. Not while the bar shows something (a
 question's or a pause's card can be taller than the screen, and the text
@@ -1138,10 +1138,10 @@ the project stream at 375 and 1280 px and check the POST body through the
 route mock (Send and Ctrl+Enter, a new `clientKey` per message, the
 target menu and the `/` commands), the 16 px text and 44 px Send on a
 phone, that a failed send keeps the text and shows the error and a reload
-retries with the same key, and at 375 px that the chat composer ends above
-the bottom bar and above a 300 px `--keyboard-inset`
+retries with the same key, and at 375 px that the Cockpit's chat composer
+is its first part and not sticky
 (`composer-chat@<width>.png`, `composer-note@<width>.png`,
-`composer-keyboard@375.png`).
+`composer-top@375.png`).
 
 ### Prompt card
 
@@ -1333,11 +1333,12 @@ Tailwind utilities and Nuxt UI, without scoped CSS. It is a
   [RouteTabs](#routetabs) strip under the heading; on a phone the strip's
   links are 44 px high. `dashboardAlias` (`streamTabs.ts`) rewrites the old
   `?tab=activity`, `stream` and `overview` to the Cockpit on load.
-- *Cockpit* is `Cockpit.vue` with an empty scope, so `cockpitItems` runs
-  with scope `all`: merges, closes, milestone state and releases are shown,
-  the rest is folded per project. The pinned slot is `InboxList.vue`, the
+- *Cockpit* is `Cockpit.vue` with an empty scope, so `cockpitThreads`
+  runs with scope `all`: one thread per project, newest on top, where
+  merges, closes, milestone state and releases are shown and the rest is
+  folded. The pinned slot is `InboxList.vue`, the
   Inbox's open rows, each a link through `inboxRoute` to its card in the
-  milestone Cockpit; nothing is answered here. The composer slot holds the
+  milestone Cockpit; nothing is answered here. The `live` slot holds the
   live lines of `overviewLines` (`cockpitLive.ts`): one per running issue of
   `overview.working`, linking to its milestone's Cockpit, else its task. No
   composer.
@@ -1612,10 +1613,18 @@ is the Cockpit with its composer.
 ### Cockpit
 
 A milestone page opens on the Cockpit (spec "Desk: the Cockpit", R9 and
-R10), `web/src/components/cockpit/Cockpit.vue`, built from Nuxt UI
-components only:
+R10; the order from R3 of "Desk: the Cockpit newest first by issue"),
+`web/src/components/cockpit/Cockpit.vue`, built from Nuxt UI
+components only. Top to bottom: the composer, the latest exchange with
+the pilot, the pinned cards, the live lines, the toolbar, the threads
+with the newest activity on top, and *Load older* last.
 
-- **Pinned.** The `pinned` slot on top. On a milestone it holds
+- **Conversation.** `components/cockpit/CockpitConversation.vue` (prop
+  `exchanges`, from `cockpitThreads`) shows the latest exchange, the
+  owner's message, then the pilot's answers, as event cards; *Show
+  earlier* (`UButton`) reveals the older exchanges 5 at a time. It takes
+  only exchanges, so a page without a Cockpit stream can reuse it.
+- **Pinned.** The `pinned` slot under the conversation. On a milestone it holds
   `MilestoneNeeds` with its usual props (see [Needs you cards](#needs-you-cards)):
   the problem cards, proposals and prompts, answered in place. The
   `problem` route and the `#problem-`/`#prompt-` links open the Cockpit with
@@ -1626,17 +1635,21 @@ components only:
   `GET /api/v1/stream` for a scope (`{ namespace?, name?, milestoneIID? }`)
   with all of its kinds, the chat kinds only with the feature `chat`
   (`cockpitStreamQuery` in `web/src/stream.ts`). It pages back with
-  *Load older* above the stream, takes newer events on each live change,
-  and sorts them with `cockpitItems`, oldest first: shown events and note
-  threads as [event cards](#which-events-show-where), and the folded events
-  of one issue between two shown events as one group (`cockpitClass`,
-  `groupSummary`).
+  *Load older* below the threads, takes newer events on each live change,
+  and sorts them with `cockpitThreads` ([Cockpit threads](#cockpit-threads)):
+  one `<section>` per thread, named by `threadTitle` ("#712",
+  "Milestone"; "%5 · #712" on a project, the project on the Overview),
+  with its items newest first: shown events and note threads as
+  [event cards](#which-events-show-where), and the folded events of the
+  thread between two shown events as one group (`cockpitClass`,
+  `groupSummary`). Nothing scrolls: a sent message and its answer show
+  as the latest exchange under the composer.
 - **Groups.** A `UCollapsible`, closed by default, whose trigger is a
   `UButton` with the summary ("#712 · 3 runs, 2 CI rounds, review clean")
   and the local time span; Enter or Space opens it to its event cards.
   *Expand all* opens every group; a group opened or closed by hand keeps
   that until the switch changes.
-- **Composer** (R12). The `composer` slot comes last; on a milestone it is
+- **Composer** (R12). The `composer` slot comes first; on a milestone it is
   `web/src/components/cockpit/CockpitComposer.vue`, none on a stored
   milestone. Its header is the pilot line ([Milestone Pilot](#milestone-pilot));
   its body the chat `Composer` to the pilot task with the `chat` grant
@@ -1649,15 +1662,17 @@ components only:
   to that message (`chat.agent` with `replyTo` = id, `chatAnswer`) arrives,
   at most 5 minutes, and says "Pilot replied: <first sentence>" once. A
   `/pilot` note's reply is a GitLab comment, so after a note the slot's
-  `reload` only reloads the stream. The composer is
-  sticky at the bottom of the pane; on phones the pane does not scroll
-  (`.cockpit-tab`), so it sticks to the screen above the bottom bar or the
-  keyboard (`--keyboard-inset`).
+  `reload` only reloads the stream. The composer is not sticky: it
+  scrolls with the page, on phones too.
 
-#### Cockpit items
+#### Cockpit threads
 
-`cockpitItems(events, { scope })` in `web/src/stream.ts` (R9) is a pure
-function. Every `StreamKind` has one class in `cockpitClass`, and the type
+`cockpitThreads(events, { scope })` in `web/src/stream.ts` is a pure
+function. It returns the `conversation` (`chat.user` and `chat.agent`
+paired into exchanges by `replyTo`, newest first) and the `threads`: one
+per (milestone, issue), a Milestone thread for events without an issue,
+one per project with scope `all`, sorted by their latest event, newest
+first. Inside a thread the classes and grouping below make its items. Every `StreamKind` has one class in `cockpitClass`, and the type
 check fails on a new kind without one:
 
 | Class | Kinds |
@@ -1682,13 +1697,14 @@ component (`MilestoneNeeds`, `ProjectPinned`, the Inbox), not from this map.
   starts with the project there.
 - Note threads stay grouped, as `groupThreads` does.
 
-`web/test` covers each kind's class, the grouping by issue, a group split
-by a shown event, the scopes and the summary text.
+`web/test` covers each kind's class, the threads and their order, the
+conversation, the grouping inside a thread, a group split by a shown
+event, the scopes, the thread titles and the summary text.
 
 #### Live lines
 
-`components/cockpit/CockpitLive.vue` (R11), between the stream and the
-composer, has one line per issue whose implementer runs now, from the
+`components/cockpit/CockpitLive.vue` (R11), in the Cockpit's `live` slot
+between the pinned cards and the toolbar until Now & next replaces it, has one line per issue whose implementer runs now, from the
 page's tasks (`liveLines` in `web/src/cockpitLive.ts`): "#712 implementing
 · 4 min", the minutes once the run has a step. With the `transcript` grant
 a line is a `UCollapsible` that mounts `LiveTranscript` while open; an
@@ -1721,11 +1737,12 @@ existing Desk components, so the [UI kit](#ui-kit) has no row for them.
 #### Cockpit checks
 
 The e2e cases in `web/e2e/cockpit.spec.ts` at 375 and 1280 px check the
-order, the closed groups, the keyboard, *Expand all*, the search, the
+threads newest on top, the closed groups, the keyboard, *Expand all*, the search, the
 problem links, the live lines and axe; color-contrast is left to R6 (#641),
 as on the cards it reuses. `web/e2e/cockpit-composer.spec.ts` checks the
-composer per grant, no pilot, a stored milestone, the old pilot links, the
-phone placement and axe; `desk.spec.ts` flow 3 sends a message and hears
+order from the composer to *Load older*, *Show earlier*, a sent message as
+the latest exchange, the composer per grant, no pilot, a stored milestone,
+the old pilot links, the phone placement and axe; `desk.spec.ts` flow 3 sends a message and hears
 the answer. `project-cockpit.spec.ts` and `overview-cockpit.spec.ts` check
 the two wider Cockpits, `milestone-panel.spec.ts` the panel and
 `inbox-handled.spec.ts` an Inbox link to its card.
@@ -2333,7 +2350,7 @@ a path (decision 13 of the header and tabs milestone).
   waits; once loaded, a hidden tab falls back to *Cockpit*. The `problem`
   route and a `#prompt-Q<n>` or `#problem-<iid>` link open *Cockpit*, where
   the cards are pinned ([Needs you cards](#needs-you-cards)). The pilot's
-  composer is at the bottom of the Cockpit ([Cockpit](#cockpit)).
+  composer is at the top of the Cockpit ([Cockpit](#cockpit)).
 - **Milestone aliases** (`milestoneAlias`, R14 of the Cockpit spec,
   D789-P1/P2): the removed tabs open where their content moved, and
   Stream.vue replaces the URL on load: `activity`, `stream`, `needs` and
@@ -2381,7 +2398,7 @@ runtime kinds, never both (`pilotKinds` and `runtimeKinds` in
 `internal/ui/stream.go`, mirrored as `pilotStreamKinds` and
 `runtimeStreamKinds` in `web/src/stream.ts`); the names date from the
 removed pilot drawer and Activity tab. Every Cockpit asks for both, and
-[cockpit items](#cockpit-items) sort them:
+[cockpit threads](#cockpit-threads) sort them:
 
 - *Pilot*: `prompt.posted`, `prompt.answered`, `prompt.closed`, `needs`,
   `autopilot`, `autopilot.paused`, `autopilot.resumed`, `proposal`,

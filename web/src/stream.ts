@@ -415,12 +415,11 @@ export type CockpitItem =
   | { type: 'thread'; key: string; at: string; notes: StreamEvent[] }
   | CockpitGroup
 
-// cockpitItems sorts a stream (newest first, as GET /stream returns it)
-// into the Cockpit's items, oldest first: shown events, note threads, and
-// groups of the folded events of one key between two shown events. The key
-// is (milestone, issue), or the project with scope 'all'.
-export function cockpitItems(events: StreamEvent[], opts: { scope?: CockpitScope } = {}): CockpitItem[] {
-  const scope = opts.scope ?? 'milestone'
+// threadItems sorts one thread's events (newest first, as GET /stream
+// returns them) into its items, newest first: shown events, note threads,
+// and groups of the folded events of one key between two shown events. The
+// key is (milestone, issue), or the project with scope 'all'.
+function threadItems(events: StreamEvent[], scope: CockpitScope): CockpitItem[] {
   const shown = (k: StreamKind) => (scope === 'all' ? allScopeShown.includes(k) : cockpitClass[k] !== 'folded')
   const out: CockpitItem[] = []
   let open = new Map<string, CockpitGroup>()
@@ -467,18 +466,18 @@ export function cockpitItems(events: StreamEvent[], opts: { scope?: CockpitScope
     } else fold(item.event)
   }
   flush()
-  return out
+  return out.reverse()
 }
 
 // One exchange with the pilot: the owner's message and the pilot's answers
 // to it (replyTo), oldest first. An answer whose message is not loaded, or
 // without replyTo, is an exchange of its own without a message.
-type CockpitExchange = { key: string; at: string; message?: StreamEvent; answers: StreamEvent[] }
+export type CockpitExchange = { key: string; at: string; message?: StreamEvent; answers: StreamEvent[] }
 
 // One thread of the Cockpit: an issue's, its milestone's (events without an
 // issue; issueIID absent) or, with scope 'all', a project's. at is its latest
 // event's time, items are newest first.
-type CockpitThread = {
+export type CockpitThread = {
   key: string
   namespace: string
   project: string
@@ -496,7 +495,7 @@ const newestFirst = (a: { at: string }, b: { at: string }) => Date.parse(b.at) -
 // Cockpit's conversation with the pilot and its threads, both newest first.
 // chat.user and chat.agent only go into the conversation. Every other event
 // goes into the thread of its (milestone, issue), or of its project with
-// scope 'all'; inside, cockpitItems' classes and grouping apply per thread,
+// scope 'all'; inside, threadItems' classes and grouping apply per thread,
 // so a pilot.acted with an issue lands in that issue's thread. Pure, so an
 // older page only adds items to threads or threads below them.
 export function cockpitThreads(events: StreamEvent[], opts: { scope?: CockpitScope } = {}): CockpitThreads {
@@ -527,10 +526,21 @@ export function cockpitThreads(events: StreamEvent[], opts: { scope?: CockpitSco
       ...(scope !== 'all' && first.milestoneIID != null && { milestoneIID: first.milestoneIID }),
       ...(scope !== 'all' && first.issueIID != null && { issueIID: first.issueIID }),
       at: list.reduce((at, e) => (Date.parse(e.at) > Date.parse(at) ? e.at : at), first.at),
-      items: cockpitItems(list, { scope }).reverse(),
+      items: threadItems(list, scope),
     }
   })
   return { conversation: cockpitConversation(chat), threads: threads.sort(newestFirst) }
+}
+
+// threadTitle is a thread's header: its issue ("#712"), else "Milestone";
+// with scope 'project' the milestone first ("%5 · #712", "Milestone %5");
+// with scope 'all' the project.
+export function threadTitle(t: CockpitThread, scope: CockpitScope = 'milestone'): string {
+  if (scope === 'all') return t.project
+  const ms = scope === 'project' && t.milestoneIID != null ? `%${t.milestoneIID}` : ''
+  if (t.issueIID != null) return ms ? `${ms} · #${t.issueIID}` : `#${t.issueIID}`
+  if (ms) return `Milestone ${ms}`
+  return scope === 'project' ? t.project : 'Milestone'
 }
 
 // cockpitConversation pairs chat events (newest first) into exchanges.

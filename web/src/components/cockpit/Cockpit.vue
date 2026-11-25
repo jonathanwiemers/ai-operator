@@ -11,20 +11,23 @@ import { alertColor } from '../../badgeTone'
 import { clockTime } from '../../format'
 import { useNow } from '../../live'
 import { searchToolbarUi } from '../../pageHeader'
-import type { CockpitGroup, CockpitItem } from '../../stream'
+import { threadTitle, type CockpitGroup, type CockpitItem } from '../../stream'
 import type { ProjectDetail, PromptView } from '../../types'
 import { useCockpitStream, type CockpitStreamScope } from '../../useCockpitStream'
 import EventCard from '../stream/EventCard.vue'
+import CockpitConversation from './CockpitConversation.vue'
 
-// Cockpit is a Cockpit tab (R10 of "Desk: the Cockpit"): the pinned cards
-// on top (the pinned slot; a milestone's MilestoneNeeds), a toolbar with
-// Expand all and the search, then the stream sorted by cockpitItems, newest
-// at the bottom, with Load older above it. Shown events are event cards;
-// folded ones are one-line groups (UCollapsible, closed by default) whose
-// trigger is a button with the summary and the time span. The composer
-// slot comes last (a milestone's CockpitComposer); its sent(id) reloads the
-// stream and waits for the pilot's answer to message id (expectAnswer),
-// reload() only reloads (after a /pilot note).
+// Cockpit is a Cockpit tab (R3 of "Desk: the Cockpit newest first by
+// issue"), top to bottom: the composer slot (a milestone's
+// CockpitComposer; its sent(id) reloads the stream and waits for the
+// pilot's answer to message id (expectAnswer), reload() only reloads, after
+// a /pilot note), the latest exchange with the pilot, the pinned cards (the
+// pinned slot; a milestone's MilestoneNeeds), the live slot (the live lines
+// until Now & next replaces them), a toolbar with Expand all and the search,
+// the threads of cockpitThreads, newest on top, and Load older last. Shown
+// events are event cards; folded ones are one-line groups (UCollapsible,
+// closed by default) whose trigger is a button with the summary and the
+// time span.
 const props = defineProps<{
   scope: CockpitStreamScope
   project?: ProjectDetail | null
@@ -33,7 +36,7 @@ const props = defineProps<{
 }>()
 
 const stream = useCockpitStream(() => props.scope)
-const { items, older, historyOn, loading, loadingOlder, error } = stream
+const { scopeKind, conversation, threads, older, historyOn, loading, loadingOlder, error } = stream
 const now = useNow()
 
 const qDraft = ref('')
@@ -81,10 +84,14 @@ function span(g: CockpitGroup): string {
 
 <template>
   <div class="cockpit" data-cockpit>
+    <slot name="composer" :sent="stream.expectAnswer" :reload="stream.reload" />
+    <CockpitConversation :exchanges="conversation" />
+
     <!-- #pinned: an Inbox proposal without a prompt lands here (inboxRoute). -->
     <section id="pinned" aria-label="Pinned" class="scroll-mt-3" data-cockpit-pinned>
       <slot name="pinned" />
     </section>
+    <slot name="live" />
 
     <section aria-label="Stream" data-cockpit-stream>
       <UDashboardToolbar class="mt-3" :ui="searchToolbarUi" data-tab-toolbar>
@@ -115,22 +122,18 @@ function span(g: CockpitGroup): string {
 
       <UAlert v-if="!historyOn" :color="alertColor('info')" variant="subtle" class="mt-3" description="History needs the research database." />
       <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
-      <div v-if="loading && !items.length" class="empty">Loading…</div>
-      <UEmpty v-else-if="!items.length" icon="i-lucide-activity" title="No events yet." variant="naked" size="sm" />
-      <template v-else>
-        <UButton
-          v-if="older"
-          color="neutral"
-          variant="outline"
-          size="sm"
-          class="older"
-          label="Load older"
-          :loading="loadingOlder"
-          data-cockpit-older
-          @click="stream.loadOlder"
-        />
+      <div v-if="loading && !threads.length && !conversation.length" class="empty">Loading…</div>
+      <UEmpty v-else-if="!threads.length && !conversation.length" icon="i-lucide-activity" title="No events yet." variant="naked" size="sm" />
+      <section
+        v-for="t in threads"
+        :key="t.key"
+        :aria-label="threadTitle(t, scopeKind)"
+        class="thread"
+        data-cockpit-thread
+      >
+        <h2 class="thread-head">{{ threadTitle(t, scopeKind) }}</h2>
         <ol class="items">
-          <li v-for="item in items" :key="itemKey(item)">
+          <li v-for="item in t.items" :key="itemKey(item)">
             <EventCard v-if="item.type === 'thread'" :notes="item.notes" :project="project" :can-steer="canSteer" @posted="stream.reload" />
             <EventCard
               v-else-if="item.type === 'event'"
@@ -163,10 +166,19 @@ function span(g: CockpitGroup): string {
             </UCollapsible>
           </li>
         </ol>
-      </template>
+      </section>
+      <UButton
+        v-if="older"
+        color="neutral"
+        variant="outline"
+        size="sm"
+        class="older"
+        label="Load older"
+        :loading="loadingOlder"
+        data-cockpit-older
+        @click="stream.loadOlder"
+      />
     </section>
-
-    <slot name="composer" :sent="stream.expectAnswer" :reload="stream.reload" />
   </div>
 </template>
 
@@ -187,9 +199,21 @@ function span(g: CockpitGroup): string {
 .group-events {
   padding: 8px 0 4px 16px;
 }
+.thread {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.thread-head {
+  margin: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+}
 .older {
-  justify-self: center;
-  margin: 4px auto 12px;
+  margin: 16px auto 4px;
   display: flex;
 }
 .group-trigger {

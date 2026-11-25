@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { chatAnswer, cockpitClass, cockpitItems, cockpitStreamQuery, groupSummary, pilotStreamKinds, runtimeStreamKinds } from '../src/stream.ts'
+import { chatAnswer, cockpitClass, cockpitStreamQuery, cockpitThreads, groupSummary, pilotStreamKinds, runtimeStreamKinds, threadTitle } from '../src/stream.ts'
 import { localMinute, localTimes, localTimesText } from '../src/localTime.ts'
 
 let id = 0
@@ -19,6 +19,8 @@ const ev = (kind, m, extra = {}) => ({
 })
 // newest first, as GET /stream returns it
 const stream = (...events) => [...events].reverse()
+// items gives one thread's items (#712's in %5 unless key says), oldest first.
+const items = (events, opts = {}, key = 'ns/p/5/712') => [...cockpitThreads(events, opts).threads.find((t) => t.key === key).items].reverse()
 const shape = (items) =>
   items.map((i) => (i.type === 'group' ? `group:${i.key}:${i.events.length}` : i.type === 'thread' ? `thread:${i.notes.length}` : i.event.kind))
 
@@ -37,64 +39,75 @@ test('cockpitClass gives every kind exactly one class', () => {
   assert.ok(pilotStreamKinds.includes('decision.recorded'))
 })
 
-test('cockpitItems groups folded events by issue between shown events, oldest first', () => {
-  const items = cockpitItems(
-    stream(
-      ev('run.started', 1),
-      ev('run.started', 2, { issueIID: 713 }),
-      ev('ci', 3),
-      ev('merged', 4, { issueIID: 713 }),
-      ev('review', 5, { data: { blocking: 0 } }),
-      ev('run.finished', 6),
-    ),
+test('a thread groups its folded events between shown events', () => {
+  const events = stream(
+    ev('run.started', 1),
+    ev('run.started', 2, { issueIID: 713 }),
+    ev('ci', 3),
+    ev('merged', 4),
+    ev('review', 5, { data: { blocking: 0 } }),
+    ev('run.finished', 6),
   )
-  assert.deepEqual(shape(items), ['group:ns/p/5/712:2', 'group:ns/p/5/713:1', 'merged', 'group:ns/p/5/712:2'])
-  const [g] = items
+  const got = items(events)
+  assert.deepEqual(shape(got), ['group:ns/p/5/712:2', 'merged', 'group:ns/p/5/712:2'])
+  assert.deepEqual(shape(items(events, {}, 'ns/p/5/713')), ['group:ns/p/5/713:1'])
+  const [g] = got
   assert.equal(g.from, '2026-11-24T10:01:00Z')
   assert.equal(g.to, '2026-11-24T10:03:00Z')
   assert.equal(g.issueIID, 712)
   assert.equal(g.milestoneIID, 5)
   assert.equal(g.summary, '#712 · 1 run, 1 CI round')
-  assert.equal(items[3].summary, '#712 · review clean')
+  assert.equal(got[2].summary, '#712 · review clean')
 })
 
-test('cockpitItems keeps pinned kinds in the stream and splits groups at them', () => {
-  const items = cockpitItems(stream(ev('ci', 1), ev('problem.opened', 2), ev('ci', 3), ev('pilot.acted', 4)))
-  assert.deepEqual(shape(items), ['group:ns/p/5/712:1', 'problem.opened', 'group:ns/p/5/712:1', 'pilot.acted'])
+test('a thread keeps pinned kinds and splits groups at them', () => {
+  assert.deepEqual(shape(items(stream(ev('ci', 1), ev('problem.opened', 2), ev('ci', 3), ev('pilot.acted', 4)))), ['group:ns/p/5/712:1', 'problem.opened', 'group:ns/p/5/712:1', 'pilot.acted'])
 })
 
-test('cockpitItems keeps note threads together', () => {
+test('a thread keeps note threads together', () => {
   const note = (m) => ev('note', m, { data: { noteable: 'issue' } })
-  const items = cockpitItems(stream(note(1), ev('run.started', 2), note(3)))
-  assert.deepEqual(shape(items), ['group:ns/p/5/712:1', 'thread:2'])
+  const got = items(stream(note(1), ev('run.started', 2), note(3)))
+  assert.deepEqual(shape(got), ['group:ns/p/5/712:1', 'thread:2'])
   assert.deepEqual(
-    items[1].notes.map((n) => n.at),
+    got[1].notes.map((n) => n.at),
     ['2026-11-24T10:01:00Z', '2026-11-24T10:03:00Z'],
   )
 })
 
-test('cockpitItems with scope all folds all but merges and milestone state per project', () => {
+test('with scope all a project thread folds all but merges and milestone state', () => {
   const q = { project: 'q' }
-  const items = cockpitItems(
-    stream(
-      ev('run.started', 1),
-      ev('pilot.acted', 2),
-      ev('ci', 3, q),
-      ev('problem.opened', 4, { ...q, issueIID: 9 }),
-      ev('autopilot.paused', 5),
-      ev('merged', 6, q),
-    ),
-    { scope: 'all' },
+  const events = stream(
+    ev('run.started', 1),
+    ev('pilot.acted', 2),
+    ev('ci', 3, q),
+    ev('problem.opened', 4, { ...q, issueIID: 9 }),
+    ev('autopilot.paused', 5),
+    ev('merged', 6, q),
   )
-  assert.deepEqual(shape(items), ['group:ns/p:2', 'group:ns/q:2', 'autopilot.paused', 'merged'])
-  assert.equal(items[0].issueIID, undefined)
-  assert.equal(items[1].summary, 'q · 1 CI round')
-  assert.equal(items[0].summary, 'p · 1 run')
+  const p = items(events, { scope: 'all' }, 'ns/p')
+  const qs = items(events, { scope: 'all' }, 'ns/q')
+  assert.deepEqual(shape(p), ['group:ns/p:2', 'autopilot.paused'])
+  assert.deepEqual(shape(qs), ['group:ns/q:2', 'merged'])
+  assert.equal(p[0].issueIID, undefined)
+  assert.equal(qs[0].summary, 'q · 1 CI round')
+  assert.equal(p[0].summary, 'p · 1 run')
 })
 
-test('cockpitItems in project scope keys groups by milestone and issue', () => {
-  const items = cockpitItems(stream(ev('ci', 1), ev('ci', 2, { milestoneIID: 6 })), { scope: 'project' })
-  assert.deepEqual(shape(items), ['group:ns/p/5/712:1', 'group:ns/p/6/712:1'])
+test('in project scope groups are keyed by milestone and issue', () => {
+  const events = stream(ev('ci', 1), ev('ci', 2, { milestoneIID: 6 }))
+  assert.deepEqual(shape(items(events, { scope: 'project' })), ['group:ns/p/5/712:1'])
+  assert.deepEqual(shape(items(events, { scope: 'project' }, 'ns/p/6/712')), ['group:ns/p/6/712:1'])
+})
+
+test('threadTitle names the issue, the milestone or the project', () => {
+  const t = (extra) => ({ key: 'k', namespace: 'ns', project: 'shop', at: '', items: [], ...extra })
+  assert.equal(threadTitle(t({ milestoneIID: 5, issueIID: 712 })), '#712')
+  assert.equal(threadTitle(t({ milestoneIID: 5 })), 'Milestone')
+  assert.equal(threadTitle(t({ milestoneIID: 5, issueIID: 712 }), 'project'), '%5 · #712')
+  assert.equal(threadTitle(t({ milestoneIID: 5 }), 'project'), 'Milestone %5')
+  assert.equal(threadTitle(t({ issueIID: 712 }), 'project'), '#712')
+  assert.equal(threadTitle(t({}), 'project'), 'shop')
+  assert.equal(threadTitle(t({}), 'all'), 'shop')
 })
 
 test('groupSummary counts runs, pushes, CI rounds and checkpoints and reads the last review', () => {
@@ -154,7 +167,7 @@ test('chatAnswer: only the complete pilot answer to the sent message', () => {
   assert.equal(chatAnswer([], 8), undefined)
 })
 
-test('cockpitItems shows the three delivery texts of pilot.acted as their own items, as EventCard renders them', () => {
+test('a thread shows the three delivery texts of pilot.acted as their own items, as EventCard renders them', () => {
   // The summaries reportDeliveries writes (describeDelivery in Go).
   const where = [
     "delivered to #712's running implementer at",
@@ -162,8 +175,8 @@ test('cockpitItems shows the three delivery texts of pilot.acted as their own it
     "delivered with #712's next run at",
   ]
   const acted = where.map((w, i) => ev('pilot.acted', 2 + 2 * i, { summary: `Message from @alice ${w} 2026-11-24 14:05 UTC` }))
-  const items = cockpitItems(stream(ev('run.started', 1), acted[0], ev('ci', 3), acted[1], ev('push', 5), acted[2], ev('run.finished', 7)))
-  assert.deepEqual(shape(items), [
+  const got = items(stream(ev('run.started', 1), acted[0], ev('ci', 3), acted[1], ev('push', 5), acted[2], ev('run.finished', 7)))
+  assert.deepEqual(shape(got), [
     'group:ns/p/5/712:1',
     'pilot.acted',
     'group:ns/p/5/712:1',
@@ -172,7 +185,7 @@ test('cockpitItems shows the three delivery texts of pilot.acted as their own it
     'pilot.acted',
     'group:ns/p/5/712:1',
   ])
-  const shown = items.filter((i) => i.type === 'event')
+  const shown = got.filter((i) => i.type === 'event')
   const now = Date.parse('2026-11-24T15:00:00Z')
   const at = '2026-11-24T14:05:00.000Z'
   shown.forEach((item, i) => {

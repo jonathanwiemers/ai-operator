@@ -3236,28 +3236,18 @@ test.describe('composer', () => {
     })
   }
 
-  test('chat composer stays above the bottom bar and the keyboard@375', async ({ page, baseURL }, testInfo) => {
+  // The Cockpit's composer is its first part and scrolls with the page,
+  // on phones too ("Desk: the Cockpit newest first by issue", R3).
+  test('chat composer is the top of the Cockpit and scrolls with the page@375', async ({ page, baseURL }, testInfo) => {
     const { route, problems } = await open(page, baseURL, 'stream-milestone-pilot', widths[0]!)
     await page.goto(route.path)
     await route.ready(page)
-    // The Cockpit's dock, whose bottom edge sits on the bar or the keyboard.
     const composer = page.locator('main [data-cockpit-composer]')
-    const bottom = async () => (await composer.boundingBox())!.y + (await composer.boundingBox())!.height
-    const barTop = await page.getByRole('navigation', { name: 'Sections' }).evaluate((e) => e.getBoundingClientRect().top)
-
     await page.evaluate(() => window.scrollTo(0, 0))
-    expect(await bottom(), 'the composer ends above the bottom bar').toBeLessThanOrEqual(barTop + 0.5)
-    expect((await composer.boundingBox())!.y, 'and is on screen').toBeLessThan(barTop)
-
-    // Typing: the bar goes; an iOS keyboard of 300 px (what
-    // useKeyboardInset sets from visualViewport) lifts the composer.
-    await composer.locator('textarea').focus()
-    await page.evaluate(() => document.documentElement.style.setProperty('--keyboard-inset', '300px'))
-    // The Cockpit from 100 px down: the composer floats within it.
-    await page.locator('main [data-cockpit]').evaluate((e) => window.scrollBy(0, e.getBoundingClientRect().top - 100))
-    await expect.poll(bottom).toBeLessThanOrEqual(812 - 300 + 0.5)
-    expect(await bottom()).toBeGreaterThan(812 - 300 - 2)
-    const shot = join(testInfo.project.outputDir, '..', 'screenshots', 'composer-keyboard@375.png')
+    const cockpitTop = await page.locator('main [data-cockpit]').evaluate((e) => e.getBoundingClientRect().top)
+    expect((await composer.boundingBox())!.y, 'first in the Cockpit').toBeLessThanOrEqual(cockpitTop + 0.5)
+    expect(await composer.evaluate((e) => getComputedStyle(e).position), 'not sticky').toBe('static')
+    const shot = join(testInfo.project.outputDir, '..', 'screenshots', 'composer-top@375.png')
     await page.screenshot({ path: shot })
     await testInfo.attach('screenshot', { path: shot, contentType: 'image/png' })
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
@@ -5516,8 +5506,9 @@ test.describe('screen reader flows', () => {
     })
 
     // Flow 3: write to the pilot in the Cockpit's composer and hear the
-    // reply, once, when it is complete. The message and the reply are
-    // items of the Cockpit's stream (R12 of "Desk: the Cockpit").
+    // reply, once, when it is complete. The message and the reply are the
+    // latest exchange under the composer ("Desk: the Cockpit newest first
+    // by issue", R3).
     test(`flow 3: send a message to the pilot and hear the reply@${size.width}`, async ({ page, baseURL }) => {
       const at = now.toISOString()
       const body = 'Where is the queue?'
@@ -5562,8 +5553,9 @@ test.describe('screen reader flows', () => {
       await page.keyboard.type(body)
       await page.keyboard.press('ControlOrMeta+Enter')
       await expect.poll(() => posts).toEqual([{ body, clientKey: expect.any(String), kind: 'message' }])
-      const stream = page.locator('main [data-cockpit-stream]')
-      await expect(stream.getByText(body, { exact: true })).toBeVisible()
+      const stream = page.locator('main [data-cockpit-conversation]')
+      const latest = stream.locator('[data-cockpit-exchange]').first()
+      await expect(latest.getByText(body, { exact: true })).toBeVisible()
       await expect(focused(page), 'focus stays in the box').toMatchAriaSnapshot('- textbox "Message"')
 
       // The Cockpit refreshes its newest events every 5 s until the reply
@@ -5572,7 +5564,12 @@ test.describe('screen reader flows', () => {
       await expect(stream.getByText('Two issues', { exact: true })).toBeVisible({ timeout: 15_000 })
       expect(await said(page), 'nothing while the reply is written').toEqual([])
       part = 3
-      await expect(stream.getByText(final, { exact: true })).toBeVisible({ timeout: 15_000 })
+      await expect(latest.getByText(final, { exact: true })).toBeVisible({ timeout: 15_000 })
+      // The answer joins its message: one exchange, the message first.
+      const turns = latest.locator(':scope > ol > li')
+      await expect(turns).toHaveCount(2)
+      await expect(turns.first()).toContainText(body)
+      await expect(turns.last()).toContainText(final)
       await expect.poll(() => said(page)).toEqual(['polite: Pilot replied: Two issues are in review.'])
       await expect(stream.getByText('Two issues', { exact: true })).toHaveCount(0)
       await expect(focused(page)).toMatchAriaSnapshot('- textbox "Message"')

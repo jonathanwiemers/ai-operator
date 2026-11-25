@@ -1,8 +1,8 @@
 // The project Cockpit (R15 of "Desk: the Cockpit", #790): the project page
 // opens on a Cockpit across its milestones. On top the pinned cards of every
 // milestone with open needs, each under its milestone's name with a link to
-// that milestone's Cockpit; below the stream folded per milestone and issue;
-// the live lines of all running issues; no composer. The panel is Queue ·
+// that milestone's Cockpit; the live lines of all running issues; below
+// them the threads per milestone and issue, newest on top; no composer. The panel is Queue ·
 // Decisions (a column at 1280 px, a slide-over from the header's buttons at
 // 390 px), and the old project tabs (?tab=activity, decisions, board) open
 // where their content moved. axe on both widths. The fixture project
@@ -83,8 +83,13 @@ async function expectCockpit(page: Page) {
   await expect(checkout.locator('[data-pinned-cockpit]')).toHaveAttribute('href', `${projectPath}/milestones/12`)
   await expect(payments.locator('[data-pinned-cockpit]')).toHaveAttribute('href', `${projectPath}/milestones/14`)
 
-  // The stream folds per milestone and issue: #277 of %12 and #281 of %14,
-  // closed by default.
+  // One thread per milestone and issue, the newest on top: #277 of %12
+  // (3 min ago), then the others with #281 of %14 below it; each folds its
+  // runs into a group, closed by default.
+  const threads = page.locator('main [data-cockpit-stream] [data-cockpit-thread]')
+  await expect(threads.first()).toHaveAttribute('aria-label', '%12 · #277')
+  await expect(threads.filter({ has: page.locator('h2', { hasText: /^Milestone %14$/ }) })).toHaveCount(1)
+  await expect(page.locator('main [data-cockpit-thread][aria-label="%14 · #281"] [data-cockpit-group]')).toHaveCount(1)
   await expect(groups(page)).toHaveCount(2)
   await expect(groups(page).nth(0)).toContainText('#277 ·')
   await expect(groups(page).nth(1)).toContainText('#281 ·')

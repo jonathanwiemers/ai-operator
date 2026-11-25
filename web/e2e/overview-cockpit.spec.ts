@@ -2,8 +2,9 @@
 // opens on a Cockpit across all projects. On top the Inbox's open items of
 // every project, pinned as the Inbox's rows, each a link to its card in the
 // milestone's Cockpit (nothing is answered here, D6); below the stream with
-// merges and milestone state shown and the rest folded per project; the
-// live lines of Working now; no composer. The panel is Working now with the
+// the live lines of Working now; then one thread per project, the newest
+// on top, with merges and milestone state shown and the rest folded; no
+// composer. The panel is Working now with the
 // summary and spend tiles (a column at 1280 px, a slide-over from the
 // header's Working now button at 390 px). The old ?tab=activity, stream and
 // overview open the Cockpit; Timeline is a tab. The fixture Inbox is
@@ -34,6 +35,18 @@ const twoProjects = {
   ],
 }
 
+const teamBMerge = {
+  id: 9001,
+  at: ago(1),
+  namespace: 'team-b',
+  project: teamB,
+  milestoneIID: 3,
+  issueIID: 4,
+  kind: 'merged',
+  summary: 'Merged !12 Health check',
+  data: {},
+}
+
 async function open(page: Page, baseURL: string | undefined, path: string, width: number): Promise<string[]> {
   const origin = new URL(baseURL ?? '').origin
   const problems: string[] = []
@@ -51,7 +64,13 @@ async function open(page: Page, baseURL: string | undefined, path: string, width
       problems.push(`${req.method()} ${url.pathname}`)
       return r.fulfill({ status: 404, json: { error: 'no fixture' } })
     }
-    const body = p === '/inbox' ? twoProjects : answer(p, url.searchParams)
+    let body = p === '/inbox' ? twoProjects : answer(p, url.searchParams)
+    // The stream's newest page gets team-b's merge a minute ago, so its
+    // thread is on top of team-a/shop's.
+    if (p === '/stream' && !url.searchParams.has('after') && !url.searchParams.has('before')) {
+      const page = body as { events: unknown[] }
+      body = { ...page, events: [teamBMerge, ...page.events] }
+    }
     if (body === undefined) {
       problems.push(`GET ${url.pathname}`)
       return r.fulfill({ status: 404, json: { error: 'no fixture' } })
@@ -95,8 +114,14 @@ async function expectCockpit(page: Page) {
   // Nothing is answered here: no answer form, no proposal buttons.
   await expect(page.locator('main [data-cockpit-pinned] form, main [data-cockpit-pinned] textarea')).toHaveCount(0)
 
-  // The stream: the merge is shown, the rest is folded per project, closed.
-  await expect(page.locator('main [data-cockpit-stream]').getByText('Merged !298 Guest checkout: address form').first()).toBeVisible()
+  // One thread per project, the newest on top: team-b's, then shop's.
+  const threads = page.locator('main [data-cockpit-stream] [data-cockpit-thread]')
+  await expect(threads).toHaveCount(2)
+  await expect(threads.nth(0)).toHaveAttribute('aria-label', teamB)
+  await expect(threads.nth(0)).toContainText('Merged !12 Health check')
+  await expect(threads.nth(1)).toHaveAttribute('aria-label', 'shop')
+  // The merges are shown, the rest is folded per project, closed.
+  await expect(threads.nth(1).getByText('Merged !298 Guest checkout: address form').first()).toBeVisible()
   await expect(groups(page).first()).toBeVisible()
   for (const g of await groups(page).all()) {
     await expect(g).toContainText('shop ·')
