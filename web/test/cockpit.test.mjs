@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { chatAnswer, cockpitClass, cockpitItems, cockpitStreamQuery, groupSummary, pilotStreamKinds, runtimeStreamKinds } from '../src/stream.ts'
+import { localMinute, localTimes, localTimesText } from '../src/localTime.ts'
 
 let id = 0
 // ev builds an event at minute m of a day; the defaults are #712 in %5 of g/p.
@@ -149,4 +150,37 @@ test('chatAnswer: only the complete pilot answer to the sent message', () => {
   assert.equal(chatAnswer(events, 11), events[0])
   assert.equal(chatAnswer([{ id: 10, kind: 'chat.agent', data: { replyTo: 8 } }, ...events], 8)?.id, 10)
   assert.equal(chatAnswer([], 8), undefined)
+})
+
+test('cockpitItems shows the three delivery texts of pilot.acted as their own items, as EventCard renders them', () => {
+  // The summaries reportDeliveries writes (describeDelivery in Go).
+  const where = [
+    "delivered to #712's running implementer at",
+    "delivered to #712's implementer, the step restarted with it, at",
+    "delivered with #712's next run at",
+  ]
+  const acted = where.map((w, i) => ev('pilot.acted', 2 + 2 * i, { summary: `Message from @alice ${w} 2026-11-24 14:05 UTC` }))
+  const items = cockpitItems(stream(ev('run.started', 1), acted[0], ev('ci', 3), acted[1], ev('push', 5), acted[2], ev('run.finished', 7)))
+  assert.deepEqual(shape(items), [
+    'group:ns/p/5/712:1',
+    'pilot.acted',
+    'group:ns/p/5/712:1',
+    'pilot.acted',
+    'group:ns/p/5/712:1',
+    'pilot.acted',
+    'group:ns/p/5/712:1',
+  ])
+  const shown = items.filter((i) => i.type === 'event')
+  const now = Date.parse('2026-11-24T15:00:00Z')
+  const at = '2026-11-24T14:05:00.000Z'
+  shown.forEach((item, i) => {
+    assert.equal(item.event, acted[i])
+    // EventCard prints the summary through LocalText: the text, then the UTC time as a local <time>.
+    const parts = localTimes(item.event.summary, now)
+    assert.deepEqual(parts, [
+      { text: `Message from @alice ${where[i]} ` },
+      { iso: at, label: localMinute(at, now), title: parts[1].title, written: '2026-11-24 14:05 UTC' },
+    ])
+    assert.equal(localTimesText(item.event.summary, now), `Message from @alice ${where[i]} ${localMinute(at, now)}`)
+  })
 })

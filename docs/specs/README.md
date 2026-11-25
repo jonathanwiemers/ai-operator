@@ -41,6 +41,7 @@ git history does; otherwise "no milestone".
 8. [Desk: run milestones in the order I choose, and close finished ones](desk-queue-closeout.spec.md) — Choose queue order from the Desk and close finished milestones. Milestone: Desk: run milestones in the order I choose, and close finished ones.
 9. [Runs that hang get noticed and restarted](run-watchdog.spec.md) — Notice hung runs, restart them and escalate when that fails. Milestone: %23 Runs that hang get noticed and restarted.
 10. [Autopilot works on several issues of a milestone at once](parallel-issues.spec.md) — Independent issues of one milestone run in parallel up to a limit. Milestone: Autopilot works on several issues of a milestone at once.
+11. [Owners reach a running implementer through the pilot, mid-run](pilot-mid-run-messages.spec.md) — An owner's words reach a running implementer by stream input on claude or stop and resume, or its next run, without Accept and delivered once; built with the Cockpit, closed with restart and delivery-text tests. Milestone: Owners reach a running implementer through the pilot, mid-run.
 
 ## Web UI (the Desk)
 

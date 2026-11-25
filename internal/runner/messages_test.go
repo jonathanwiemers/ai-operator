@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -313,5 +314,127 @@ func TestResultBeforeReplayStaysPending(t *testing.T) {
 	}
 	if len(task.Status.Run.DeliveredMessages) != 0 || len(task.PendingOwnerMessages()) != 1 || r.run.midRunLeft() != aiv1.MaxMidRunDeliveries {
 		t.Fatalf("it stays pending for the next implementer call: %+v", task.Status.Run)
+	}
+}
+
+// recordingAgent is the runner's agent that keeps the prompts of the calls
+// it runs and the texts written into running calls.
+type recordingAgent struct {
+	Agent
+	mu       sync.Mutex
+	prompts  []string
+	messages []string
+}
+
+func (a *recordingAgent) Run(ctx context.Context, engine aiv1.Engine, inv Invocation) (*Result, error) {
+	a.mu.Lock()
+	a.prompts = append(a.prompts, inv.Prompt)
+	a.mu.Unlock()
+	return a.Agent.Run(ctx, engine, inv)
+}
+
+func (a *recordingAgent) Message(ctx context.Context, req MessageRequest) (MessageResult, error) {
+	a.mu.Lock()
+	a.messages = append(a.messages, req.Text)
+	a.mu.Unlock()
+	return a.Agent.Message(ctx, req)
+}
+
+// deliveredBefore records tell/1 as streamed into call 1, as a runner did
+// before the pod restarted.
+func deliveredBefore(t *testing.T, k8s client.Client, at time.Time) {
+	t.Helper()
+	task := messageTaskNow(t, k8s)
+	task.Status.Run.LastCallSeq = 1
+	task.Status.Run.DeliveredMessages = []aiv1.DeliveredMessage{{ID: "tell/1", Call: 1, How: aiv1.DeliveryStream, At: metav1.Time{Time: at}}}
+	if err := k8s.Status().Update(context.Background(), task); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestMessagesRestartDuringARun: a new runner (fresh in-memory run state, as
+// after a pod restart) meets tell/1 delivered already and tell/2 pending. A
+// running claude call gets only tell/2, and the cap counts only this run's.
+func TestMessagesRestartDuringARun(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	start := time.Now()
+	args := filepath.Join(t.TempDir(), "args")
+	r, k8s := messageEnv(t, fakeClaudeStream(t, "FAKE_CLAUDE_WORK=3", "FAKE_CLAUDE_ARGS="+args), start)
+	agent := &recordingAgent{Agent: r.Agent}
+	r.Agent = agent
+	addOwnerMessages(t, k8s, ownerMessage("tell/1", start.Add(-time.Minute)))
+	deliveredBefore(t, k8s, start.Add(-time.Minute))
+
+	done := streamCall(ctx, r)
+	waitStarted(ctx, t, args)
+	addOwnerMessages(t, k8s, ownerMessage("tell/2", time.Now()))
+	waitDelivered(ctx, t, k8s, "tell/2")
+	res := <-done
+	if n := streamedMessages(t, res); n != 1 {
+		t.Fatalf("the call takes one message in: %d", n)
+	}
+	agent.mu.Lock()
+	prompts, messages := agent.prompts, agent.messages
+	agent.mu.Unlock()
+	if len(prompts) != 1 || strings.Contains(prompts[0], "Words tell/1.") {
+		t.Fatalf("the call's prompt does not repeat tell/1: %q", prompts)
+	}
+	if len(messages) != 1 || strings.Contains(messages[0], "Words tell/1.") || strings.Count(messages[0], "Words tell/2.") != 1 {
+		t.Fatalf("only tell/2 is written to the call's stdin: %q", messages)
+	}
+	run := messageTaskNow(t, k8s).Status.Run
+	if len(run.DeliveredMessages) != 2 {
+		t.Fatalf("two deliveries: %+v", run.DeliveredMessages)
+	}
+	if d := messageTaskNow(t, k8s).Delivery("tell/1"); d.How != aiv1.DeliveryStream || d.Call != 1 {
+		t.Fatalf("the old record stays as it was: %+v", d)
+	}
+	if d := messageTaskNow(t, k8s).Delivery("tell/2"); d.How != aiv1.DeliveryStream || d.Call != run.Calls[len(run.Calls)-1].Seq {
+		t.Fatalf("tell/2 streamed into this call: %+v", run)
+	}
+	if left := r.run.midRunLeft(); left != aiv1.MaxMidRunDeliveries-1 {
+		t.Fatalf("the cap counts only this run's deliveries: %d left", left)
+	}
+}
+
+// TestMessagesRestartBeforeTheNextRun: a new runner starts the next run with
+// tell/1 delivered already and tell/2 pending. The run's prompt has tell/2
+// once and not tell/1; tell/2 is then recorded once, as nextRun.
+func TestMessagesRestartBeforeTheNextRun(t *testing.T) {
+	ctx := context.Background()
+	start := time.Now()
+	engine := &scriptedEngine{}
+	r, k8s := messageEnv(t, engine, start)
+	addOwnerMessages(t, k8s, ownerMessage("tell/1", start.Add(-time.Hour)), ownerMessage("tell/2", start.Add(-time.Minute)))
+	deliveredBefore(t, k8s, start.Add(-time.Hour))
+
+	inv := Invocation{Role: "implement", Kind: aiv1.CallKindImplement}
+	for range 2 {
+		if _, err := r.invoke(ctx, aiv1.RoleSpec{Engine: aiv1.EngineCursor}, inv, "Implement #42."); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if p := engine.calls[0].Prompt; strings.Contains(p, "Words tell/1.") || strings.Count(p, "Words tell/2.") != 1 {
+		t.Fatalf("the next run's prompt has tell/2 once, not tell/1: %q", p)
+	}
+	if p := engine.calls[1].Prompt; p != "Implement #42." {
+		t.Fatalf("a later call gets neither again: %q", p)
+	}
+	run := messageTaskNow(t, k8s).Status.Run
+	n := 0
+	for _, d := range run.DeliveredMessages {
+		if d.ID == "tell/2" {
+			n++
+			if d.How != aiv1.DeliveryNextRun || d.Call != run.Calls[0].Seq {
+				t.Fatalf("tell/2 as nextRun into the run's first call: %+v", run)
+			}
+		}
+	}
+	if n != 1 || len(run.DeliveredMessages) != 2 {
+		t.Fatalf("tell/2 recorded exactly once: %+v", run.DeliveredMessages)
+	}
+	if left := r.run.midRunLeft(); left != aiv1.MaxMidRunDeliveries {
+		t.Fatalf("a nextRun delivery is not mid-run: %d left", left)
 	}
 }

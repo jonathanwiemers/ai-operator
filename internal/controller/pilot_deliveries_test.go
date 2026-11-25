@@ -92,6 +92,44 @@ func TestPilotReportsADeliveryOnce(t *testing.T) {
 	}
 }
 
+// TestPilotReportsNoDeliveryAgainAfterARestart: an operator pod restart
+// after a report is a new reconciler without memory. It meets the delivery
+// record of a message already dropped from spec.source.ownerMessages (the
+// runner prunes the record only at its next delivery) and reports nothing.
+func TestPilotReportsNoDeliveryAgainAfterARestart(t *testing.T) {
+	e := newManagedEnv(t)
+	e.runningOf(1)
+	e.ownerMessagesOf(1, aiv1.OwnerMessage{ID: "tell/55", Owner: "alice", Text: "use the v2 API", At: deliveredAt})
+	e.patchStatus(e.taskOf(1), func(s *aiv1.AgentTaskStatus) {
+		s.Run.DeliveredMessages = []aiv1.DeliveredMessage{{ID: "tell/55", Call: 3, How: aiv1.DeliveryStream, At: deliveredAt}}
+	})
+	e.reconcile()
+	const where = "delivered to #1's running implementer at 2026-11-24 14:05 UTC"
+	acted := func() int {
+		n := 0
+		for _, a := range e.pilot().Status.Pilot.Acted {
+			if strings.Contains(a.Summary, where) {
+				n++
+			}
+		}
+		return n
+	}
+	if task := e.implTaskOf(1); len(task.Spec.Source.OwnerMessages) != 0 || task.Delivery("tell/55") == nil || acted() != 1 {
+		t.Fatalf("reported once, dropped from the spec, its record kept: %+v", task.Spec.Source.OwnerMessages)
+	}
+
+	e.r = &AgentProjectReconciler{Client: e.c, Scheme: e.r.Scheme, NewGitLab: e.r.NewGitLab}
+	for range 2 {
+		e.reconcile()
+	}
+	if n, m := countComments(e, e.tracking(), where), countComments(e, 1, where); n != 1 || m != 1 {
+		t.Fatalf("no second note after a restart: tracking %d, issue %d", n, m)
+	}
+	if n := acted(); n != 1 {
+		t.Fatalf("no second acted entry after a restart: %+v", e.pilot().Status.Pilot.Acted)
+	}
+}
+
 func TestPilotRequestsOneRunForALeftoverMessage(t *testing.T) {
 	e := newManagedEnv(t)
 	now := time.Now()
