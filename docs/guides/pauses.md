@@ -55,8 +55,8 @@ cause, the paused issue and its merge request, what ends the pause by itself,
 and buttons for the ways out: *Retry*, *Review again*, *Resume*, *Skip*,
 links to the issue's chat, the pipeline, the merge request or the plan, and
 for an owner *Merge anyway*. A hold shows the same way in its issue's
-thread, with *Resume*. The *Issues* tab, a project's
-*Activity* tabs, the Board and the Inbox show a short card that links there.
+thread, with *Resume*. The *Issues* tab, the Board and the Inbox show a short
+card that links there; a project's *Cockpit* pins the full one.
 
 The buttons send the same commands as the comments below, and the card shows
 the operator's answer. A `mainRed` or `budget` pause shows its

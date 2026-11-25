@@ -2,22 +2,21 @@
 // so it can be linked to and reloaded; the first tab of a list is the
 // default and is left out.
 //
-// Project pages: Milestones (the default: queue, Finishing, the milestone
-// sections) | Activity (the event feed) | Decisions (R14) | Board | Metrics,
-// and Plans with the plans feature (R13). Milestone pages: Cockpit (the
-// default, R10 of "Desk: the Cockpit") | Issues | Metrics, then
-// Retrospective once one exists (R14 of "Desk: the Cockpit"); the pilot's
-// composer is at the bottom of the Cockpit (R12). The dashboard at /:
+// Project pages: Cockpit (the default, R15 of "Desk: the Cockpit": the
+// stream across the project's milestones) | Milestones (queue, Finishing,
+// the milestone sections, the Board as a view) | Metrics, and Plans with
+// the plans feature. Milestone pages: Cockpit (the default, R10) | Issues |
+// Metrics, then Retrospective once one exists (R14); the pilot's composer
+// is at the bottom of the milestone's Cockpit (R12). The dashboard at /:
 // Overview | Activity. The task page (and the issue page with a live task):
 // Overview | Chat | Live | Logs | Calls (R10; Logs for the task's owners,
 // run watchdog R8).
 // Renamed and merged tabs keep their old ids as aliases (tabAlias): Metrics
 // was named Spend (?tab=spend), Activity was named Stream (?tab=stream), a
-// task's Details went into its Overview (?tab=details). A milestone's
-// removed tabs open where their content moved (milestoneAlias).
-// BaseTab: a project page's Activity, Board and Metrics tabs.
-export type BaseTab = 'activity' | 'board' | 'metrics'
-export type StreamTab = 'milestones' | BaseTab | 'decisions' | 'plans'
+// task's Details went into its Overview (?tab=details). A project's and a
+// milestone's removed tabs open where their content moved (projectAlias,
+// milestoneAlias).
+export type ProjectTab = 'cockpit' | 'milestones' | 'metrics' | 'plans'
 export type MilestoneTab = 'cockpit' | 'issues' | 'metrics' | 'retrospective'
 export type DashboardTab = 'overview' | 'activity'
 export type TaskTab = 'overview' | 'chat' | 'live' | 'logs' | 'calls'
@@ -47,22 +46,14 @@ export interface Tab<T extends string> {
   label: string
 }
 
-export const streamBaseTabs: Tab<BaseTab>[] = [
-  { id: 'activity', label: 'Activity' },
-  { id: 'board', label: 'Board' },
-  { id: 'metrics', label: 'Metrics' },
-]
-
-// projectTabsFor are a project page's tabs: Milestones first and the
-// default, Decisions right after Activity (R14), Plans only with the plans
-// feature, so ?tab=plans without it opens Milestones.
-export function projectTabsFor(plans: boolean): Tab<StreamTab>[] {
-  const [activity, ...rest] = streamBaseTabs
-  const tabs: Tab<StreamTab>[] = [
+// projectTabsFor are a project page's tabs: the Cockpit first and the
+// default, Plans only with the plans feature, so ?tab=plans without it
+// opens the Cockpit.
+export function projectTabsFor(plans: boolean): Tab<ProjectTab>[] {
+  const tabs: Tab<ProjectTab>[] = [
+    { id: 'cockpit', label: 'Cockpit' },
     { id: 'milestones', label: 'Milestones' },
-    activity!,
-    { id: 'decisions', label: 'Decisions' },
-    ...rest,
+    { id: 'metrics', label: 'Metrics' },
   ]
   return plans ? [...tabs, { id: 'plans', label: 'Plans' }] : tabs
 }
@@ -108,14 +99,16 @@ type QueryValue = string | null | (string | null)[] | undefined
 // Metrics page"), the Stream tab became Activity (R4 of "Desk: one header
 // and one row of tabs on every page"), and a task's Details tab went into
 // its Overview (R6 of the same milestone). A milestone's removed tabs are
-// in milestoneTabAliases.
+// in milestoneTabAliases, a project's in projectTabAliases.
 const tabAliases: Readonly<Record<string, string>> = { spend: 'metrics', stream: 'activity', details: 'overview' }
+
+type TabAliases = Readonly<Record<string, { tab?: string; panel?: string; view?: string }>>
 
 // milestoneTabAliases are where a milestone's removed tabs went (R14 of
 // "Desk: the Cockpit", D789-P2): Activity (once Stream), Needs you and the
 // Pilot tab into the Cockpit, Decisions into the Cockpit's panel, the Board
 // into the Issues tab's view switch.
-const milestoneTabAliases: Readonly<Record<string, { tab?: string; panel?: string; view?: string }>> = {
+const milestoneTabAliases: TabAliases = {
   activity: {},
   stream: {},
   needs: {},
@@ -124,18 +117,27 @@ const milestoneTabAliases: Readonly<Record<string, { tab?: string; panel?: strin
   board: { tab: 'issues', view: 'board' },
 }
 
+// projectTabAliases are where a project's removed tabs went (R15 of "Desk:
+// the Cockpit"): Activity (once Stream) into the Cockpit, Decisions into the
+// Cockpit's panel (its ?milestone= stays), the Board into the Milestones
+// tab's view switch.
+const projectTabAliases: TabAliases = {
+  activity: {},
+  stream: {},
+  decisions: { panel: 'decisions' },
+  board: { tab: 'milestones', view: 'board' },
+}
+
 // tabAlias is the current id of a ?tab= value: the renamed tab's id for an
 // old one, the value itself otherwise.
 export function tabAlias(v: string | null | undefined): string | null | undefined {
   return v != null && Object.hasOwn(tabAliases, v) ? tabAliases[v] : v
 }
 
-// tabFromQuery reads ?tab= against tabs (Activity, Board, Metrics by
-// default), old ids through tabAlias: unknown, empty or repeated values
-// fall back to the first known one, else to the list's first tab.
-export function tabFromQuery(v: QueryValue): BaseTab
-export function tabFromQuery<T extends string>(v: QueryValue, tabs: readonly Tab<T>[]): T
-export function tabFromQuery(v: QueryValue, tabs: readonly Tab<string>[] = streamBaseTabs): string {
+// tabFromQuery reads ?tab= against tabs, old ids through tabAlias:
+// unknown, empty or repeated values fall back to the first known one, else
+// to the list's first tab.
+export function tabFromQuery<T extends string>(v: QueryValue, tabs: readonly Tab<T>[]): T {
   const list = Array.isArray(v) ? v : [v]
   for (const s of list) {
     const id = tabAlias(s)
@@ -145,14 +147,43 @@ export function tabFromQuery(v: QueryValue, tabs: readonly Tab<string>[] = strea
   return tabs[0]!.id
 }
 
+// aliasedTab is ?tab= with each removed tab's id replaced by the tab its
+// content moved to (aliases; the Cockpit, the page's default, without one).
+function aliasedTab(v: QueryValue, aliases: TabAliases): (string | null)[] {
+  return (Array.isArray(v) ? v : [v ?? null]).map((s) => (s != null && Object.hasOwn(aliases, s) ? (aliases[s]!.tab ?? 'cockpit') : s))
+}
+
+// aliasQuery is the query of a link to a removed tab at the place its
+// content moved to (aliases), null when ?tab= names none. A repeated ?tab=
+// is read by its first value; other parameters stay.
+function aliasQuery<V>(query: Record<string, V>, aliases: TabAliases): Record<string, V | string> | null {
+  const tab: unknown = Array.isArray(query.tab) ? query.tab[0] : query.tab
+  if (typeof tab !== 'string' || !Object.hasOwn(aliases, tab)) return null
+  const { tab: _old, ...rest } = query
+  return { ...rest, ...aliases[tab]! }
+}
+
+// projectTabFromRoute is a project page's tab: ?tab= as tabFromQuery reads
+// it, a removed tab's id as the tab its content moved to
+// (projectTabAliases), until Stream.vue has rewritten the URL.
+export function projectTabFromRoute(v: QueryValue, tabs: readonly Tab<string>[]): string {
+  return tabFromQuery(aliasedTab(v, projectTabAliases), tabs)
+}
+
+// projectAlias is the query of an old project link (?tab=activity, stream,
+// decisions, board) at the place its content moved to, null when it needs
+// no change; Stream.vue replaces the URL with it on load.
+export function projectAlias<V>(query: Record<string, V>): Record<string, V | string> | null {
+  return aliasQuery(query, projectTabAliases)
+}
+
 // milestoneTabFromRoute is a milestone page's tab: ?tab= as tabFromQuery
 // reads it, a removed tab's id as the tab its content moved to
 // (milestoneTabAliases), until Stream.vue has rewritten the URL. A prompt
 // or problem link (#prompt-Q<n>, #problem-<iid>) without ?tab= opens the
 // Cockpit, the default, where the card is pinned (R10).
 export function milestoneTabFromRoute(v: QueryValue, tabs: readonly Tab<string>[] = milestoneTabs): string {
-  const list = (Array.isArray(v) ? v : [v ?? null]).map((s) => (s != null && Object.hasOwn(milestoneTabAliases, s) ? (milestoneTabAliases[s]!.tab ?? 'cockpit') : s))
-  return tabFromQuery(list, tabs)
+  return tabFromQuery(aliasedTab(v, milestoneTabAliases), tabs)
 }
 
 // taskTabFromRoute is a task's tab among those available: ?tab= as
@@ -172,43 +203,42 @@ export function taskTabFromRoute(v: QueryValue, hash: string, available: readonl
 // A repeated ?tab= is read by its first value; other parameters stay.
 export function milestoneAlias<V>(query: Record<string, V>): Record<string, V | string> | null {
   const { pilot: _, ...rest } = query
-  const tab: unknown = Array.isArray(rest.tab) ? rest.tab[0] : rest.tab
-  const to = typeof tab === 'string' && Object.hasOwn(milestoneTabAliases, tab) ? milestoneTabAliases[tab]! : null
-  if (!to) return Object.hasOwn(query, 'pilot') ? rest : null
-  const { tab: _old, ...next } = rest
-  return { ...next, ...to }
+  return aliasQuery(rest, milestoneTabAliases) ?? (Object.hasOwn(query, 'pilot') ? rest : null)
 }
 
 // A milestone's context panel (R13 of "Desk: the Cockpit"): its views,
 // switched at the top of the panel and kept in ?panel= (D786-P1), Issues
-// the default and left out.
+// the default and left out. A project's panel (R15) has Queue, its
+// default, and Decisions.
 export type PanelView = 'issues' | 'queue' | 'decisions'
 export const panelViews: Tab<PanelView>[] = [
   { id: 'issues', label: 'Issues' },
   { id: 'queue', label: 'Queue' },
   { id: 'decisions', label: 'Decisions' },
 ]
+export const projectPanelViews: Tab<PanelView>[] = panelViews.slice(1)
 
-// panelFromQuery reads ?panel= as tabFromQuery reads ?tab=: unknown, empty
-// or repeated values fall back to the first known one, else to Issues.
-export function panelFromQuery(v: QueryValue): PanelView {
-  return tabFromQuery(v, panelViews)
+// panelFromQuery reads ?panel= against views as tabFromQuery reads ?tab=:
+// unknown, empty or repeated values fall back to the first known one, else
+// to the first view.
+export function panelFromQuery(v: QueryValue, views: readonly Tab<PanelView>[] = panelViews): PanelView {
+  return tabFromQuery(v, views)
 }
 
 // panelQuery is the query with the panel on view, keeping the other
-// parameters; Issues drops ?panel=.
-export function panelQuery<V>(query: Record<string, V>, view: PanelView): Record<string, V | string> {
+// parameters; the first of views drops ?panel=.
+export function panelQuery<V>(query: Record<string, V>, view: PanelView, views: readonly Tab<PanelView>[] = panelViews): Record<string, V | string> {
   const { panel: _, ...rest } = query
-  return view === panelViews[0]!.id ? rest : { ...rest, panel: view }
+  return view === views[0]!.id ? rest : { ...rest, panel: view }
 }
 
 // tabQuery is the query for a tab, keeping the other parameters; the
-// list's first tab (Milestones on the project tabs, Activity on the
-// default list) drops the parameter.
+// list's first tab (the Cockpit on project and milestone pages) drops the
+// parameter.
 export function tabQuery<Q extends Record<string, unknown>>(
   query: Q,
   tab: string,
-  tabs: readonly Tab<string>[] = streamBaseTabs,
+  tabs: readonly Tab<string>[],
 ): Omit<Q, 'tab'> & { tab?: string } {
   const { tab: _, ...rest } = query
   return tab === tabs[0]!.id ? rest : { ...rest, tab }

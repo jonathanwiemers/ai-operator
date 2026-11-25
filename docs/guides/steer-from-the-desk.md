@@ -141,7 +141,7 @@ You find prompts:
 - pinned on top of the milestone's *Cockpit*, at the bottom of their issue's
   [problem thread](pilot.md#the-problem-thread); closed ones stay in the
   thread's history;
-- in a project's *Activity* feed, as a short card with the recommended option;
+- in a project's *Cockpit*, under the milestone's name, answered there;
 - on a task page, above the chat, for an agent's questions;
 - on the pause card of a red default branch or a spent budget.
 
@@ -167,10 +167,10 @@ with the option's letter in the comment's thread (see
 
 Each [decision](../concepts/glossary.md#decision) in a milestone's queue
 has a *Revisit* button, on the *Issues* tab and in the project's context
-panel. The card of the decision on the *Decisions* tab has it too, with a
+panel. The card of the decision in the project panel's *Decisions* has it too, with a
 line that says what will happen. It is there for owners with the `chat`
 grant, while the milestone has its pilot. The decision's ID opens its card
-on the *Decisions* tab, or the comment on GitLab without the history
+in the panel's *Decisions*, or the comment on GitLab without the history
 database.
 
 1. Click *Revisit* on the decision.
@@ -192,8 +192,8 @@ When autopilot [pauses](../concepts/glossary.md#pause), the milestone's
 merge request and pushed head, and *Way out*: first what ends the pause by
 itself, with its state, then what you can do. Each
 [hold](../concepts/glossary.md#hold) of a single issue has a card of its own
-with *Resume*. The Inbox, a project's *Activity* feed and the *Issues* tab show a short card
-with *Open*, which leads to the *Cockpit*.
+with *Resume*. The Inbox and the *Issues* tab show a short card
+with *Open*, which leads to the *Cockpit*; a project's *Cockpit* pins the full card.
 
 The buttons depend on the kind of pause:
 
@@ -282,9 +282,9 @@ researches, engine usage, sign out), and *Metrics* and *Research* where you
 have them. The bar hides while you type.
 
 - Tables become cards, and every button is big enough to tap.
-- The context panel opens with the *Context* button in the header. On a
-  milestone page, the *Issues*, *Queue* and *Decisions* buttons open the
-  milestone panel on that view.
+- On a project page, the *Queue* and *Decisions* buttons in the header open
+  the context panel on that view; on a milestone page, the *Issues*, *Queue*
+  and *Decisions* buttons open the milestone panel.
 - Text that is cut off opens with a tap.
 - Prompts, pause cards, chat and *Restart run* work as on a desktop.
 

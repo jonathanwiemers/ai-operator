@@ -905,7 +905,7 @@ left with the rail's content (`components/RailNav.vue`, which the sidebar
 renders on tablet and desktop). It is the `UDashboardSidebar`'s own slideover
 (see [Navigation](#navigation)). A project row reads the state line (`projectStateLine`) and
 `milestoneCounts` (`N active · M settling`, zero parts left out). Below 1180 px the stream header's
-*Context* button opens the project's context panel (`components/ContextPanel.vue`)
+*Queue* and *Decisions* buttons open the project's context panel (`components/ContextPanel.vue`) on that view
 from the right, the side it has on desktop, and on a milestone page the
 *Issues*, *Queue* and *Decisions* buttons open the milestone panel on that
 view (`components/MilestonePanel.vue`); widening the window to 1180 px
@@ -950,10 +950,10 @@ sets no z-index, and the sticky mobile bar and the fixed bottom bar have 10. The
 `rail sheet …` cover each way to close, that the router did not navigate
 and the API was not asked again, and a link inside the sheet followed by
 back; `rail-sheet@375.png` shows the open sheet. The cases `context sheet …`
-open the Context sheet on the project and the milestone page at 375 and
-768 px, check its four parts (Needs you, the queue, companions, the last
+open the Queue sheet on the project page at 375 and
+768 px, check its three parts (the queue, companions, the last
 30 days), that it fits the width, and that back, scrim, close button and
-Escape close it, the last three with the focus back on the Context button
+Escape close it, the last three with the focus back on the Queue button
 (the rail sheet: every way, on *Projects*); `context-sheet-<page>@<width>.png` show it open. At
 1280 px the project page keeps the panel at its side and neither page has
 the button.
@@ -1227,26 +1227,34 @@ do, and that on a phone a row stacks inside its width
 
 ### Activity header
 
-The header of the project and milestone pages and the project's Activity tab
-(`web/src/views/Stream.vue`) are Tailwind utilities and Nuxt UI; only the
-activity heatmap strip keeps scoped CSS (`.heat`, `.cells`).
+The header of the project and milestone pages and the dashboard's Activity
+tab (`web/src/views/Stream.vue`) are Tailwind utilities and Nuxt UI; only the
+history's day cells in the project panel keep scoped CSS (`.cells` in
+`ContextPanel.vue`).
 
 - The `UPageHeader` comes first: the milestone's status as eyebrow
   (`milestoneStatus` of `src/milestoneRows.ts`: *Autopilot paused*, or the
   state), the title, the [header cost](#cost-chips) as meta line, and on
-  the right `HeaderActions` with `shown` 0: *Context* (below 1180 px), and ⋯
+  the right `HeaderActions` with `shown` 0: the panel's view buttons
+  (below 1180 px: *Queue* and *Decisions* on a project, *Issues*, *Queue*
+  and *Decisions* on a milestone), and ⋯
   with the project or milestone in GitLab. A project has no *Metrics*
   button; the Metrics tab is one click away. While a milestone loads, the
   title comes from the project's milestone list (`%<iid>` without it),
   never *Loading…*. On the dashboard's *Activity* tab the dashboard has the
   header, and Stream.vue shows none.
 - The [RouteTabs](#routetabs) row follows; the header block holds nothing
-  else. A project's default tab, *Milestones*, holds `ProjectQueue`,
-  `ProjectFinishing` and `MilestoneSections`; the feed is on *Activity*.
-- The Activity tab opens with its [toolbar](#filters): the event filter on
+  else. A project's default tab is its Cockpit (R15 of the Cockpit spec):
+  `Cockpit.vue` over the project's stream, `ProjectPinned.vue` pinning each
+  milestone's `MilestoneNeeds` that has open needs (the views of the
+  milestones the Inbox names and of those whose autopilot is not done), and
+  `CockpitLive` with a `milestones` map, so each live line links to its
+  milestone's Cockpit; no composer. *Milestones* holds `ProjectQueue`,
+  `ProjectFinishing` and `MilestoneSections`, or `ProjectBoards` with
+  `?view=board` (a `UTabs` switch in its toolbar).
+- The dashboard's Activity tab opens with its [toolbar](#filters): the event filter on
   the left, the search (`UInput`, 16 px on phones, 14 px from 760 px) on
-  the right, on a full-width row of its own on phones. The heatmap follows
-  the toolbar, hidden below 760 px.
+  the right, on a full-width row of its own on phones.
 - Stream rows (`stream/EventCard.vue`) break long URLs, branches and SHAs
   anywhere, so a row never widens the stream.
 
@@ -1447,8 +1455,8 @@ the link heights on a phone (`milestone-issues@<width>.png`); the route checks c
 
 ### Milestone Decisions
 
-The project's Decisions tab (on `stream-project-decisions`, right after
-*Activity*; `?milestone=` narrows it to one milestone, also a stored one)
+The project panel's *Decisions* view (R15 of the Cockpit spec,
+`?panel=decisions`; `?milestone=` narrows it to one milestone, also a stored one)
 is Tailwind utilities and Nuxt UI (a card keeps a little scoped CSS, `DecisionCard.vue`). A
 milestone page has no Decisions tab since R14 of the Cockpit spec: its
 decisions are the panel's *Decisions* view (`?panel=decisions`; a `#<id>`
@@ -1675,7 +1683,7 @@ phone, checks the button height and the sideways scroll, and asserts the
 
 ### Board
 
-The Board tab of a project (`web/src/components/ProjectBoards.vue`) and of
+The Board of a project (`web/src/components/ProjectBoards.vue`, the *Board* view of the Milestones tab, `?tab=milestones&view=board`, since R15) and of
 a milestone (`web/src/components/Board.vue`, the *Board* view of the
 Issues tab, `?tab=issues&view=board`, since R14 of the Cockpit spec), and its cards
 (`web/src/components/TaskCard.vue`), are Tailwind utilities and Nuxt UI
@@ -2262,7 +2270,7 @@ Activity tab's, never both; the milestone's Cockpit shows both
 `companion.merged` is in neither list: it only feeds the merged lines
 ([Merged lines](design.md#merged-lines)) and is not shown in any stream.
 
-A project's *Activity* tab and the dashboard's show all kinds, and every kind
+A project's *Cockpit* and the dashboard's *Activity* show all kinds, and every kind
 can be asked for with `kinds=`. A `prompt.posted` event is one line,
 "Q12 asked: …", with the prompt's state badge while the milestone view
 still has it, and a link to its card; no stream row has answer buttons. The bot's mirror comments
@@ -2271,29 +2279,41 @@ threads, so a prompt shows once.
 
 ### Context panel and pause history
 
-The project's context panel (`ContextPanel.vue`) shows the project's
-needs-you items, the active milestone's queue (a milestone waiting for its
-turn says *⏳ Waiting for its turn: Guest checkout (%7), %9 go first*,
-from `autopilot.queuedBehind` with the titles of the project's milestones; it is running, not paused, so it has no pause card
-and no Inbox item) and the last 30 days against the 30 before. Below
-1180 px the header's *Context* button opens it as a [sheet](#sheets); its
-count is the panel's own, so neither loads anything more.
+The project's context panel (`ContextPanel.vue`, R15 of the Cockpit spec)
+has a `UTabs` view switch, as the milestone's, kept in `?panel=`
+(`projectPanelViews`: *Queue*, the default, and *Decisions*):
+
+- *Queue*: the active milestone's queue (`QueueList` with `compact`, one
+  row per item, its run cost; a waiting milestone shows a line with the
+  milestone it waits for), its companions and the last 30 days: the day
+  cells, a grid of 24 px targets (WCAG 2.5.8) with one shared tooltip, then
+  runs and spend and the four totals against the previous 30 days. A day
+  pages the project's Cockpit back to its end (`dayEndCursor`, the scope's
+  `before` in `useCockpitStream`; live events do not add to it), *Back to
+  now* returns.
+- *Decisions*: `MilestoneDecisions` with the milestone select of the old
+  Decisions tab (`?milestone=`).
+
+What needs you is the Cockpit's pinned cards (`ProjectPinned`), and the
+Inbox across projects; a milestone page has `MilestonePanel`.
 
 Every page with a panel uses one layout, `components/ContextLayout.vue`
 (decision 6 of [the one-look spec](../specs/desk-one-look.spec.md)): from
 1180 px its `panel` slot is a 320 px column beside the content; below, the
 content has the full width and the panel is a `USlideover` from the right,
 closed by default and loaded only there. The page binds `v-model:open` to
-its buttons and shows them only while the default slot's `sheet` is true;
-Back and Escape close the sheet (`useBackClose` with `keepOnQuery`, so a
-query change inside it keeps it open), focus returns to `opener`, the
-button that opened it, and widening past 1180 px closes it. `column: false`
-keeps the panel a sheet at every width, for content that needs the full
-width: a milestone's Issues tab (the table's fixed columns) and a project's Activity tab
-(the heatmap's day cells). The e2e `context sheet …` cases check the
-project's closed sheet below 1180 px (each way to close it, the long branch
-and URL fitting), the column at 1180 px and that the board beside it does
-not scroll sideways.
+its buttons (the panel's views) and shows them only while the default slot's
+`sheet` is true; a `?panel=` link opens the sheet on that view. Back and
+Escape close the sheet (`useBackClose` with `keepOnQuery`, so a query change
+inside it keeps it open; a link inside it closes it), focus returns to
+`opener`, the button that opened it, and widening past 1180 px closes it.
+`column: false` keeps the panel a sheet at every width, for content that
+needs the full width: a milestone's Issues tab (the table's fixed columns).
+The e2e `context sheet …` cases check the project's closed sheet below
+1180 px (each way to close it, its fit), the column at 1180 px and that the
+Cockpit, Milestones and Board beside it do not scroll sideways;
+`project-cockpit.spec.ts` checks both views, the day jump and the old tab
+links.
 
 ### Milestone panel
 

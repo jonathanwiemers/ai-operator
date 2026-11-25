@@ -10,7 +10,7 @@ place where the decisions are written.
 The refund issue #42 of the milestone *Payments* is merged. You want to
 know which currency the agent picked for refunds:
 
-1. Open the project in the Desk, click the *Decisions* tab and pick *Payments* in the *Milestone* select.
+1. Open the project in the Desk, switch its panel to *Decisions* (*Decisions* in the header on a phone) and pick *Payments* in the *Milestone* select.
 2. Type `currency` in the search box. One card is left:
 
    > **How refunds are booked** `D42-3` *Implementation*
@@ -36,12 +36,12 @@ between.
 
 ## Where decisions show
 
-- **A project's *Decisions* tab**: the decisions of all its milestones,
+- **A project's panel**: *Decisions* beside its *Cockpit* shows the decisions of all its milestones,
   newest milestone first, from the [planner](../concepts/glossary.md#planner)
   and from the implementers, open issues included. Each issue's header names its
   milestone. Pick one in the *Milestone* select to narrow the list to it; *All
   milestones* shows them all again. A done milestone's decisions stay as long
-  as its record is kept.
+  as its record is kept. `?panel=decisions` opens it; old `?tab=decisions` links open it too.
 - **A milestone's panel**: *Decisions* beside its *Cockpit* lists the
   milestone's decisions with the option chosen, replaced ones folded.
   `?panel=decisions` opens it; old `?tab=decisions` links open it too.

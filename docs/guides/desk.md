@@ -194,30 +194,24 @@ tab (`/?tab=activity`, old `?tab=stream` links too) shows every event of all you
 
 ## A project
 
-A project page has the tabs *Milestones | Activity | Decisions | Board | Metrics*,
-and *Plans* with Desk chat. It opens on *Milestones*:
+A project page has the tabs *Cockpit | Milestones | Metrics*, and *Plans* with Desk chat. It opens on *Cockpit*:
 
+- **Cockpit**: the stream of all the project's milestones. On top are the pinned cards of every milestone that waits for you, each under the milestone's name: its problems, proposals and questions, answered there.
+  *Talk to the pilot* opens that milestone's Cockpit, which has the message box; the project page has none.
+  Below come the events, newest at the bottom, with runs, CI and reviews folded into one group per milestone and issue (open one, or *Expand all*), a search, and a line per running issue that links to its milestone.
 - **Milestones**: the project's [run-order queue](milestone-order-and-timeline.md#the-queue),
   which owners drag into order, the [milestones that are finishing](steer-from-the-desk.md#the-queue-and-finishing),
-  and its milestones in progress and recently done.
-- **Activity**: what happened, newest first, with a message box; a paused
-  milestone pins its short pause card over it. Old `?tab=stream` links open it.
-- **Decisions**: the decisions of all its milestones, or of the one you pick.
-- **Board**: one board per milestone, plus the issues without one.
+  and its milestones in progress and recently done. The switch on top shows the *Board* instead: one board per milestone, plus the issues without one (`?view=board`).
 - **Metrics**: what the project's agent calls cost, with its lines of code.
 - **Plans**: the project's [plans](write-a-milestone.md#draft-it-in-the-desk)
   and *New plan* for this project; a [plan's decisions](write-a-milestone.md#answer-the-agents-decisions) have a wizard.
 
-![A project page with its event feed and a run that asks a question, beside the needs-you panel](../assets/screenshots/project-stream.webp)
+![A project page with its Cockpit: a milestone's pinned cards and the stream, beside the panel](../assets/screenshots/project-stream.webp)
 
-On *Activity*, the bar on top filters the feed (*All*, *Chat*, *Needs you*,
-*Runs*, *CI & review*, *Merged*) and has search on the right. Below it, a strip of
-the last 30 days jumps to a day; *Load older* goes further back. Comments on the
-same issue or merge request are one card.
+A panel on the right switches between *Queue* (the active milestone's queue, its companions and the last 30 days; pick a day to page the Cockpit back to it, *Back to now* returns) and *Decisions* (the decisions of all milestones, or of the one you pick).
+Below 1180 px the *Queue* and *Decisions* buttons in the header open it from the right; Escape closes it. The open view is in the address (`?panel=decisions`).
 
-On a wide screen a panel beside the feed shows what needs you in the
-project, the active milestone's queue and the last 30 days. On a phone or
-tablet the *Context* button opens it.
+Old links to the former tabs open where their content is now: `?tab=activity` and `stream` open *Cockpit*, `?tab=decisions` the panel's *Decisions* (`?panel=decisions`, the milestone you picked stays), and `?tab=board` the *Board* of *Milestones* (`?tab=milestones&view=board`).
 
 ## A milestone
 
@@ -273,7 +267,7 @@ works on the issue, and the issue's own stream.
 
 The panel's *Decisions* lists every [decision](../concepts/glossary.md#decision) of the milestone's
 issues, with the option chosen; replaced ones are folded. It needs the history database. A link ending in `#D42-3` opens that line.
-The project's *Decisions* tab, with the milestone picked, shows the full cards: the
+The project panel's *Decisions*, with the milestone picked, shows the full cards: the
 question, the option chosen (*Chosen*), the alternatives, why, the run and a link to the comment on
 GitLab, a search, and *Active* or *Superseded*.
 

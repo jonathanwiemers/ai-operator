@@ -35,7 +35,8 @@ const text = (s: string) => (page: Page) => expect(page.locator('main').getByTex
 const shots: Shot[] = [
   { name: 'dashboard', path: '/', ready: text('Checkout without account') },
   { name: 'dashboard-dark', path: '/', colorScheme: 'dark', ready: text('Checkout without account') },
-  { name: 'project-stream', path: `${shop}?tab=activity`, ready: text('Run 2 needs input') },
+  // The project's Cockpit (R15 of "Desk: the Cockpit"): %14's pinned cards, the stream, the panel.
+  { name: 'project-stream', path: shop, ready: (page) => expect(page.locator('main [data-pinned-milestone="14"] [data-problem]').first()).toBeVisible() },
   { name: 'milestone-issues', path: `${shop}/milestones/14?tab=issues`, ready: text('Document the refund flow for support') },
   { name: 'milestone-pilot', path: `${shop}/milestones/14`, ready: text('Split across captures') },
   {

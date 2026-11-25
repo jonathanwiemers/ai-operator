@@ -14,6 +14,9 @@ export interface CockpitStreamScope {
   namespace?: string
   name?: string
   milestoneIID?: number
+  // before pages the stream back: its newest page ends there (a history
+  // day's dayEndCursor); live events do not add to it.
+  before?: string
 }
 
 // useCockpitStream loads a Cockpit's stream (R10 of "Desk: the Cockpit"):
@@ -35,7 +38,7 @@ export function useCockpitStream(scope: () => CockpitStreamScope) {
   let seq = 0
 
   const query = (extra: { before?: string; after?: string } = {}) =>
-    cockpitStreamQuery(scope(), { chat: hasFeature('chat'), q: q.value, ...extra })
+    cockpitStreamQuery(scope(), { chat: hasFeature('chat'), q: q.value, before: extra.after ? undefined : scope().before, ...extra })
   const failed = (e: unknown) => {
     if (!(e instanceof LoginRequiredError)) error.value = errorMessage(e)
   }
@@ -78,7 +81,7 @@ export function useCockpitStream(scope: () => CockpitStreamScope) {
   // events yet, or a search without hits) has no cursor, so it asks for
   // the newest page again, without the Loading state.
   async function loadLive() {
-    if (loading.value) return
+    if (loading.value || scope().before) return
     const mine = seq
     try {
       if (!newest.value) {
@@ -157,7 +160,7 @@ export function useCockpitStream(scope: () => CockpitStreamScope) {
   watch(
     () => {
       const s = scope()
-      return `${s.namespace ?? ''}/${s.name ?? ''}/${s.milestoneIID ?? ''}`
+      return `${s.namespace ?? ''}/${s.name ?? ''}/${s.milestoneIID ?? ''}/${s.before ?? ''}`
     },
     () => {
       stopAnswer()

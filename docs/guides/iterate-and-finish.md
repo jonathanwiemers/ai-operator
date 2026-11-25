@@ -74,8 +74,8 @@ comment. Only the bot's decision comments count, so nobody can add or fake
 a decision with a comment of their own. The reviewers get the planner's
 decisions with the issue.
 
-To read them without GitLab, open the milestone's or the project's
-*Decisions* tab in the Desk: every decision as a card, with search and its
+To read them without GitLab, open the project panel's or the milestone panel's
+*Decisions* in the Desk: every decision as a card, with search and its
 chain of revisits. See [Read and revisit decisions](decisions.md).
 
 ### Change a decision on an open issue
@@ -107,7 +107,7 @@ Once an issue of a planned milestone is merged and closed, you can still
 change its decisions. The operator then creates a **follow-up issue** in
 the milestone that changes it.
 
-**In the Desk.** Open the project's *Decisions* tab, pick the milestone and find the
+**In the Desk.** Open the project's panel on *Decisions*, pick the milestone and find the
 decision's card, or its *Issues* tab, where each issue lists its decision
 IDs. Each has a **Revisit** button:
 

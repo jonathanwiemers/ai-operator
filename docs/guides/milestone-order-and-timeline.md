@@ -8,7 +8,7 @@ GitLab with `/agent move`.
 
 ## The queue
 
-A project page opens on its *Milestones* tab, which starts with the queue. It lists the project's
+A project page's *Milestones* tab starts with the queue. It lists the project's
 open autopilot milestones in their [run order](../concepts/glossary.md#run-order),
 first at the top:
 

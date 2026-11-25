@@ -145,8 +145,8 @@ kubectl apply -f shop.yaml
 Open `https://ai.example.com` and sign in at your provider. The Desk opens
 on *Overview*, with your project's milestones. The rail on the left has
 *Inbox* (everything that needs you, across projects), *Overview*, *Metrics*
-and your projects. A project opens on its *Milestones* tab; its events are on
-*Activity*. A milestone opens on its *Cockpit*, which ends with the message box to the pilot.
+and your projects. A project opens on its *Cockpit*, the stream across its
+milestones. A milestone opens on its *Cockpit*, which ends with the message box to the pilot.
 
 Your user name is on the button at the bottom of the rail. It opens the
 [account menu](../guides/desk.md#the-account-menu): your login, roles, how long

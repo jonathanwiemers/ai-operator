@@ -13,8 +13,10 @@ import {
   planPaneTab,
   planPaneTabs,
   planTabs,
+  projectAlias,
+  projectPanelViews,
+  projectTabFromRoute,
   projectTabsFor,
-  streamBaseTabs,
   tabAlias,
   tabFromQuery,
   tabQuery,
@@ -23,32 +25,34 @@ import {
 
 } from '../src/streamTabs.ts'
 
-test('tabFromQuery: activity is the default', () => {
-  assert.equal(tabFromQuery(undefined), 'activity')
-  assert.equal(tabFromQuery(null), 'activity')
-  assert.equal(tabFromQuery(''), 'activity')
-  assert.equal(tabFromQuery('activity'), 'activity')
+const projectTabs = projectTabsFor(false)
+
+test('tabFromQuery: the first tab is the default', () => {
+  assert.equal(tabFromQuery(undefined, projectTabs), 'cockpit')
+  assert.equal(tabFromQuery(null, projectTabs), 'cockpit')
+  assert.equal(tabFromQuery('', projectTabs), 'cockpit')
+  assert.equal(tabFromQuery('cockpit', projectTabs), 'cockpit')
 })
 
 test('tabFromQuery: known tabs are kept', () => {
-  assert.equal(tabFromQuery('board'), 'board')
-  assert.equal(tabFromQuery('metrics'), 'metrics')
+  assert.equal(tabFromQuery('milestones', projectTabs), 'milestones')
+  assert.equal(tabFromQuery('metrics', projectTabs), 'metrics')
 })
 
-test('tabFromQuery: unknown tabs fall back to activity', () => {
-  assert.equal(tabFromQuery('cost'), 'activity')
-  assert.equal(tabFromQuery('Board'), 'activity')
+test('tabFromQuery: unknown tabs fall back to the first tab', () => {
+  assert.equal(tabFromQuery('cost', projectTabs), 'cockpit')
+  assert.equal(tabFromQuery('Milestones', projectTabs), 'cockpit')
 })
 
 test('tabFromQuery: repeated values take the first known one', () => {
-  assert.equal(tabFromQuery(['x', 'board']), 'board')
-  assert.equal(tabFromQuery([null, 'x']), 'activity')
+  assert.equal(tabFromQuery(['x', 'milestones'], projectTabs), 'milestones')
+  assert.equal(tabFromQuery([null, 'x'], projectTabs), 'cockpit')
 })
 
-test('tabQuery: activity drops the parameter, other tabs set it', () => {
-  assert.deepEqual(tabQuery({ tab: 'board', q: 'x' }, 'activity'), { q: 'x' })
-  assert.deepEqual(tabQuery({ q: 'x' }, 'board'), { q: 'x', tab: 'board' })
-  assert.deepEqual(tabQuery({}, 'activity'), {})
+test('tabQuery: the first tab drops the parameter, other tabs set it', () => {
+  assert.deepEqual(tabQuery({ tab: 'milestones', q: 'x' }, 'cockpit', projectTabs), { q: 'x' })
+  assert.deepEqual(tabQuery({ q: 'x' }, 'milestones', projectTabs), { q: 'x', tab: 'milestones' })
+  assert.deepEqual(tabQuery({}, 'cockpit', projectTabs), {})
 })
 
 test('dashboard tabs: Overview · Activity, Overview is the default, ?tab=stream opens Activity', () => {
@@ -80,9 +84,8 @@ test('milestone tabs: unknown values fall back to Cockpit', () => {
   assert.equal(tabFromQuery(['x', 'metrics'], milestoneTabs), 'metrics')
 })
 
-test('project tabs: issues and cockpit are unknown there', () => {
-  assert.equal(tabFromQuery('issues', projectTabsFor(true)), 'milestones')
-  assert.equal(tabFromQuery('cockpit', projectTabsFor(true)), 'milestones')
+test('project tabs: issues is unknown there', () => {
+  assert.equal(tabFromQuery('issues', projectTabsFor(true)), 'cockpit')
 })
 
 test('milestone tabQuery: Cockpit drops the parameter, Issues and Metrics set it', () => {
@@ -189,31 +192,61 @@ test('planPaneTab: the wide right pane shows Decisions only for ?tab=decisions, 
   assert.equal(planPaneTab('decisions'), 'decisions')
 })
 
-test('project tabs: Milestones · Activity · Decisions · Board · Metrics, Plans only with the plans feature', () => {
-  assert.deepEqual(projectTabsFor(false).map((t) => t.label), ['Milestones', 'Activity', 'Decisions', 'Board', 'Metrics'])
-  assert.deepEqual(projectTabsFor(true).map((t) => t.label), ['Milestones', 'Activity', 'Decisions', 'Board', 'Metrics', 'Plans'])
-  assert.deepEqual(projectTabsFor(true).map((t) => t.id), ['milestones', 'activity', 'decisions', 'board', 'metrics', 'plans'])
-  assert.equal(tabFromQuery('decisions', projectTabsFor(false)), 'decisions')
-  assert.deepEqual(tabQuery({ q: 'x' }, 'decisions', projectTabsFor(false)), { q: 'x', tab: 'decisions' })
-  assert.deepEqual(tabQuery({ tab: 'decisions', q: 'x' }, 'milestones', projectTabsFor(true)), { q: 'x' })
+test('project tabs: Cockpit · Milestones · Metrics, Plans only with the plans feature', () => {
+  assert.deepEqual(projectTabsFor(false).map((t) => t.label), ['Cockpit', 'Milestones', 'Metrics'])
+  assert.deepEqual(projectTabsFor(true).map((t) => t.label), ['Cockpit', 'Milestones', 'Metrics', 'Plans'])
+  assert.deepEqual(projectTabsFor(true).map((t) => t.id), ['cockpit', 'milestones', 'metrics', 'plans'])
   assert.equal(tabFromQuery('plans', projectTabsFor(true)), 'plans')
   assert.deepEqual(tabQuery({}, 'plans', projectTabsFor(true)), { tab: 'plans' })
 })
 
-test('project tabs: Milestones is the default and drops ?tab=, Activity sets it, ?tab=stream opens Activity', () => {
+test('project tabs: the Cockpit is the default and drops ?tab=, Milestones sets it', () => {
   for (const plans of [false, true]) {
     const tabs = projectTabsFor(plans)
-    assert.equal(tabFromQuery(undefined, tabs), 'milestones')
-    assert.equal(tabFromQuery('', tabs), 'milestones')
-    assert.equal(tabFromQuery('milestones', tabs), 'milestones')
-    assert.equal(tabFromQuery('activity', tabs), 'activity')
-    assert.equal(tabFromQuery('stream', tabs), 'activity')
+    assert.equal(tabFromQuery(undefined, tabs), 'cockpit')
+    assert.equal(tabFromQuery('', tabs), 'cockpit')
     assert.equal(tabFromQuery('spend', tabs), 'metrics')
-    assert.deepEqual(tabQuery({ tab: 'activity', q: 'x' }, 'milestones', tabs), { q: 'x' })
-    assert.deepEqual(tabQuery({}, 'activity', tabs), { tab: 'activity' })
+    assert.deepEqual(tabQuery({ tab: 'milestones', q: 'x' }, 'cockpit', tabs), { q: 'x' })
+    assert.deepEqual(tabQuery({}, 'milestones', tabs), { tab: 'milestones' })
   }
-  assert.equal(tabAlias('stream'), 'activity')
-  assert.equal(tabFromQuery('stream'), 'activity')
+})
+
+test('projectTabFromRoute: removed tabs open where their content moved (R15)', () => {
+  const tabs = projectTabsFor(true)
+  assert.equal(projectTabFromRoute(undefined, tabs), 'cockpit')
+  for (const old of ['activity', 'stream', 'decisions']) assert.equal(projectTabFromRoute(old, tabs), 'cockpit', old)
+  assert.equal(projectTabFromRoute('board', tabs), 'milestones')
+  assert.equal(projectTabFromRoute(['x', 'board'], tabs), 'milestones')
+  assert.equal(projectTabFromRoute('plans', tabs), 'plans')
+  assert.equal(projectTabFromRoute('spend', tabs), 'metrics')
+  // Milestone-only aliases are unknown on a project.
+  assert.equal(projectTabFromRoute('issues', tabs), 'cockpit')
+  assert.equal(projectTabFromRoute('needs', tabs), 'cockpit')
+})
+
+test('projectAlias: every removed tab rewrites to its new place, other parameters stay', () => {
+  for (const old of ['activity', 'stream']) assert.deepEqual(projectAlias({ tab: old, q: 'x' }), { q: 'x' }, old)
+  assert.deepEqual(projectAlias({ tab: 'decisions', milestone: '7', q: 'x' }), { milestone: '7', q: 'x', panel: 'decisions' })
+  assert.deepEqual(projectAlias({ tab: 'decisions', panel: 'queue' }), { panel: 'decisions' })
+  assert.deepEqual(projectAlias({ tab: 'board' }), { tab: 'milestones', view: 'board' })
+  assert.deepEqual(projectAlias({ tab: ['activity', 'board'] }), {})
+})
+
+test('projectAlias: current links need no change', () => {
+  assert.equal(projectAlias({}), null)
+  assert.equal(projectAlias({ tab: 'milestones', view: 'board' }), null)
+  assert.equal(projectAlias({ tab: 'metrics', q: 'x' }), null)
+  assert.equal(projectAlias({ tab: 'pilot' }), null)
+  assert.equal(projectAlias({ pilot: '1' }), null)
+})
+
+test('project panel: Queue by default and drops ?panel=, Decisions sets it', () => {
+  assert.deepEqual(projectPanelViews.map((v) => v.label), ['Queue', 'Decisions'])
+  assert.equal(panelFromQuery(undefined, projectPanelViews), 'queue')
+  assert.equal(panelFromQuery('issues', projectPanelViews), 'queue')
+  assert.equal(panelFromQuery('decisions', projectPanelViews), 'decisions')
+  assert.deepEqual(panelQuery({ panel: 'decisions', q: 'x' }, 'queue', projectPanelViews), { q: 'x' })
+  assert.deepEqual(panelQuery({}, 'decisions', projectPanelViews), { panel: 'decisions' })
 })
 
 test('milestone tabs have no Plans', () => {
@@ -221,18 +254,17 @@ test('milestone tabs have no Plans', () => {
 })
 
 test('tabFromQuery: ?tab=plans without the feature falls back to the first tab', () => {
-  assert.equal(tabFromQuery('plans', projectTabsFor(false)), 'milestones')
-  assert.equal(tabFromQuery('plans'), 'activity')
+  assert.equal(tabFromQuery('plans', projectTabsFor(false)), 'cockpit')
 })
 
 test('Metrics tab: the Spend tab renamed, ?tab=spend still opens it', () => {
-  assert.deepEqual(streamBaseTabs.at(-1), { id: 'metrics', label: 'Metrics' })
+  assert.deepEqual(projectTabs.at(-1), { id: 'metrics', label: 'Metrics' })
   assert.equal(tabAlias('spend'), 'metrics')
   assert.equal(tabAlias('metrics'), 'metrics')
   assert.equal(tabAlias('board'), 'board')
   assert.equal(tabAlias('constructor'), 'constructor')
   assert.equal(tabAlias(null), null)
-  assert.equal(tabFromQuery('spend'), 'metrics')
+  assert.equal(tabFromQuery('spend', projectTabs), 'metrics')
   assert.equal(tabFromQuery('spend', milestoneTabs), 'metrics')
   assert.equal(tabFromQuery(['x', 'spend'], milestoneTabs), 'metrics')
   assert.equal(milestoneTabFromRoute('spend', milestoneTabs), 'metrics')

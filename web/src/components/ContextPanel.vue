@@ -1,28 +1,49 @@
 <script setup lang="ts">
-import UEmpty from '@nuxt/ui/components/Empty.vue'
-import Markdown from './Markdown.vue'
-import { computed } from 'vue'
+import UButton from '@nuxt/ui/components/Button.vue'
+import USelect from '@nuxt/ui/components/Select.vue'
+import UTabs from '@nuxt/ui/components/Tabs.vue'
+import UTooltip from '@nuxt/ui/components/Tooltip.vue'
+import { computed, ref } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { decisionsQuery, milestoneFromQuery } from '../decisions'
 import { cost } from '../format'
 import { queueDone, waitingForTurn } from '../milestoneQueue'
-import type { HistoryResponse, InboxItem, MilestoneView, QueueItem } from '../types'
+import { dayEndCursor, heatCellLabel, heatLevel, heatSummary } from '../stream'
+import { projectPanelViews, type PanelView } from '../streamTabs'
+import type { HistoryResponse, MilestoneView, QueueItem } from '../types'
 import CompanionsList from './CompanionsList.vue'
+import MilestoneDecisions from './MilestoneDecisions.vue'
 import QueueList from './QueueList.vue'
-import RelTime from './RelTime.vue'
 
-// ContextPanel sits beside a project stream: what needs you, the active
-// milestone's queue and companions, and the last 30 days. A milestone page
-// has MilestonePanel instead. ContextLayout lays it out: a column from
-// 1180 px, below a sheet that Stream.vue's Context button opens. Refs, URLs and titles
-// wrap anywhere, so the panel never scrolls sideways.
+// ContextPanel is a project page's context panel (R15 of "Desk: the
+// Cockpit"); a milestone page has MilestonePanel. ContextLayout lays it
+// out: a column from 1180 px, below a sheet that the header's Queue and
+// Decisions buttons open. A switch at the top picks the view, which
+// Stream.vue keeps in ?panel= (D790-P2):
+//   - Queue: the active milestone's queue and companions, and the last 30
+//     days; a day of the history pages the project's Cockpit back to that
+//     day (emit day, the selected one is jumped, a dayEndCursor; clear
+//     goes back to now);
+//   - Decisions: the project's stored decisions, all milestones or the one
+//     ?milestone= names, chosen in the select the old Decisions tab had.
+// Refs, URLs and titles wrap anywhere, so the panel never scrolls sideways.
 const props = defineProps<{
   namespace: string
   name: string
-  inbox: InboxItem[]
+  view: PanelView
   milestone?: MilestoneView | null
   history?: HistoryResponse | null
   // The project's milestones, so the milestones it waits for show by title.
   milestones?: { iid: number; title: string }[]
+  jumped?: string
 }>()
+const emit = defineEmits<{ 'update:view': [view: PanelView]; day: [day: string]; clear: [] }>()
+
+const viewItems = projectPanelViews.map((v) => ({ value: v.id, label: v.label }))
+function setView(v: string | number) {
+  const view = projectPanelViews.find((p) => p.id === v)?.id
+  if (view) emit('update:view', view)
+}
 
 const queue = computed((): QueueItem[] => props.milestone?.autopilot?.items ?? [])
 const done = computed(() => queueDone(queue.value))
@@ -30,6 +51,35 @@ const total = computed(() => queue.value.length)
 // Waiting for its turn to be planned: running, so no Inbox item and no pause card.
 const waiting = computed(() => waitingForTurn(props.milestone?.autopilot?.queuedBehind, props.milestones))
 
+// The Decisions view's milestone select (?milestone=, 0 all); one the list
+// lacks shows as %<iid>.
+const route = useRoute()
+const router = useRouter()
+const decisionsMilestone = computed(() => milestoneFromQuery(route.query.milestone))
+const decisionsMilestoneItems = computed(() => {
+  const items = [{ value: 0, label: 'All milestones' }, ...(props.milestones ?? []).map((m) => ({ value: m.iid, label: m.title || `%${m.iid}` }))]
+  const iid = decisionsMilestone.value
+  return iid && !items.some((i) => i.value === iid) ? [...items, { value: iid, label: `%${iid}` }] : items
+})
+function setDecisionsMilestone(iid: number) {
+  void router.replace({ query: decisionsQuery(route.query, { milestone: iid }) })
+}
+
+// The history's day cells: one per day, shaded by its events, a button
+// that pages the Cockpit back to the end of that day. One tooltip for all
+// of them (no tooltip per cell), anchored to the cell under the pointer or
+// with focus.
+const heatDays = computed(() => {
+  const days = props.history?.days ?? []
+  const max = Math.max(1, ...days.map((d) => d.events))
+  return days.map((d) => ({ ...d, level: heatLevel(d.events, max), label: heatCellLabel(d.day, d.events) }))
+})
+const heatDescription = computed(() => heatSummary(heatDays.value))
+const heatHint = ref<{ el: HTMLElement; text: string } | null>(null)
+function showHeatHint(e: Event) {
+  const el = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-heat-day]')
+  heatHint.value = el ? { el, text: el.getAttribute('aria-label') ?? '' } : null
+}
 const chart = computed(() => {
   const days = props.history?.days ?? []
   if (!days.length) return { bars: [], line: '' }
@@ -61,103 +111,121 @@ function spendDelta(cur: number, prev: number) {
   return { text: `${pct > 0 ? '+' : ''}${pct}%`, cls: pct > 0 ? 'down' : 'up' }
 }
 
-function inboxTo(item: InboxItem) {
-  if ((item.kind === 'task' || item.kind === 'companionReady' || item.kind === 'budgetWarning') && item.task) {
-    return {
-      name: 'task' as const,
-      params: { namespace: item.namespace, name: item.project, task: item.task },
-    }
-  }
-  if (item.milestoneIID) {
-    return {
-      name: 'stream-milestone' as const,
-      params: { namespace: item.namespace, name: item.project, iid: String(item.milestoneIID) },
-    }
-  }
-  return {
-    name: 'stream-project' as const,
-    params: { namespace: item.namespace, name: item.project },
-  }
-}
 </script>
 
 <template>
-  <aside class="ctxp" aria-label="Context">
-    <div class="panel">
-      <h2>
-        <span>Needs you</span>
-        <span>{{ inbox.length }}</span>
-      </h2>
-      <UEmpty v-if="!inbox.length" icon="i-lucide-inbox" title="Nothing waiting." variant="naked" size="xs" />
-      <div v-else class="need">
-        <RouterLink v-for="(item, i) in inbox" :key="i" class="n-item min-w-0 [overflow-wrap:anywhere]" :to="inboxTo(item)">
-          <b>{{ item.kind === 'proposal' && item.proposalID != null ? `P${item.proposalID}` : item.issueIID ? `#${item.issueIID}` : item.project }}</b>
-          {{ item.title }}
-          <small><Markdown mode="inline" :text="item.reason" /><template v-if="item.at"> · <RelTime :time="item.at" /></template></small>
-        </RouterLink>
-      </div>
-    </div>
+  <aside class="ctxp" aria-label="Project context" data-project-panel>
+    <UTabs
+      :model-value="view"
+      :items="viewItems"
+      variant="pill"
+      size="sm"
+      :content="false"
+      aria-label="Panel view"
+      data-panel-switch
+      @update:model-value="setView"
+    />
 
-    <div v-if="milestone" class="panel">
-      <h2>
-        <span class="min-w-0 [overflow-wrap:anywhere]">{{ milestone.title }}</span>
-        <span v-if="total">{{ done }} / {{ total }}</span>
-      </h2>
-      <p v-if="waiting" class="waiting [overflow-wrap:anywhere]">
-        ⏳ {{ waiting }}.
-        <small>Comment <code>/agent start</code> on the tracking issue to plan it now (owners).</small>
-      </p>
-      <QueueList :namespace="namespace" :name="name" :milestone="milestone" compact />
-    </div>
-
-    <div v-if="milestone && milestone.companions?.length" class="panel">
-      <h2>
-        <span>Companions</span>
-        <span>{{ milestone.companions.length }}</span>
-      </h2>
-      <CompanionsList :namespace="namespace" :name="name" :milestone="milestone" />
-    </div>
-
-    <div v-if="history" class="panel">
-      <h2><span>Last 30 days</span></h2>
-      <svg class="chart" viewBox="0 0 300 64" preserveAspectRatio="none" aria-label="Runs per day and spend">
-        <rect v-for="(b, i) in chart.bars" :key="i" :x="b.x" :y="b.y" :width="b.w" :height="b.h" rx="1.5" fill="var(--tone-progress-fg)" opacity=".55" />
-        <polyline v-if="chart.line" fill="none" stroke="var(--accent-2)" stroke-width="2" vector-effect="non-scaling-stroke" :points="chart.line" />
-      </svg>
-      <div class="legend">
-        <span><i class="runs" />runs / day</span>
-        <span><i class="spend" />spend</span>
+    <template v-if="view === 'queue'">
+      <div v-if="milestone" class="panel" data-panel-view="queue">
+        <h2>
+          <span class="min-w-0 [overflow-wrap:anywhere]">{{ milestone.title }}</span>
+          <span v-if="total">{{ done }} / {{ total }}</span>
+        </h2>
+        <p v-if="waiting" class="waiting [overflow-wrap:anywhere]">
+          ⏳ {{ waiting }}.
+          <small>Comment <code>/agent start</code> on the tracking issue to plan it now (owners).</small>
+        </p>
+        <QueueList :namespace="namespace" :name="name" :milestone="milestone" compact />
       </div>
-      <div class="stats">
-        <div class="stat">
-          <div class="v">{{ history.totals.runs }}</div>
-          <div class="l">runs</div>
-          <div class="d" :class="delta(history.totals.runs, history.previous.runs).cls">
-            {{ delta(history.totals.runs, history.previous.runs).text }}
-          </div>
+
+      <div v-if="milestone && milestone.companions?.length" class="panel">
+        <h2>
+          <span>Companions</span>
+          <span>{{ milestone.companions.length }}</span>
+        </h2>
+        <CompanionsList :namespace="namespace" :name="name" :milestone="milestone" />
+      </div>
+
+      <div v-if="history" class="panel">
+        <h2>
+          <span>Last 30 days</span>
+          <UButton v-if="jumped" color="neutral" variant="link" size="xs" class="p-0 text-[11.5px] text-(--link)" label="Back to now" data-heat-clear @click="emit('clear')" />
+        </h2>
+        <p v-if="heatDays.length" class="sr-only" data-heat-summary>{{ heatDescription }}</p>
+        <div v-if="heatDays.length" class="cells" title="Events per day; pick one to page the Cockpit back to it" @pointerover="showHeatHint" @focusin="showHeatHint" @pointerleave="heatHint = null" @focusout="heatHint = null">
+          <!-- A cell's look is the heatmap's (.cells button below), not a button's. -->
+          <UButton
+            v-for="d in heatDays"
+            :key="d.day"
+            color="neutral"
+            variant="ghost"
+            :data-l="d.level"
+            :data-heat-day="d.day"
+            :aria-label="d.label"
+            :aria-pressed="jumped === dayEndCursor(d.day)"
+            :class="{ sel: jumped === dayEndCursor(d.day) }"
+            @click="emit('day', d.day)"
+          />
         </div>
-        <div class="stat">
-          <div class="v">{{ history.totals.merged }}</div>
-          <div class="l">MRs merged</div>
-          <div class="d" :class="delta(history.totals.merged, history.previous.merged).cls">
-            {{ delta(history.totals.merged, history.previous.merged).text }}
-          </div>
+        <UTooltip :open="!!heatHint" :reference="heatHint?.el" :text="heatHint?.text" />
+        <svg class="chart" viewBox="0 0 300 64" preserveAspectRatio="none" aria-label="Runs per day and spend">
+          <rect v-for="(b, i) in chart.bars" :key="i" :x="b.x" :y="b.y" :width="b.w" :height="b.h" rx="1.5" fill="var(--tone-progress-fg)" opacity=".55" />
+          <polyline v-if="chart.line" fill="none" stroke="var(--accent-2)" stroke-width="2" vector-effect="non-scaling-stroke" :points="chart.line" />
+        </svg>
+        <div class="legend">
+          <span><i class="runs" />runs / day</span>
+          <span><i class="spend" />spend</span>
         </div>
-        <div class="stat">
-          <div class="v">{{ cost(String(history.totals.costUSD)) }}</div>
-          <div class="l">model spend</div>
-          <div class="d" :class="spendDelta(history.totals.costUSD, history.previous.costUSD).cls">
-            {{ spendDelta(history.totals.costUSD, history.previous.costUSD).text }}
+        <div class="stats">
+          <div class="stat">
+            <div class="v">{{ history.totals.runs }}</div>
+            <div class="l">runs</div>
+            <div class="d" :class="delta(history.totals.runs, history.previous.runs).cls">
+              {{ delta(history.totals.runs, history.previous.runs).text }}
+            </div>
           </div>
-        </div>
-        <div class="stat">
-          <div class="v">{{ history.totals.events }}</div>
-          <div class="l">events</div>
-          <div class="d" :class="delta(history.totals.events, history.previous.events).cls">
-            {{ delta(history.totals.events, history.previous.events).text }}
+          <div class="stat">
+            <div class="v">{{ history.totals.merged }}</div>
+            <div class="l">MRs merged</div>
+            <div class="d" :class="delta(history.totals.merged, history.previous.merged).cls">
+              {{ delta(history.totals.merged, history.previous.merged).text }}
+            </div>
+          </div>
+          <div class="stat">
+            <div class="v">{{ cost(String(history.totals.costUSD)) }}</div>
+            <div class="l">model spend</div>
+            <div class="d" :class="spendDelta(history.totals.costUSD, history.previous.costUSD).cls">
+              {{ spendDelta(history.totals.costUSD, history.previous.costUSD).text }}
+            </div>
+          </div>
+          <div class="stat">
+            <div class="v">{{ history.totals.events }}</div>
+            <div class="l">events</div>
+            <div class="d" :class="delta(history.totals.events, history.previous.events).cls">
+              {{ delta(history.totals.events, history.previous.events).text }}
+            </div>
           </div>
         </div>
       </div>
+    </template>
+
+    <div v-else data-panel-view="decisions">
+      <MilestoneDecisions :namespace="namespace" :name="name" :milestone="decisionsMilestone" :milestones="milestones ?? []">
+        <template #controls>
+          <USelect
+            :model-value="decisionsMilestone"
+            :items="decisionsMilestoneItems"
+            aria-label="Milestone"
+            trailing-icon="i-lucide-chevron-down"
+            selected-icon="i-lucide-check"
+            class="min-h-11 w-full tablet:min-h-0"
+            :ui="{ base: 'tablet:text-sm/5', item: 'min-h-11 tablet:min-h-0' }"
+            data-decisions-milestone
+            @update:model-value="setDecisionsMilestone(Number($event))"
+          />
+        </template>
+      </MilestoneDecisions>
     </div>
   </aside>
 </template>
@@ -207,26 +275,45 @@ function inboxTo(item: InboxItem) {
   color: var(--text-2);
   font-size: 12px;
 }
-.need {
+/* The days wrap in rows of cells at least 24 px wide and high, the target
+   size of WCAG 2.2 (2.5.8): about ten to a row in the 320 px column. */
+.cells {
   display: grid;
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(24px, 1fr));
+  gap: 3px;
+  margin-bottom: 10px;
 }
-.need a.n-item {
-  display: block;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: var(--tone-warning-bg);
-  color: var(--text);
-  font-size: 13px;
+.cells button {
+  min-width: 24px;
+  height: 24px;
+  border-radius: 3px;
+  background: var(--surface-3);
+  border: 0;
+  cursor: pointer;
+  padding: 0;
 }
-.need a.n-item:hover {
-  text-decoration: none;
-  filter: brightness(0.98);
+.cells button[data-l='1'] {
+  background: color-mix(in srgb, var(--tone-progress-fg) 25%, var(--surface-3));
 }
-.need a.n-item small {
-  display: block;
-  color: var(--text-2);
-  font-size: 12px;
+.cells button[data-l='2'] {
+  background: color-mix(in srgb, var(--tone-progress-fg) 50%, var(--surface-3));
+}
+.cells button[data-l='3'] {
+  background: color-mix(in srgb, var(--tone-progress-fg) 80%, var(--surface-3));
+}
+.cells button.sel {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+/* On phones every button is at least 44 px wide and high (style.css, "Hit
+   areas"): the columns grow to match, so no cell reaches past the panel. */
+@media (max-width: 759.98px) {
+  .cells {
+    grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+  }
+  .cells button {
+    height: 44px;
+  }
 }
 .stats {
   display: grid;

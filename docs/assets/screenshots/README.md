@@ -10,7 +10,7 @@ docs-screenshots` renders them again, see
 | File | Page | Used in |
 |------|------|---------|
 | [`dashboard.webp`](dashboard.webp), [`dashboard-dark.webp`](dashboard-dark.webp) | Overview (`/`) | README, [docs](../../README.md) |
-| [`project-stream.webp`](project-stream.webp) | Project page (to retake: *Activity* tab with its toolbar) | [guides/desk.md, A project](../../guides/desk.md#a-project) |
+| [`project-stream.webp`](project-stream.webp) | Project page (to retake: *Cockpit* with a milestone's pinned cards and the panel) | [guides/desk.md, A project](../../guides/desk.md#a-project) |
 | [`milestone-issues.webp`](milestone-issues.webp) | Milestone, *Issues* tab | [guides/desk.md, Issues](../../guides/desk.md#issues) |
 | [`milestone-pilot.webp`](milestone-pilot.webp) | Milestone, *Needs you* tab with the pause card | [guides/pauses.md, When it pauses](../../guides/pauses.md#when-it-pauses) |
 | [`milestone-retrospective.webp`](milestone-retrospective.webp) | Milestone, *Retrospective* tab | [guides/pilot.md, The retrospective](../../guides/pilot.md#the-retrospective) |

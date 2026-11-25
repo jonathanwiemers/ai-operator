@@ -51,7 +51,7 @@ and it gets its own merge request; see
 A choice an agent made and recorded on the issue, with why and the
 alternatives it rejected, under an ID such as `D42-3` (or `D42-P1` for the
 planner's). You can [revisit](#revisit) any of them. The Desk's
-*Decisions* tab shows them; see
+*Decisions* panel shows them; see
 [Read and revisit decisions](../guides/decisions.md) and
 [How it works](how-it-works.md#from-spec-to-merged-work).
 

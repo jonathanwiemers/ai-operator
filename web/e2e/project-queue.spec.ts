@@ -88,7 +88,8 @@ async function open(page: Page, baseURL: string | undefined, server: Server, wid
     if (typeof body === 'string') return r.fulfill({ status: 200, contentType: 'text/plain; charset=utf-8', body })
     return r.fulfill({ status: 200, json: body })
   })
-  await page.goto(projectPath)
+  // The queue is on the Milestones tab (the project opens on its Cockpit).
+  await page.goto(`${projectPath}?tab=milestones`)
   await expect(queue(page).locator('[data-queue-entry]')).toHaveCount(server.queue.length)
 }
 

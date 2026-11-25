@@ -89,7 +89,14 @@ function span(g: CockpitGroup): string {
     <section aria-label="Stream" data-cockpit-stream>
       <UDashboardToolbar class="mt-3" :ui="searchToolbarUi" data-tab-toolbar>
         <template #left>
-          <USwitch v-model="expandAll" label="Expand all" data-cockpit-expand />
+          <!-- On phones the switch is a 44 px target (style.css, "Hit areas"):
+               its container grows to it, so it stays in its toolbar row. -->
+          <USwitch
+            v-model="expandAll"
+            label="Expand all"
+            :ui="{ root: 'items-center tablet:items-start', container: 'min-h-11 tablet:min-h-0' }"
+            data-cockpit-expand
+          />
         </template>
         <template #right>
           <form role="search" class="w-full tablet:w-45" @submit.prevent="applySearch">

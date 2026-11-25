@@ -2,7 +2,7 @@
 import UButton from '@nuxt/ui/components/Button.vue'
 import UCollapsible from '@nuxt/ui/components/Collapsible.vue'
 import { computed } from 'vue'
-import { liveLines } from '../../cockpitLive'
+import { liveLines, type LiveLine } from '../../cockpitLive'
 import type { Task } from '../../generated/views'
 import { useNow } from '../../live'
 import LiveTranscript from '../LiveTranscript.vue'
@@ -12,17 +12,25 @@ import LiveTranscript from '../LiveTranscript.vue'
 // runs now, "#712 implementing · 4 min". The tasks come from the page's
 // milestone, which live updates reload, so a line goes when its run ends.
 // With the transcript grant a line opens the task's LiveTranscript inline
-// (mounted only while open); without it, it links to the task page.
-const props = defineProps<{ namespace: string; name: string; tasks?: Task[]; transcript?: boolean }>()
+// (mounted only while open); without it, it links to the task page. On the
+// project Cockpit (R15) milestones maps each task to its milestone, and a
+// line links to that milestone's Cockpit.
+const props = defineProps<{ namespace: string; name: string; tasks?: Task[]; transcript?: boolean; milestones?: Record<string, number> }>()
 
 const now = useNow()
 const lines = computed(() => liveLines(props.tasks, now.value))
+function lineTo(l: LiveLine) {
+  const { namespace, name } = props
+  const iid = props.milestones?.[l.task]
+  if (iid) return { name: 'stream-milestone' as const, params: { namespace, name, iid: String(iid) } }
+  return { name: 'task' as const, params: { namespace, name, task: l.task } }
+}
 </script>
 
 <template>
   <section v-if="lines.length" aria-label="Running now" class="cockpit-live" data-cockpit-live>
     <template v-for="l in lines" :key="l.task">
-      <UCollapsible v-if="transcript" data-cockpit-live-line>
+      <UCollapsible v-if="transcript && !milestones" data-cockpit-live-line>
         <template #default="{ open }">
           <UButton
             color="neutral"
@@ -45,7 +53,7 @@ const lines = computed(() => liveLines(props.tasks, now.value))
         block
         icon="i-lucide-activity"
         class="line"
-        :to="{ name: 'task', params: { namespace, name, task: l.task } }"
+        :to="lineTo(l)"
         :label="l.text"
         data-cockpit-live-line
       />
