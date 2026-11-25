@@ -10,7 +10,7 @@ import NowNext from './NowNext.vue'
 
 // MilestonePanel is a milestone page's sidebar, Now & next (R7 of "Desk:
 // the Cockpit newest first by issue"), laid out by ContextLayout: a column
-// from 1180 px, a slide-over below that the header's Now & next button
+// from 1180 px (collapsible to a rail), a slide-over below that the Now strip
 // opens. It feeds NowNext from the milestone's queue items and tasks and
 // the project's queue. A Running or Waiting row opens the issue's thread
 // in the Cockpit (#issue-<iid>), from any tab; with the transcript grant a

@@ -1,8 +1,10 @@
 // The milestone's Now & next sidebar (R7 of "Desk: the Cockpit newest first
 // by issue", #820), which replaced the panel's Issues and Queue views. At
-// 1280 px it is a column beside the Cockpit; at 390 px the header's Now &
-// next button, or an old ?panel=issues or ?panel=queue link, opens it as a
-// slide-over, Escape closes it and focus returns to the button. A Running
+// 1280 px it is a column beside the Cockpit, which collapses to a rail with
+// the counts and stays collapsed after a reload (R8, #821); at 390 px the
+// Now strip under the header ("1 running · 2 waiting · next #283"), or an
+// old ?panel=issues or ?panel=queue link, opens it as a slide-over, Escape
+// closes it and focus returns to the strip. A Running
 // row opens the issue's thread in the Cockpit, with ?live=1 under the
 // transcript grant. The old Decisions view is the Decisions tab (R6): an
 // old ?panel=decisions#<id> link lands on the tab at the card. axe on both
@@ -89,9 +91,10 @@ async function open(page: Page, baseURL: string | undefined, path: string, width
 
 const panel = (page: Page) => page.getByRole('complementary', { name: 'Now & next' })
 const section = (page: Page, id: string) => panel(page).locator(`[data-now-section="${id}"]`)
-// The header's button by its data attribute: while the modal slide-over is
-// open, the page behind it is hidden from role queries.
-const headerButton = (page: Page) => page.locator('main [data-stream-head] [data-panel-open="now"]')
+// The Now strip by its data attribute: while the modal slide-over is open,
+// the page behind it is hidden from role queries.
+const strip = (page: Page) => page.locator('main [data-stream-head] [data-now-strip]')
+const stripText = '1 running · 2 waiting · next #283'
 
 // expectSections checks the four sections on the fixture.
 async function expectSections(page: Page) {
@@ -150,24 +153,64 @@ test('without the transcript grant a Running row opens the thread only@1280', as
   expect(problems).toEqual([])
 })
 
-test('on the Issues tab the sidebar is a slide-over at every width@1280', async ({ page, baseURL }) => {
-  const problems = await open(page, baseURL, `${milestonePath}?tab=issues`, 1280)
-  await expect(panel(page), 'no column beside the Issues table').toHaveCount(0)
-  await headerButton(page).click()
-  await expect(page.getByRole('dialog', { name: 'Now & next' })).toBeVisible()
+// The rail (R8): collapsing the column leaves the counts and an expand
+// button, and the state outlives a reload (localStorage, the same on every
+// page). Focus moves to the counterpart button after each toggle.
+test('the sidebar collapses to a rail with the counts, which stays after a reload@1280', async ({ page, baseURL }) => {
+  const problems = await open(page, baseURL, milestonePath, 1280)
+  await expect(panel(page)).toBeVisible()
+  await expect(strip(page), 'no strip beside a column').toHaveCount(0)
+  await page.locator('main').getByRole('button', { name: 'Collapse Now & next' }).click()
+  const rail = page.locator('main [data-sidebar-rail]')
+  await expect(rail).toBeVisible()
+  await expect(panel(page)).toHaveCount(0)
+  const expand = rail.getByRole('button', { name: 'Expand Now & next' })
+  await expect(expand).toBeFocused()
+  const counts = rail.getByRole('list', { name: 'Now & next counts' }).getByRole('listitem')
+  await expect(counts).toHaveText([/1\s*1 running/, /2\s*2 waiting/, /1\s*1 next/])
+  const width = await rail.evaluate((e) => e.getBoundingClientRect().width)
+  expect(width, 'a narrow rail').toBeLessThanOrEqual(56)
+  expect(await axe(page, '[data-sidebar-rail]')).toEqual([])
+
+  await page.reload()
+  await expect(page.locator('main [data-sidebar-rail]'), 'still collapsed').toBeVisible()
+  await expect(panel(page)).toHaveCount(0)
+  expect(await page.evaluate(() => localStorage.getItem('desk.sidebar'))).toBe('rail')
+
+  await page.locator('main [data-sidebar-rail]').getByRole('button', { name: 'Expand Now & next' }).click()
+  await expect(panel(page)).toBeVisible()
   await expectSections(page)
-  await page.keyboard.press('Escape')
-  await expect(headerButton(page)).toBeFocused()
+  await expect(page.locator('main').getByRole('button', { name: 'Collapse Now & next' })).toBeFocused()
+  expect(await axe(page, '[data-context-layout] > :last-child')).toEqual([])
+  expect(await page.evaluate(() => localStorage.getItem('desk.sidebar'))).toBe('column')
   expect(problems).toEqual([])
 })
 
-test('the Now & next button opens the slide-over, Escape closes it and focus returns@390', async ({ page, baseURL }) => {
+test('on the Issues tab the sidebar is a slide-over at every width@1280', async ({ page, baseURL }) => {
+  const problems = await open(page, baseURL, `${milestonePath}?tab=issues`, 1280)
+  await expect(panel(page), 'no column beside the Issues table').toHaveCount(0)
+  await strip(page).click()
+  await expect(page.getByRole('dialog', { name: 'Now & next' })).toBeVisible()
+  await expectSections(page)
+  await page.keyboard.press('Escape')
+  await expect(strip(page)).toBeFocused()
+  expect(problems).toEqual([])
+})
+
+test('the Now strip opens the slide-over, Escape closes it and focus returns@390', async ({ page, baseURL }) => {
   const problems = await open(page, baseURL, milestonePath, 390)
   await expect(panel(page), 'no column on a phone').toHaveCount(0)
-  await expect(page.locator('main [data-stream-head] [data-panel-open]'), 'one button').toHaveCount(1)
-  const button = headerButton(page)
-  await expect(button).toHaveText('Now & next')
+  await expect(page.locator('main [data-stream-head] [data-panel-open]'), 'one opener: the strip').toHaveCount(1)
+  const button = strip(page)
+  await expect(button).toHaveText(stripText)
+  await expect(button).toHaveAccessibleName(`Now & next: ${stripText}`)
+  await expect(button).toHaveAttribute('aria-haspopup', 'dialog')
   await expect(button).toHaveAttribute('aria-expanded', 'false')
+  // Part of the header, above the one row of tabs (%41).
+  const tabs = page.locator('main [data-stream-head]').getByRole('navigation', { name: 'View' })
+  expect(await button.evaluate((b, t) => !!(b.compareDocumentPosition(t!) & Node.DOCUMENT_POSITION_FOLLOWING), await tabs.elementHandle())).toBe(true)
+  expect(await axe(page, '[data-stream-head]')).toEqual([])
+  await expect(page.locator('main [data-sidebar-rail], main [data-rail-collapse]'), 'no rail on a phone').toHaveCount(0)
   await button.click()
   const sheet = page.getByRole('dialog', { name: 'Now & next' })
   await expect(sheet).toBeVisible()
@@ -186,7 +229,7 @@ test('the Now & next button opens the slide-over, Escape closes it and focus ret
 
 test('a Running row in the slide-over closes it and opens the thread@390', async ({ page, baseURL }) => {
   const problems = await open(page, baseURL, milestonePath, 390)
-  await headerButton(page).click()
+  await strip(page).click()
   const sheet = page.getByRole('dialog', { name: 'Now & next' })
   await sheet.getByRole('link', { name: /^#282 implementing/ }).click()
   await expect(sheet).toBeHidden()
@@ -199,7 +242,7 @@ test('a Running row in the slide-over closes it and opens the thread@390', async
 // page (this milestone's own link).
 test('a milestone link in the slide-over closes it@390', async ({ page, baseURL }) => {
   const problems = await open(page, baseURL, milestonePath, 390)
-  await headerButton(page).click()
+  await strip(page).click()
   const sheet = page.getByRole('dialog', { name: 'Now & next' })
   await expect(sheet).toBeVisible()
   await sheet.locator('[data-now-milestone="14"]').getByRole('link').click()

@@ -939,7 +939,7 @@ renders on tablet and desktop). It is the `UDashboardSidebar`'s own slideover
 `milestoneCounts` (`N active · M settling`, zero parts left out). Below 1180 px the stream header's
 *Queue* and *Decisions* buttons open the project's context panel (`components/ContextPanel.vue`) on that view
 from the right, the side it has on desktop, and on a milestone page the
-*Now & next* button opens the milestone's sidebar
+Now strip under the header opens the milestone's sidebar
 (`components/MilestonePanel.vue`); widening the window to 1180 px
 closes the sheet. Dialogs (`UModal`) close the same ways, for example the
 Retrospective tab's dismiss confirmation.
@@ -2486,15 +2486,38 @@ or project (D820-P3). With nothing running, waiting or next it shows
 
 There is one view, so no `?panel=`: `milestoneAlias` drops the old
 `?panel=issues` and `?panel=queue`, and `Stream.vue` opens the sheet for
-them below 1180 px (D820-P2). Below 1180 px (and on the Issues tab) the
-header has one *Now & next* button, on phones too; a followed link closes
-the sheet without returning focus to the button (`opener` false), and the
-router does not jump to the top for a `#issue-` link on the same page, so
-the thread stays in view on phones. The panel's styles are scoped, not Tailwind utilities, and it
-uses icons the initial bundle already has: the initial budget is at its
-cap (see [Bundle budget](#bundle-budget)). `e2e/milestone-panel.spec.ts`
+them below 1180 px (D820-P2). A followed link closes the sheet without
+returning focus to its opener (`opener` false), and the router does not
+jump to the top for a `#issue-` link on the same page, so the thread stays
+in view on phones.
+
+**The rail and the strip** (R8, #821):
+
+- **The rail.** `Stream.vue` passes `collapsible` to `ContextLayout`. The
+  column then has a *Collapse Now & next* button in its top corner, and
+  collapsed it is a 52 px rail with *Expand Now & next* and the `rail`
+  slot: `components/NowRail.vue`, the running, waiting and next counts of
+  `nowAndNext(...).counts`, each an icon and a number with a
+  screen-reader label ("2 running"). After a toggle, focus moves to the
+  other button. Sheets have no rail.
+- **The rail state** is the browser's, the same on every page (D821-P1):
+  `useSidebarCollapsed()` (`sidebarRail.ts`) is one shared ref, backed by
+  `localStorage` under `desk.sidebar` (`rail` or `column`), guarded like
+  the theme (a missing, unknown or unreadable value is the column), and
+  updated from the `storage` event when another tab changes it.
+- **The strip.** Where the sidebar is a sheet (below 1180 px, and on the
+  Issues tab) one full-width `UButton` above the tab row opens it, part of
+  the header block, not a second row of tabs: `nowStripText(counts)`,
+  such as "1 running · 2 waiting · next #283", or "Nothing running". Its
+  name is "Now & next: …", with `aria-haspopup="dialog"` and
+  `aria-expanded`; it is the `opener` that Escape returns focus to.
+
+The panel, rail and strip styles are scoped, not Tailwind utilities, and
+they use icons the initial bundle already has: the initial budget is at
+its cap (see [Bundle budget](#bundle-budget)). `e2e/milestone-panel.spec.ts`
 checks the four sections at 1280 px and 390 px, the row links, the old
-links, Escape, focus return and axe.
+links, collapse, reload and expand at 1280 px, the strip at 390 px,
+Escape, focus return and axe.
 
 The milestone API carries the **pause history** (`pauses`, from the
 `autopilot.paused`/`autopilot.resumed` events within the history

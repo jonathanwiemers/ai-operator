@@ -59,9 +59,13 @@ Beside the stream, the **Now & next** sidebar shows what goes on:
   opens the *Issues* tab.
 - **Milestones**: this milestone with "3 of 9 merged", then the next ones.
 
-From 1180 px the sidebar is a column. On a narrower screen, and on a
-phone, the *Now & next* button in the page header opens it as a sheet
-from the right. Escape closes it and puts the focus back on the button.
+From 1180 px the sidebar is a column. *Collapse Now & next* shrinks it
+to a narrow rail with the counts of running, waiting and next issues;
+*Expand Now & next* brings it back. Your browser remembers the choice on
+every page. On a narrower screen, and on a phone, a one-line strip under
+the page header sums it up, such as "1 running · 2 waiting · next #717",
+or "Nothing running". The strip opens the sidebar as a sheet from the
+right. Escape closes it and puts the focus back on the strip.
 The [decisions](../concepts/glossary.md#decision) are on the *Decisions*
 tab.
 

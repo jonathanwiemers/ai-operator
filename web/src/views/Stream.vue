@@ -31,8 +31,10 @@ import PlanList from '../components/PlanList.vue'
 import ProjectDecisions from '../components/ProjectDecisions.vue'
 import ProjectFinishing from '../components/ProjectFinishing.vue'
 import RouteTabs from '../ui/RouteTabs.vue'
-import { live, useResource } from '../live'
+import { live, useNow, useResource } from '../live'
 import { needsOpen } from '../needsOpen'
+import { nowAndNext, nowStripText } from '../nowAndNext'
+import NowRail from '../components/NowRail.vue'
 import { pausePrompt } from '../pauseCard'
 import {
   dayEndCursor,
@@ -156,6 +158,17 @@ const hasContext = computed(() => !!props.namespace && !!props.name)
 const contextOpen = ref(false)
 const panelOpener = ref<HTMLElement | null | false>(null)
 const panel = computed(() => (milestoneIID.value ? { id: 'now', label: 'Now & next' } : { id: 'queue', label: 'Queue' }))
+
+// A milestone's Now & next counts (R8): the collapsed sidebar's rail and,
+// where the sidebar is a slide-over, the strip under the header that opens
+// it ("2 running · 1 waiting · next #717", or "Nothing running").
+const now = useNow()
+const nowCounts = computed(() => {
+  const m = pageMilestone.value
+  if (!milestoneIID.value || !m) return null
+  return nowAndNext({ milestone: m, items: m.autopilot?.items, tasks: m.tasks, queue: pageProject.value?.queue, now: now.value }).counts
+})
+const nowStrip = computed(() => (nowCounts.value ? nowStripText(nowCounts.value) : 'Now & next'))
 
 // A day of the project panel's history pages the project's Cockpit back to
 // the end of that day (D790-P2): the Cockpit tab opens, the sheet closes so
@@ -408,12 +421,14 @@ watch(
     :title="panel.label"
     :description="milestoneIID ? 'What runs, waits and comes next, and the milestones after this one' : 'The queue and companions of the project\'s active milestone, and its last 30 days'"
     :opener="panelOpener"
+    :collapsible="!!milestoneIID"
   >
+    <template v-if="nowCounts" #rail><NowRail :counts="nowCounts" /></template>
     <template #default="{ sheet }">
     <div class="stream">
       <!-- The page header (decision 4): the milestone's status as eyebrow,
            the title, the cost as meta line (one number on every tab,
-           headerCost.ts), the panel's view buttons (below 1180 px) and ⋯ with the links to
+           headerCost.ts), the project panel's button or a milestone's Now strip (below 1180 px) and ⋯ with the links to
            GitLab on the right, then the tab row; the page's alerts are in
            the tabs. Filters and search are in the tabs'
            toolbars (decision 3). -->
@@ -425,8 +440,9 @@ watch(
           <template v-if="pageCost" #description><CostChip :cost="pageCost" data-header-cost /></template>
           <template #links>
             <HeaderActions :actions="links" :shown="0">
-              <!-- The panel's button (below 1180 px, phones too). -->
-              <template v-if="sheet">
+              <!-- The project panel's button (below 1180 px, phones too); a
+                   milestone has the strip below instead. -->
+              <template v-if="sheet && !milestoneIID">
                 <UButton
                   color="neutral"
                   variant="outline"
@@ -442,6 +458,26 @@ watch(
             </HeaderActions>
           </template>
         </UPageHeader>
+        <!-- The Now strip (R8): one line of the header, above the tabs,
+             where the milestone's sidebar is a slide-over. -->
+        <UButton
+          v-if="sheet && milestoneIID"
+          color="neutral"
+          variant="soft"
+          size="sm"
+          block
+          icon="i-lucide-activity"
+          trailing-icon="i-lucide-chevron-right"
+          class="now-strip min-h-11 tablet:min-h-0"
+          :label="nowStrip"
+          :aria-label="`Now & next: ${nowStrip}`"
+          aria-haspopup="dialog"
+          :aria-expanded="contextOpen"
+          :ui="{ label: 'truncate', trailingIcon: 'ms-auto' }"
+          data-panel-open="now"
+          data-now-strip
+          @click="openContext"
+        />
         <RouteTabs :tabs="tabs" :active="tab" :to="tabTo" :badges="tabBadges" />
       </div>
 
@@ -636,6 +672,11 @@ watch(
 }
 .scroll.board {
   padding-top: 18px;
+}
+/* The Now strip, a line of the header above the tabs. */
+[data-stream-head] :deep(.now-strip) {
+  justify-content: flex-start;
+  margin-bottom: 8px;
 }
 .milestones {
   padding-top: 4px;

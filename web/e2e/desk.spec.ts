@@ -2817,10 +2817,11 @@ test.describe('landmarks and route focus', () => {
     })
   }
 
+  // The Now strip (#821) opens it, named "Now & next: <counts>".
   test('the milestone page panel sheet is the Now & next landmark@760', async ({ page, baseURL }) => {
     const problems = await load(page, baseURL, milestone, { width: 760, height: 1024 })
     await expect(page.getByRole('complementary', { name: 'Now & next' }), 'closed').toHaveCount(0)
-    await page.locator('main').getByRole('button', { name: 'Now & next', exact: true }).click()
+    await page.locator('main').getByRole('button', { name: /^Now & next: / }).click()
     const sheet = page.getByRole('dialog', { name: 'Now & next' })
     await expect(sheet.getByRole('complementary', { name: 'Now & next' })).toBeVisible()
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
