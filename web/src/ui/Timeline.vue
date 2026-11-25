@@ -24,12 +24,14 @@ const labelCol = 'sticky left-0 z-10 w-28 shrink-0 bg-(--surface) tablet:w-56'
 const trackBox = 'relative mr-10 flex-1'
 const tone: Record<SegmentLayout['kind'], string> = {
   running: 'border-(--tone-progress-fg) bg-(--tone-progress-bg)',
+  review: 'border-(--tone-info-fg) bg-(--tone-info-bg)',
+  ci: 'border-(--tone-neutral-fg) bg-(--tone-neutral-bg)',
   waiting: 'border-(--tone-muted-fg) bg-(--tone-muted-bg)',
   held: 'border-(--tone-warning-fg) bg-(--tone-warning-bg)',
 }
 // On the Overview a segment takes its milestone's colour, stronger while
 // running, mixed into the surface so the label keeps its contrast.
-const mix: Record<SegmentLayout['kind'], number> = { running: 40, held: 25, waiting: 12 }
+const mix: Record<SegmentLayout['kind'], number> = { running: 40, review: 40, ci: 40, held: 25, waiting: 12 }
 const keyItems = [
   { kind: 'running', label: 'Running' },
   { kind: 'waiting', label: 'Waiting' },

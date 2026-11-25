@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -10,9 +11,27 @@ import (
 // The window query of the issue timeline (timeline.go builds the bars).
 
 var (
-	timelineKinds  = []string{tlRunStarted, tlRunFinished, tlHoldSet, tlHoldCleared, tlMerged, tlClosed, tlSkipped}
-	timelineEnders = []string{tlMerged, tlClosed, tlSkipped}
+	// timelineKinds pick the issues; timelineEventKinds are read of them,
+	// also the CI kinds, which neither pick an issue nor end its life.
+	timelineKinds      = []string{tlRunStarted, tlRunFinished, tlHoldSet, tlHoldCleared, tlMerged, tlClosed, tlSkipped}
+	timelineEventKinds = slices.Concat(timelineKinds, []string{tlPush, tlCIStarted, tlCI})
+	timelineEnders     = []string{tlMerged, tlClosed, tlSkipped}
 )
+
+// IssueKey names an issue of a project.
+type IssueKey struct {
+	Namespace, Project string
+	IssueIID           int64
+}
+
+// ReviewSpan is a reviewer call of an issue: it started At and took
+// DurationMS.
+type ReviewSpan struct {
+	Namespace, Project string
+	IssueIID           int64
+	At                 time.Time
+	DurationMS         int64
+}
 
 // maxTimelineIssues bounds the issues TimelineEvents reads, the newest
 // first. A var, so tests can lower it.
@@ -49,26 +68,40 @@ func (s *Store) TimelineEvents(ctx context.Context, q TimelineQuery, now time.Ti
 		WHERE at >= $7 OR NOT kind = ANY($8::text[])
 		ORDER BY at DESC, id DESC LIMIT $9`,
 		nss, names, timelineKinds, q.To, now, q.Milestone, q.From, timelineEnders, maxTimelineIssues+1)
-	type issue struct {
-		Namespace, Project string
-		IssueIID           int64
-	}
-	picked, err := pgx.CollectRows(rows, pgx.RowToStructByName[issue])
+	picked, err := pgx.CollectRows(rows, pgx.RowToStructByName[IssueKey])
 	if err != nil || len(picked) == 0 {
 		return nil, false, err
 	}
 	if truncated = len(picked) > maxTimelineIssues; truncated {
 		picked = picked[:maxTimelineIssues]
 	}
-	var pns, pnames []string
-	var iids []int64
-	for _, p := range picked {
-		pns, pnames, iids = append(pns, p.Namespace), append(pnames, p.Project), append(iids, p.IssueIID)
-	}
+	pns, pnames, iids := splitIssues(picked)
 	rows, _ = s.pool.Query(ctx, `SELECT `+eventColumns+` FROM history_events WHERE `+scope+`
 		AND (namespace, project, issue_iid) IN (SELECT * FROM unnest($7::text[], $8::text[], $9::bigint[]))
 		ORDER BY at, id`,
-		nss, names, timelineKinds, q.To, now, q.Milestone, pns, pnames, iids)
+		nss, names, timelineEventKinds, q.To, now, q.Milestone, pns, pnames, iids)
 	events, err = pgx.CollectRows(rows, pgx.RowToStructByName[Event])
 	return events, truncated, err
+}
+
+// TimelineReviews returns the unexpired reviewer calls of issues, oldest
+// first, on agent_calls_issue_idx; none for no issues.
+func (s *Store) TimelineReviews(ctx context.Context, issues []IssueKey, now time.Time) ([]ReviewSpan, error) {
+	if len(issues) == 0 {
+		return nil, nil
+	}
+	nss, names, iids := splitIssues(issues)
+	rows, _ := s.pool.Query(ctx, `SELECT namespace, project, issue_iid, at, duration_ms FROM agent_calls
+		WHERE (namespace, project, issue_iid) IN (SELECT * FROM unnest($1::text[], $2::text[], $3::bigint[]))
+		AND kind = 'review' AND expires_at > $4
+		ORDER BY at, id`, nss, names, iids, now)
+	return pgx.CollectRows(rows, pgx.RowToStructByName[ReviewSpan])
+}
+
+// splitIssues is issues as the columns of an unnest.
+func splitIssues(issues []IssueKey) (namespaces, projects []string, iids []int64) {
+	for _, k := range issues {
+		namespaces, projects, iids = append(namespaces, k.Namespace), append(projects, k.Project), append(iids, k.IssueIID)
+	}
+	return namespaces, projects, iids
 }

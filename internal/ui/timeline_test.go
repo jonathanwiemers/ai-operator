@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,6 +28,18 @@ func (f *fakeCosts) TimelineEvents(_ context.Context, q store.TimelineQuery, _ t
 		}
 	}
 	return out, false, nil
+}
+
+// TimelineReviews answers the reviews of issues.
+func (f *fakeCosts) TimelineReviews(_ context.Context, issues []store.IssueKey, _ time.Time) ([]store.ReviewSpan, error) {
+	f.reviewsQ = append(f.reviewsQ, issues)
+	var out []store.ReviewSpan
+	for _, r := range f.reviews {
+		if slices.Contains(issues, store.IssueKey{Namespace: r.Namespace, Project: r.Project, IssueIID: r.IssueIID}) {
+			out = append(out, r)
+		}
+	}
+	return out, f.reviewsErr
 }
 
 var tl0 = time.Date(2026, 11, 20, 9, 0, 0, 0, time.UTC)
@@ -67,12 +80,21 @@ func timelineEnv(t *testing.T) (*testEnv, *fakeCosts) {
 		tlEvent("team-a", "shop", 3, 12, "t12", "run.started", 5),
 		tlEvent("team-a", "shop", 3, 11, "t11", "run.finished", 30),
 		tlEvent("team-a", "shop", 3, 12, "t12", "run.finished", 40),
+		tlEvent("team-a", "shop", 3, 11, "t11", "push", 30),
+		tlEvent("team-a", "shop", 3, 11, "t11", "ci", 40),
 		tlEvent("team-a", "shop", 3, 11, "t11", "merged", 50),
+		tlEvent("team-a", "shop", 3, 12, "t12", "ci.started", 40),
+		tlEvent("team-a", "shop", 3, 12, "t12", "ci", 55),
 		tlEvent("team-a", "shop", 3, 12, "t12", "merged", 60),
 		tlEvent("team-a", "shop", 3, 13, "t13", "run.finished", 90),
 		tlEvent("team-a", "shop", 3, 13, "t13", "merged", 100),
 		tlEvent("team-a", "cart", 0, 5, "cart-5-fix", "run.started", 20),
 		tlEvent("team-b", "billing", 0, 7, "billing-7-invoice", "run.started", 20),
+	}
+	// #11's review at the end of its run; hidden billing #7 is never asked.
+	fake.reviews = []store.ReviewSpan{
+		{Namespace: "team-a", Project: "shop", IssueIID: 11, At: tl0.Add(25 * time.Minute), DurationMS: 5 * 60000},
+		{Namespace: "team-b", Project: "billing", IssueIID: 7, At: tl0.Add(25 * time.Minute), DurationMS: 60000},
 	}
 	return env, fake
 }
@@ -94,13 +116,16 @@ func TestTimelineMilestone(t *testing.T) {
 	sameJSON(t, v.Rows, `[
 		{"namespace": "team-a", "project": "shop", "milestoneIID": 3, "milestoneTitle": "Checkout", "issueIID": 11, "issueTitle": "Parser",
 			"wave": 1, "segments": [
-				{"kind": "running", "start": "2026-11-20T09:00:00Z", "end": "2026-11-20T09:30:00Z"},
-				{"kind": "waiting", "start": "2026-11-20T09:30:00Z", "end": "2026-11-20T09:50:00Z"}],
+				{"kind": "running", "start": "2026-11-20T09:00:00Z", "end": "2026-11-20T09:25:00Z"},
+				{"kind": "review", "start": "2026-11-20T09:25:00Z", "end": "2026-11-20T09:30:00Z"},
+				{"kind": "ci", "start": "2026-11-20T09:30:00Z", "end": "2026-11-20T09:40:00Z"},
+				{"kind": "waiting", "start": "2026-11-20T09:40:00Z", "end": "2026-11-20T09:50:00Z"}],
 			"mergedAt": "2026-11-20T09:50:00Z", "deskURL": "/projects/team-a/shop/milestones/3/issues/11"},
 		{"namespace": "team-a", "project": "shop", "milestoneIID": 3, "milestoneTitle": "Checkout", "issueIID": 12, "issueTitle": "Lexer",
 			"wave": 1, "segments": [
 				{"kind": "running", "start": "2026-11-20T09:05:00Z", "end": "2026-11-20T09:40:00Z"},
-				{"kind": "waiting", "start": "2026-11-20T09:40:00Z", "end": "2026-11-20T10:00:00Z"}],
+				{"kind": "ci", "start": "2026-11-20T09:40:00Z", "end": "2026-11-20T09:55:00Z"},
+				{"kind": "waiting", "start": "2026-11-20T09:55:00Z", "end": "2026-11-20T10:00:00Z"}],
 			"mergedAt": "2026-11-20T10:00:00Z", "deskURL": "/projects/team-a/shop/milestones/3/issues/12"},
 		{"namespace": "team-a", "project": "shop", "milestoneIID": 3, "milestoneTitle": "Checkout", "issueIID": 13, "issueTitle": "Printer",
 			"wave": 2, "segments": [
@@ -108,6 +133,18 @@ func TestTimelineMilestone(t *testing.T) {
 				{"kind": "waiting", "start": "2026-11-20T10:30:00Z", "end": "2026-11-20T10:40:00Z"}],
 			"mergedAt": "2026-11-20T10:40:00Z", "deskURL": "/projects/team-a/shop/milestones/3/issues/13"}
 	]`)
+
+	// The reviews are read for the issues of the events only.
+	if len(fake.reviewsQ) != 1 || len(fake.reviewsQ[0]) != 3 || slices.ContainsFunc(fake.reviewsQ[0], func(k store.IssueKey) bool {
+		return k.Namespace != "team-a" || k.Project != "shop"
+	}) {
+		t.Errorf("reviews asked for %+v", fake.reviewsQ)
+	}
+	fake.reviewsErr = fmt.Errorf("db down")
+	if code := env.get(t, "/api/v1/timeline?project=team-a/shop&milestone=3", nil); code != http.StatusInternalServerError {
+		t.Errorf("reviews failing: status %d", code)
+	}
+	fake.reviewsErr = nil
 
 	// A milestone of a project the viewer may not see is not found.
 	if code := env.get(t, "/api/v1/timeline?project=team-b/billing&milestone=8", nil); code != http.StatusNotFound {
@@ -140,6 +177,20 @@ func TestTimelineWindow(t *testing.T) {
 	if r := v.Rows[0]; r.IssueTitle != "Fix cart" || r.Wave != 0 || r.DeskURL != "/projects/team-a/cart/tasks/cart-5-fix" ||
 		len(r.Segments) != 1 || r.Segments[0].End != nil && !r.Segments[0].End.Equal(tl0.Add(time.Hour)) {
 		t.Errorf("cart row = %+v", r)
+	}
+	// #11's review and CI, and #12's CI cut at the window's end.
+	for i, want := range []string{"running 0-25 review 25-30 ci 30-40 waiting 40-50", "running 5-40 ci 40-55 waiting 55-60"} {
+		var parts []string
+		for _, sg := range v.Rows[i+1].Segments {
+			end := "now"
+			if sg.End != nil {
+				end = fmt.Sprint(int(sg.End.Sub(tl0).Minutes()))
+			}
+			parts = append(parts, fmt.Sprintf("%s %d-%s", sg.Kind, int(sg.Start.Sub(tl0).Minutes()), end))
+		}
+		if got := strings.Join(parts, " "); got != want {
+			t.Errorf("%s#%d = %q, want %q", v.Rows[i+1].Project, v.Rows[i+1].IssueIID, got, want)
+		}
 	}
 
 	if code := env.get(t, "/api/v1/timeline?from=2026-11-20T09:00:00Z&to=2026-11-20T10:00:00Z&project=team-a/cart", &v); code != http.StatusOK ||

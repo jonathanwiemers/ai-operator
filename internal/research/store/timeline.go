@@ -8,11 +8,13 @@ import (
 	"time"
 )
 
-// The issue timeline: when each issue ran, waited and was held, from its
-// history events, for the Desk's Timeline.
+// The issue timeline: when each issue ran, was reviewed, was in CI, waited
+// and was held, from its history events and reviewer calls, for the Desk's
+// Timeline.
 
 // The event kinds of the timeline (internal/history's names); merged,
-// closed and item.skipped end an issue's life.
+// closed and item.skipped end an issue's life. push, ci.started and ci
+// only mark its CI time.
 const (
 	tlRunStarted  = "run.started"
 	tlRunFinished = "run.finished"
@@ -21,17 +23,23 @@ const (
 	tlMerged      = "merged"
 	tlClosed      = "closed"
 	tlSkipped     = "item.skipped"
+	tlPush        = "push"
+	tlCI          = "ci"
+	tlCIStarted   = "ci.started"
 )
 
 // The segment kinds of a timeline bar.
 const (
 	SegmentRunning = "running"
+	SegmentReview  = "review"
+	SegmentCI      = "ci"
 	SegmentWaiting = "waiting"
 	SegmentHeld    = "held"
 )
 
 // TimelineSegment is a part of an issue's life of Kind (SegmentRunning,
-// SegmentWaiting, SegmentHeld). End is nil while it goes on.
+// SegmentReview, SegmentCI, SegmentWaiting, SegmentHeld). End is nil while
+// it goes on.
 type TimelineSegment struct {
 	Kind  string
 	Start time.Time
@@ -59,36 +67,47 @@ func inSpans(ss []span, t time.Time) bool {
 	return slices.ContainsFunc(ss, func(s span) bool { return !t.Before(s.start) && t.Before(s.end) })
 }
 
-// BuildTimeline turns the timeline events of issues (any order) into their
-// bars in [from, to), by project, milestone and issue. An issue's life
-// starts at its first run (or hold) and ends at its merge, its skip (or a
-// close without a merge, unless a run starts after it) or now. In it, an
-// issue runs from each run.started to its task's run.finished (a start
-// without one runs to the task's next start, else on), is held from
-// hold.set to hold.cleared, and waits otherwise; running wins over held.
+// layer is the spans of one segment kind.
+type layer struct {
+	kind  string
+	spans []span
+}
+
+// BuildTimeline turns the timeline events and the reviewer calls of issues
+// (any order) into their bars in [from, to), by project, milestone and
+// issue. An issue's life starts at its first run (or hold) and ends at its
+// merge, its skip (or a close without a merge, unless a run starts after
+// it) or now. In it, an issue runs from each run.started to its task's
+// run.finished (a start without one runs to the task's next start, else
+// on); is in review during each reviewer call; is in CI from the first
+// ci.started or push after the previous CI end to the next ci event (else
+// to the life's end); is held from hold.set to hold.cleared; and waits
+// otherwise. Where they overlap, review wins over running, running over
+// CI, CI over held. Review and CI time outside the life is left out.
 // Segments are cut at from and to; the one an open issue is in at now has
 // End nil when now is in the window. Issues without a segment or a marker
 // in the window are left out.
-func BuildTimeline(events []Event, from, to, now time.Time) []TimelineIssue {
-	type key struct {
-		ns, project string
-		iid         int64
-	}
-	groups := map[key][]Event{}
+func BuildTimeline(events []Event, reviews []ReviewSpan, from, to, now time.Time) []TimelineIssue {
+	groups := map[IssueKey][]Event{}
 	for _, e := range events {
 		if e.IssueIID != 0 {
-			k := key{e.Namespace, e.Project, e.IssueIID}
+			k := IssueKey{e.Namespace, e.Project, e.IssueIID}
 			groups[k] = append(groups[k], e)
 		}
+	}
+	calls := map[IssueKey][]span{}
+	for _, r := range reviews {
+		k := IssueKey{r.Namespace, r.Project, r.IssueIID}
+		calls[k] = append(calls[k], span{r.At, r.At.Add(time.Duration(r.DurationMS) * time.Millisecond)})
 	}
 	var out []TimelineIssue
 	for k, es := range groups {
 		slices.SortStableFunc(es, func(a, b Event) int { return cmp.Or(a.At.Compare(b.At), cmp.Compare(a.ID, b.ID)) })
-		ti := issueTimeline(es, from, to, now)
+		ti := issueTimeline(es, calls[k], from, to, now)
 		if len(ti.Segments) == 0 && !inWindow(ti.MergedAt, from, to) && !inWindow(ti.SkippedAt, from, to) {
 			continue
 		}
-		ti.Namespace, ti.Project, ti.IssueIID = k.ns, k.project, k.iid
+		ti.Namespace, ti.Project, ti.IssueIID = k.Namespace, k.Project, k.IssueIID
 		out = append(out, ti)
 	}
 	slices.SortFunc(out, func(a, b TimelineIssue) int {
@@ -102,14 +121,21 @@ func inWindow(t *time.Time, from, to time.Time) bool {
 	return t != nil && !t.Before(from) && t.Before(to)
 }
 
-// issueTimeline builds the bar of one issue's events, oldest first.
-func issueTimeline(es []Event, from, to, now time.Time) TimelineIssue {
+// issueTimeline builds the bar of one issue's events, oldest first, and its
+// reviewer calls.
+func issueTimeline(es []Event, reviews []span, from, to, now time.Time) TimelineIssue {
 	var ti TimelineIssue
-	var runs, holdSpans []span
+	var runs, holdSpans, cis []span
 	open := map[string]time.Time{} // a task's run start without a finish
 	holds := map[int64]*span{}     // by the hold's start, unix seconds
 	var holdOrder []int64
-	var end *time.Time // the life's end, merged or skipped
+	var end *time.Time   // the life's end, merged or skipped
+	var ciOpen time.Time // the start of a CI span without its end yet
+	endCI := func(at time.Time) {
+		if !ciOpen.IsZero() {
+			cis, ciOpen = append(cis, span{ciOpen, at}), time.Time{}
+		}
+	}
 	merged := false
 	for _, e := range es {
 		if e.MilestoneIID != 0 {
@@ -150,12 +176,20 @@ func issueTimeline(es []Event, from, to, now time.Time) TimelineIssue {
 			} else {
 				h.end = e.At
 			}
+		case tlPush, tlCIStarted:
+			if ciOpen.IsZero() {
+				ciOpen = e.At
+			}
+		case tlCI:
+			endCI(e.At)
 		case tlMerged:
 			at := e.At
 			end, merged = &at, true
+			endCI(at)
 		case tlClosed, tlSkipped:
 			at := e.At
 			end = &at
+			endCI(at)
 		}
 	}
 	lifeEnd := now
@@ -170,6 +204,7 @@ func issueTimeline(es []Event, from, to, now time.Time) TimelineIssue {
 	for _, s := range open {
 		runs = append(runs, span{s, lifeEnd})
 	}
+	endCI(lifeEnd)
 	for _, since := range holdOrder {
 		h := *holds[since]
 		if h.end.IsZero() {
@@ -186,7 +221,10 @@ func issueTimeline(es []Event, from, to, now time.Time) TimelineIssue {
 	if lifeStart.IsZero() {
 		return ti
 	}
-	ti.Segments = segments(lifeStart, lifeEnd, runs, holdSpans, from, to)
+	// Review and CI spans only colour the life: they do not start it.
+	ti.Segments = segments(lifeStart, lifeEnd, []layer{
+		{SegmentReview, reviews}, {SegmentRunning, runs}, {SegmentCI, cis}, {SegmentHeld, holdSpans},
+	}, from, to)
 	if end == nil && !now.Before(from) && !now.After(to) && len(ti.Segments) > 0 {
 		if last := &ti.Segments[len(ti.Segments)-1]; last.End != nil && last.End.Equal(now) {
 			last.End = nil
@@ -195,9 +233,11 @@ func issueTimeline(es []Event, from, to, now time.Time) TimelineIssue {
 	return ti
 }
 
-// segments cuts [start, end) into running, held and waiting parts within
-// [from, to), merging neighbours of one kind.
-func segments(start, end time.Time, runs, holds []span, from, to time.Time) []TimelineSegment {
+// segments cuts [start, end) within [from, to) at every edge of the layers'
+// spans into parts of the first layer whose span covers them (layers in
+// order of precedence), else waiting, merging neighbours of one kind.
+// Spans outside [start, end) add nothing.
+func segments(start, end time.Time, layers []layer, from, to time.Time) []TimelineSegment {
 	if start.Before(from) {
 		start = from
 	}
@@ -208,10 +248,12 @@ func segments(start, end time.Time, runs, holds []span, from, to time.Time) []Ti
 		return nil
 	}
 	points := []time.Time{start, end}
-	for _, s := range slices.Concat(runs, holds) {
-		for _, t := range []time.Time{s.start, s.end} {
-			if t.After(start) && t.Before(end) {
-				points = append(points, t)
+	for _, l := range layers {
+		for _, s := range l.spans {
+			for _, t := range []time.Time{s.start, s.end} {
+				if t.After(start) && t.Before(end) {
+					points = append(points, t)
+				}
 			}
 		}
 	}
@@ -220,11 +262,8 @@ func segments(start, end time.Time, runs, holds []span, from, to time.Time) []Ti
 	var out []TimelineSegment
 	for i := 0; i+1 < len(points); i++ {
 		kind := SegmentWaiting
-		switch {
-		case inSpans(runs, points[i]):
-			kind = SegmentRunning
-		case inSpans(holds, points[i]):
-			kind = SegmentHeld
+		if j := slices.IndexFunc(layers, func(l layer) bool { return inSpans(l.spans, points[i]) }); j >= 0 {
+			kind = layers[j].kind
 		}
 		e := points[i+1]
 		if n := len(out); n > 0 && out[n-1].Kind == kind {

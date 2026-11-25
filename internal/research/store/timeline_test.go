@@ -46,6 +46,11 @@ func bar(ti store.TimelineIssue) string {
 	return strings.Join(parts, ", ")
 }
 
+// review is a reviewer call of issue iid from minute m for d minutes.
+func review(iid int64, m, d int) store.ReviewSpan {
+	return store.ReviewSpan{Namespace: "agents", Project: "shop", IssueIID: iid, At: at(m), DurationMS: int64(d) * 60000}
+}
+
 func TestBuildTimeline(t *testing.T) {
 	const (
 		started, finished = "run.started", "run.finished"
@@ -54,6 +59,7 @@ func TestBuildTimeline(t *testing.T) {
 	for _, tc := range []struct {
 		name          string
 		events        []store.Event
+		reviews       []store.ReviewSpan
 		from, to, now int
 		want          []string // one bar per issue, by iid
 		wantIIDs      []int64
@@ -183,9 +189,107 @@ func TestBuildTimeline(t *testing.T) {
 		},
 		from: 30, to: 120, now: 100,
 		want: []string{"merged 40"},
+	}, {
+		name: "a run with a review at its end, then CI, then waiting, then the merge",
+		events: []store.Event{
+			tlEvent(11, "impl", started, 0), tlEvent(11, "impl", finished, 20), tlEvent(11, "impl", "push", 20),
+			tlEvent(11, "impl", "ci.started", 20), tlEvent(11, "impl", "ci", 35), tlEvent(11, "spec", "merged", 45),
+		},
+		reviews: []store.ReviewSpan{review(11, 15, 5)},
+		from:    -60, to: 120, now: 100,
+		want: []string{"running 0-15, review 15-20, ci 20-35, waiting 35-45, merged 45"},
+	}, {
+		name:    "two parallel reviewers give one review segment; another issue's call is not this one's",
+		events:  []store.Event{tlEvent(11, "impl", started, 0), tlEvent(11, "impl", finished, 30), tlEvent(11, "spec", "merged", 40)},
+		reviews: []store.ReviewSpan{review(11, 12, 13), review(11, 10, 10), review(12, 0, 30)},
+		from:    -60, to: 120, now: 100,
+		want: []string{"running 0-10, review 10-25, running 25-30, waiting 30-40, merged 40"},
+	}, {
+		name: "CI from ci.started",
+		events: []store.Event{
+			tlEvent(11, "impl", started, 0), tlEvent(11, "impl", finished, 10), tlEvent(11, "impl", "ci.started", 15),
+			tlEvent(11, "impl", "ci", 30), tlEvent(11, "spec", "merged", 40),
+		},
+		from: -60, to: 120, now: 100,
+		want: []string{"running 0-10, waiting 10-15, ci 15-30, waiting 30-40, merged 40"},
+	}, {
+		name: "CI from the push of an issue without ci.started",
+		events: []store.Event{
+			tlEvent(11, "impl", started, 0), tlEvent(11, "impl", "push", 8), tlEvent(11, "impl", finished, 10),
+			tlEvent(11, "impl", "ci", 25), tlEvent(11, "spec", "merged", 30),
+		},
+		from: -60, to: 120, now: 100,
+		want: []string{"running 0-10, ci 10-25, waiting 25-30, merged 30"},
+	}, {
+		name: "a rebase pipeline after a green one is a second CI segment",
+		events: []store.Event{
+			tlEvent(11, "impl", started, 0), tlEvent(11, "impl", finished, 10), tlEvent(11, "impl", "push", 10),
+			tlEvent(11, "impl", "ci.started", 11), tlEvent(11, "impl", "ci", 20), tlEvent(11, "impl", "ci.started", 30),
+			tlEvent(11, "impl", "ci", 40), tlEvent(11, "spec", "merged", 45),
+		},
+		from: -60, to: 120, now: 100,
+		want: []string{"running 0-10, ci 10-20, waiting 20-30, ci 30-40, waiting 40-45, merged 45"},
+	}, {
+		name:   "CI open up to now",
+		events: []store.Event{tlEvent(11, "impl", started, 0), tlEvent(11, "impl", finished, 10), tlEvent(11, "impl", "ci.started", 10)},
+		from:   -60, to: 120, now: 30,
+		want: []string{"running 0-10, ci 10-now"},
+	}, {
+		name: "CI ended by Fixing, a fix run, then a push and CI again",
+		events: []store.Event{
+			tlEvent(11, "impl", started, 0), tlEvent(11, "impl", finished, 10), tlEvent(11, "impl", "push", 10),
+			tlEvent(11, "impl", "ci", 20), tlEvent(11, "fix", started, 20), tlEvent(11, "fix", "push", 30),
+			tlEvent(11, "fix", finished, 30), tlEvent(11, "fix", "ci", 40), tlEvent(11, "spec", "merged", 50),
+		},
+		from: -60, to: 120, now: 100,
+		want: []string{"running 0-10, ci 10-20, running 20-30, ci 30-40, waiting 40-50, merged 50"},
+	}, {
+		name: "a hold during CI is CI, after it held",
+		events: []store.Event{
+			tlEvent(11, "impl", started, 0), tlEvent(11, "impl", finished, 10), tlEvent(11, "impl", "push", 10),
+			tlEvent(11, "spec", set, 15, 15), tlEvent(11, "impl", "ci", 25), tlEvent(11, "spec", cleared, 35, 15),
+			tlEvent(11, "spec", "merged", 40),
+		},
+		from: -60, to: 120, now: 100,
+		want: []string{"running 0-10, ci 10-25, held 25-35, waiting 35-40, merged 40"},
+	}, {
+		name: "review calls before the first run and after the merge, and CI after it, are left out",
+		events: []store.Event{
+			tlEvent(11, "impl", "push", -30), tlEvent(11, "impl", started, 0), tlEvent(11, "impl", finished, 10),
+			tlEvent(11, "spec", "merged", 40), tlEvent(11, "impl", "ci.started", 45), tlEvent(11, "impl", "ci", 50),
+		},
+		reviews: []store.ReviewSpan{review(11, -20, 5), review(11, 45, 5), review(11, -5, 10)},
+		from:    -60, to: 120, now: 100,
+		want: []string{"review 0-5, running 5-10, ci 10-40, merged 40"},
+	}, {
+		name: "an open CI ends at a close; a run reopens the issue",
+		events: []store.Event{
+			tlEvent(11, "a", started, 0), tlEvent(11, "a", finished, 10), tlEvent(11, "a", "push", 10),
+			tlEvent(11, "a", "closed", 20), tlEvent(11, "a", "ci", 25), tlEvent(11, "b", started, 30),
+			tlEvent(11, "b", finished, 40), tlEvent(11, "spec", "merged", 50),
+		},
+		from: -60, to: 120, now: 100,
+		want: []string{"running 0-10, ci 10-20, waiting 20-30, running 30-40, waiting 40-50, merged 50"},
+	}, {
+		name: "review and CI cut at both window edges",
+		events: []store.Event{
+			tlEvent(11, "impl", started, 0), tlEvent(11, "impl", finished, 10), tlEvent(11, "impl", "ci.started", 10),
+			tlEvent(11, "impl", "ci", 30), tlEvent(11, "spec", "merged", 40),
+		},
+		reviews: []store.ReviewSpan{review(11, 5, 5)},
+		from:    7, to: 25, now: 100,
+		want: []string{"review 7-10, ci 10-25, merged 40"},
+	}, {
+		name: "a ci event without a start adds nothing",
+		events: []store.Event{
+			tlEvent(11, "impl", started, 0), tlEvent(11, "impl", finished, 10), tlEvent(11, "impl", "ci", 15),
+			tlEvent(11, "spec", "merged", 20),
+		},
+		from: -60, to: 120, now: 100,
+		want: []string{"running 0-10, waiting 10-20, merged 20"},
 	}} {
 		t.Run(tc.name, func(t *testing.T) {
-			got := store.BuildTimeline(tc.events, at(tc.from), at(tc.to), at(tc.now))
+			got := store.BuildTimeline(tc.events, tc.reviews, at(tc.from), at(tc.to), at(tc.now))
 			if len(got) != len(tc.want) {
 				t.Fatalf("%d bars, want %d: %+v", len(got), len(tc.want), got)
 			}

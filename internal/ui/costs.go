@@ -148,6 +148,7 @@ type costReader interface {
 	FlowInRange(ctx context.Context, q store.CostQuery, bucket string, now time.Time) (store.FlowRange, error)
 	CodeInRange(ctx context.Context, q store.CostQuery, bucket string) (store.CodeRange, error)
 	TimelineEvents(ctx context.Context, q store.TimelineQuery, now time.Time) ([]store.Event, bool, error)
+	TimelineReviews(ctx context.Context, issues []store.IssueKey, now time.Time) ([]store.ReviewSpan, error)
 }
 
 // costStore is the reader of the costs, nil without the history database.

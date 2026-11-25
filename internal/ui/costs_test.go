@@ -36,6 +36,9 @@ type fakeCosts struct {
 	pausesCalls   []costSeriesCall
 	timeline      []store.Event
 	timelineQ     []store.TimelineQuery
+	reviews       []store.ReviewSpan
+	reviewsQ      [][]store.IssueKey
+	reviewsErr    error
 }
 
 type costSeriesCall struct {

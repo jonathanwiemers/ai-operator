@@ -2216,11 +2216,12 @@ export interface HandledItem {
 // source: timeline.go
 
 /**
- * TimelineSegmentView is a part of an issue's bar: running, waiting or
- * held from Start to End, End nil while it goes on.
+ * TimelineSegmentView is a part of an issue's bar: running, in review (a
+ * reviewer call), in CI (a pipeline of its merge request), waiting or held
+ * from Start to End, End nil while it goes on.
  */
 export interface TimelineSegmentView {
-  kind: 'running' | 'waiting' | 'held';
+  kind: 'running' | 'review' | 'ci' | 'waiting' | 'held';
   start: string;
   end?: string;
 }

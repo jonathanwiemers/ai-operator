@@ -16,10 +16,11 @@ import (
 // maxTimelineWindow is the longest window of the timeline's window mode.
 const maxTimelineWindow = 7 * 24 * time.Hour
 
-// TimelineSegmentView is a part of an issue's bar: running, waiting or
-// held from Start to End, End nil while it goes on.
+// TimelineSegmentView is a part of an issue's bar: running, in review (a
+// reviewer call), in CI (a pipeline of its merge request), waiting or held
+// from Start to End, End nil while it goes on.
 type TimelineSegmentView struct {
-	Kind  string     `json:"kind" tstype:"'running' | 'waiting' | 'held'"`
+	Kind  string     `json:"kind" tstype:"'running' | 'review' | 'ci' | 'waiting' | 'held'"`
 	Start time.Time  `json:"start"`
 	End   *time.Time `json:"end,omitempty"`
 }
@@ -92,8 +93,13 @@ func (s *Server) timeline(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, e)
 		return
 	}
+	reviews, e := st.TimelineReviews(r.Context(), timelineIssues(events), now)
+	if e != nil {
+		s.internalError(w, e)
+		return
+	}
 	v.History, v.Truncated = true, truncated
-	v.Rows = timelineRows(store.BuildTimeline(events, q.From, q.To, now), visible, tasks)
+	v.Rows = timelineRows(store.BuildTimeline(events, reviews, q.From, q.To, now), visible, tasks)
 	if q.Milestone != 0 { // from the milestone's first run
 		v.From = now
 		for _, row := range v.Rows {
@@ -103,6 +109,20 @@ func (s *Server) timeline(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, v)
+}
+
+// timelineIssues is the distinct issues of events, in their order.
+func timelineIssues(events []store.Event) []store.IssueKey {
+	var out []store.IssueKey
+	seen := map[store.IssueKey]bool{}
+	for _, e := range events {
+		k := store.IssueKey{Namespace: e.Namespace, Project: e.Project, IssueIID: e.IssueIID}
+		if e.IssueIID != 0 && !seen[k] {
+			seen[k] = true
+			out = append(out, k)
+		}
+	}
+	return out
 }
 
 // timelineQuery reads the mode's parameters: the store query (without

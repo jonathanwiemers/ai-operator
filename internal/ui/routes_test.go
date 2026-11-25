@@ -95,6 +95,13 @@ func (f *storeSpy) TimelineEvents(_ context.Context, q store.TimelineQuery, _ ti
 	return nil, false, nil
 }
 
+func (f *storeSpy) TimelineReviews(_ context.Context, issues []store.IssueKey, _ time.Time) ([]store.ReviewSpan, error) {
+	for _, k := range issues {
+		f.ask(store.ProjectKey{Namespace: k.Namespace, Name: k.Project})
+	}
+	return nil, nil
+}
+
 func (f *storeSpy) Milestones(_ context.Context, q store.MilestoneQuery) ([]store.MilestoneRow, error) {
 	f.ask(q.Projects...)
 	return nil, nil

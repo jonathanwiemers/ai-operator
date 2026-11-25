@@ -305,11 +305,13 @@ curl -s -b "$COOKIE" \
       "milestoneIID": 12, "milestoneTitle": "Checkout",
       "issueIID": 340, "issueTitle": "Add coupon field", "wave": 1,
       "segments": [
-        {"kind": "running", "start": "2026-11-20T08:00:00Z", "end": "2026-11-20T08:40:00Z"},
+        {"kind": "running", "start": "2026-11-20T08:00:00Z", "end": "2026-11-20T08:30:00Z"},
+        {"kind": "review", "start": "2026-11-20T08:30:00Z", "end": "2026-11-20T08:40:00Z"},
         {"kind": "held", "start": "2026-11-20T08:40:00Z", "end": "2026-11-20T11:00:00Z"},
-        {"kind": "running", "start": "2026-11-20T11:00:00Z", "end": "2026-11-20T11:25:00Z"}
+        {"kind": "running", "start": "2026-11-20T11:00:00Z", "end": "2026-11-20T11:25:00Z"},
+        {"kind": "ci", "start": "2026-11-20T11:25:00Z", "end": "2026-11-20T11:40:00Z"}
       ],
-      "mergedAt": "2026-11-20T11:25:00Z",
+      "mergedAt": "2026-11-20T11:40:00Z",
       "deskURL": "/projects/agents/shop/milestones/12/issues/340"
     }
   ],
@@ -330,7 +332,7 @@ It has two modes:
 | `history` | `false` without the research database. Then `rows` is empty. |
 | `from`, `to`, `now` | The window and the server's time. For one milestone, `from` is the first segment's start and `to` is now. |
 | `rows` | One per issue: project, milestone, issue, `wave` (0 when unknown) and `deskURL`, the issue's page in the Desk. |
-| `segments` | `kind` is `running`, `waiting` or `held`, with `start` and `end`. `end` is absent while the segment goes on. Segments are cut at the window's edges. |
+| `segments` | `kind` is `running`, `review`, `ci`, `waiting` or `held`, with `start` and `end`. `review` is a reviewer at work, `ci` a pipeline of the issue's merge request. Where they overlap, `review` wins over `running`, `running` over `ci`, and `ci` over `held`. `end` is absent while the segment goes on. Segments are cut at the window's edges. |
 | `mergedAt`, `skippedAt` | When the issue merged or was skipped. Absent otherwise. Its life ends there. |
 | `truncated` | `true` when more than 500 issues matched. Only the newest are in `rows`. |
 

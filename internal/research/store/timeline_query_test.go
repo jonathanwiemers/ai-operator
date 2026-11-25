@@ -29,9 +29,10 @@ func TestTimelineEvents(t *testing.T) {
 	expired := ev("shop", 4, 8, "run.started", now.Add(-time.Hour))
 	expired.ExpiresAt = gone
 	if _, err := owner.InsertEvents(ctx, []store.Event{
-		// #1 ran in the window; its push is no timeline kind.
+		// #1 ran in the window; its push is read, but picks no issue.
 		ev("shop", 4, 1, "run.started", now.Add(-2*time.Hour)),
 		ev("shop", 4, 1, "push", now.Add(-90*time.Minute)),
+		ev("shop", 4, 1, "ci", now.Add(-80*time.Minute)),
 		ev("shop", 4, 1, "run.finished", now.Add(-time.Hour)),
 		// #2 started before the window and is still open: the lookback.
 		ev("shop", 4, 2, "run.started", from.Add(-3*time.Hour)),
@@ -47,6 +48,9 @@ func TestTimelineEvents(t *testing.T) {
 		// #6 is another project's, #7 another milestone's.
 		ev("billing", 4, 6, "run.started", now.Add(-3*time.Hour)),
 		ev("shop", 9, 7, "run.started", now.Add(-30*time.Minute)),
+		// #9 has only CI events in the window: not picked.
+		ev("shop", 4, 9, "ci.started", now.Add(-10*time.Minute)),
+		ev("shop", 4, 9, "ci", now.Add(-5*time.Minute)),
 		// #8 expired; an event without an issue.
 		expired,
 		ev("shop", 4, 0, "run.started", now.Add(-time.Hour)),
@@ -81,7 +85,7 @@ func TestTimelineEvents(t *testing.T) {
 			kinds = append(kinds, fmt.Sprintf("#%d %s", e.IssueIID, e.Kind))
 		}
 	}
-	if want := []string{"#4 run.started", "#4 closed", "#4 run.started", "#1 run.started", "#1 run.finished"}; !slices.Equal(kinds, want) {
+	if want := []string{"#4 run.started", "#4 closed", "#4 run.started", "#1 run.started", "#1 push", "#1 ci", "#1 run.finished"}; !slices.Equal(kinds, want) {
 		t.Errorf("events %v, want %v", kinds, want)
 	}
 
@@ -106,10 +110,56 @@ func TestTimelineEvents(t *testing.T) {
 
 	// The events build the bars: #2 has run since before the window.
 	all, _, _ := read(store.TimelineQuery{Projects: shop, Milestone: 4})
-	for _, ti := range store.BuildTimeline(all, from, to, now) {
+	for _, ti := range store.BuildTimeline(all, nil, from, to, now) {
 		if ti.IssueIID == 2 && (len(ti.Segments) != 1 || ti.Segments[0].Kind != store.SegmentRunning ||
 			!ti.Segments[0].Start.Equal(from) || ti.Segments[0].End != nil) {
 			t.Errorf("#2 = %+v", ti)
 		}
+	}
+}
+
+// TestTimelineReviews: the unexpired reviewer calls of the given issues,
+// oldest first; other issues' calls and other kinds are left out.
+func TestTimelineReviews(t *testing.T) {
+	owner := storetest.New(t)
+	s := asReader(t, owner)
+	ctx := t.Context()
+	now := time.Now().UTC().Truncate(time.Second)
+	n := 0
+	call := func(project string, iid int64, kind string, at time.Time, expires time.Time) store.Call {
+		n++
+		return store.Call{Key: fmt.Sprintf("call/tl/%d", n), At: at, Namespace: "agents", Project: project, IssueIID: iid,
+			Task: fmt.Sprintf("%s-%d", project, iid), Seq: int64(n), Kind: kind, CostSource: "unknown",
+			DurationMS: int64(n) * 60000, ExpiresAt: expires}
+	}
+	exp, gone := now.Add(24*time.Hour), now.Add(-time.Minute)
+	if _, err := owner.InsertCalls(ctx, []store.Call{
+		call("shop", 1, "review", now.Add(-time.Hour), exp),       // 1 min
+		call("shop", 1, "implement", now.Add(-2*time.Hour), exp),  // another kind
+		call("shop", 1, "review", now.Add(-3*time.Hour), exp),     // 3 min, older
+		call("shop", 2, "review", now.Add(-time.Hour), exp),       // another issue
+		call("billing", 1, "review", now.Add(-time.Hour), exp),    // another project
+		call("shop", 3, "review", now.Add(-30*time.Minute), exp),  // 6 min
+		call("shop", 3, "review", now.Add(-20*time.Minute), gone), // expired
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.TimelineReviews(ctx, []store.IssueKey{{Namespace: "agents", Project: "shop", IssueIID: 1},
+		{Namespace: "agents", Project: "shop", IssueIID: 3}}, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []store.ReviewSpan{
+		{Namespace: "agents", Project: "shop", IssueIID: 1, At: now.Add(-3 * time.Hour), DurationMS: 3 * 60000},
+		{Namespace: "agents", Project: "shop", IssueIID: 1, At: now.Add(-time.Hour), DurationMS: 60000},
+		{Namespace: "agents", Project: "shop", IssueIID: 3, At: now.Add(-30 * time.Minute), DurationMS: 6 * 60000},
+	}
+	if !slices.EqualFunc(got, want, func(a, b store.ReviewSpan) bool {
+		return a.Namespace == b.Namespace && a.Project == b.Project && a.IssueIID == b.IssueIID && a.At.Equal(b.At) && a.DurationMS == b.DurationMS
+	}) {
+		t.Errorf("reviews %+v, want %+v", got, want)
+	}
+	if got, err := s.TimelineReviews(ctx, nil, now); err != nil || len(got) != 0 {
+		t.Errorf("no issues: %+v, %v", got, err)
 	}
 }
