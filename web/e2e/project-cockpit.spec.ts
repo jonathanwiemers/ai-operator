@@ -50,7 +50,6 @@ const tabs = (page: Page) => page.locator('main [data-stream-head]').getByRole('
 const pinnedMilestone = (page: Page, iid: number) => page.locator(`main [data-pinned-milestone="${iid}"]`)
 const groups = (page: Page) => page.locator('main [data-cockpit-stream] [data-cockpit-group]')
 const panel = (page: Page) => page.getByRole('complementary', { name: 'Project context' })
-const switchTo = (page: Page, label: string) => panel(page).getByRole('tab', { name: label, exact: true })
 // The header's buttons by their data attribute: while the modal slide-over
 // is open, the page behind it is hidden from role queries.
 const headerButton = (page: Page, view: string) => page.locator(`main [data-stream-head] [data-panel-open="${view}"]`)
@@ -67,8 +66,8 @@ async function axe(page: Page, include: string) {
 }
 
 async function expectCockpit(page: Page) {
-  // Cockpit · Milestones · Metrics (Plans follows with the plans feature).
-  for (const [n, label] of ['Cockpit', 'Milestones', 'Metrics'].entries()) await expect(tabs(page).nth(n)).toHaveText(label)
+  // Cockpit · Milestones · Decisions · Metrics (Plans follows with the plans feature).
+  for (const [n, label] of ['Cockpit', 'Milestones', 'Decisions', 'Metrics'].entries()) await expect(tabs(page).nth(n)).toHaveText(label)
   await expect(tabs(page).first()).toHaveAttribute('aria-current', 'page')
 
   // Both milestones' pinned cards, each under its milestone's name, in the
@@ -120,12 +119,11 @@ for (const width of [1280, 390]) {
   })
 }
 
-test('the panel is Queue · Decisions beside the Cockpit, a history day pages the Cockpit@1280', async ({ page, baseURL }) => {
+test('the panel is Queue beside the Cockpit, a history day pages the Cockpit@1280', async ({ page, baseURL }) => {
   const problems = await open(page, baseURL, projectPath, 1280)
   await expect(panel(page)).toBeVisible()
   await expect(page.locator('main [data-panel-open]')).toHaveCount(0)
-  await expect(panel(page).getByRole('tab')).toHaveText(['Queue', 'Decisions'])
-  await expect(switchTo(page, 'Queue')).toHaveAttribute('aria-selected', 'true')
+  await expect(panel(page).getByRole('tab'), 'one view, no switch; decisions are a tab').toHaveCount(0)
   await expect(panel(page).getByText('Last 30 days')).toBeVisible()
   await expect(panel(page).locator('[data-heat-day]')).toHaveCount(30)
   expect(await axe(page, '[data-project-panel]')).toEqual([])
@@ -137,40 +135,27 @@ test('the panel is Queue · Decisions beside the Cockpit, a history day pages th
   await page.locator('main [data-cockpit-jumped]').getByRole('button', { name: 'Back to now' }).click()
   await expect(page.locator('main [data-cockpit-jumped]')).toHaveCount(0)
 
-  await switchTo(page, 'Decisions').click()
-  await expect(page).toHaveURL(/\?panel=decisions$/)
-  await expect(panel(page).locator('[data-decisions-milestone]')).toBeVisible()
-  await expect(panel(page).locator('[data-decision-group]').first()).toBeVisible()
-  expect(await axe(page, '[data-project-panel]')).toEqual([])
-
-  await switchTo(page, 'Queue').click()
-  await expect(page).toHaveURL(new RegExp(`${projectPath}$`))
   expect(problems).toEqual([])
 })
 
-for (const [label, view] of [
-  ['Queue', 'queue'],
-  ['Decisions', 'decisions'],
-] as const) {
-  test(`the ${label} button opens its view as a slide-over, Escape closes it and focus returns@390`, async ({ page, baseURL }) => {
-    const problems = await open(page, baseURL, projectPath, 390)
-    await expect(panel(page), 'no column on a phone').toHaveCount(0)
-    const button = headerButton(page, view)
-    await expect(button).toHaveAttribute('aria-expanded', 'false')
-    await button.click()
-    const sheet = page.getByRole('dialog', { name: label })
-    await expect(sheet).toBeVisible()
-    await sheet.evaluate((e) => Promise.all(e.getAnimations().map((a) => a.finished)))
-    await expect(switchTo(page, label)).toHaveAttribute('aria-selected', 'true')
-    if (view === 'decisions') await expect(page).toHaveURL(/\?panel=decisions$/)
-    expect(await axe(page, '[role="dialog"]')).toEqual([])
+test('the Queue button opens the panel as a slide-over, Escape closes it and focus returns@390', async ({ page, baseURL }) => {
+  const problems = await open(page, baseURL, projectPath, 390)
+  await expect(panel(page), 'no column on a phone').toHaveCount(0)
+  await expect(headerButton(page, 'decisions'), 'decisions are a tab').toHaveCount(0)
+  const button = headerButton(page, 'queue')
+  await expect(button).toHaveAttribute('aria-expanded', 'false')
+  await button.click()
+  const sheet = page.getByRole('dialog', { name: 'Queue' })
+  await expect(sheet).toBeVisible()
+  await sheet.evaluate((e) => Promise.all(e.getAnimations().map((a) => a.finished)))
+  await expect(sheet.getByText('Last 30 days', { exact: true })).toBeVisible()
+  expect(await axe(page, '[role="dialog"]')).toEqual([])
 
-    await page.keyboard.press('Escape')
-    await expect(sheet).toBeHidden()
-    await expect(button).toBeFocused()
-    expect(problems).toEqual([])
-  })
-}
+  await page.keyboard.press('Escape')
+  await expect(sheet).toBeHidden()
+  await expect(button).toBeFocused()
+  expect(problems).toEqual([])
+})
 
 // The old project tabs load where their content moved, one link each.
 for (const old of ['activity', 'stream']) {
@@ -183,13 +168,14 @@ for (const old of ['activity', 'stream']) {
   })
 }
 
-// Decisions: the Cockpit with the panel's Decisions view, ?milestone= kept.
-test('?tab=decisions opens the panel on Decisions, keeping the milestone@1280', async ({ page, baseURL }) => {
-  const problems = await open(page, baseURL, `${projectPath}?milestone=14&tab=decisions`, 1280)
-  await expect(page).toHaveURL(new RegExp(`${projectPath}\\?milestone=14&panel=decisions$`))
-  await expect(tabs(page).first()).toHaveAttribute('aria-current', 'page')
-  await expect(switchTo(page, 'Decisions')).toHaveAttribute('aria-selected', 'true')
-  await expect(panel(page).locator('[data-decisions-milestone]')).toContainText('Payment providers')
+// The old link to the panel's Decisions view opens the Decisions tab (R6 of
+// "Desk: the Cockpit newest first by issue"), keeping ?milestone=; the
+// tab's milestone select is in desk.spec.ts ("milestone decisions").
+test('?panel=decisions opens the Decisions tab, keeping the milestone@1280', async ({ page, baseURL }) => {
+  const problems = await open(page, baseURL, `${projectPath}?milestone=14&panel=decisions`, 1280)
+  await expect(page).toHaveURL(new RegExp(`${projectPath}\\?milestone=14&tab=decisions$`))
+  await expect(tabs(page).filter({ hasText: 'Decisions' })).toHaveAttribute('aria-current', 'page')
+  await expect(page.locator('main [data-decisions-milestone]')).toContainText('Payment providers')
   expect(problems).toEqual([])
 })
 

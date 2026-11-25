@@ -21,12 +21,14 @@ import Cockpit from '../components/cockpit/Cockpit.vue'
 import CockpitComposer from '../components/cockpit/CockpitComposer.vue'
 import CockpitLive from '../components/cockpit/CockpitLive.vue'
 import ProjectPinned from '../components/cockpit/ProjectPinned.vue'
+import MilestoneDecisions from '../components/MilestoneDecisions.vue'
 import MilestoneIssues from '../components/MilestoneIssues.vue'
 import MilestoneNeeds from '../components/MilestoneNeeds.vue'
 import MilestonePanel from '../components/MilestonePanel.vue'
 import MilestoneRetro from '../components/MilestoneRetro.vue'
 import MilestoneSections from '../components/MilestoneSections.vue'
 import PlanList from '../components/PlanList.vue'
+import ProjectDecisions from '../components/ProjectDecisions.vue'
 import ProjectFinishing from '../components/ProjectFinishing.vue'
 import RouteTabs from '../ui/RouteTabs.vue'
 import { live, useResource } from '../live'
@@ -149,9 +151,9 @@ const projectInbox = computed(() => {
 
 // The context panel (docs/contributing/web-ui.md, "Context panel and pause history"), laid out by
 // ContextLayout: a column from 1180 px; below, a sheet that the header's
-// buttons of the panel's views open. A project's is ContextPanel (Queue,
-// Decisions; R15 of "Desk: the Cockpit"), a milestone's MilestonePanel
-// (Issues, Queue, Decisions; R13); the view is ?panel=. Focus returns to
+// buttons of the panel's views open. A project's is ContextPanel (Queue;
+// R15 of "Desk: the Cockpit"), a milestone's MilestonePanel (Issues,
+// Queue; R13); the view is ?panel=. Focus returns to
 // the button that opened the sheet (panelOpener). A milestone's Issues tab
 // (a table of fixed columns) needs the full width: there the panel is a
 // sheet at every width.
@@ -199,17 +201,17 @@ function openContext(e: MouseEvent, view?: PanelView) {
   contextOpen.value = true
 }
 
-// A link that names a panel view (?panel=, also the aliased
-// ?tab=decisions, a decision link or the tracking issue's) opens the sheet
-// where the panel is one, so the view shows; the view switch inside the
-// sheet (setPanel) and closing the sheet do not reopen it.
+// A link that names a panel view (?panel=) opens the sheet where the panel
+// is one, so the view shows; the view switch inside the sheet (setPanel)
+// and closing the sheet do not reopen it. The old ?panel=decisions is the
+// Decisions tab (milestoneAlias, projectAlias) and opens no sheet.
 const panelColumn = computed(() => !milestoneIID.value || tab.value !== 'issues')
 let panelBySwitch = false
 watch(
   () => [milestoneIID.value, route.query.panel] as const,
   ([, panel]) => {
     if (panelBySwitch) return void (panelBySwitch = false)
-    if (!panel || route.query.tab === 'decisions') return
+    if (!panel || panel === 'decisions') return
     if (!panelColumn.value || window.matchMedia('(max-width: 1179.98px)').matches) {
       panelOpener.value = null
       contextOpen.value = true
@@ -322,10 +324,11 @@ const links = computed(() => {
 })
 
 // An old link to a removed milestone tab (?tab=activity, needs, pilot,
-// decisions, board) or to the pilot drawer (?pilot=1) opens where its
-// content moved (milestoneAlias, R12 and R14), and so does an old link to a
-// removed project tab (?tab=activity, decisions, board; projectAlias, R15):
-// the URL is replaced on load.
+// board) or to the pilot drawer (?pilot=1) opens where its content moved
+// (milestoneAlias, R12 and R14), and so does an old link to a removed
+// project tab (?tab=activity, board; projectAlias, R15) or to the panel's
+// old Decisions view (?panel=decisions, the Decisions tab): the URL is
+// replaced on load, the hash (#<decision-id>) stays.
 watch(
   () => [milestoneIID.value, route.query] as const,
   ([iid, query]) => {
@@ -396,7 +399,7 @@ watch(
     v-model:open="contextOpen"
     :column="panelColumn"
     :title="panelLabel"
-    :description="milestoneIID ? 'The milestone\'s issues, the project\'s queue and the milestone\'s decisions' : 'The queue and companions of the project\'s active milestone, its last 30 days, and its decisions'"
+    :description="milestoneIID ? 'The milestone\'s issues and the project\'s queue' : 'The queue and companions of the project\'s active milestone, and its last 30 days'"
     :opener="panelOpener"
   >
     <template #default="{ sheet }">
@@ -549,6 +552,15 @@ watch(
         <UAlert v-else-if="milestoneFailed" :color="alertColor('danger')" variant="subtle" class="mt-3" description="The milestone could not be loaded." />
         <div v-else class="empty">Loading…</div>
       </div>
+      <div v-else-if="tab === 'decisions'" class="scroll board">
+        <!-- The Decisions tab (R6 of "Desk: the Cockpit newest first by
+             issue"): fixed to the milestone on its page, with the milestone
+             select on the project's. -->
+        <template v-if="namespace && name">
+          <MilestoneDecisions v-if="milestoneIID" :namespace="namespace" :name="name" :milestone="milestoneIID" />
+          <ProjectDecisions v-else :namespace="namespace" :name="name" :milestones="project?.milestones ?? []" />
+        </template>
+      </div>
       <div v-else-if="tab === 'retrospective'" class="scroll board">
         <MilestoneRetro
           v-if="namespace && name && milestone && milestone.iid === milestoneIID"
@@ -596,12 +608,10 @@ watch(
         :class="{ 'ctx-sheet': sheet }"
         :namespace="namespace!"
         :name="name!"
-        :view="panelView"
         :milestone="milestone"
         :milestones="project?.milestones"
         :history="history"
         :jumped="cockpitBefore"
-        @update:view="setPanel"
         @day="jumpDay"
         @clear="cockpitDay = undefined"
       />

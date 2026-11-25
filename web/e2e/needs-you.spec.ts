@@ -214,11 +214,11 @@ for (const size of widths) {
     // quiet has a retrospective; without it the row is the three tabs.
     let problems = await open(page, baseURL, milestonePath, size, { milestone: { ...quiet, retrospective: undefined } })
     const view = page.getByRole('navigation', { name: 'View' })
-    await expect(view.getByRole('link')).toHaveText(['Cockpit', 'Issues', 'Metrics'])
+    await expect(view.getByRole('link')).toHaveText(['Cockpit', 'Issues', 'Decisions', 'Metrics'])
     expect(problems).toEqual([])
     // The compact pause card is on the Issues tab.
     problems = await open(page, baseURL, `${milestonePath}?tab=issues`, size, { milestone: budget })
-    await expect(view.getByRole('link')).toHaveText([/^Cockpit\s*2$/, 'Issues', 'Metrics', 'Retrospective'])
+    await expect(view.getByRole('link')).toHaveText([/^Cockpit\s*2$/, 'Issues', 'Decisions', 'Metrics', 'Retrospective'])
     await expect(badge(page)).toHaveText('2')
     const pause = page.locator('main .pause')
     await expect(pause).toBeVisible()

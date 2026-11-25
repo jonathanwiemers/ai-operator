@@ -258,10 +258,10 @@ with the option's letter in the comment's thread (see
 
 Each [decision](../concepts/glossary.md#decision) in a milestone's queue
 has a *Revisit* button, on the *Issues* tab and in the project's context
-panel. The card of the decision in the project panel's *Decisions* has it too, with a
+panel. The decision's card on the *Decisions* tab has it too, with a
 line that says what will happen. It is there for owners with the `chat`
 grant, while the milestone has its pilot. The decision's ID opens its card
-in the panel's *Decisions*, or the comment on GitLab without the history
+on the *Decisions* tab, or the comment on GitLab without the history
 database.
 
 1. Click *Revisit* on the decision.

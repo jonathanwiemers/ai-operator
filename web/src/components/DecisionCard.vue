@@ -36,6 +36,7 @@ const successorTo = computed(() => ({ query: route.query, hash: `#${props.decisi
     :id="decision.id"
     class="decision card min-w-0 scroll-mt-3 px-3.5 py-3 text-[13px]"
     :class="{ superseded: decision.superseded, linked }"
+    tabindex="-1"
     data-decision
   >
     <header class="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">

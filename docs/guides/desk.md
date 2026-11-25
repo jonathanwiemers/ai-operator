@@ -204,23 +204,24 @@ A project page has the tabs *Cockpit | Milestones | Metrics*, and *Plans* with D
 - **Milestones**: the project's [run-order queue](milestone-order-and-timeline.md#the-queue),
   which owners drag into order, the [milestones that are finishing](steer-from-the-desk.md#the-queue-and-finishing),
   and its milestones in progress and recently done. The switch on top shows the *Board* instead: one board per milestone, plus the issues without one (`?view=board`).
+- **Decisions**: the [decisions](decisions.md) of all milestones, or of the one you pick in the *Milestone* select.
 - **Metrics**: what the project's agent calls cost, with its lines of code.
 - **Plans**: the project's [plans](write-a-milestone.md#draft-it-in-the-desk)
   and *New plan* for this project; a [plan's decisions](write-a-milestone.md#answer-the-agents-decisions) have a wizard.
 
-A panel on the right switches between *Queue* (the active milestone's queue, its companions and the last 30 days; pick a day to page the Cockpit back to it, *Back to now* returns) and *Decisions* (the decisions of all milestones, or of the one you pick).
-Below 1180 px the *Queue* and *Decisions* buttons in the header open it from the right; Escape closes it. The open view is in the address (`?panel=decisions`).
+A panel on the right shows *Queue*: the active milestone's queue, its companions and the last 30 days. Pick a day to page the Cockpit back to it; *Back to now* returns.
+Below 1180 px the *Queue* button in the header opens it from the right; Escape closes it.
 
-Old links to the former tabs open where their content is now: `?tab=activity` and `stream` open *Cockpit*, `?tab=decisions` the panel's *Decisions* (`?panel=decisions`, the milestone you picked stays), and `?tab=board` the *Board* of *Milestones* (`?tab=milestones&view=board`).
+Old links open where their content is now: `?tab=activity` and `stream` open *Cockpit*, `?panel=decisions` the *Decisions* tab (the milestone you picked stays), and `?tab=board` the *Board* of *Milestones* (`?tab=milestones&view=board`).
 
 ## A milestone
 
 A milestone page opens on *Cockpit*, which counts what waits for you. It starts with the [message box to the pilot](#message-the-pilot) and your latest exchange with it, then the problems, proposals and questions, pinned and answered there,
 a live line per running agent that opens its transcript, a search, and one thread per issue, the newest activity on top, with runs, CI and reviews folded into groups (open one, or *Expand all*).
-Then come *Issues* and *Metrics*, and *Retrospective* once written. The tab is in the address, so you can link to it.
-A panel on the right switches between *Issues* (the issues by state: running, waiting, next, merged, skipped; *Open table* opens the Issues tab), *Queue* (the project's milestones, this one marked) and *Decisions* (superseded ones folded). Below 1180 px, and on the Issues tab, the *Issues*, *Queue* and *Decisions* buttons in the header open it from the right; Escape closes it. The open view is in the address (`?panel=queue`).
+Then come *Issues*, *Decisions* and *Metrics*, and *Retrospective* once written. The tab is in the address, so you can link to it.
+A panel on the right switches between *Issues* (the issues by state: running, waiting, next, merged, skipped; *Open table* opens the Issues tab), and *Queue* (the project's milestones, this one marked). Below 1180 px, and on the Issues tab, the *Issues* and *Queue* buttons in the header open it from the right; Escape closes it. The open view is in the address (`?panel=queue`).
 
-Old links to the former tabs open where their content is now, and the address changes to match: `?tab=activity`, `stream`, `needs` and `pilot` open *Cockpit*, `?tab=decisions` the panel's *Decisions* (`?panel=decisions`), and `?tab=board` the *Board* view of *Issues* (`?tab=issues&view=board`).
+Old links to the former tabs open where their content is now, and the address changes to match: `?tab=activity`, `stream`, `needs` and `pilot` open *Cockpit*, `?panel=decisions` the *Decisions* tab (`?tab=decisions`), and `?tab=board` the *Board* view of *Issues* (`?tab=issues&view=board`).
 
 ### The pinned cards
 
@@ -263,11 +264,10 @@ works on the issue, and the issue's own stream.
 
 ### Decisions
 
-The panel's *Decisions* lists every [decision](../concepts/glossary.md#decision) of the milestone's
-issues, with the option chosen; replaced ones are folded. It needs the history database. A link ending in `#D42-3` opens that line.
-The project panel's *Decisions*, with the milestone picked, shows the full cards: the
+The *Decisions* tab lists every [decision](../concepts/glossary.md#decision) of the milestone's
+issues as a card. It needs the history database. A link ending in `#D42-3` scrolls to that card. Each card shows the
 question, the option chosen (*Chosen*), the alternatives, why, the run and a link to the comment on
-GitLab, a search, and *Active* or *Superseded*.
+GitLab. Above the cards are a search and the *All*, *Active* and *Superseded* pills.
 
 A revisited decision shows its chain: who asked, what for, the comment or
 follow-up issue, and the decision that replaced it. Owners get *Revisit* (opens the prompt in the milestone's *Cockpit*),

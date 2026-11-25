@@ -1,8 +1,10 @@
 // The milestone context panel (R13 of "Desk: the Cockpit", #786): Issues ·
-// Queue · Decisions. At 1280 px it is a column beside the Cockpit and each
-// view opens from its switch; at 390 px the header's Issues, Queue and
-// Decisions buttons open it as a slide-over on that view, Escape closes it
-// and focus returns to the button. The view is kept in ?panel=. axe on both
+// Queue. At 1280 px it is a column beside the Cockpit and each view opens
+// from its switch; at 390 px the header's Issues and Queue buttons open it
+// as a slide-over on that view, Escape closes it and focus returns to the
+// button. The view is kept in ?panel=. The old Decisions view is the
+// Decisions tab (R6 of "Desk: the Cockpit newest first by issue"): an old
+// ?panel=decisions#<id> link lands on the tab at the card. axe on both
 // widths. The fixture milestone %14 has merged (#279, #280), running (#281)
 // and waiting (#282, #283, and #284 on a hold) issues, is second in the
 // project's queue, and has one superseded decision (D280-1). Run with npm run e2e (built UI,
@@ -50,26 +52,19 @@ const switchTo = (page: Page, label: string) => panel(page).getByRole('tab', { n
 const headerButton = (page: Page, label: string) => page.locator(`main [data-stream-head] [data-panel-open="${label.toLowerCase()}"]`)
 
 // expectView checks what each view shows of the fixture.
-async function expectView(page: Page, view: 'issues' | 'queue' | 'decisions') {
+async function expectView(page: Page, view: 'issues' | 'queue') {
   const p = panel(page)
   await expect(switchTo(page, view[0]!.toUpperCase() + view.slice(1))).toHaveAttribute('aria-selected', 'true')
   if (view === 'issues') {
     await expect(p.getByRole('heading')).toHaveText([/^Running\s*1$/, /^Waiting\s*3$/, /^Merged\s*2$/])
     await expect(p.locator('[data-panel-state="running"]').getByRole('link')).toHaveAttribute('href', `${milestonePath}/issues/281`)
     await expect(p.getByRole('link', { name: 'Open table' })).toHaveAttribute('href', `${milestonePath}?tab=issues`)
-  } else if (view === 'queue') {
+  } else {
     await expect(p.locator('[data-panel-queue-entry]')).toHaveCount(3)
     const current = p.locator('[data-panel-queue-entry="14"]').getByRole('link')
     await expect(current).toHaveAttribute('aria-current', 'page')
     await expect(current).toContainText('This milestone')
     await expect(current).toContainText('Paused')
-  } else {
-    await expect(p.locator('[data-panel-decision]')).toHaveCount(3)
-    await expect(p.getByText('D281-2')).toBeVisible()
-    // The superseded one is in a closed group.
-    const old = p.getByRole('button', { name: 'Superseded (1)' })
-    await expect(old).toHaveAttribute('aria-expanded', 'false')
-    await expect(p.getByText('D280-1')).toHaveCount(0)
   }
 }
 
@@ -103,15 +98,7 @@ test('the panel is a column beside the Cockpit, each view opens from the switch@
   await expectView(page, 'queue')
   expect(await axe(page, '[data-milestone-panel]')).toEqual([])
 
-  await switchTo(page, 'Decisions').click()
-  await expect(page).toHaveURL(/\?panel=decisions$/)
-  await expectView(page, 'decisions')
-  const old = panel(page).getByRole('button', { name: 'Superseded (1)' })
-  await old.focus()
-  await page.keyboard.press('Enter')
-  await expect(old).toHaveAttribute('aria-expanded', 'true')
-  await expect(panel(page).getByText('D280-1')).toBeVisible()
-  expect(await axe(page, '[data-milestone-panel]')).toEqual([])
+  await expect(switchTo(page, 'Decisions'), 'decisions are a tab').toHaveCount(0)
 
   await switchTo(page, 'Issues').click()
   await expect(page).toHaveURL(new RegExp(`${milestonePath}$`))
@@ -128,22 +115,36 @@ test('the panel is a column beside the Cockpit, each view opens from the switch@
   expect(problems).toEqual([])
 })
 
-test('?panel=decisions opens the Decisions view, a reload keeps it@1280', async ({ page, baseURL }) => {
-  const problems = await open(page, baseURL, `${milestonePath}?panel=decisions`, 1280)
-  await expectView(page, 'decisions')
-  await page.reload()
-  await expectView(page, 'decisions')
+// landsOnCard checks that the old link opened the Decisions tab at the
+// superseded card D280-1, scrolled into view and focused, with no panel
+// view or sheet for it.
+async function landsOnCard(page: Page) {
+  await expect(page).toHaveURL(new RegExp(`${milestonePath}\\?tab=decisions#D280-1$`))
+  await expect(page.locator('main [data-stream-head]').getByRole('navigation', { name: 'View' }).getByRole('link', { name: 'Decisions' })).toHaveAttribute('aria-current', 'page')
+  const card = page.locator('main article#D280-1[data-decision]')
+  await expect(card).toBeInViewport()
+  await expect(card).toBeFocused()
+  await expect(card.locator('[data-superseded]')).toHaveText('Superseded by D281-2')
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+}
+
+test('an old ?panel=decisions#<id> link lands on the Decisions tab at the card@1280', async ({ page, baseURL }) => {
+  const problems = await open(page, baseURL, `${milestonePath}?panel=decisions#D280-1`, 1280)
+  await landsOnCard(page)
+  // Revisit is on the tab's cards (DecisionRevisit, R6).
+  await expect(page.locator('main [data-decisions] [data-revisit]').first()).toBeAttached()
+  expect(await axe(page, '[data-decisions]')).toEqual([])
   expect(problems).toEqual([])
 })
 
 for (const [label, view] of [
   ['Issues', 'issues'],
   ['Queue', 'queue'],
-  ['Decisions', 'decisions'],
 ] as const) {
   test(`the ${label} button opens its view as a slide-over, Escape closes it and focus returns@390`, async ({ page, baseURL }) => {
     const problems = await open(page, baseURL, milestonePath, 390)
     await expect(panel(page), 'no column on a phone').toHaveCount(0)
+    await expect(headerButton(page, 'Decisions'), 'decisions are a tab').toHaveCount(0)
     const button = headerButton(page, label)
     await expect(button).toHaveAttribute('aria-expanded', 'false')
     await button.click()
@@ -168,9 +169,9 @@ test('switching the view inside the slide-over keeps it open@390', async ({ page
   const problems = await open(page, baseURL, milestonePath, 390)
   await headerButton(page, 'Issues').click()
   await expect(page.getByRole('dialog')).toBeVisible()
-  await switchTo(page, 'Decisions').click()
-  await expect(page).toHaveURL(/\?panel=decisions$/)
-  await expectView(page, 'decisions')
+  await switchTo(page, 'Queue').click()
+  await expect(page).toHaveURL(/\?panel=queue$/)
+  await expectView(page, 'queue')
   await expect(page.getByRole('dialog')).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(page.getByRole('dialog')).toHaveCount(0)
@@ -178,15 +179,18 @@ test('switching the view inside the slide-over keeps it open@390', async ({ page
   expect(problems).toEqual([])
 })
 
-// A link to a panel view (?panel=, the old ?tab=decisions, a decision link)
-// opens the slide-over on that view below 1180 px; Escape closes it.
-test('a ?panel=decisions link opens the slide-over on Decisions@390', async ({ page, baseURL }) => {
-  const problems = await open(page, baseURL, `${milestonePath}?panel=decisions`, 390)
-  const sheet = page.getByRole('dialog', { name: 'Decisions' })
-  await expect(sheet).toBeVisible()
-  await expectView(page, 'decisions')
-  await page.keyboard.press('Escape')
-  await expect(sheet).toBeHidden()
-  await expect(page).toHaveURL(/\?panel=decisions$/)
+// Active hides superseded cards: a link to one switches the tab to All.
+test('a #<id> link to a superseded card under ?state=active switches to All@1280', async ({ page, baseURL }) => {
+  const problems = await open(page, baseURL, `${milestonePath}?tab=decisions&state=active#D280-1`, 1280)
+  await landsOnCard(page)
+  expect(problems).toEqual([])
+})
+
+// An old link to the panel's Decisions view opens the tab, not a
+// slide-over, on phones too.
+test('an old ?panel=decisions#<id> link lands on the Decisions tab at the card@390', async ({ page, baseURL }) => {
+  const problems = await open(page, baseURL, `${milestonePath}?panel=decisions#D280-1`, 390)
+  await landsOnCard(page)
+  expect(await axe(page, '[data-decisions]')).toEqual([])
   expect(problems).toEqual([])
 })

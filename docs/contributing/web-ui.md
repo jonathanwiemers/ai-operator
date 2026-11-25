@@ -1502,13 +1502,16 @@ the link heights on a phone (`milestone-issues@<width>.png`); the route checks c
 
 ### Milestone Decisions
 
-The project panel's *Decisions* view (R15 of the Cockpit spec,
-`?panel=decisions`; `?milestone=` narrows it to one milestone, also a stored one)
-is Tailwind utilities and Nuxt UI (a card keeps a little scoped CSS, `DecisionCard.vue`). A
-milestone page has no Decisions tab since R14 of the Cockpit spec: its
-decisions are the panel's *Decisions* view (`?panel=decisions`; a `#<id>`
-hash scrolls to that row once loaded), and `?tab=decisions` opens it. It
-reads `GET …/decisions` from the history database only, never GitLab.
+The *Decisions* tab of project and milestone pages (`?tab=decisions`, R6
+of the spec "Desk: the Cockpit newest first by issue", D817-P1..P3; the
+panels' Decisions views went) is Tailwind utilities and Nuxt UI (a card
+keeps a little scoped CSS, `DecisionCard.vue`). On a milestone it is fixed
+to the milestone; on a project `ProjectDecisions.vue` adds the milestone
+select (`?milestone=` narrows it to one milestone, also a stored one). An
+old `?panel=decisions` link is replaced by `?tab=decisions` with its hash
+and other parameters (`panelAliasQuery` in `streamTabs.ts`, through
+`milestoneAlias` and `projectAlias`). It reads `GET …/decisions` from the
+history database only, never GitLab.
 
 - `MilestoneDecisions.vue` is the tab: `milestone` is the IID, 0 for the
   whole project. The search (`?q=`, written 300 ms after the last key) and
@@ -1516,11 +1519,14 @@ reads `GET …/decisions` from the history database only, never GitLab.
   server filters. It groups the cards by issue in the server's order
   (`groupByIssue`); with milestone 0 each group header names its milestone
   (`milestoneLabel` over the `milestones` prop) and links to its tab. The
-  `controls` slot takes more filters: `Stream.vue` puts the project's
+  `controls` slot takes more filters: `ProjectDecisions.vue` puts the project's
   milestone select there (*All milestones* or one, `?milestone=<iid>`,
   `milestoneFromQuery`; one missing from the project's list shows as
-  `%<iid>`). A `#<id>` hash scrolls to its card once the data is there and
-  highlights it for two seconds, also on a later hash change. Without the
+  `%<iid>`). A `#<id>` hash scrolls to its card once the data is there,
+  focuses it (the card has `tabindex="-1"`) and highlights it for two
+  seconds, also on a later hash change. *All*, the default, lists the
+  superseded cards too, so no group needs opening; under *Active* a link
+  to a card it hides switches to *All*. Without the
   database (`available: false`) it says "Decisions need the history
   database." and shows no controls.
 - `DecisionCard.vue` is one decision with the anchor `#<id>`: title, ID,
@@ -1543,11 +1549,11 @@ reads `GET …/decisions` from the history database only, never GitLab.
 
 The queue's decision IDs (`QueueList.vue` on the Issues tab) link through
 `decisionHref` (`milestoneQueue.ts`): with the `history` feature to the
-milestone page's `?panel=decisions#<id>` as a RouterLink, else to the GitLab
+milestone page's `?tab=decisions#<id>` as a RouterLink, else to the GitLab
 comment. The Revisit button stays. In the context panel (`compact`) the
 rows carry no IDs or Revisit chips: `decisionGroups` sums them into one
 line per kind, *Revisit · n* (decisions an issue revisits), *Open · n* and
-*Superseded · n*, each linking to the milestone panel's Decisions with the
+*Superseded · n*, each linking to the milestone's Decisions tab with the
 `history` feature (`decisionsTabHref`), plain text without.
 
 The e2e cases `milestone decisions › …` (fixture
@@ -2338,13 +2344,14 @@ a path (decision 13 of the header and tabs milestone).
   at `/research`.
 - **Project** (`/projects/<namespace>/<name>`, `projectTabsFor`):
   *Cockpit* (default, the [project Cockpit](#cockpit)) *| Milestones |
-  Metrics*, plus *Plans* with the feature `plans` (`?tab=plans` without it
+  Decisions | Metrics*, plus *Plans* with the feature `plans` (`?tab=plans` without it
   opens *Cockpit*). *Milestones* has a *Milestones | Board* view switch
   (`?view=board`, `ProjectBoards.vue`). The removed tabs
   (`projectTabAliases`, R15): `activity` and `stream` → *Cockpit*;
-  `decisions` → `?panel=decisions`; `board` → `?tab=milestones&view=board`.
+  `board` → `?tab=milestones&view=board`. An old `?panel=decisions` →
+  `?tab=decisions` (`panelAliasQuery`).
 - **Milestone** (`…/milestones/<iid>`, `milestoneTabsFor`): *Cockpit*
-  (default, see [Cockpit](#cockpit)) *| Issues | Metrics*, then
+  (default, see [Cockpit](#cockpit)) *| Issues | Decisions | Metrics*, then
   *Retrospective* once one exists; no *Plans*. While the milestone loads,
   `?tab=` is read against all its tabs, so a `?tab=retrospective` link
   waits; once loaded, a hidden tab falls back to *Cockpit*. The `problem`
@@ -2354,8 +2361,8 @@ a path (decision 13 of the header and tabs milestone).
 - **Milestone aliases** (`milestoneAlias`, R14 of the Cockpit spec,
   D789-P1/P2): the removed tabs open where their content moved, and
   Stream.vue replaces the URL on load: `activity`, `stream`, `needs` and
-  `pilot` → *Cockpit*; `decisions` → *Cockpit* with `?panel=decisions`;
-  `board` → `?tab=issues&view=board`, the Board view of the Issues tab
+  `pilot` → *Cockpit*; `?panel=decisions` → `?tab=decisions`, the hash
+  kept (`panelAliasQuery`); `board` → `?tab=issues&view=board`, the Board view of the Issues tab
   (`issuesView`). `?pilot=` goes too. Until the URL is replaced,
   `milestoneTabFromRoute` reads the old id as its new tab.
 - **Aliases** (`tabAlias`), so old links keep working: `spend` →

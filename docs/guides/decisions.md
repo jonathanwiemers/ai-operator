@@ -36,15 +36,17 @@ between.
 
 ## Where decisions show
 
-- **A project's panel**: *Decisions* beside its *Cockpit* shows the decisions of all its milestones,
+- **A project's *Decisions* tab** shows the decisions of all its milestones,
   newest milestone first, from the [planner](../concepts/glossary.md#planner)
   and from the implementers, open issues included. Each issue's header names its
   milestone. Pick one in the *Milestone* select to narrow the list to it; *All
   milestones* shows them all again. A done milestone's decisions stay as long
-  as its record is kept. `?panel=decisions` opens it; old `?tab=decisions` links open it too.
-- **A milestone's panel**: *Decisions* beside its *Cockpit* lists the
-  milestone's decisions with the option chosen, replaced ones folded.
-  `?panel=decisions` opens it; old `?tab=decisions` links open it too.
+  as its record is kept. `?tab=decisions` opens it.
+- **A milestone's *Decisions* tab** shows the same cards for that milestone.
+  `?tab=decisions` opens it.
+
+Old `?panel=decisions` links open the *Decisions* tab, and the address
+changes to match. A link that ends in `#D42-3` scrolls to that card.
 
 The cards are grouped by issue, in the order of the plan. The issue's title
 opens its issue page.
@@ -123,9 +125,9 @@ see the line without them.
 ## Links to a decision
 
 - A decision ID in the milestone's queue, on the *Issues* tab and in the
-  project's context panel, opens the milestone panel's *Decisions* at its line.
-- The tracking issue's *Decisions* list links to the milestone panel's
-  *Decisions*.
+  project's context panel, opens the milestone's *Decisions* tab at its card.
+- The tracking issue's *Decisions* list links to the milestone's
+  *Decisions* tab.
 - Each card keeps *on GitLab* for the comment itself.
 
 ## When the tab is empty

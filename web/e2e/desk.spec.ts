@@ -961,7 +961,7 @@ for (const { width, height, labels } of [
 }
 
 // RouteTabs (src/ui/RouteTabs.vue): on a phone the milestone's tabs
-// (Cockpit with its badge · Issues · Metrics · Retrospective) are still a
+// (Cockpit with its badge · Issues · Decisions · Metrics · Retrospective) are still a
 // little wider than the screen. They scroll inside the strip's list, the
 // page does not, and the tab of ?tab=retrospective, the last one, is
 // scrolled into view on load, inside the list's visible box.
@@ -1061,7 +1061,7 @@ test.describe('Cockpit, Milestones and Timeline tabs', () => {
     const problems = await open(page, baseURL, projectCockpitPath)
     await projectCockpitReady(page)
     const tabs = page.locator('main').getByRole('navigation', { name: 'View' }).getByRole('link')
-    await expect(tabs).toHaveText(['Cockpit', 'Milestones', 'Metrics'])
+    await expect(tabs).toHaveText(['Cockpit', 'Milestones', 'Decisions', 'Metrics'])
     await expect(tabs.nth(0)).toHaveAttribute('aria-current', 'page')
     await expect(page.getByRole('searchbox', { name: 'Search the Cockpit' })).toBeVisible()
     await tabs.nth(1).click()
@@ -2450,7 +2450,7 @@ test.describe('context sheet', () => {
           // The decisions as one line per kind, no IDs or Revisit chips (R10).
           const groups = sheet.locator('[data-decision-groups] li')
           await expect(groups).toHaveText(['Revisit · 1', 'Open · 2', 'Superseded · 1'])
-          await expect(groups.first().getByRole('link')).toHaveAttribute('href', '/projects/team-a/shop/milestones/12?panel=decisions')
+          await expect(groups.first().getByRole('link')).toHaveAttribute('href', '/projects/team-a/shop/milestones/12?tab=decisions')
           await expect(sheet.getByText('D275-P1')).toHaveCount(0)
           await expect(sheet.getByRole('button', { name: 'Revisit' })).toHaveCount(0)
         }
@@ -3675,22 +3675,21 @@ test.describe('milestone issues', () => {
   }
 })
 
-// A milestone's decisions (MilestoneDecisions.vue, DecisionCard.vue, in the
-// project panel's Decisions view for ?milestone=14, R15 of "Desk: the
-// Cockpit"; R11, R12; e2e/fixtures/decisions.ts): cards grouped by issue,
+// A milestone's decisions (MilestoneDecisions.vue, DecisionCard.vue, on the
+// project's Decisions tab for ?milestone=14, R6 of "Desk: the Cockpit
+// newest first by issue"; R11, R12; e2e/fixtures/decisions.ts): cards grouped by issue,
 // Chosen first, agent text as markdown without HTML, a muted superseded card
 // linking to its successor. The search and the state chips live in the URL
 // and survive a reload; a #<id> link scrolls to its card and highlights it.
-// From 1180 px the view is the panel's column, below a slide-over that
-// ?panel=decisions opens; on a phone the cards stack without sideways
-// scroll and taps are 44 px high.
+// On a phone the cards stack without sideways scroll and taps are 44 px
+// high.
 test.describe('milestone decisions', () => {
-  const path = '/projects/team-a/shop?milestone=14&panel=decisions'
-  const view = (page: Page) => page.locator('[data-panel-view="decisions"]')
-  // decisionsRoute: the project panel's Decisions view, all milestones.
+  const path = '/projects/team-a/shop?milestone=14&tab=decisions'
+  const view = (page: Page) => page.locator('main [data-decisions]')
+  // decisionsRoute: the project's Decisions tab, all milestones.
   const decisionsRoute: Route = {
     name: 'stream-project-decisions',
-    path: '/projects/team-a/shop?panel=decisions',
+    path: '/projects/team-a/shop?tab=decisions',
     ready: (page) => expect(view(page).getByText(projectReady.decisions).first()).toBeVisible(),
   }
 
@@ -3719,7 +3718,7 @@ test.describe('milestone decisions', () => {
 
     test(`cards, search and state chips@${size.width}`, journeyAt(size.width), async ({ page, baseURL }, testInfo) => {
       const problems = await open(page, baseURL, size)
-      const main = page.locator('[data-panel-view="decisions"]')
+      const main = page.locator('main')
       const cards = main.locator('[data-decisions] [data-decision]')
       const groups = main.locator('[data-decisions] [data-decision-group]')
       await expect(groups).toHaveCount(2)
@@ -3792,22 +3791,20 @@ test.describe('milestone decisions', () => {
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })
 
-    // Below 1180 px a link inside the slide-over closes it (useBackClose):
-    // the links between cards are followed in the panel's column.
     if (size.width >= 1180) {
       test(`a #id link scrolls to and highlights its card@${size.width}`, async ({ page, baseURL }) => {
         const problems = await open(page, baseURL, size, `${path}#D280-1`)
-        const old = page.locator('[data-panel-view="decisions"] #D280-1')
+        const old = page.locator('main #D280-1')
         await expect(old).toHaveClass(/linked/)
         await expect(old).toBeInViewport()
         // Briefly.
         await expect(old).not.toHaveClass(/linked/, { timeout: 5000 })
 
         // A hash change: the superseded card's link to its successor.
-        const card = page.locator('[data-panel-view="decisions"] #D281-2')
+        const card = page.locator('main #D281-2')
         await expect(card).not.toHaveClass(/linked/)
         await old.locator('[data-superseded] a').click()
-        await expect(page).toHaveURL(/panel=decisions#D281-2$/)
+        await expect(page).toHaveURL(/tab=decisions#D281-2$/)
         await expect(card).toHaveClass(/linked/)
         await expect(card).toBeInViewport()
         expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
@@ -3816,7 +3813,7 @@ test.describe('milestone decisions', () => {
       // R13: D280-1 was revisited twice, through its successor D281-2.
       test(`the chain of a revisited decision@${size.width}`, async ({ page, baseURL }) => {
         const problems = await open(page, baseURL, size)
-        const old = page.locator('[data-panel-view="decisions"] #D280-1')
+        const old = page.locator('main #D280-1')
         const steps = old.locator('[data-chain-step]')
         await expect(steps).toHaveCount(2)
         // A follow-up from the Desk, applied by D281-2.
@@ -3838,8 +3835,8 @@ test.describe('milestone decisions', () => {
         await expect(second.locator('[data-follow-up]')).toHaveCount(0)
         await expect(second.locator('[data-replaced-by]')).toHaveCount(0)
         // The successor's card starts at its own request.
-        await expect(page.locator('[data-panel-view="decisions"] #D281-2 [data-chain-step]')).toHaveCount(1)
-        await expect(page.locator('[data-panel-view="decisions"] #D280-2 [data-chain]')).toHaveCount(0)
+        await expect(page.locator('main #D281-2 [data-chain-step]')).toHaveCount(1)
+        await expect(page.locator('main #D280-2 [data-chain]')).toHaveCount(0)
 
         // Superseded: the line and the successor, no action.
         const block = old.locator('[data-revisit]')
@@ -3847,8 +3844,8 @@ test.describe('milestone decisions', () => {
         await expect(block.locator('[data-revisit-text]')).toHaveText('Already replaced by D281-2.')
         await expect(block.locator('button, textarea')).toHaveCount(0)
         await block.locator('[data-revisit-link]').click()
-        await expect(page).toHaveURL(/panel=decisions#D281-2$/)
-        await expect(page.locator('[data-panel-view="decisions"] #D281-2')).toHaveClass(/linked/)
+        await expect(page).toHaveURL(/tab=decisions#D281-2$/)
+        await expect(page.locator('main #D281-2')).toHaveClass(/linked/)
         expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
         expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
       })
@@ -3876,7 +3873,7 @@ test.describe('milestone decisions', () => {
         return r.fulfill({ status: 200, json: { messages: [reply] } })
       },
     )
-    const card = page.locator('[data-panel-view="decisions"] #D280-2')
+    const card = page.locator('main #D280-2')
     const block = card.locator('[data-revisit]')
     await expect(block).toHaveAttribute('data-mode', 'prompt')
     await expect(block.locator('[data-revisit-text]')).toContainText('queued after the planned issues')
@@ -3888,7 +3885,7 @@ test.describe('milestone decisions', () => {
     const go = block.getByRole('link', { name: 'Go to Q9' })
     await expect(go).toHaveAttribute('href', '/projects/team-a/shop/milestones/14#prompt-Q9')
     // The other cards keep their own state.
-    await expect(page.locator('[data-panel-view="decisions"] #D281-2 [role=status]')).toHaveCount(0)
+    await expect(page.locator('main #D281-2 [role=status]')).toHaveCount(0)
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
   })
 
@@ -3908,7 +3905,7 @@ test.describe('milestone decisions', () => {
         return r.fulfill({ status: 200, json: { id: 1, author: 'jo', body: '', createdAt: now.toISOString() } })
       },
     )
-    const block = page.locator('[data-panel-view="decisions"] #D281-2 [data-revisit]')
+    const block = page.locator('main #D281-2 [data-revisit]')
     await expect(block).toHaveAttribute('data-mode', 'comment')
     await expect(block.locator('[data-revisit-text]')).toHaveText(
       'Comments on #281. Its next run changes the code and posts a decision that supersedes D281-2.',
@@ -3952,14 +3949,14 @@ test.describe('milestone decisions', () => {
     await page.goto(path)
     await route.ready(page)
 
-    const block = page.locator('[data-panel-view="decisions"] #D280-2 [data-revisit]')
+    const block = page.locator('main #D280-2 [data-revisit]')
     await expect(block.locator('[data-revisit-command]')).toHaveText('/agent revisit D280-2 <what you want instead>')
     await expect(block.getByRole('link', { name: 'Comment on GitLab' })).toHaveAttribute('href', /\/issues\/280#note_9102$/)
     await block.getByRole('button', { name: 'Copy' }).click()
     await expect(block.getByRole('button', { name: 'Copied' })).toBeVisible()
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('/agent revisit D280-2 <what you want instead>')
 
-    const viewer = page.locator('[data-panel-view="decisions"] #D281-2 [data-revisit]')
+    const viewer = page.locator('main #D281-2 [data-revisit]')
     await expect(viewer.locator('[data-revisit-text]')).toContainText('Comments on #281.')
     await expect(viewer.locator('button, textarea, a')).toHaveCount(0)
     expect(await sideways(page), 'sideways scroll in px').toEqual({ page: 0, pane: 0 })
@@ -3977,12 +3974,12 @@ test.describe('milestone decisions', () => {
     // Registered after mockAPI, so it answers first.
     await page.route('**/api/v1/projects/team-a/shop/decisions*', (r) => r.fulfill({ status: 200, json: body }))
     await page.goto(path)
-    await expect(page.locator('[data-panel-view="decisions"]').getByText('No decisions recorded yet.')).toBeVisible()
+    await expect(page.locator('main').getByText('No decisions recorded yet.')).toBeVisible()
 
     body = { available: false, decisions: [] }
     await page.reload()
-    await expect(page.locator('[data-panel-view="decisions"]').getByText('Decisions need the history database.')).toBeVisible()
-    await expect(page.locator('[data-panel-view="decisions"]').getByRole('searchbox', { name: 'Search decisions' })).toHaveCount(0)
+    await expect(page.locator('main').getByText('Decisions need the history database.')).toBeVisible()
+    await expect(page.locator('main').getByRole('searchbox', { name: 'Search decisions' })).toHaveCount(0)
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
   })
 
@@ -4020,15 +4017,16 @@ test.describe('milestone decisions', () => {
   }
   const gitlabNote = shopDecisions.find((d) => d.id === 'D280-2')!.url ?? ''
 
-  test('a queue decision ID opens the decision in the panel@1280', async ({ page, baseURL }) => {
+  test('a queue decision ID opens the decision on the Decisions tab@1280', async ({ page, baseURL }) => {
     const problems = await openQueue(page, baseURL, true)
     const link = page.locator('main [data-queue-item]').getByRole('link', { name: 'D280-2' })
-    await expect(link).toHaveAttribute('href', '/projects/team-a/shop/milestones/14?panel=decisions#D280-2')
+    await expect(link).toHaveAttribute('href', '/projects/team-a/shop/milestones/14?tab=decisions#D280-2')
     await link.click()
-    await expect(page).toHaveURL(/\/milestones\/14\?panel=decisions#D280-2$/)
-    const row = page.locator('[data-milestone-panel] #D280-2')
-    await expect(row).toContainText('Refund retries')
-    await expect(row).toBeInViewport()
+    await expect(page).toHaveURL(/\/milestones\/14\?tab=decisions#D280-2$/)
+    const card = page.locator('main [data-decisions] #D280-2')
+    await expect(card).toContainText('Refund retries')
+    await expect(card).toBeInViewport()
+    await expect(card).toBeFocused()
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
   })
 
@@ -4039,9 +4037,10 @@ test.describe('milestone decisions', () => {
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
   })
 
-  // The project panel's Decisions view: all milestones, each group naming its milestone; the
-  // select narrows to one and keeps it in ?milestone=.
-  test('the project panel Decisions view and its milestone select@1280', async ({ page, baseURL }) => {
+  // The project's Decisions tab: all milestones, each group naming its
+  // milestone; the select in the tab's toolbar narrows to one and keeps it
+  // in ?milestone=.
+  test('the project Decisions tab and its milestone select@1280', async ({ page, baseURL }) => {
     const route = decisionsRoute
     const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
     const asked: string[] = []
@@ -4056,12 +4055,11 @@ test.describe('milestone decisions', () => {
     await page.goto(route.path)
     await route.ready(page)
 
-    const main = page.locator('[data-panel-view="decisions"]')
+    const main = page.locator('main [data-decisions]')
     const tabs = page.getByRole('navigation', { name: 'View' }).getByRole('link')
-    // The Cockpit tab with the panel's Decisions view (R15).
-    await expect(tabs.nth(0)).toHaveText('Cockpit')
-    await expect(tabs.nth(0)).toHaveAttribute('aria-current', 'page')
-    await expect(page.locator('[data-project-panel] [data-panel-switch]').getByRole('tab', { name: 'Decisions' })).toHaveAttribute('aria-selected', 'true')
+    await expect(tabs.filter({ hasText: 'Decisions' })).toHaveAttribute('aria-current', 'page')
+    await expect(main.locator('[data-tab-toolbar] [data-decisions-milestone]')).toBeVisible()
+    await expect(page.locator('[data-project-panel] [data-panel-view="decisions"]')).toHaveCount(0)
     await expect(main.locator('[data-decision]')).toHaveCount(4)
     await expect(main.locator('[data-decision-milestone]').first()).toHaveText(paymentsMilestone.title)
     expect(asked.at(-1)).toBe('')

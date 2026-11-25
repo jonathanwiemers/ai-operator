@@ -4,9 +4,11 @@
 //
 // Project pages: Cockpit (the default, R15 of "Desk: the Cockpit": the
 // stream across the project's milestones) | Milestones (queue, Finishing,
-// the milestone sections, the Board as a view) | Metrics, and Plans with
-// the plans feature. Milestone pages: Cockpit (the default, R10) | Issues |
-// Metrics, then Retrospective once one exists (R14); the pilot's composer
+// the milestone sections, the Board as a view) | Decisions | Metrics, and
+// Plans with the plans feature. Milestone pages: Cockpit (the default, R10)
+// | Issues | Decisions | Metrics, then Retrospective once one exists (R14;
+// Decisions is a tab again, R6 of "Desk: the Cockpit newest first by
+// issue"); the pilot's composer
 // is at the bottom of the milestone's Cockpit (R12). The dashboard at /:
 // Cockpit (the default, R16: the stream across all projects) | Timeline;
 // its old Overview and Activity tabs open the Cockpit (dashboardAlias). The task page (and the issue page with a live task):
@@ -17,8 +19,8 @@
 // task's Details went into its Overview (?tab=details). A project's and a
 // milestone's removed tabs open where their content moved (projectAlias,
 // milestoneAlias).
-export type ProjectTab = 'cockpit' | 'milestones' | 'metrics' | 'plans'
-export type MilestoneTab = 'cockpit' | 'issues' | 'metrics' | 'retrospective'
+export type ProjectTab = 'cockpit' | 'milestones' | 'decisions' | 'metrics' | 'plans'
+export type MilestoneTab = 'cockpit' | 'issues' | 'decisions' | 'metrics' | 'retrospective'
 export type DashboardTab = 'cockpit' | 'timeline'
 export type TaskTab = 'overview' | 'live' | 'logs' | 'calls'
 // A plan's tabs on phones: Chat, Decisions, Draft. Tablet and wider keep
@@ -54,18 +56,19 @@ export function projectTabsFor(plans: boolean): Tab<ProjectTab>[] {
   const tabs: Tab<ProjectTab>[] = [
     { id: 'cockpit', label: 'Cockpit' },
     { id: 'milestones', label: 'Milestones' },
+    { id: 'decisions', label: 'Decisions' },
     { id: 'metrics', label: 'Metrics' },
   ]
   return plans ? [...tabs, { id: 'plans', label: 'Plans' }] : tabs
 }
 
 // milestoneTabs are all of a milestone's tabs, in their order: Cockpit
-// first, the default. Needs you is the Cockpit's pinned cards, Decisions a
-// view of the panel and the Board a view of the Issues tab (R14 of "Desk:
-// the Cockpit"; milestoneAlias).
+// first, the default. Needs you is the Cockpit's pinned cards and the Board
+// a view of the Issues tab (R14 of "Desk: the Cockpit"; milestoneAlias).
 export const milestoneTabs: Tab<MilestoneTab>[] = [
   { id: 'cockpit', label: 'Cockpit' },
   { id: 'issues', label: 'Issues' },
+  { id: 'decisions', label: 'Decisions' },
   { id: 'metrics', label: 'Metrics' },
   { id: 'retrospective', label: 'Retrospective' },
 ]
@@ -106,25 +109,22 @@ type TabAliases = Readonly<Record<string, { tab?: string; panel?: string; view?:
 
 // milestoneTabAliases are where a milestone's removed tabs went (R14 of
 // "Desk: the Cockpit", D789-P2): Activity (once Stream), Needs you and the
-// Pilot tab into the Cockpit, Decisions into the Cockpit's panel, the Board
-// into the Issues tab's view switch.
+// Pilot tab into the Cockpit, the Board into the Issues tab's view switch.
+// The panel's old Decisions view is a tab again (panelAliasQuery).
 const milestoneTabAliases: TabAliases = {
   activity: {},
   stream: {},
   needs: {},
   pilot: {},
-  decisions: { panel: 'decisions' },
   board: { tab: 'issues', view: 'board' },
 }
 
 // projectTabAliases are where a project's removed tabs went (R15 of "Desk:
-// the Cockpit"): Activity (once Stream) into the Cockpit, Decisions into the
-// Cockpit's panel (its ?milestone= stays), the Board into the Milestones
-// tab's view switch.
+// the Cockpit"): Activity (once Stream) into the Cockpit, the Board into
+// the Milestones tab's view switch.
 const projectTabAliases: TabAliases = {
   activity: {},
   stream: {},
-  decisions: { panel: 'decisions' },
   board: { tab: 'milestones', view: 'board' },
 }
 
@@ -176,10 +176,22 @@ export function projectTabFromRoute(v: QueryValue, tabs: readonly Tab<string>[])
 }
 
 // projectAlias is the query of an old project link (?tab=activity, stream,
-// decisions, board) at the place its content moved to, null when it needs
-// no change; Stream.vue replaces the URL with it on load.
+// board; ?panel=decisions) at the place its content moved to, null when it
+// needs no change; Stream.vue replaces the URL with it on load.
 export function projectAlias<V>(query: Record<string, V>): Record<string, V | string> | null {
-  return aliasQuery(query, projectTabAliases)
+  return panelAliasQuery(query) ?? aliasQuery(query, projectTabAliases)
+}
+
+// panelAliasQuery is the query of an old link to the panel's Decisions view
+// (?panel=decisions: a decision link or the tracking issue's) at the
+// Decisions tab (R6 of "Desk: the Cockpit newest first by issue", D817-P2),
+// null for any other query. ?panel= goes, ?tab=decisions replaces ?tab=,
+// the other parameters (?milestone=, ?q=) stay; the caller keeps the hash.
+function panelAliasQuery<V>(query: Record<string, V>): Record<string, V | string> | null {
+  const panel: unknown = Array.isArray(query.panel) ? query.panel[0] : query.panel
+  if (panel !== 'decisions') return null
+  const { panel: _p, tab: _t, ...rest } = query
+  return { ...rest, tab: 'decisions' }
 }
 
 // dashboardTabFromRoute is the dashboard's tab: ?tab= as tabFromQuery reads
@@ -225,21 +237,21 @@ const taskTabAliases: TabAliases = { chat: { tab: 'overview' } }
 // Stream.vue replaces the URL with it on load, so the address shows the
 // new place (D789-P1). The pilot drawer's ?pilot= goes too: the pilot's
 // composer is at the bottom of the Cockpit (R12 of "Desk: the Cockpit").
-// A repeated ?tab= is read by its first value; other parameters stay.
+// A repeated ?tab= is read by its first value; other parameters stay. An
+// old ?panel=decisions opens the Decisions tab (panelAliasQuery).
 export function milestoneAlias<V>(query: Record<string, V>): Record<string, V | string> | null {
   const { pilot: _, ...rest } = query
-  return aliasQuery(rest, milestoneTabAliases) ?? (Object.hasOwn(query, 'pilot') ? rest : null)
+  return panelAliasQuery(rest) ?? aliasQuery(rest, milestoneTabAliases) ?? (Object.hasOwn(query, 'pilot') ? rest : null)
 }
 
 // A milestone's context panel (R13 of "Desk: the Cockpit"): its views,
 // switched at the top of the panel and kept in ?panel= (D786-P1), Issues
-// the default and left out. A project's panel (R15) has Queue, its
-// default, and Decisions.
-export type PanelView = 'issues' | 'queue' | 'decisions'
+// the default and left out. A project's panel (R15) has Queue only. The
+// Decisions view is a tab again (panelAliasQuery).
+export type PanelView = 'issues' | 'queue'
 export const panelViews: Tab<PanelView>[] = [
   { id: 'issues', label: 'Issues' },
   { id: 'queue', label: 'Queue' },
-  { id: 'decisions', label: 'Decisions' },
 ]
 export const projectPanelViews: Tab<PanelView>[] = panelViews.slice(1)
 

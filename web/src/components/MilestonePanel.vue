@@ -1,14 +1,9 @@
 <script setup lang="ts">
-import UAlert from '@nuxt/ui/components/Alert.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
-import UCollapsible from '@nuxt/ui/components/Collapsible.vue'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UTabs from '@nuxt/ui/components/Tabs.vue'
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed } from 'vue'
 import { useRoute } from 'vue-router'
-import { alertColor } from '../badgeTone'
-import { getDecisions } from '../client'
-import { useResource } from '../live'
 import { panelIssueGroups } from '../milestoneRows'
 import { queueStateLabel, queueTone } from '../projectQueue'
 import { milestoneTabs, panelViews, tabQuery, type PanelView } from '../streamTabs'
@@ -18,14 +13,14 @@ import Badge from './Badge.vue'
 
 // MilestonePanel is a milestone page's context panel (R13 of "Desk: the
 // Cockpit"), laid out by ContextLayout: a column from 1180 px, a sheet below
-// that the header's Issues, Queue and Decisions buttons open. A switch at
-// the top picks the view, which Stream.vue keeps in ?panel=:
+// that the header's Issues and Queue buttons open. A switch at the top
+// picks the view, which Stream.vue keeps in ?panel=:
 //   - Issues: the milestone's issues by state (panelIssueGroups), each a
 //     link to its issue page, and Open table to the Issues tab;
 //   - Queue: the project's milestone queue (ProjectQueue's data), this
-//     milestone marked;
-//   - Decisions: the milestone's stored decisions, the superseded ones in a
-//     closed group. They load while the view is open.
+//     milestone marked.
+// Decisions are a tab of the page (R6 of "Desk: the Cockpit newest first by
+// issue").
 const props = defineProps<{
   namespace: string
   name: string
@@ -55,34 +50,6 @@ function milestoneTo(iid: number) {
   const { namespace, name } = props
   return { name: 'stream-milestone' as const, params: { namespace, name, iid: String(iid) } }
 }
-
-const decisions = useResource(() => {
-  if (props.view !== 'decisions') return null
-  const { namespace, name, iid } = props
-  return () => getDecisions(namespace, name, { milestone: iid, q: '', state: 'all' })
-}, ['task'])
-const active = computed(() => decisions.data.value?.decisions.filter((d) => !d.superseded) ?? [])
-const superseded = computed(() => decisions.data.value?.decisions.filter((d) => d.superseded) ?? [])
-
-// A decision link (#<id>, decisionHref; the old ?tab=decisions#<id>) lands
-// on its row once the decisions have loaded; a superseded one opens its
-// closed group first.
-const supersededOpen = ref(false)
-watch(
-  () => [decisions.data.value, route.hash] as const,
-  async ([, hash]) => {
-    const id = hash.slice(1)
-    if (!id) return
-    const old = superseded.value.some((d) => d.id === id)
-    if (!old && !active.value.some((d) => d.id === id)) return
-    if (old) supersededOpen.value = true
-    await nextTick()
-    await new Promise((r) => requestAnimationFrame(r))
-    document.getElementById(id)?.scrollIntoView({ block: 'nearest' })
-  },
-  { immediate: true },
-)
-
 </script>
 
 <template>
@@ -117,7 +84,7 @@ watch(
       <UButton :to="tableTo" color="neutral" variant="outline" size="sm" icon="i-lucide-table" label="Open table" class="table" data-panel-open-table />
     </div>
 
-    <div v-else-if="view === 'queue'" class="view" data-panel-view="queue">
+    <div v-else class="view" data-panel-view="queue">
       <UEmpty v-if="!queue.length" icon="i-lucide-inbox" title="No milestones in the queue." variant="naked" size="xs" />
       <ol v-else>
         <li v-for="(e, n) in queue" :key="e.iid" :data-panel-queue-entry="e.iid">
@@ -129,51 +96,6 @@ watch(
           </RouterLink>
         </li>
       </ol>
-    </div>
-
-    <div v-else class="view" data-panel-view="decisions">
-      <UAlert v-if="decisions.error.value" :color="alertColor('danger')" variant="subtle" :description="decisions.error.value" />
-      <UAlert
-        v-else-if="decisions.data.value && !decisions.data.value.available"
-        :color="alertColor('info')"
-        variant="subtle"
-        description="Decisions need the history database."
-      />
-      <div v-else-if="!decisions.data.value" class="faint">Loading…</div>
-      <UEmpty v-else-if="!active.length && !superseded.length" icon="i-lucide-scale" title="No decisions recorded yet." variant="naked" size="xs" />
-      <template v-else>
-        <ul>
-          <li v-for="d in active" :id="d.id" :key="d.id" class="scroll-mt-3" data-panel-decision>
-            <RouterLink :to="issueTo(d.issue.iid)" class="row">
-              <span class="ref">{{ d.id }}</span>
-              <span>{{ d.title }}</span>
-            </RouterLink>
-            <p class="choice">{{ d.choice }}</p>
-          </li>
-        </ul>
-        <UCollapsible v-if="superseded.length" v-model:open="supersededOpen" data-panel-superseded>
-          <template #default="{ open }">
-            <UButton
-              color="neutral"
-              variant="ghost"
-              size="sm"
-              class="min-h-11 tablet:min-h-0"
-              :label="`Superseded (${superseded.length})`"
-              :trailing-icon="open ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
-            />
-          </template>
-          <template #content>
-            <ul>
-              <li v-for="d in superseded" :id="d.id" :key="d.id" class="scroll-mt-3">
-                <RouterLink :to="issueTo(d.issue.iid)" class="row old">
-                  <span class="ref">{{ d.id }}</span>
-                  <span>{{ d.title }}</span>
-                </RouterLink>
-              </li>
-            </ul>
-          </template>
-        </UCollapsible>
-      </template>
     </div>
   </aside>
 </template>
@@ -240,9 +162,6 @@ ol {
   background: var(--surface-2);
   font-weight: 600;
 }
-.row.old {
-  color: var(--text-2);
-}
 .ref {
   flex-shrink: 0;
   font-family: var(--font-mono, ui-monospace, monospace);
@@ -257,13 +176,6 @@ ol {
   font-size: 12px;
   font-weight: 400;
   color: var(--text-3);
-}
-.choice {
-  margin: 0;
-  padding-left: 6px;
-  font-size: 12px;
-  color: var(--text-2);
-  overflow-wrap: anywhere;
 }
 .table {
   justify-self: start;

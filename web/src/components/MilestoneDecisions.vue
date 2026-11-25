@@ -30,8 +30,11 @@ import { searchToolbarUi } from '../pageHeader'
 // order, one DecisionCard each. The search (?q=, debounced) and the
 // All / Active / Superseded pills (?state=) live in the URL, so they survive
 // a reload; the server filters. The controls slot takes more filters (the
-// project tab's milestone select). A #<id> link scrolls to its card once
-// the data is there and highlights it briefly; so does a later hash change.
+// project tab's milestone select). A #<id> link (decisionHref, the old
+// ?panel=decisions#<id>) scrolls to its card once the data is there, moves
+// focus to it and highlights it briefly; so does a later hash change. All,
+// the default state, lists the superseded cards too, so no group needs
+// opening first; under Active, a link to a card it hides switches to All.
 // Across all milestones (milestone 0), each group's header names its
 // milestone, by its title in milestones (the project's list).
 const props = defineProps<{
@@ -80,7 +83,7 @@ function setState(v: string | number) {
 
 function milestoneTo(g: DecisionGroup) {
   const { namespace, name } = props
-  return { name: 'stream-milestone' as const, params: { namespace, name, iid: String(g.milestoneIID) }, query: { panel: 'decisions' } }
+  return { name: 'stream-milestone' as const, params: { namespace, name, iid: String(g.milestoneIID) }, query: { tab: 'decisions' } }
 }
 
 function issueTo(g: DecisionGroup) {
@@ -95,10 +98,17 @@ let followed = ''
 let flash: ReturnType<typeof setTimeout> | undefined
 function follow() {
   const id = decisionFromHash(route.hash)
-  if (!id || id === followed || !data.value?.decisions.some((d) => d.id === id)) return
+  if (!id || id === followed || !data.value) return
+  if (!data.value.decisions.some((d) => d.id === id)) {
+    // Active hides superseded cards: a link to one switches to All.
+    if (state.value === 'active') void router.replace({ query: decisionsQuery(route.query, { state: 'all' }), hash: route.hash })
+    return
+  }
   followed = id
   void nextTick(() => {
-    document.getElementById(id)?.scrollIntoView({ block: 'start' })
+    const card = document.getElementById(id)
+    card?.scrollIntoView({ block: 'start' })
+    card?.focus({ preventScroll: true })
     linked.value = id
     clearTimeout(flash)
     flash = setTimeout(() => (linked.value = ''), 2000)
