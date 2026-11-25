@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
-import { inboxRoute, pinnedAnchor } from '../src/inboxRoute.ts'
+import { inboxRoute, milestoneRoute, pinnedAnchor } from '../src/inboxRoute.ts'
 
 const item = (kind, over = {}) => ({ namespace: 'team', project: 'shop', kind, ...over })
 
@@ -84,14 +84,22 @@ test('inboxRoute: an issue budget warning opens its implement task, without one 
   assert.deepEqual(inboxRoute(warning()), { name: 'stream-milestone', params: { namespace: 'team', name: 'shop', iid: '3' } })
 })
 
+test("milestoneRoute: a milestone's Cockpit, without one the project", () => {
+  assert.deepEqual(milestoneRoute('team', 'shop', 3), { name: 'stream-milestone', params: { namespace: 'team', name: 'shop', iid: '3' } })
+  assert.deepEqual(milestoneRoute('team', 'shop', 0), { name: 'stream-project', params: { namespace: 'team', name: 'shop' } })
+  assert.deepEqual(milestoneRoute('team', 'shop'), { name: 'stream-project', params: { namespace: 'team', name: 'shop' } })
+})
+
 // R15: the Inbox row and the notification lead to the same route.
 test('inboxRoute: the Inbox rows and the notification click both route with it', () => {
   const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8')
   // A notification click, from the service worker's message or a plain
   // Notification, and a window opened on ?open= (deskWorker.ts).
   const worker = read('../src/deskWorker.ts')
-  assert.match(worker, /router\?\.push\(inboxRoute\(open\.item\)\)/)
-  assert.match(worker, /r\.replace\(open \? inboxRoute\(open\.item\)/)
+  // Both go through openRoute: an item's inboxRoute, an event's milestone.
+  assert.match(worker, /router\?\.push\(openRoute\(open\)\)/)
+  assert.match(worker, /r\.replace\(open \? openRoute\(open\)/)
+  assert.match(worker, /'item' in open \? inboxRoute\(open\.item\) : milestoneRoute\(/)
   assert.doesNotMatch(read('../src/App.vue'), /router\.push\(/)
   // The open items are InboxList's rows (the Inbox and the Overview Cockpit).
   const inbox = read('../src/components/InboxList.vue')

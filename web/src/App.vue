@@ -2,10 +2,10 @@
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, toRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { hasFeature, session, setFeatures } from './api'
-import { getAbout, getFeatures, getInbox, getMe, getProjects, getProjectSets, getResearches, LoginRequiredError } from './client'
+import { getAbout, getFeatures, getInbox, getMe, getProjects, getProjectSets, getResearches, getStream, LoginRequiredError } from './client'
 import { newNotifications, notificationText, seenKeys } from './inboxNotify'
 import { connectEvents, disconnectEvents, live } from './live'
-import { notifyActive, notifyDialog, refreshPermission, wants } from './notify'
+import { notify, notifyActive, notifyDialog, refreshPermission, wants, wantsEvents } from './notify'
 import { textEntry } from './textEntry'
 import UApp from '@nuxt/ui/components/App.vue'
 import UDashboardGroup from '@nuxt/ui/components/DashboardGroup.vue'
@@ -63,6 +63,7 @@ async function loadAbout(): Promise<void> {
   }
 }
 let aboutTimer: number | undefined
+let eventsTimer: number | undefined
 
 const router = useRouter()
 // The breadcrumb (decision 5): only below the top level, where the page's
@@ -147,6 +148,16 @@ function onInbox(items: InboxItem[]) {
   }
 }
 
+// Event notifications (pollEvents in deskWorker.ts), while one of their
+// categories is wanted. Without the history database (notify.history
+// false) the first answer stops them.
+const eventsWanted = computed(() => !!session.me && !session.loginRequired && hasFeature('factory') && wantsEvents())
+function pollEvents() {
+  if (eventsWanted.value) void deskWorker.then((w) => w.pollEvents({ fetchPage: getStream, wants, history: (on) => (notify.history = on) }))
+}
+
+watch(eventsWanted, (on) => (on ? pollEvents() : void deskWorker.then((w) => w.resetEvents())))
+
 async function loadRail() {
   if (!session.me || session.loginRequired) return
   const jobs: Promise<void>[] = []
@@ -205,6 +216,9 @@ onMounted(() => {
   aboutTimer = window.setInterval(() => {
     if (document.visibilityState === 'visible' && session.features) void loadAbout()
   }, 5 * 60 * 1000)
+  eventsTimer = window.setInterval(() => {
+    if (document.visibilityState === 'visible') pollEvents()
+  }, 60 * 1000)
   phone.addEventListener('change', onWidth)
   document.addEventListener('focusin', onFocusIn)
   document.addEventListener('focusout', onFocusOut)
@@ -213,6 +227,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => {
   window.clearInterval(aboutTimer)
+  window.clearInterval(eventsTimer)
   phone.removeEventListener('change', onWidth)
   document.removeEventListener('focusin', onFocusIn)
   document.removeEventListener('focusout', onFocusOut)
@@ -245,6 +260,7 @@ watch(
     if (!live.kinds || live.kinds.some((k) => k === 'project' || k === 'task' || k === 'research')) {
       void loadRail()
     }
+    if (!live.kinds || live.kinds.includes('task')) pollEvents()
   },
 )
 

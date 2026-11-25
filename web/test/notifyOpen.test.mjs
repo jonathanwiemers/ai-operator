@@ -34,6 +34,16 @@ test('openURL and parseOpen round-trip an item', () => {
   assert.deepEqual(parseOpen(open), open)
 })
 
+test('openURL and parseOpen round-trip an event', () => {
+  const open = {
+    event: { id: 9, at: '2026-11-25T10:00:00Z', namespace: 'team', project: 'shop', milestoneIID: 3, kind: 'release.ended', summary: 'Released', data: { state: 'Failed', reason: 'a & "b"', title: 'Checkout' } },
+  }
+  const url = new URL(openURL(open), origin)
+  assert.deepEqual(parseOpen(url.searchParams.get('open')), open)
+  assert.deepEqual(parseOpen(open), open)
+  assert.equal(parseOpen({ event: { namespace: 'team', project: 'shop' } }), null)
+})
+
 test('parseOpen: garbage is null', () => {
   for (const v of [undefined, null, '', '{', 'null', '42', '"x"', '{}', '{"item":null}', '{"item":"x"}', ['{}'], { item: { namespace: 'team', project: 'shop' } }, { item: { namespace: 1, project: 'shop', kind: 'pause' } }]) {
     assert.equal(parseOpen(v), null, JSON.stringify(v))

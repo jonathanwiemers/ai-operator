@@ -1,7 +1,10 @@
 import type { Router } from 'vue-router'
-import { inboxRoute } from './inboxRoute.ts'
+import { inboxRoute, milestoneRoute } from './inboxRoute.ts'
 import { localTimesText } from './localTime.ts'
 import { parseOpen, type NotifyOpen } from './notifyOpen.ts'
+import { eventKey, eventPoller, eventText } from './eventNotify.ts'
+import type { NotifyCategory } from './notify.ts'
+import type { StreamPage } from './types'
 
 // The page's side of the service worker (sw.ts, docs/contributing/web-ui.md
 // "Service worker"). App.vue loads it after the shell, which keeps the
@@ -47,9 +50,52 @@ export function showDeskNotification(title: string, text: string, tag: string, o
   }
 }
 
+// Event notifications (eventNotify.ts): milestone started, done and
+// releases. App.vue calls pollEvents while one of their categories is
+// wanted, on task change events and every minute, and resetEvents when they
+// are no longer wanted, so turning them back on seeds again. App.vue stores
+// the page's history flag (notify.history), which stops the polls without a
+// database. notify.ts comes in as arguments: importing it here would split
+// Vue's reactivity out of the initial bundle into a chunk of its own.
+const events = eventPoller()
+let polling = false
+
+type EventSource = {
+  fetchPage: (q: URLSearchParams) => Promise<StreamPage>
+  wants: (c: NotifyCategory) => boolean
+  history: (on: boolean) => void
+}
+
+export async function pollEvents({ fetchPage, wants, history }: EventSource) {
+  if (polling) return
+  polling = true
+  try {
+    const page = await fetchPage(events.query())
+    history(page.history)
+    for (const e of events.step(page, wants)) {
+      const { title, body } = eventText(e)
+      showDeskNotification(title, body, eventKey(e), { event: e })
+    }
+  } catch {
+    // The next change event or tick tries again.
+  } finally {
+    polling = false
+  }
+}
+
+export function resetEvents() {
+  events.reset()
+}
+
 function openNotified(open: NotifyOpen) {
   window.focus()
-  router?.push(inboxRoute(open.item)).catch(() => undefined)
+  router?.push(openRoute(open)).catch(() => undefined)
+}
+
+// openRoute is where a notification leads: an Inbox item's card, an
+// event's milestone.
+function openRoute(open: NotifyOpen) {
+  return 'item' in open ? inboxRoute(open.item) : milestoneRoute(open.event.namespace, open.event.project, open.event.milestoneIID)
 }
 
 // A window the worker opened on `/?open=…` lands on the item, and the query
@@ -61,5 +107,5 @@ async function openFromQuery(r: Router) {
   const open = parseOpen(q.open)
   const query = { ...q }
   delete query.open
-  await r.replace(open ? inboxRoute(open.item) : { query }).catch(() => undefined)
+  await r.replace(open ? openRoute(open) : { query }).catch(() => undefined)
 }

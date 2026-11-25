@@ -128,6 +128,24 @@ test('wants: false when off, without permission or with the category off', async
   assert.equal(m.wants('failed'), false)
 })
 
+test('wantsEvents: one event category, unless there is no history database', async () => {
+  const off = await load({ storage: JSON.stringify({ on: false }) })
+  assert.equal(off.m.wantsEvents(), false)
+
+  const { m } = await load({ storage: 'on' })
+  assert.equal(m.wantsEvents(), true)
+  m.setCategory('milestoneStarted', false)
+  m.setCategory('milestoneDone', false)
+  assert.equal(m.wantsEvents(), true)
+  m.setCategory('release', false)
+  assert.equal(m.wantsEvents(), false, 'only Inbox categories left')
+  m.setCategory('release', true)
+  m.notify.history = true
+  assert.equal(m.wantsEvents(), true)
+  m.notify.history = false
+  assert.equal(m.wantsEvents(), false, 'no history database')
+})
+
 test('without Notification the permission is unsupported and nothing turns on', async () => {
   const { m } = await load()
   delete globalThis.Notification

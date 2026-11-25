@@ -48,8 +48,14 @@ export function inboxRoute(item: InboxItem): InboxRoute {
   // A ready companion opens its home task (release, home MR, owners); the
   // Inbox row also links the companion MR itself.
   if ((item.kind === 'task' || item.kind === 'companionReady' || item.kind === 'budgetWarning') && item.task) return { name: 'task', params: { ...base, task: item.task } }
-  if (item.milestoneIID) return { name: 'stream-milestone', params: { ...base, iid: String(item.milestoneIID) } }
-  return { name: 'stream-project', params: base }
+  return milestoneRoute(item.namespace, item.project, item.milestoneIID)
+}
+
+// milestoneRoute is a milestone's Cockpit, without a milestone (iid 0 or
+// none) the project's stream. A click on an event's notification opens it.
+export function milestoneRoute(namespace: string, name: string, iid?: number): InboxRoute {
+  if (iid) return { name: 'stream-milestone', params: { namespace, name, iid: String(iid) } }
+  return { name: 'stream-project', params: { namespace, name } }
 }
 
 function cockpit(base: { namespace: string; name: string }, iid: number, hash: string): MilestoneRoute {

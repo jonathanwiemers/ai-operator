@@ -103,6 +103,12 @@ export function wants(c: NotifyCategory): boolean {
   return notifyActive() && notify.categories[c]
 }
 
+// wantsEvents says whether event notifications (eventNotify.ts) are wanted
+// now: one of their categories, unless there is no history database.
+export function wantsEvents(): boolean {
+  return notify.history !== false && (['milestoneStarted', 'milestoneDone', 'release'] as const).some(wants)
+}
+
 export function setCategory(c: NotifyCategory, on: boolean) {
   if (!(c in defaults)) return
   if (on === defaults[c]) delete changed[c]

@@ -1,12 +1,13 @@
-import type { InboxItem } from './types'
+import type { InboxItem, StreamEvent } from './types'
 
 // What a click on a Desk notification opens, shared by the app (App.vue)
 // and the service worker (sw.ts): the notification's `data.open`, the
 // worker's `{ open }` message to an open Desk window, and the `?open=` query
 // of a window the worker opens. Keep it free of DOM and Vue: the worker is
 // built from it into one file (vite.sw.config.ts). The route comes from
-// inboxRoute() in the app; the worker has no route logic.
-export type NotifyOpen = { item: InboxItem }
+// inboxRoute() in the app, for an event its milestone (milestoneRoute());
+// the worker has no route logic.
+export type NotifyOpen = { item: InboxItem } | { event: StreamEvent }
 
 // openURL is the Desk URL a new window opens on.
 export function openURL(open: NotifyOpen): string {
@@ -14,8 +15,8 @@ export function openURL(open: NotifyOpen): string {
 }
 
 // parseOpen reads an open target from the `?open=` query (JSON text) or a
-// message's `open` (an object). Anything else, or an item without its
-// namespace, project or kind, is null.
+// message's `open` (an object). Anything else, or an item or event without
+// its namespace, project or kind, is null.
 export function parseOpen(v: unknown): NotifyOpen | null {
   let o: unknown = v
   if (typeof v === 'string') {
@@ -25,11 +26,18 @@ export function parseOpen(v: unknown): NotifyOpen | null {
       return null
     }
   }
-  const item: unknown = o !== null && typeof o === 'object' ? (o as { item?: unknown }).item : undefined
-  if (item === null || typeof item !== 'object') return null
-  const { namespace, project, kind } = item as Record<string, unknown>
-  if (typeof namespace !== 'string' || typeof project !== 'string' || typeof kind !== 'string') return null
-  return { item: item as InboxItem }
+  if (o === null || typeof o !== 'object') return null
+  const { item, event } = o as { item?: unknown; event?: unknown }
+  if (located(item)) return { item: item as InboxItem }
+  if (located(event)) return { event: event as StreamEvent }
+  return null
+}
+
+// located says whether x has the namespace, project and kind a route needs.
+function located(x: unknown): boolean {
+  if (x === null || typeof x !== 'object') return false
+  const { namespace, project, kind } = x as Record<string, unknown>
+  return typeof namespace === 'string' && typeof project === 'string' && typeof kind === 'string'
 }
 
 // A window as the service worker sees it (WindowClient's fields).
