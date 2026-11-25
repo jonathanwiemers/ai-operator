@@ -34,6 +34,15 @@ type pushStore interface {
 	DeletePushSubscriptionID(ctx context.Context, id int64) error
 	ClaimPush(ctx context.Context, subID int64, keys []string, now time.Time) ([]string, error)
 	Stream(ctx context.Context, q store.StreamQuery) ([]store.Event, error)
+
+	// The sender's (push_sender.go).
+	PushSubscriptions(ctx context.Context) ([]store.PushSubscription, error)
+	UnclaimPush(ctx context.Context, subID int64, key string) error
+	ForgetPush(ctx context.Context, subID int64, keep []string) error
+	PushFailed(ctx context.Context, id int64, max int) (bool, error)
+	PushSucceeded(ctx context.Context, id int64) error
+	DeleteExpiredPush(ctx context.Context, now time.Time) (subs, sent int64, err error)
+	TryPushLock(ctx context.Context) (unlock func(), ok bool, err error)
 }
 
 // pushStoreOf is the store of the push routes, nil until connected.

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -88,5 +89,45 @@ func TestPushRoutesDatabase(t *testing.T) {
 	}
 	if subs, _ := owner.PushSubscriptions(t.Context()); len(subs) != 1 || subs[0].Endpoint != theirs {
 		t.Errorf("subscriptions after DELETE: %+v", subs)
+	}
+}
+
+// The sender against Postgres, as the reader: of two replicas only the
+// holder of the advisory lock sends, and a restarted one sends nothing
+// already pushed.
+func TestPushSenderDatabase(t *testing.T) {
+	_, reader := readerStore(t)
+	replica := func() *testEnv {
+		env := newTestEnv(t, withResearch(&Config{Auth: AuthConfig{Mode: AuthNone}}, false))
+		env.server.SetResearchStore(reader)
+		createOrbit(t, env)
+		return env
+	}
+	first, second := replica(), replica()
+	d := newFakeDevice(t)
+	if _, _, err := reader.UpsertPushSubscription(t.Context(), store.PushSubscription{
+		Endpoint: d.srv.URL + "/push/db", Username: "anonymous", Categories: []string{"problem"},
+		P256dh: base64.RawURLEncoding.EncodeToString(d.priv.PublicKey().Bytes()),
+		Auth:   base64.RawURLEncoding.EncodeToString(d.auth)}, false, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	d.hold, d.arrived = make(chan struct{}), make(chan struct{}, 1)
+
+	done := make(chan pushStats)
+	go func() { done <- first.server.pushCycle(context.Background(), synced) }()
+	<-d.arrived
+	if st := cycle(t, second); st != (pushStats{}) {
+		t.Errorf("the second replica ran a cycle while the first held the lock: %+v", st)
+	}
+	close(d.hold)
+	if st := <-done; st.sent != 1 {
+		t.Errorf("first replica %+v, want 1 sent", st)
+	}
+	restarted := replica()
+	if st := cycle(t, restarted); st.subscriptions != 1 || st.sent != 0 {
+		t.Errorf("restarted replica %+v, want nothing sent", st)
+	}
+	if got := d.keys(t); !slices.Equal(got, []string{orbitProblem}) {
+		t.Errorf("pushed %v, want the problem once", got)
 	}
 }

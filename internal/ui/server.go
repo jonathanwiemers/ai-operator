@@ -77,6 +77,8 @@ type Server struct {
 	planDecisionReads planDecisionReader
 	// pushes is the push routes' store instead of research (tests).
 	pushes pushStore
+	// pushTiming tunes the push sender.
+	pushTiming pushTiming
 	// chat is the chat writer's store, nil until connected or without
 	// the writer login.
 	chat atomic.Pointer[store.Store]
@@ -110,7 +112,8 @@ func NewServer(cfg *Config, reader client.Reader, hub *Hub, static fs.FS, log lo
 	s := &Server{cfg: cfg, reader: reader, hub: hub, authz: NewAuthorizer(cfg), log: log, streams: map[string]int{},
 		notes: ratelimit.NewRateLimiter(notesPerWindow, notesWindow), creates: ratelimit.NewRateLimiter(createsPerWindow, createsWindow),
 		planCreates: ratelimit.NewRateLimiter(plansPerWindow, createsWindow),
-		chats:       ratelimit.NewRateLimiter(notesPerWindow, notesWindow), historyRetention: history.DefaultRetention}
+		chats:       ratelimit.NewRateLimiter(notesPerWindow, notesWindow), historyRetention: history.DefaultRetention,
+		pushTiming: defaultPushTiming()}
 	if _, err := fs.Stat(static, "index.html"); err == nil {
 		s.static = static
 	}

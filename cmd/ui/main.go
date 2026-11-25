@@ -109,6 +109,9 @@ func main() {
 	}
 	// Desk chat inserts use the chat writer login (row-level insert of user
 	// rows only). Same database host as the reader.
+	// The push sender waits for the cache and the database; without a
+	// database every cycle is a no-op (push is off).
+	go srv.RunPushSender(ctx, synced.Load)
 	if cfg.ChatEnabled() {
 		go srv.ConnectChat(ctx, func(ctx context.Context) (*store.Store, error) {
 			return store.Open(ctx, cfg.ChatLogin())

@@ -30,6 +30,8 @@ type fakePushStore struct {
 	nextID            int64
 	sent              map[int64]map[string]bool
 	events            []store.Event
+	// locked is the sender's lock.
+	locked bool
 }
 
 func (f *fakePushStore) PushKey(context.Context) (store.PushKey, bool, error) {
@@ -139,6 +141,71 @@ func (f *fakePushStore) Stream(_ context.Context, q store.StreamQuery) ([]store.
 		}
 	}
 	return out, nil
+}
+
+func (f *fakePushStore) PushSubscriptions(context.Context) ([]store.PushSubscription, error) {
+	return f.subscriptions(), nil
+}
+
+func (f *fakePushStore) UnclaimPush(_ context.Context, id int64, key string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.sent[id], key)
+	return nil
+}
+
+func (f *fakePushStore) ForgetPush(_ context.Context, id int64, keep []string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	maps.DeleteFunc(f.sent[id], func(k string, _ bool) bool {
+		return !strings.HasPrefix(k, "event/") && !slices.Contains(keep, k)
+	})
+	return nil
+}
+
+func (f *fakePushStore) PushFailed(_ context.Context, id int64, max int) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i := range f.subs {
+		if f.subs[i].ID == id {
+			if f.subs[i].Failures++; f.subs[i].Failures >= max {
+				f.subs = slices.Delete(f.subs, i, i+1)
+				delete(f.sent, id)
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+func (f *fakePushStore) PushSucceeded(_ context.Context, id int64) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for i := range f.subs {
+		if f.subs[i].ID == id {
+			f.subs[i].Failures = 0
+		}
+	}
+	return nil
+}
+
+func (f *fakePushStore) DeleteExpiredPush(context.Context, time.Time) (int64, int64, error) {
+	return 0, 0, nil
+}
+
+// TryPushLock is the advisory lock of all senders sharing f.
+func (f *fakePushStore) TryPushLock(context.Context) (func(), bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.locked {
+		return nil, false, nil
+	}
+	f.locked = true
+	return func() {
+		f.mu.Lock()
+		f.locked = false
+		f.mu.Unlock()
+	}, true, nil
 }
 
 // subscriptions are the stored subscriptions.
