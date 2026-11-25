@@ -21,7 +21,7 @@ export function queueRows(items: QueueItem[], status: AutopilotItem[] = []): Que
 }
 
 // queueDone counts the issues the autopilot is through with.
-export function queueDone(items: { state: QueueItem['state'] }[]): number {
+export function queueDone(items: readonly { state: QueueItem['state'] }[]): number {
   return items.filter((i) => i.state === 'Merged' || i.state === 'Skipped').length
 }
 
