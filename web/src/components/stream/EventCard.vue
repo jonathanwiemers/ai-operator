@@ -116,6 +116,7 @@ function taskLink(ev: StreamEvent) {
     <div class="av sys">
       <template v-if="e.kind === 'run.started' || e.kind === 'run.finished'">▶</template>
       <template v-else-if="e.kind === 'ci'">✕</template>
+      <template v-else-if="e.kind === 'ci.started'">◌</template>
       <template v-else-if="e.kind === 'review'">◎</template>
       <template v-else-if="e.kind === 'merged'">⇡</template>
       <template v-else-if="e.kind === 'needs'">!</template>
@@ -193,6 +194,13 @@ function taskLink(ev: StreamEvent) {
         <ExtLink v-if="e.data.pipelineURL" :href="e.data.pipelineURL" class="t">
           pipeline{{ e.data.pipelineID ? ` #${e.data.pipelineID}` : '' }}
         </ExtLink>
+      </div>
+
+      <!-- ci.started: a new pipeline, also one a rebase started -->
+      <div v-else-if="e.kind === 'ci.started'" class="compact">
+        <Badge tone="progress">CI started</Badge>
+        <code v-if="e.data.sha" class="mono">{{ shortSHA(e.data.sha) }}</code>
+        <span v-if="e.data.pipelineID" class="muted">pipeline #{{ e.data.pipelineID }}</span>
       </div>
 
       <!-- review -->

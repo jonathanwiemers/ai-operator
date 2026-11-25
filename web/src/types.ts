@@ -91,6 +91,7 @@ export type StreamKind =
   | 'run.finished'
   | 'push'
   | 'ci'
+  | 'ci.started'
   | 'review'
   | 'needs'
   | 'merged'

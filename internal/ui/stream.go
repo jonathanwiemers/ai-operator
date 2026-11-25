@@ -59,7 +59,7 @@ var (
 		history.KindProblemOpened, history.KindProblemResolved, history.KindHoldSet, history.KindHoldCleared,
 		history.KindPilotActed, history.KindMilestoneStarted,
 		history.KindDecisionRecorded}
-	runtimeKinds = []string{history.KindRunStarted, history.KindRunFinished, history.KindPush, history.KindCI,
+	runtimeKinds = []string{history.KindRunStarted, history.KindRunFinished, history.KindPush, history.KindCI, history.KindCIStarted,
 		history.KindReview, history.KindMerged, history.KindClosed, history.KindItemSkipped, history.KindCheckpoint}
 )
 

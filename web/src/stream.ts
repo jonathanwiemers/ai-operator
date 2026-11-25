@@ -35,6 +35,7 @@ export const runtimeStreamKinds = [
   'run.finished',
   'push',
   'ci',
+  'ci.started',
   'review',
   'merged',
   'closed',
@@ -377,6 +378,7 @@ export const cockpitClass: Record<StreamKind, CockpitClass> = {
   'run.finished': 'folded',
   push: 'folded',
   ci: 'folded',
+  'ci.started': 'folded',
   review: 'folded',
   checkpoint: 'folded',
 }
@@ -556,7 +558,7 @@ function cockpitConversation(chat: StreamEvent[]): CockpitExchange[] {
 }
 
 // groupSummary is a folded group's line, "#712 · 3 runs, 2 CI rounds,
-// review clean": runs count run.started, CI rounds ci; the review is the
+// review clean": runs count run.started, CI rounds ci (not ci.started); the review is the
 // last one's verdict. Parts with zero are left out. The prefix is the
 // project (scope 'all'), else the issue, else the milestone.
 export function groupSummary(events: StreamEvent[], projectName?: string): string {

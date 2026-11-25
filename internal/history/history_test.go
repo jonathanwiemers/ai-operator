@@ -57,9 +57,9 @@ func TestDifferTransitions(t *testing.T) {
 		{"ci red", nil, func(t *aiv1.AgentTask) {
 			t.Status.CI = &aiv1.CIStatus{State: aiv1.CIStateFailed, PipelineID: 8841, FailedJobs: []string{"test:race"}}
 		}, []string{"ci task/u1/ci/8841/Failed"}},
-		{"ci running is no event", nil, func(t *aiv1.AgentTask) {
-			t.Status.CI = &aiv1.CIStatus{State: aiv1.CIStateRunning, PipelineID: 1}
-		}, nil},
+		{"ci running is only a start", nil, func(t *aiv1.AgentTask) {
+			t.Status.CI = &aiv1.CIStatus{SHA: "abc", State: aiv1.CIStateRunning, PipelineID: 1}
+		}, []string{"ci.started task/u1/ci/abc/1/started"}},
 		{"review", nil, func(t *aiv1.AgentTask) {
 			t.Status.Run.ReviewedSHA, t.Status.Run.BlockingFindings = "beef", 1
 		}, []string{"review task/u1/review/beef"}},
@@ -138,6 +138,57 @@ func TestDifferTransitions(t *testing.T) {
 				cur = task("1", nil)
 			}
 			got := kinds(NewDiffer().Update(old, cur, now))
+			if !slices.Equal(got, c.want) {
+				t.Errorf("got %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
+func TestDifferCIStarted(t *testing.T) {
+	ci := func(sha string, s aiv1.CIState, id int64) *aiv1.CIStatus {
+		return &aiv1.CIStatus{SHA: sha, State: s, PipelineID: id}
+	}
+	cases := []struct {
+		name      string
+		old, cur  *aiv1.CIStatus
+		oldPushed string
+		want      []string
+	}{
+		{"new pending pipeline", nil, ci("aaa", aiv1.CIStatePending, 0), "", []string{"task/u1/ci/aaa/0/started"}},
+		{"after None", ci("aaa", aiv1.CIStateNone, 0), ci("aaa", aiv1.CIStateRunning, 7), "", []string{"task/u1/ci/aaa/7/started"}},
+		{"pending to running on one pipeline", ci("aaa", aiv1.CIStatePending, 7), ci("aaa", aiv1.CIStateRunning, 7), "", nil},
+		{"id reported later", ci("aaa", aiv1.CIStatePending, 0), ci("aaa", aiv1.CIStateRunning, 7), "", nil},
+		{"rebase in review: new SHA, no push", ci("aaa", aiv1.CIStateSuccess, 7), ci("bbb", aiv1.CIStatePending, 0), "aaa",
+			[]string{"task/u1/ci/bbb/0/started"}},
+		{"new SHA while running", ci("aaa", aiv1.CIStateRunning, 7), ci("bbb", aiv1.CIStateRunning, 8), "",
+			[]string{"task/u1/ci/bbb/8/started"}},
+		{"same SHA, new id after Success", ci("aaa", aiv1.CIStateSuccess, 7), ci("aaa", aiv1.CIStateRunning, 9), "",
+			[]string{"task/u1/ci/aaa/9/started"}},
+		{"same SHA, new id replacing a known one", ci("aaa", aiv1.CIStateRunning, 7), ci("aaa", aiv1.CIStateRunning, 9), "",
+			[]string{"task/u1/ci/aaa/9/started"}},
+		{"retry after Fixing", ci("aaa", aiv1.CIStateFixing, 7), ci("aaa", aiv1.CIStateRunning, 7), "", nil},
+		{"replayed update", ci("aaa", aiv1.CIStateRunning, 7), ci("aaa", aiv1.CIStateRunning, 7), "", nil},
+		{"final state", ci("aaa", aiv1.CIStateRunning, 7), ci("aaa", aiv1.CIStateSuccess, 7), "", nil},
+		{"fixing", ci("aaa", aiv1.CIStateRunning, 7), ci("aaa", aiv1.CIStateFixing, 7), "", nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			old := task("1", func(t *aiv1.AgentTask) { t.Status.CI, t.Status.Run.PushedSHA = c.old, c.oldPushed })
+			cur := task("2", func(t *aiv1.AgentTask) {
+				t.Status.CI, t.Status.Run.PushedSHA, t.Status.Run.CIRound = c.cur, c.oldPushed, 2
+			})
+			var got []string
+			for _, e := range NewDiffer().Update(old, cur, now) {
+				if e.Kind != KindCIStarted {
+					continue
+				}
+				got = append(got, e.Key)
+				if e.Summary != "CI started on #148" || !e.At.Equal(now) ||
+					e.Data["sha"] != c.cur.SHA || e.Data["pipelineID"] != c.cur.PipelineID || e.Data["round"] != int32(2) {
+					t.Errorf("event = %+v", e)
+				}
+			}
 			if !slices.Equal(got, c.want) {
 				t.Errorf("got %v, want %v", got, c.want)
 			}

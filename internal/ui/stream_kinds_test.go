@@ -13,7 +13,7 @@ func TestStreamKindsPartition(t *testing.T) {
 	// Every history Kind constant. Add new ones here, and to pilotKinds or
 	// runtimeKinds.
 	all := []string{
-		history.KindNote, history.KindRunStarted, history.KindRunFinished, history.KindPush, history.KindCI,
+		history.KindNote, history.KindRunStarted, history.KindRunFinished, history.KindPush, history.KindCI, history.KindCIStarted,
 		history.KindReview, history.KindNeeds, history.KindMerged, history.KindClosed, history.KindAutopilot,
 		history.KindProposal, history.KindAutopilotPaused, history.KindAutopilotResumed, history.KindPilotWriteFailed,
 		history.KindPromptPosted, history.KindPromptAnswered, history.KindPromptClosed, history.KindRetrospective,

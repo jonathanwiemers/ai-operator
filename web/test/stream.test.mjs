@@ -143,7 +143,7 @@ test('pilot and runtime kinds partition every StreamKind', () => {
   // Every StreamKind (web/src/types.ts). Add new ones here, and to
   // pilotStreamKinds or runtimeStreamKinds.
   const all = [
-    'note', 'run.started', 'run.finished', 'push', 'ci', 'review', 'needs', 'merged', 'closed',
+    'note', 'run.started', 'run.finished', 'push', 'ci', 'ci.started', 'review', 'needs', 'merged', 'closed',
     'autopilot', 'proposal', 'autopilot.paused', 'autopilot.resumed', 'pilot.writeFailed',
     'retrospective', 'prompt.posted', 'prompt.answered', 'prompt.closed', 'chat.user', 'chat.agent', 'checkpoint',
     'release.decided', 'release.started', 'release.ended', 'milestone.started',

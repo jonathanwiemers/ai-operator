@@ -157,6 +157,7 @@ numbers where they apply (`milestone_iid`, `issue_iid`, `mr_iid`), a
 | `autopilot.resumed` | The pause ended. | The same, plus `resolvedBy`, `via` (how it ended) and `pausedSec`. |
 | `hold.set` | An issue of an autopilot milestone got a [hold](../concepts/glossary.md#hold), or its hold restarted. Its time is the hold's start. | `holdKind`, `reason`, and `since`, the hold's start (RFC 3339). |
 | `hold.cleared` | The hold ended: it was lifted, or the issue merged, was skipped or left the milestone. | The same as its `hold.set`. |
+| `ci.started` | A new pipeline of an issue's merge request is `Pending` or `Running`: a new commit, also one a rebase pushed in review, or a new pipeline after a final state. Written once per pipeline and keyed `ci/<sha>/<pipelineID>/started`, with the pipeline ID 0 while GitLab has reported none. An ID reported later writes no second event. Summary "CI started on #42". It starts the issue's CI segment on the Timeline. No notification. | `sha`, `pipelineID` and `round`, the CI fix round. |
 | `item.skipped` | Autopilot skipped an issue. Written once per issue. | None. |
 | `milestone.started` | A milestone's issues are planned: its spec task's plan went from empty to non-empty. Written once; a later re-plan writes no second event. Summary "Milestone planned: N issues". | `issues` (the planned count) and `title`. |
 | `autopilot` | A milestone's autopilot changed its phase (`Running`, `Paused`, `Done`, `Off`). Recorded on the tracking issue. | `phase`, `reason` while paused, and `title`. |

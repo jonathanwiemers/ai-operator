@@ -29,7 +29,7 @@ test('cockpitClass gives every kind exactly one class', () => {
   assert.deepEqual(Object.keys(cockpitClass).sort(), [...kinds].sort())
   const want = {
     pinned: ['prompt.posted', 'proposal', 'problem.opened', 'needs'],
-    folded: ['run.started', 'run.finished', 'push', 'ci', 'review', 'checkpoint'],
+    folded: ['run.started', 'run.finished', 'push', 'ci', 'ci.started', 'review', 'checkpoint'],
   }
   for (const k of kinds) {
     const cls = want.pinned.includes(k) ? 'pinned' : want.folded.includes(k) ? 'folded' : 'shown'
@@ -119,6 +119,9 @@ test('groupSummary counts runs, pushes, CI rounds and checkpoints and reads the 
   assert.equal(groupSummary([ev('run.finished', 1), ev('run.finished', 2)]), '#712 · 2 events')
   assert.equal(groupSummary([ev('ci', 1, { issueIID: undefined })]), '%5 · 1 CI round')
   assert.equal(groupSummary([ev('ci', 1)], 'p'), 'p · 1 CI round')
+  // ci.started is the start of a pipeline, not a round of its own
+  assert.equal(groupSummary([ev('ci.started', 1), ev('ci', 2)]), '#712 · 1 CI round')
+  assert.equal(groupSummary([ev('ci.started', 1)]), '#712 · 1 event')
 })
 
 test('cockpitStreamQuery asks for all kinds of a scope, chat kinds only with the chat feature', () => {

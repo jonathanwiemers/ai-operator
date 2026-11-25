@@ -32,6 +32,7 @@ test('eventNotifications keeps started, done, released and failed only', () => {
     ev('release.ended', { state: 'AlreadyReleased' }),
     ev('release.ended', { state: 'Dropped' }),
     ev('release.started'),
+    ev('ci.started', { sha: 'abc', pipelineID: 7 }),
     ev('comment'),
   ]
   assert.deepEqual(eventNotifications([drop[0], keep[0], ...drop.slice(1), ...keep.slice(1)]), keep)

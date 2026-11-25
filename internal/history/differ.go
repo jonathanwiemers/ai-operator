@@ -26,10 +26,13 @@ const (
 	KindRunFinished = "run.finished"
 	KindPush        = "push"
 	KindCI          = "ci"
-	KindReview      = "review"
-	KindNeeds       = "needs"
-	KindMerged      = "merged"
-	KindClosed      = "closed"
+	// KindCIStarted is a new pipeline of status.ci in Pending or Running,
+	// once per pipeline (ciStarted); a rebase in review has no KindPush.
+	KindCIStarted = "ci.started"
+	KindReview    = "review"
+	KindNeeds     = "needs"
+	KindMerged    = "merged"
+	KindClosed    = "closed"
 	// KindItemSkipped is an autopilot item that became Skipped, once per
 	// item of a spec task.
 	KindItemSkipped = "item.skipped"
@@ -231,6 +234,10 @@ func (d *Differ) Update(old, cur *aiv1.AgentTask, now time.Time) []store.Event {
 		if ns.Run.PushedAt != nil {
 			e.At = ns.Run.PushedAt.Time
 		}
+	}
+	if c := ns.CI; ciStarted(prev.CI, c) {
+		add(fmt.Sprintf("ci/%s/%d/started", c.SHA, c.PipelineID), KindCIStarted, "CI started on "+ref,
+			map[string]any{"sha": c.SHA, "pipelineID": c.PipelineID, "round": ns.Run.CIRound})
 	}
 	if c := ns.CI; c != nil && c.State != aiv1.CIStateNone && (c.State.Final() || c.State == aiv1.CIStateFixing) &&
 		(prev.CI == nil || prev.CI.State != c.State || prev.CI.PipelineID != c.PipelineID) {
@@ -805,6 +812,18 @@ func needsSummary(reason, ref string) string {
 		return ref + " is blocked"
 	}
 	return ref + " stopped"
+}
+
+// ciStarted reports whether cur is a new pipeline in Pending or Running
+// compared to prev: a new SHA, a previous state that was None or final, or a
+// new id replacing a known one. An id reported late (0 to N on the same SHA)
+// is the same pipeline, and so is a retry after Fixing.
+func ciStarted(prev, cur *aiv1.CIStatus) bool {
+	if cur == nil || (cur.State != aiv1.CIStatePending && cur.State != aiv1.CIStateRunning) {
+		return false
+	}
+	return prev == nil || prev.State.Final() || prev.SHA != cur.SHA ||
+		(prev.PipelineID != 0 && prev.PipelineID != cur.PipelineID)
 }
 
 func ciWord(s aiv1.CIState) string {
