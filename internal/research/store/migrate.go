@@ -25,7 +25,8 @@ const migrateLock int64 = 0x61692d726573 // "ai-res"
 // Grants are the logins Migrate grants rights to. Grants are additive: a
 // role removed from the lists keeps its rights until revoked by hand.
 type Grants struct {
-	// Reader may read every table (the UI).
+	// Reader may read every table and write the push tables, push_keys,
+	// push_subscriptions and push_sent (the UI).
 	Reader string
 	// Writers may read, insert and update runs, results and items (the
 	// runners of research runs), and nothing else.
@@ -205,7 +206,10 @@ func grant(ctx context.Context, tx pgx.Tx, g Grants) error {
 		}
 		return nil
 	}
-	if err := to(g.Reader, "GRANT SELECT ON ALL TABLES IN SCHEMA "+sc, defaults+"SELECT ON TABLES"); err != nil {
+	pushTables := sc + ".push_keys, " + sc + ".push_subscriptions, " + sc + ".push_sent"
+	if err := to(g.Reader, "GRANT SELECT ON ALL TABLES IN SCHEMA "+sc, defaults+"SELECT ON TABLES",
+		"GRANT SELECT, INSERT, UPDATE, DELETE ON "+pushTables,
+		"GRANT USAGE ON SEQUENCE "+sc+".push_subscriptions_id_seq"); err != nil {
 		return err
 	}
 	if err := to(g.ChatWriter,
@@ -237,6 +241,7 @@ func grant(ctx context.Context, tx pgx.Tx, g Grants) error {
 			"REVOKE ALL ON " + sc + ".desk_decisions, " + sc + ".desk_decision_revisits FROM " + id,
 			"REVOKE ALL ON " + sc + ".plan_decision_versions, " + sc + ".plan_decision_signoffs FROM " + id,
 			"REVOKE ALL ON " + sc + ".desk_problems FROM " + id,
+			"REVOKE ALL ON " + pushTables + " FROM " + id,
 		} {
 			if _, err := tx.Exec(ctx, stmt); err != nil {
 				return fmt.Errorf("revoke from role %q: %w", w, err)

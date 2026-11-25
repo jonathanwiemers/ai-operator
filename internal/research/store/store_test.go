@@ -69,7 +69,7 @@ func TestPoolConfig(t *testing.T) {
 func TestMigrateEmptyAndConcurrent(t *testing.T) {
 	s := storetest.New(t)
 	ctx := t.Context()
-	exec(t, s.Pool(), "DROP TABLE IF EXISTS desk_problems, plan_decision_signoffs, plan_decision_versions, desk_decision_revisits, desk_decisions, desk_backfill, desk_backfill_projects, desk_milestone_releases, desk_follow_ups, desk_milestone_issues, desk_milestones, agent_calls, chat_messages, history_events, research_items, research_results, research_runs, schema_migrations CASCADE")
+	exec(t, s.Pool(), "DROP TABLE IF EXISTS push_sent, push_subscriptions, push_keys, desk_problems, plan_decision_signoffs, plan_decision_versions, desk_decision_revisits, desk_decisions, desk_backfill, desk_backfill_projects, desk_milestone_releases, desk_follow_ups, desk_milestone_issues, desk_milestones, agent_calls, chat_messages, history_events, research_items, research_results, research_runs, schema_migrations CASCADE")
 	exec(t, s.Pool(), "DROP FUNCTION IF EXISTS chat_notify")
 
 	var wg sync.WaitGroup
@@ -83,7 +83,7 @@ func TestMigrateEmptyAndConcurrent(t *testing.T) {
 			t.Fatalf("concurrent Migrate: %v", err)
 		}
 	}
-	for _, table := range []string{"research_runs", "research_results", "research_items", "history_events", "chat_messages", "agent_calls", "desk_milestones", "desk_milestone_issues", "desk_follow_ups", "desk_milestone_releases", "desk_backfill", "desk_backfill_projects", "desk_decisions", "desk_decision_revisits", "plan_decision_versions", "plan_decision_signoffs", "desk_problems", "schema_migrations"} {
+	for _, table := range []string{"research_runs", "research_results", "research_items", "history_events", "chat_messages", "agent_calls", "desk_milestones", "desk_milestone_issues", "desk_follow_ups", "desk_milestone_releases", "desk_backfill", "desk_backfill_projects", "desk_decisions", "desk_decision_revisits", "plan_decision_versions", "plan_decision_signoffs", "desk_problems", "push_keys", "push_subscriptions", "push_sent", "schema_migrations"} {
 		var exists bool
 		if err := s.Pool().QueryRow(ctx, "SELECT to_regclass($1) IS NOT NULL", table).Scan(&exists); err != nil || !exists {
 			t.Errorf("table %s missing (%v)", table, err)
@@ -233,6 +233,17 @@ func TestGrants(t *testing.T) {
 	mustFail(t, reader.Pool(), "reader writes calls", insertCall)
 	mustFail(t, reader.Pool(), "reader insert", `INSERT INTO research_items (run_id, url_hash, first_seen) VALUES ($1, '\x01', now())`, run)
 	mustFail(t, reader.Pool(), "reader update", "UPDATE research_runs SET status = 'failed'")
+	mustFail(t, reader.Pool(), "reader delete", "DELETE FROM research_runs")
+
+	// The reader writes the push tables.
+	for _, stmt := range []string{
+		insertPushKey, "UPDATE push_keys SET created_at = now()",
+		insertPushSubscription, "UPDATE push_subscriptions SET failures = 1",
+		insertPushSent, "UPDATE push_sent SET sent_at = now()",
+		"DELETE FROM push_sent", "DELETE FROM push_subscriptions", "DELETE FROM push_keys",
+	} {
+		exec(t, reader.Pool(), stmt)
+	}
 
 	for _, table := range []string{"research_runs", "research_results", "research_items"} {
 		exec(t, writer.Pool(), "SELECT * FROM "+table)
@@ -260,6 +271,11 @@ func TestGrants(t *testing.T) {
 	for _, table := range []string{"desk_milestones", "desk_milestone_issues", "desk_follow_ups", "desk_milestone_releases", "desk_backfill", "desk_backfill_projects", "desk_decisions", "desk_decision_revisits", "plan_decision_versions", "plan_decision_signoffs"} {
 		mustFail(t, writer.Pool(), "writer reads the snapshot", "SELECT * FROM "+table)
 	}
+	for _, table := range []string{"push_keys", "push_subscriptions", "push_sent"} {
+		mustFail(t, writer.Pool(), "writer reads the push tables", "SELECT * FROM "+table)
+	}
+	mustFail(t, writer.Pool(), "writer writes the push key", insertPushKey)
+	mustFail(t, writer.Pool(), "writer writes a push subscription", insertPushSubscription)
 	mustFail(t, writer.Pool(), "writer writes the snapshot", insertDeskMilestone)
 	mustFail(t, reader.Pool(), "reader writes the snapshot", insertDeskMilestone)
 	mustFail(t, writer.Pool(), "writer writes the backfill", insertBackfill)
@@ -300,6 +316,15 @@ const insertDeskMilestone = `INSERT INTO desk_milestones (namespace, project, ii
 const insertBackfill = `INSERT INTO desk_backfill (namespace, project, milestone_iid, status, at)
 	VALUES ('n', 'p', 1, 'done', now())`
 
+// insertPushKey, insertPushSubscription and insertPushSent write rows of the
+// push tables, which the owner and the reader may.
+const (
+	insertPushKey          = `INSERT INTO push_keys (public_key, private_key) VALUES ('\x04', '\x01')`
+	insertPushSubscription = `INSERT INTO push_subscriptions (endpoint, p256dh, auth, username, created_at, refreshed_at)
+		VALUES ('https://push.example/1', 'p', 'a', 'u', now(), now())`
+	insertPushSent = `INSERT INTO push_sent (subscription_id, key, sent_at) SELECT id, 'k', now() FROM push_subscriptions`
+)
+
 // insertPlanDecision and insertPlanSignOff write rows of the plan decision
 // history, which only the owner may.
 const (
@@ -331,7 +356,8 @@ func TestGrantsRevokeHistoryFromOldWriters(t *testing.T) {
 	exec(t, s.Pool(), "DROP TABLE desk_backfill, desk_backfill_projects")
 	exec(t, s.Pool(), "DROP TABLE desk_decisions, desk_decision_revisits")
 	exec(t, s.Pool(), "DROP TABLE plan_decision_versions, plan_decision_signoffs")
-	exec(t, s.Pool(), "DELETE FROM schema_migrations WHERE version IN (2, 4, 6, 9, 20261110173852, 20261117231921, 20261119201113)")
+	exec(t, s.Pool(), "DROP TABLE push_sent, push_subscriptions, push_keys")
+	exec(t, s.Pool(), "DELETE FROM schema_migrations WHERE version IN (2, 4, 6, 9, 20261110173852, 20261117231921, 20261119201113, 20261125085814)")
 	if err := s.Migrate(ctx, store.Grants{Writers: []string{role}}); err != nil {
 		t.Fatal(err)
 	}
@@ -347,6 +373,8 @@ func TestGrantsRevokeHistoryFromOldWriters(t *testing.T) {
 	mustFail(t, writer.Pool(), "old writer reads the revisits", "SELECT * FROM desk_decision_revisits")
 	mustFail(t, writer.Pool(), "old writer reads the plan decisions", "SELECT * FROM plan_decision_versions")
 	mustFail(t, writer.Pool(), "old writer writes the plan sign-offs", insertPlanSignOff)
+	mustFail(t, writer.Pool(), "old writer reads the push subscriptions", "SELECT * FROM push_subscriptions")
+	mustFail(t, writer.Pool(), "old writer writes the push key", insertPushKey)
 	exec(t, writer.Pool(), "SELECT * FROM research_runs")
 }
 
