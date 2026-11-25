@@ -1,5 +1,9 @@
 # Web UI: the Desk (chat-first streams with history)
 
+Superseded in part by [the Cockpit](desk-cockpit.spec.md): the project and
+milestone streams became Cockpits, and the pilot is the only chat; task
+pages have no chat of their own.
+
 ## Problem
 
 The UI is a set of boards and detail pages built from the resources' current

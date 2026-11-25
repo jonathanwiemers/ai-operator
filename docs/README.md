@@ -5,8 +5,6 @@ Kubernetes. The docs are in four sections for users, Getting started,
 Guides, Reference and Concepts, plus a section for contributors and the
 specs behind each feature. New here? Start with Getting started.
 
-![Desk overview with running, paused and done milestones](assets/screenshots/dashboard.webp)
-
 ## Getting started
 
 **[getting-started/](getting-started/README.md)**: [install](getting-started/install.md)

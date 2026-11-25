@@ -3,7 +3,7 @@
 The [Desk](../concepts/glossary.md#desk) is the web UI where you steer ai-operator. You see
 what needs you, follow every [milestone](../concepts/glossary.md#milestone) and
 [task](../concepts/glossary.md#task), and act on them: answer prompts, talk to the
-[pilot](../concepts/glossary.md#pilot), chat with an agent, resume a pause. This page shows
+[pilot](../concepts/glossary.md#pilot), tell a running agent something, resume a pause. This page shows
 how you get in, who sees what, and what each view shows. What you do in them is in
 [Steer from the Desk](steer-from-the-desk.md). To turn the Desk on, follow
 [Turn on the Desk](../getting-started/turn-on-the-desk.md).
@@ -43,7 +43,7 @@ ui:
   cross the `/`. Without `projects` the rule grants every project. Seeing a
   project means seeing all its tasks. A project you may not see does not
   exist for you in the Desk.
-- **`chat: true`** lets you send Desk chat messages to agents, answer
+- **`chat: true`** lets you message the pilot in the Desk, answer
   [prompts](../concepts/glossary.md#prompt), and use the buttons on pause
   cards and in the queue. It needs the chat writer login (`ui.chat.writerSecret`)
   and `agents.chat: true` in the project. Who may chat is decided by this
@@ -112,8 +112,6 @@ match names there (for example `agents/*`). A user may start 10 per hour and del
 their own. Scheduled researches are managed with `kubectl`.
 
 ## Find your way
-
-![Desk overview with running, paused and done milestones, their progress, cost and tokens](../assets/screenshots/dashboard.webp)
 
 - **The rail** on the left starts with [New plan](write-a-milestone.md#draft-it-in-the-desk)
   (with Desk chat; an icon when collapsed), then *Inbox*, *Overview*, *Metrics* (cost, code, flow and pauses across
@@ -213,8 +211,6 @@ A project page has the tabs *Cockpit | Milestones | Metrics*, and *Plans* with D
 - **Plans**: the project's [plans](write-a-milestone.md#draft-it-in-the-desk)
   and *New plan* for this project; a [plan's decisions](write-a-milestone.md#answer-the-agents-decisions) have a wizard.
 
-![A project page with its Cockpit: a milestone's pinned cards and the stream, beside the panel](../assets/screenshots/project-stream.webp)
-
 A panel on the right switches between *Queue* (the active milestone's queue, its companions and the last 30 days; pick a day to page the Cockpit back to it, *Back to now* returns) and *Decisions* (the decisions of all milestones, or of the one you pick).
 Below 1180 px the *Queue* and *Decisions* buttons in the header open it from the right; Escape closes it. The open view is in the address (`?panel=decisions`).
 
@@ -223,15 +219,13 @@ Old links to the former tabs open where their content is now: `?tab=activity` an
 ## A milestone
 
 A milestone page opens on *Cockpit*, which counts what waits for you: problems, proposals and questions pinned on top, answered there,
-then the events, newest at the bottom, with runs, CI and reviews folded into groups (open one, or *Expand all*) and a search.
+then the events, newest at the bottom, with runs, CI and reviews folded into groups (open one, or *Expand all*), a search, and a live line per running agent that opens its transcript.
 Then come *Issues* and *Metrics*, and *Retrospective* once written. The tab is in the address, so you can link to it. The Cockpit ends with the [message box to the pilot](#message-the-pilot).
 A panel on the right switches between *Issues* (the issues by state: running, waiting, next, merged, skipped; *Open table* opens the Issues tab), *Queue* (the project's milestones, this one marked) and *Decisions* (superseded ones folded). Below 1180 px, and on the Issues tab, the *Issues*, *Queue* and *Decisions* buttons in the header open it from the right; Escape closes it. The open view is in the address (`?panel=queue`).
 
 Old links to the former tabs open where their content is now, and the address changes to match: `?tab=activity`, `stream`, `needs` and `pilot` open *Cockpit*, `?tab=decisions` the panel's *Decisions* (`?panel=decisions`), and `?tab=board` the *Board* view of *Issues* (`?tab=issues&view=board`).
 
 ### The pinned cards
-
-![The Cockpit's pinned cards with the pause card, its ways out and an open question](../assets/screenshots/milestone-pilot.webp)
 
 What waits for the milestone's owners, on top of the Cockpit; the *Cockpit* tab's count says how many. On the left are the
 [problems](../concepts/glossary.md#problem-thread), one per stuck issue and
@@ -288,7 +282,7 @@ See [Read and revisit decisions](decisions.md).
 The Cockpit ends with *Message the pilot*: the pilot's autonomy, cost and
 task link, then the box. Your messages and the pilot's answers show in the
 stream; on a phone the box stays above the keyboard. A done milestone has
-none. See [Steer from the Desk](steer-from-the-desk.md#ask-the-pilot).
+none. See [Talk to the pilot](steer-from-the-desk.md#talk-to-the-pilot).
 
 ### Retrospective
 
@@ -313,8 +307,6 @@ tasks, and no spend or per-issue figures.
 
 ## A task
 
-![Task chat between a user and the implementing agent](../assets/screenshots/task-chat.webp)
-
 A task page's header has its status (such as *Running*), the title, and a
 line with the step and how long it runs, the last result and activity,
 restarts, *Stalled* when the [watchdog](../concepts/glossary.md#watchdog)
@@ -325,12 +317,10 @@ show a block, a usage limit or an out-of-memory restart.
 Its tabs, each shown when there is something in it:
 
 - **Overview**: runs, spend, branch and last push on top, then the last
-  run's summary, the agent's questions, review findings, and the pipeline
+  run's summary, the agent's questions, the GitLab *Conversation*, review findings, and the pipeline
   with its fix rounds and failed jobs. A Spec task adds the plan and the
   autopilot's state. The pod, how to follow its logs, and the conditions
-  close the tab. Old `?tab=details` links open it.
-- **Chat**: *Chat with the agent* and the GitLab conversation, see
-  [Steer from the Desk](steer-from-the-desk.md#chat-with-an-agent).
+  close the tab. Old `?tab=details` and `?tab=chat` links open it. A task has no chat: [talk to the pilot](steer-from-the-desk.md#talk-to-the-pilot).
 - **Live**: the [live transcript](#live-transcript), with the `transcript`
   grant.
 - **Logs**: for owners with the `steer` grant, the last 500 lines of the
@@ -393,7 +383,7 @@ cookies. More in [Security](../concepts/security.md#what-the-desk-login-protects
 
 ## Next
 
-- [Steer from the Desk](steer-from-the-desk.md): chat, prompts, Revisit,
+- [Steer from the Desk](steer-from-the-desk.md): the Cockpit, the pilot, prompts, Revisit,
   pause cards, the queue and the planner.
 - [Order milestones and read the timeline](milestone-order-and-timeline.md).
 - [Turn on the Desk](../getting-started/turn-on-the-desk.md): set it up.

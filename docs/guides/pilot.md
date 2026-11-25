@@ -46,8 +46,6 @@ the pilot's answer show in the Cockpit's stream. Old links with `?pilot=1` or
 Stuck issues have their [problem thread](#the-problem-thread) among the *Cockpit*'s pinned cards. Type your question there; the answer comes in the
 same thread.
 
-![Pause card pinned in the milestone's Cockpit: why it paused, the ways out and the pilot's question](../assets/screenshots/milestone-pilot.webp)
-
 Answer a prompt with one click on an option. On a prompt with a text box
 you can also write a sentence, such as "do it differently: retry with the
 v2 API". That runs nothing yet: the pilot turns it into one more option,
@@ -57,8 +55,16 @@ follow-up question. The operator checks that option like the pilot's own.
 Only the milestone's `owner-subjects` answer prompts in the Desk. Anyone
 with the `chat` grant may message the pilot. With only the `steer` grant
 your message goes out as a `/pilot` comment in your name; with neither you
-see the drawer but cannot write in it. See
+read the stream but cannot write. See
 [Owners and pings](owners-and-pings.md).
+
+The pilot is the only chat of a milestone: task pages have none. To tell an
+issue's running implementer something, write it to the pilot, such as
+"tell #712 to use the existing retry helper". An owner's own words go out
+at once, without a proposal, and the pilot says where they went: into the
+running agent, into its step that restarted with them, or into the issue's
+next run. See
+[Tell a running implementer something](steer-from-the-desk.md#tell-a-running-implementer-something).
 
 ## The problem thread
 

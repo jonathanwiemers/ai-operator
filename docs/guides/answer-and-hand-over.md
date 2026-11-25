@@ -22,7 +22,8 @@ marked as recommended. An open question has a text box only.
 
 1. Open the *Inbox*. Each open question is a row; click it.
 2. The issue's task page opens on its *Overview* tab, at *Questions from
-   the agent*. The chat with the agent is on the *Chat* tab.
+   the agent*. To tell the agent more, message the pilot in the
+   milestone's *Cockpit*.
 3. Click an option, or write your answer in your own words.
 
 Once you answered the last open question of the run, the run starts again,

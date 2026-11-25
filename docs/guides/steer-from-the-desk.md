@@ -1,45 +1,144 @@
 # Steer from the Desk
 
-The [Desk](../concepts/glossary.md#desk) is where you steer a milestone: you
-chat with an agent, ask the [pilot](../concepts/glossary.md#pilot), answer
-[prompts](../concepts/glossary.md#prompt), change a decision, end a pause,
-order the queue and plan the next milestone. This page shows each of these.
-What the views show is in [The Desk](desk.md).
+The [Desk](../concepts/glossary.md#desk) is where you steer a milestone. You
+read its [Cockpit](../concepts/glossary.md#cockpit), talk to the
+[pilot](../concepts/glossary.md#pilot), tell a running agent something,
+answer [prompts](../concepts/glossary.md#prompt), change a decision, end a
+pause, order the queue and plan the next milestone. This page shows each of
+these. What the views show is in [The Desk](desk.md).
 
 Most actions need the `chat` grant. Some also need your Desk user name
 among the milestone's [owners](../concepts/glossary.md#owner), on its
-`/agent owner-subjects` line: answering prompts, *Revisit*, *Move to top*, *Merge anyway*, *Restart run*, and planning or follow-up
-milestones. See
+`/agent owner-subjects` line: answering prompts, telling an implementer
+something, *Revisit*, *Move to top*, *Merge anyway*, *Restart run*, and
+planning or follow-up milestones. See
 [Who sees what](desk.md#who-sees-what).
 Everything you do here, you can also do with a comment in GitLab; the
 [commands](../reference/commands.md) list both.
 
-## Chat with an agent
+## The Cockpit
 
-![Task chat between a user and the implementing agent](../assets/screenshots/task-chat.webp)
+A milestone page opens on its *Cockpit*: everything about the milestone in
+one stream, newest at the bottom.
 
-Open a task and its *Chat* tab. *Chat with the agent* is a thread with the
-agent of this task, oldest message on top.
+- **Pinned cards** sit on top: open problems, the pilot's proposals and
+  open questions. You answer each one in place: pick an option, click
+  *Accept* or *Reject*, or write in its thread. A link with `#problem-…` or
+  `#prompt-…`, and every Inbox entry, opens the Cockpit with that card open
+  and in view.
+- **Shown events** follow in time order: what the pilot did and why,
+  merges, the owners' messages, the pilot's answers and the milestone's
+  state changes.
+- **Folded groups** hold the rest. The runs, CI rounds, reviews and
+  checkpoints of one issue between two shown events become one closed line,
+  such as *#712 · 3 runs, 2 CI rounds, review clean*. Click it, or press
+  Enter on it, to open its event cards. *Expand all* in the toolbar opens
+  every group; *Search the Cockpit* on the right finds an event.
+- **Live lines** come last: one line per issue whose agent works now, such
+  as *#712 implementing · 4 min*. With the `transcript` grant the line opens
+  the agent's [live transcript](desk.md#live-transcript) in place; without
+  it, the line links to the task. The line goes away when the run ends.
+- **The composer** is at the bottom: the message box to the pilot, see
+  [Talk to the pilot](#talk-to-the-pilot).
 
-1. Write your message and send it. No GitLab token is needed.
-2. A line under the thread says what happens: the task waits for capacity,
-   *starting the agent…* while its pod comes up, then *the agent is
-   answering…*, with a link to the *Live* tab.
-3. The agent answers in the thread. It can change and push the branch.
+*Load older* pages back in time.
 
-While the agent answers, *Interrupt* stops it. A chat message starts no
-[run](../concepts/glossary.md#run) of its own.
+### The panel
 
-Buttons above the box send short commands, by task type:
+Beside the stream, a panel switches between three views:
 
-- **an issue's task**: *Retry*, *Review again*, and *Model…* to pick the
-  engine, model and effort of the next runs;
-- **a milestone's Spec task** on autopilot: *Pause* or *Resume*, and
-  *Skip…* with the issue to skip;
-- **the pilot's task**: *Accept* or *Reject* for each open proposal.
+- **Issues**: the issues by state (running, waiting, next, merged,
+  skipped). A row opens the issue; *Open table* opens the *Issues* tab.
+- **Queue**: the project's milestones in run order, this one marked.
+- **Decisions**: the milestone's [decisions](../concepts/glossary.md#decision),
+  with replaced ones in a closed group.
 
-The command shows as a short line in the thread, with the operator's answer
-under it.
+From 1180 px the panel is a column. On a narrower screen, and on a phone,
+the *Issues*, *Queue* and *Decisions* buttons in the page header open it as
+a sheet from the right. Escape closes it and puts the focus back on the
+button. The open view is in the address, as `?panel=queue`.
+
+### The project and the Overview
+
+A project page and the *Overview* open on a Cockpit of their own, with the
+same pinned cards, folded groups and panel, but no composer:
+
+- **A project's Cockpit** spans its milestones. Each pinned card shows its
+  milestone's name, and *Talk to the pilot* opens that milestone's Cockpit.
+  The panel has *Queue* and *Decisions*.
+- **The Overview's Cockpit** spans all your projects. It pins the open
+  Inbox items as short cards that open their card in the milestone's
+  Cockpit. It shows merges and milestone state changes, and folds the rest
+  per project. The panel is *Working now*.
+
+## Talk to the pilot
+
+The pilot is the only chat of a milestone. Task pages have no chat of
+their own: talk to the pilot, and it passes your words on.
+
+1. Open the milestone's *Cockpit*. Its bottom is *Message the pilot*, with
+   the pilot's autonomy, its cost and a link to the pilot's task above it.
+2. Write your message and press Ctrl+Enter (Cmd+Enter on a Mac) or *Send*.
+3. Your message and the pilot's answer show in the stream.
+
+Ask where things stand, why the milestone is paused, or what an issue waits
+for. Ask it to act: retry an issue, review it again, skip it, or pause the
+autopilot. What it may do on its own, and what it proposes for an owner to
+accept, is in [The pilot](pilot.md).
+
+- Anyone with the `chat` grant can message the pilot, owner or not.
+- Without `chat` but with `steer`, the box posts your message as a `/pilot`
+  comment on the tracking issue, in your name.
+- With neither grant, or without being an owner where one is needed, you
+  read the stream but cannot write.
+- A milestone without a pilot says *No pilot for this milestone.* A done
+  milestone read from history has no composer.
+
+On a phone the box stays at the bottom of the screen, above the keyboard.
+
+## Tell a running implementer something
+
+When an issue's [implementer](../concepts/glossary.md#implementer) is on
+the wrong track, tell it through the pilot. You do not have to wait for its
+[run](../concepts/glossary.md#run) to end, and it does not start over.
+
+For example, while *#712 implementing · 4 min* shows, write into the
+composer:
+
+```text
+tell #712 to use the existing retry helper
+```
+
+Or comment on the tracking issue in GitLab:
+
+```text
+/pilot tell #712: use the existing retry helper
+```
+
+Your words go out at once, as your instruction, with no *Accept* card. The
+pilot answers with where they went, and the Cockpit and the tracking issue
+say it too:
+
+| What you read | What happened |
+|---------------|---------------|
+| *delivered to #712's running implementer at 14:05* | The agent took your words in while it worked, without stopping. They show in its transcript as your turn. |
+| *delivered to #712's implementer, the step restarted with it, at 14:05* | The agent stopped at its current step and went on in the same session with your words. Its work so far stays. |
+| *Queued for #712's next run.*, later *delivered with #712's next run at 14:20* | #712 was not running. Your words went into its next run. |
+
+- It happens within a minute.
+- Each message is delivered once, also when a pod restarts.
+- A message that arrives while #712 waits for CI or a review goes into its
+  next implementer call, a CI fix for example, or else into its next run.
+- At most 5 messages reach one run while it works; later ones wait for the
+  next run.
+- A run that took a message is not interrupted or failed, and keeps its
+  work. Its calls list shows a stopped call and its resumed call, and their
+  costs add up.
+- Your words never widen what the agent may do: they are an instruction
+  from you, inside the run's own rules.
+
+Only the milestone's owners can tell an implementer something. The fields
+are in [Owner messages](../reference/status-and-history.md#owner-messages).
 
 **A run that hangs.** In the task page's header, owners get *Restart run*
 while a run is in progress. It asks first, then stops the run and starts it
@@ -48,8 +147,8 @@ again. This is a Desk action only, there is no GitLab command for it. See
 
 ## GitLab comments from the Desk
 
-When the Desk is connected to your projects' GitLab, the *Chat* tab also
-has the *Conversation*: the comments of the issue, its merge request and
+When the Desk is connected to your projects' GitLab, a task's *Overview*
+tab has the *Conversation*: the comments of the issue, its merge request and
 the milestone's [tracking issue](../concepts/glossary.md#tracking-issue).
 With the `steer` grant it has a box to write a comment in your own name. The operator reads it like
 any GitLab comment: `/agent …` starts a run, a plain comment reaches a
@@ -115,18 +214,6 @@ A comment is at most 10 000 characters, and you may post 10 per minute. A
 comment goes only to the task's issue, its merge request or its milestone's
 tracking issue. The Desk logs who posted where, never the text.
 
-## Ask the pilot
-
-Write into *Message the pilot* at the bottom of the milestone's *Cockpit*.
-Your message and the pilot's answer show in the Cockpit's stream. Ask where
-things stand, why the milestone is paused, or what an issue waits for. See
-[The pilot](pilot.md).
-
-Without the `chat` grant but with `steer`, the box posts your message as a
-`/pilot` comment on the tracking issue, in your name.
-Anyone with the `chat` grant can message the pilot, owner or not. With
-neither grant you read the conversation in the Cockpit but cannot write.
-
 ## Answer prompts
 
 Every question to the owners is a prompt: from the pilot, from an agent,
@@ -142,7 +229,7 @@ You find prompts:
   [problem thread](pilot.md#the-problem-thread); closed ones stay in the
   thread's history;
 - in a project's *Cockpit*, under the milestone's name, answered there;
-- on a task page, above the chat, for an agent's questions;
+- on a task page's *Overview*, for an agent's questions;
 - on the pause card of a red default branch or a spent budget.
 
 Click an option to answer. Or write a sentence into the text box. On a
@@ -205,7 +292,7 @@ The buttons depend on the kind of pause:
 - *Merge anyway* merges without a full review. It is for owners and asks
   first: CI, the merge request's state and approvals still apply, and it
   is refused if someone pushed since;
-- links open the issue's chat, the pipeline, the merge request, the
+- links open the issue's task, the pipeline, the merge request, the
   companion merge request or the plan.
 
 A way out the Desk has no button for shows as the command to post in

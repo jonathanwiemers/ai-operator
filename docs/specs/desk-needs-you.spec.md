@@ -1,7 +1,9 @@
 # Desk: one Needs you tab per milestone that shows what was asked, who handled it and what was tried
 
 Status: the milestone's spec, run by autopilot. Narrowed requirements and
-in-flight changes go into the [Steering log](#steering-log).
+in-flight changes go into the [Steering log](#steering-log). Superseded:
+the *Needs you* tab became the pinned cards of the
+[Cockpit](desk-cockpit.spec.md).
 
 ## Goal
 

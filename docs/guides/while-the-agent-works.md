@@ -14,11 +14,15 @@ with fixes if needed → merge, by you or by
 
 ## Follow it in the Desk
 
-Click the issue in the milestone's *Issues* tab to open its task page. It
-shows the merge request, the run as it happens, the CI pipeline and what
-the run cost. The *Live* tab follows the agent: its steps, what it says and
-the tools it calls. See [Live transcript](desk.md#live-transcript) for
-more on the views.
+The milestone's [Cockpit](../concepts/glossary.md#cockpit) shows one live
+line per issue whose agent works now, such as *#42 implementing · 4 min*.
+With the `transcript` grant it opens the agent's transcript in place.
+
+Click the issue in the panel's *Issues* or on the *Issues* tab to open its
+task page. It shows the merge request, the run as it happens, the CI
+pipeline and what the run cost. The *Live* tab follows the agent: its
+steps, what it says and the tools it calls. See
+[Live transcript](desk.md#live-transcript) for more on the views.
 
 ## The draft merge request
 
@@ -46,10 +50,19 @@ has at most 25 steps; one that runs out leaves the merge request a draft
 and says so. `workflow.stepCommits: false` makes one commit per run (see
 [`spec.workflow`](../reference/agentproject.md#specworkflow)).
 
-You can steer while it works. A comment you write on the issue or the
-merge request reaches the agent before its next step; it needs no `/agent`
-prefix. An `/agent …` comment is different: it starts its own run after
-this one, and the comments after it wait for that run too.
+You can steer while it works:
+
+- **Through the pilot**, within a minute. As an owner, write "tell #42 to
+  use the existing retry helper" into the Cockpit's message box, or comment
+  `/pilot tell #42: use the existing retry helper` on the tracking issue.
+  The agent takes your words in where it is, without starting over, and the
+  pilot says where they went. See
+  [Tell a running implementer something](steer-from-the-desk.md#tell-a-running-implementer-something).
+- **With a comment** on the issue or the merge request. It reaches the
+  agent before its next step; it needs no `/agent` prefix.
+
+An `/agent …` comment is different: it starts its own run after this one,
+and the comments after it wait for that run too.
 
 With [`maxStepLines`](../reference/agents-and-models.md#roles) set, the
 **step-size gate** keeps steps small on claude: once the uncommitted change

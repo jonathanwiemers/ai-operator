@@ -46,8 +46,6 @@ Times in a reason are written in UTC, with the date: "resets 2026-11-21
 "resets 17:00". Hover over one to see the full local time with the zone and
 the UTC time as written. GitLab comments show the same times in UTC.
 
-![Pause card pinned in the milestone's Cockpit: why it paused, the ways out and the pilot's question](../assets/screenshots/milestone-pilot.webp)
-
 The milestone's [pinned cards in the *Cockpit*](desk.md#the-pinned-cards) show a pause that names one issue in that issue's
 [problem thread](pilot.md#the-problem-thread). Other pauses, such as a spent
 budget, are the milestone's own problem. At the bottom of the thread are the

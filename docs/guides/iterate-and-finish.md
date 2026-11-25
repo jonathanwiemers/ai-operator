@@ -8,20 +8,21 @@ merge, and how an issue ends.
 
 ## Ask for changes
 
-**In the Desk.** Open the issue's task page. The *Chat* tab has two boxes:
+**In the Desk.** You have two boxes:
 
-- **Conversation** posts a GitLab comment on the issue or its merge
+- **Conversation**, on the *Overview* tab of the issue's task page, posts a GitLab comment on the issue or its merge
   request, in your name. Write `/agent` and what you want changed, for
   example `/agent keep the old button for guests`. That starts a run. A
   comment without `/agent` reaches a running agent before its next step,
   and otherwise waits for the next run. The buttons above the box start a
   comment with the common commands. It needs your GitLab account connected
   once (see [Steering](steer-from-the-desk.md#gitlab-comments-from-the-desk)).
-- **Chat with the agent** talks to the agent between runs. It answers in a
-  chat turn and can change and push the branch. A chat message starts no
-  run. The chat also takes short commands, such as *retry*, *review*, a
-  model or an effort (see
-  [Commands](../reference/commands.md#on-an-issue-or-its-merge-request)).
+- **Message the pilot**, at the bottom of the milestone's
+  [Cockpit](../concepts/glossary.md#cockpit). Ask it to retry or review the
+  issue again, or tell the issue's implementer something: as an owner,
+  your words reach a running agent within a minute, or else its next run (see
+  [Tell a running implementer something](steer-from-the-desk.md#tell-a-running-implementer-something)).
+  A task has no chat of its own.
 
 **In GitLab.** Comment on the issue or its merge request:
 

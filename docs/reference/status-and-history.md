@@ -1,8 +1,9 @@
 # Status and history events
 
 This page is for scripts and dashboards that read what the operator
-records about merges, pauses and the run order: the `mergedLines` status
-fields of an AgentTask and an AgentProject, the project's
+records about merges, pauses, owner messages and the run order: the
+`mergedLines` status fields of an AgentTask and an AgentProject, an issue
+task's owner messages and their deliveries, the project's
 `milestoneOrder`, and the history events in the research
 database that the Desk's figures come from. How the Desk shows them is in
 [Lines of code](../guides/budgets-and-spend.md#lines-of-code).
@@ -68,6 +69,53 @@ It appears in two places, both read only:
 |-------|-------|------|
 | `status.autopilot.items[].mergedLines` | AgentTask (the milestone's tracking task) | The issue's own merge request, counted when autopilot records the merge. |
 | `status.companions[].mergedLines` | [AgentProject](agentproject.md#other-spec-fields) | A [companion](../concepts/glossary.md#companion-repository) merge request, counted when its entry becomes merged: a merge by an owner, autopilot's own merge, or a resumed landing. It counts to the home issue. |
+
+## Owner messages
+
+An owner's words for an issue's running
+[implementer](../concepts/glossary.md#implementer), passed on by the
+[pilot](../concepts/glossary.md#pilot) (see
+[Tell a running implementer something](../guides/steer-from-the-desk.md#tell-a-running-implementer-something)).
+The pilot appends them to the issue's AgentTask; the runner reports where
+each one went:
+
+```yaml
+spec:
+  source:
+    ownerMessages:
+      - id: tell/8812
+        owner: alice
+        text: use the existing retry helper
+        at: "2026-11-22T14:04:51Z"
+status:
+  run:
+    deliveredMessages:
+      - id: tell/8812
+        call: 3
+        how: stream
+        at: "2026-11-22T14:05:02Z"
+    calls:
+      - seq: 3
+        role: implementer
+```
+
+| Field | Meaning |
+|-------|---------|
+| `spec.source.ownerMessages[]` | `id` (a stable key from its source, `tell/<note>` or `chat/<message>`, so a message is never appended twice), `owner`, `text` and `at`. At most 20 are kept, the newest; `text` is at most 4000 characters. |
+| `status.run.deliveredMessages[]` | One entry per delivered message: `id`, `call` (the `seq` of the call that took it), `how` and `at`. At most 20. |
+| `how: stream` | Written into the running claude call while it worked. Recorded once claude replayed it. |
+| `how: resume` | The call stopped at its current step and resumed its session with the message. Recorded before the resumed call starts. |
+| `how: nextRun` | The issue was not running, or the run ended first: the message went into the next run's prompt. |
+| `status.run.calls[].stoppedForMessage` | `true` on a call that was stopped so a message could be resumed into it. Its resumed call follows it. |
+
+- Each message is delivered once. A message with an entry in
+  `deliveredMessages` is never sent again, also after a pod restart.
+- At most 5 messages per run are delivered while it runs, by `stream` and
+  `resume` together; later ones wait for the next run.
+- A stop for a message is not an interruption: it does not count in
+  `status.run.interruptions`, is no failure and takes no checkpoint. The
+  stopped call and the resumed call are both in `status.run.calls`, and
+  the run's cost sums them.
 
 ## `milestoneOrder`
 

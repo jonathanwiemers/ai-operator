@@ -126,11 +126,14 @@ restarted without a note.
 
 You do not have to wait for a pause to have a say:
 
-- **Ask the pilot** in the Desk, or with `/pilot` in a comment on the
-  tracking issue. It knows the spec, the queue, every issue's state and the
-  health of the default branch.
-- **Chat with an agent** on a task's page in the Desk, or give it an
-  instruction with `/agent <what to change>` on its issue or merge request.
+- **Talk to the pilot** at the bottom of the milestone's
+  [Cockpit](glossary.md#cockpit) in the Desk, or with `/pilot` in a comment
+  on the tracking issue. It knows the spec, the queue, every issue's state
+  and the health of the default branch.
+- **Tell a running agent something** through the pilot: an owner's words
+  reach the issue's implementer while it works, without starting over. Or
+  give it an instruction with `/agent <what to change>` on its issue or
+  merge request, for its next run.
 - **Answer prompts** in the Desk. A prompt is a question to the owners with
   two to four options, one of them recommended, from the operator, the pilot
   or an agent.

@@ -72,16 +72,19 @@ numbered requirements give the planner a clear split.
 Open the Desk. Your milestone shows up on the *Timeline* tab of *Overview* on the operator's next
 poll, with the state `running`. Click its title to open it.
 
-The milestone page opens on the *Issues* tab. It says *No issues planned
-yet.* while the planner works. In GitLab, the operator opens a
+The milestone page opens on its [Cockpit](../concepts/glossary.md#cockpit):
+one stream of what happens, with what waits for you pinned on top and the
+message box to the pilot at the bottom. In GitLab, the operator opens a
 [tracking issue](../concepts/glossary.md#tracking-issue) for the milestone
 right away. It holds the milestone's status, and you can comment there.
 
-When the planner is done, the *Issues* tab lists the planned issues, each
-with its state and, once it has one, its merge request. The *Queue* below
-groups them by where they are: *Running*, *Waiting* for the issues they
-depend on, and *Done*. In GitLab the same issues appear in the milestone,
-each with an `agent::` label (see [Labels](../reference/labels.md)).
+When the planner is done, the panel's *Issues* beside the stream lists the
+planned issues by state: running, waiting for the issues they depend on,
+next, and merged. The *Issues* tab has the full table, each issue with its
+state and, once it has one, its merge request. Its *Lanes* view groups them
+by where they are, with the decisions of each. In GitLab the same issues
+appear in the milestone, each with an `agent::` label (see
+[Labels](../reference/labels.md)).
 
 If the milestone shows *Waiting for its turn*, an older autopilot milestone
 of the project is still open. Autopilot runs one milestone at a time. To
@@ -117,7 +120,7 @@ milestone for you, asks one when it needs a decision: for example when CI
 stays red, or a budget runs out. Every open prompt is in your *Inbox* and
 pinned on top of the milestone's *Cockpit*.
 
-You do not have to wait for a problem to try it. In the *Queue*, each
+You do not have to wait for a problem to try it. In the *Issues* tab's *Lanes* view, each
 issue lists the decisions the planner made for it, as IDs such as
 `D12-P1`, each with a **Revisit** button.
 [Revisit](../concepts/glossary.md#revisit) asks you whether a decision

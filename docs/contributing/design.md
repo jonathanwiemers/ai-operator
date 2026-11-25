@@ -3003,6 +3003,40 @@ counted interventions; more tools are later steps of
   or the owner's words as "Instruction from @owner via the pilot"; an
   instruction counts as human input, so a conflict or re-review run still
   runs the implementer.
+* **Owner messages** (spec "Desk: the Cockpit", R2, R3, R7 and R8). An
+  `instruct` with an owner's text on an issue whose task has a run in
+  progress does not set `pilotInstruction` and requests no run:
+  `runAction` (`internal/controller/pilot_actions.go`) appends an
+  `OwnerMessage` to `spec.source.ownerMessages` (ID from its source,
+  `tell/<note>` or `chat/<message>`, so a retried reconcile appends once;
+  the last 20 kept) and comments "🧭 Message from `@owner` via the pilot,
+  passed to the running implementer: …". An idle task, and the pilot's own
+  kinds (`ci-fix`, `install-toolchains`, `rerun`) on any task, keep the
+  `pilotInstruction` and `requestRun` path.
+  - **No Accept for the owner's own words.** `/pilot tell #N: …` from an
+    owner (`tell` in `internal/controller/pilot_threads.go`) skips the
+    proposal and writes the action straight into `status.pilot.accepted`
+    (source `tell/<note>`), which `runAccepted` runs at the end of the
+    poll. It replies "Passed on to #N's running implementer; I'll say here
+    when it is delivered." or "Queued for #N's next run.". A Desk chat turn
+    whose single `instruct` carries the owner's verbatim text (`ownWords`)
+    goes the same way. A non-owner's tell is refused as before; an
+    `instruct` the pilot proposes on its own still follows autonomy.
+  - **Where it went.** The runner records each delivery in
+    `status.run.deliveredMessages` (`stream`, `resume`, `nextRun`; see
+    [Stream input](#pod-topology) above). The operator reads them on its
+    next poll and reports each once (`internal/controller/pilot_deliveries.go`,
+    `describeDelivery`): "delivered to #N's running implementer at <time>",
+    "delivered to #N's implementer, the step restarted with it, at
+    <time>", or "delivered with #N's next run at <time>". The line is the
+    `pilot.acted` event's text after `describeAction`, and a 🧭 comment on
+    the tracking issue and on the issue. A message still undelivered when the run ends gets
+    a run request (`requestLeftovers`), so it reaches the next run's prompt in the same section
+    as `pilotInstruction`, and is then recorded as `nextRun`.
+  - **The pilot knows.** The pilot's state (`runningOf` in `internal/runner/pilot.go`) lists, per running issue, its
+    implementer's step, its engine and the owner messages still waiting,
+    and the pilot prompt says that `instruct` with an owner's words reaches
+    a running implementer at once.
 * **Autonomy** (`internal/controller/pilot_autonomy.go`).
   `aiv1.PilotSpec.AutonomyOf` is `pilot.autonomy`, unset `managed` when the
   `Coordinate` task has `spec.autopilot`, and `propose` when
