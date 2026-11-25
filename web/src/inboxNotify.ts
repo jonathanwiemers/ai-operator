@@ -2,95 +2,44 @@ import { pauseTitle } from './pauseCard.ts'
 import type { NotifyCategory } from './notify.ts'
 import type { InboxItem } from './types'
 
-// inboxKey identifies an Inbox item across reloads. A pause includes the
-// paused issue and its kind, so a different cause is a new item.
-export function inboxKey(item: InboxItem): string {
-  const parts: (string | number | undefined)[] = [item.namespace, item.project, item.kind]
-  switch (item.kind) {
-    case 'task':
-      parts.push(item.task)
-      break
-    case 'proposal':
-      parts.push(item.milestoneIID, item.proposalID)
-      break
-    case 'prompt':
-      parts.push(item.task, item.promptID)
-      break
-    case 'pause':
-      parts.push(item.milestoneIID, item.issueIID, item.pauseKind)
-      // A hold of one issue is not the milestone's pause over it.
-      if (item.hold) parts.push('hold')
-      break
-    case 'pilotError':
-      parts.push(item.task, item.title, item.reason)
-      break
-    case 'companionReady':
-      parts.push(item.issueIID, item.title)
-      break
-    case 'budgetWarning':
-      // The reason names the budget: a raised one that is crossed again is
-      // a new item.
-      parts.push(item.milestoneIID, item.issueIID, item.reason)
-      break
-  }
-  return parts.map((p) => (p == null ? '' : String(p))).join('/')
-}
-
-// notifiable says whether an item raises a browser notification: pauses,
-// proposals, prompts, companions ready for the owners to merge, issues at
-// 80 % of their budget and tasks that need input. Failed and blocked tasks
-// only count.
-export function notifiable(item: InboxItem): boolean {
-  return (
-    item.kind === 'pause' ||
-    item.kind === 'proposal' ||
-    item.kind === 'prompt' ||
-    item.kind === 'companionReady' ||
-    item.kind === 'budgetWarning' ||
-    (item.kind === 'task' && item.reason === 'needs-input')
-  )
-}
-
-// notifyCategory is a notifiable item's category in the Notifications
-// dialog (notify.ts).
-export function notifyCategory(item: InboxItem): NotifyCategory {
-  switch (item.kind) {
-    case 'proposal':
-      return 'proposal'
-    case 'companionReady':
-      return 'companion'
-    case 'budgetWarning':
-      return 'budget'
-    case 'prompt':
-    case 'task':
-      return 'question'
-    default:
-      return 'problem'
-  }
-}
-
-// newNotifications returns the notifiable items whose key isn't in seen,
-// each key once.
-export function newNotifications(seen: ReadonlySet<string>, items: InboxItem[]): InboxItem[] {
+// newNotifications returns the items of a category the user wants whose key
+// isn't in seen, each key once. The server sets each item's key and its
+// category (notify, empty for none).
+export function newNotifications(seen: ReadonlySet<string>, items: InboxItem[], wants: (c: NotifyCategory) => boolean): InboxItem[] {
   const out: InboxItem[] = []
   const taken = new Set<string>()
   for (const item of items) {
-    const key = inboxKey(item)
-    if (!notifiable(item) || seen.has(key) || taken.has(key)) continue
-    taken.add(key)
+    if (!item.notify || !wants(item.notify) || seen.has(item.key) || taken.has(item.key)) continue
+    taken.add(item.key)
     out.push(item)
   }
   return out
 }
 
-export interface NotificationText {
+// seenKeys is the seen set after a load: exactly the keys of its items. A
+// key that left the Inbox is forgotten, so its item notifies again when it
+// comes back.
+export function seenKeys(items: InboxItem[]): Set<string> {
+  return new Set(items.map((i) => i.key))
+}
+
+interface NotificationText {
   title: string
   body: string
 }
 
-// notificationText is the title and body of an item's notification.
+// notificationText is the title and body of an item's notification, with
+// the times as the server wrote them: showDeskNotification (deskWorker.ts)
+// shows them in the browser's zone.
 export function notificationText(item: InboxItem): NotificationText {
   switch (item.kind) {
+    case 'problem': {
+      // An open problem of an issue, stuck or held, or of the milestone
+      // (issue 0), which pauses it.
+      const name = item.title || item.project
+      const title = item.issueIID ? `#${item.issueIID} ${item.hold ? 'held' : 'stuck'} · ${name}` : `Milestone paused · ${name}`
+      return { title, body: item.reason }
+    }
     case 'pause': {
       const cause = item.pauseKind ? pauseTitle(item.pauseKind) : ''
       // A hold stops one issue; the milestone may run on.
@@ -129,10 +78,14 @@ export function notificationText(item: InboxItem): NotificationText {
         title: `Budget at 80 % · #${item.issueIID} · ${item.project}`,
         body: [item.title, item.reason].filter(Boolean).join('\n'),
       }
-    default:
+    default: {
+      // A task that needs input, or one that failed or is blocked (the
+      // failed category).
+      const what = item.reason === 'failed' || item.reason === 'blocked' ? item.reason : 'needs input'
       return {
-        title: item.issueIID ? `#${item.issueIID} needs input` : 'Needs input',
+        title: item.issueIID ? `#${item.issueIID} ${what}` : what[0]!.toUpperCase() + what.slice(1),
         body: [item.project, item.title].filter(Boolean).join(' · '),
       }
+    }
   }
 }

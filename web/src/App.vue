@@ -3,7 +3,7 @@ import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, toRef,
 import { useRoute, useRouter } from 'vue-router'
 import { hasFeature, session, setFeatures } from './api'
 import { getAbout, getFeatures, getInbox, getMe, getProjects, getProjectSets, getResearches, LoginRequiredError } from './client'
-import { inboxKey, newNotifications, notificationText, notifyCategory } from './inboxNotify'
+import { newNotifications, notificationText, seenKeys } from './inboxNotify'
 import { connectEvents, disconnectEvents, live } from './live'
 import { notifyActive, notifyDialog, refreshPermission, wants } from './notify'
 import { textEntry } from './textEntry'
@@ -120,9 +120,11 @@ function skipToMain() {
   document.getElementById('main')?.focus()
 }
 
-// Keys of the Inbox items this tab has seen. The first load while
-// notifications are on only seeds them; later loads notify once per new item.
-const seenInbox = new Set<string>()
+// Keys of the Inbox items of the last load (the server's item.key). The
+// first load while notifications are on only seeds them; later loads notify
+// once per new item of a category the user picked. A key that left the Inbox
+// is forgotten, so its item notifies again when it comes back.
+let seenInbox = new Set<string>()
 let inboxSeeded = false
 // The first load sets the count without announcing it.
 let inboxLoaded = false
@@ -136,13 +138,12 @@ function onInbox(items: InboxItem[]) {
     inboxSeeded = false
     return
   }
-  const fresh = inboxSeeded ? newNotifications(seenInbox, items) : []
-  for (const item of items) seenInbox.add(inboxKey(item))
+  const fresh = inboxSeeded ? newNotifications(seenInbox, items, wants) : []
+  seenInbox = seenKeys(items)
   inboxSeeded = true
   for (const item of fresh) {
-    if (!wants(notifyCategory(item))) continue
     const { title, body } = notificationText(item)
-    void deskWorker.then((w) => w.showDeskNotification(title, body, inboxKey(item), { item }))
+    void deskWorker.then((w) => w.showDeskNotification(title, body, item.key, { item }))
   }
 }
 

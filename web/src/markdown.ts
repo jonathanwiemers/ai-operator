@@ -1,6 +1,6 @@
 import { h, type VNode, type VNodeChild } from 'vue'
 import { safeURL } from './format.ts'
-import { localTimeNodes } from './localTime.ts'
+import { localTimeNodes } from './localTimeNodes.ts'
 
 // A markdown subset rendered straight to VNodes: agent text never becomes an
 // HTML string, so whatever it contains shows as text. Supported are

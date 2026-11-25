@@ -1,4 +1,3 @@
-import { h, type VNodeChild } from 'vue'
 import { fullTime, relTime } from './format.ts'
 
 // Server text writes times in UTC, as "2026-11-21 14:05 UTC" (Go's
@@ -45,12 +44,6 @@ export function localTimesText(text: string, now: number): string {
   return localTimes(text, now)
     .map((p) => ('text' in p ? p.text : p.label))
     .join('')
-}
-
-// localTimeNodes renders text with each UTC time as a <time> element: the
-// local label, the instant in datetime and the full times in its title.
-export function localTimeNodes(text: string, now: number): VNodeChild[] {
-  return localTimes(text, now).map((p) => ('text' in p ? p.text : h('time', { datetime: p.iso, title: p.title }, p.label)))
 }
 
 // localDay numbers the local calendar day of t, so that days compare by date

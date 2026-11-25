@@ -1,7 +1,7 @@
 <script lang="ts">
 import { defineComponent } from 'vue'
 import { useNow } from '../live'
-import { localTimeNodes } from '../localTime'
+import { localTimeNodes } from '../localTimeNodes'
 
 // LocalText is server text printed without Markdown, with each UTC time
 // ("2026-11-21 14:05 UTC") as a local <time>. It renders no wrapper element:

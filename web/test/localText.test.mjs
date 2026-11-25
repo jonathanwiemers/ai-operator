@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
-import { localTimeNodes } from '../src/localTime.ts'
+import { localTimeNodes } from '../src/localTimeNodes.ts'
 
 const src = (p) => readFileSync(new URL(`../src/${p}`, import.meta.url), 'utf8')
 const hm = (iso) => new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' }).format(new Date(iso))

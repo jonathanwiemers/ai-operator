@@ -8,7 +8,8 @@ import { test } from 'node:test'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import { fullTime } from '../src/format.ts'
-import { localMinute, localTimeNodes, localTimes, localTimesText } from '../src/localTime.ts'
+import { localMinute, localTimes, localTimesText } from '../src/localTime.ts'
+import { localTimeNodes } from '../src/localTimeNodes.ts'
 
 // Saturday, 21 Nov 2026, 14:00 CET.
 const now = Date.parse('2026-11-21T13:00:00Z')

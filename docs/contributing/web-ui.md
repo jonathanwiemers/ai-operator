@@ -2872,13 +2872,15 @@ and the Desk converts it.
   `internal/` or `cmd/`. Its allow-list names each exception with a reason:
   the research prompt's date and feed entries, which are in the request's
   zone and go to the agent only.
-- **Markdown.** `localTimes` and `localTimeNodes` in `web/src/localTime.ts`
-  find "YYYY-MM-DD HH:MM UTC" and "YYYY-MM-DD HH:MM:SS UTC" and render a
-  `<time datetime title>` with a local label ("15:05", "Tue 15:05",
-  "13 Nov, 15:05"). The title is the full local time with its zone and
-  "· 2026-11-21 14:05 UTC as written". `renderMarkdown` and `renderInline`
-  call them. `localTimesText` is the plain-string version for attributes and
-  titles.
+- **Markdown.** `localTimes` in `web/src/localTime.ts` and `localTimeNodes`
+  in `web/src/localTimeNodes.ts` find "YYYY-MM-DD HH:MM UTC" and
+  "YYYY-MM-DD HH:MM:SS UTC" and render a `<time datetime title>` with a
+  local label ("15:05", "Tue 15:05", "13 Nov, 15:05"). The title is the full
+  local time with its zone and "· 2026-11-21 14:05 UTC as written".
+  `renderMarkdown` and `renderInline` call them. `localTimesText` is the
+  plain-string version for attributes, titles and notification bodies.
+  `localTime.ts` imports no Vue: the lazy `deskWorker.ts` uses it, and Vue
+  reached from there would regroup the shared chunks over the bundle budget.
 - **Plain text.** `LocalText.vue` does the same for server text printed
   without Markdown (reasons, messages, summaries). It renders no wrapper.
 - **Absolute-time tooltips.** `absTime` in `web/src/format.ts` includes the

@@ -1,6 +1,7 @@
 import type { Router } from 'vue-router'
-import { inboxRoute } from './inboxRoute'
-import { parseOpen, type NotifyOpen } from './notifyOpen'
+import { inboxRoute } from './inboxRoute.ts'
+import { localTimesText } from './localTime.ts'
+import { parseOpen, type NotifyOpen } from './notifyOpen.ts'
 
 // The page's side of the service worker (sw.ts, docs/contributing/web-ui.md
 // "Service worker"). App.vue loads it after the shell, which keeps the
@@ -27,8 +28,10 @@ export function startWorker(r: Router) {
 }
 
 // showDeskNotification shows a notification through the worker, else with
-// `new Notification`, whose click opens the same way.
-export function showDeskNotification(title: string, body: string, tag: string, open: NotifyOpen) {
+// `new Notification`, whose click opens the same way. The UTC times in the
+// body show in the browser's zone.
+export function showDeskNotification(title: string, text: string, tag: string, open: NotifyOpen) {
+  const body = localTimesText(text, Date.now())
   if (worker) {
     worker.showNotification(title, { body, tag, icon: '/logo.svg', data: { open } }).catch(() => undefined)
     return
