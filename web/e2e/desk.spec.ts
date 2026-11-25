@@ -3535,13 +3535,14 @@ test.describe('milestone rows', () => {
   }
 })
 
-// The Overview's Working now cards (OverviewPanel.vue, R16 of "Desk: the
-// Cockpit"): in the Cockpit's panel, a column from 1180 px and a sheet that
-// the header's Working now button opens below, one card under the other.
-// The Inbox tile of the summary is a link of at least 44 px at every width.
+// The Overview's Now & next per project (OverviewPanel.vue, R10 of "Desk:
+// the Cockpit newest first by issue"): in the sidebar, a column from 1180 px
+// and a slide-over that the Now strip opens below, one project card under
+// the other. The Inbox tile of the summary is a link of at least 44 px at
+// every width.
 test.describe('overview cards', () => {
   for (const size of widths) {
-    test(`working now in the panel@${size.width}`, async ({ page, baseURL }, testInfo) => {
+    test(`now and next per project in the panel@${size.width}`, async ({ page, baseURL }, testInfo) => {
       const route = routes.find((r) => r.name === 'overview')!
       const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
       await page.setViewportSize(size)
@@ -3551,11 +3552,11 @@ test.describe('overview cards', () => {
       await page.goto(route.path)
       await route.ready(page)
 
-      if (size.width < 1180) await page.locator('main [data-panel-open="working"]').click()
-      else await expect(page.locator('main [data-panel-open]')).toHaveCount(0)
-      const cards = page.locator('[data-overview-panel] [data-overview-working] article')
-      await expect(cards).toHaveCount(overview.working.length)
-      // R7 Decision 6: "N finishing" on a card with held-open done milestones.
+      if (size.width < 1180) await page.locator('main [data-now-strip]').click()
+      else await expect(page.locator('main [data-now-strip]')).toHaveCount(0)
+      const cards = page.locator('[data-overview-panel] [data-overview-project]')
+      await expect(cards).toHaveCount(new Set(overview.working.map((w) => w.project)).size)
+      // R7 Decision 6: "N finishing" on a project with held-open done milestones.
       const finishing = cards.first().locator('[data-overview-finishing]')
       await expect(finishing).toHaveText('2 finishing')
       await expect(finishing).toHaveAttribute('href', '/projects/team-a/shop')

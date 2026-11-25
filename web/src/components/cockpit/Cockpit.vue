@@ -22,8 +22,8 @@ import CockpitThread from './CockpitThread.vue'
 // CockpitComposer; its sent(id) reloads the stream and waits for the
 // pilot's answer to message id (expectAnswer), reload() only reloads, after
 // a /pilot note), the latest exchange with the pilot, the pinned cards (the
-// pinned slot; a milestone's MilestoneNeeds), the live slot (the live lines
-// until Now & next replaces them), a toolbar with Expand all and the search,
+// pinned slot; a milestone's MilestoneNeeds), a toolbar with Expand all and
+// the search,
 // the threads of cockpitThreads, newest on top, each a CockpitThread card
 // (R4), and Load older last. headers holds what the thread headers need
 // (threadHeader): the milestone's issue rows, queue items and tasks, the
@@ -72,7 +72,6 @@ const expandAll = ref(false)
     <section id="pinned" aria-label="Pinned" class="scroll-mt-3" data-cockpit-pinned>
       <slot name="pinned" />
     </section>
-    <slot name="live" />
 
     <section aria-label="Stream" data-cockpit-stream>
       <UDashboardToolbar class="mt-3" :ui="searchToolbarUi" data-tab-toolbar>

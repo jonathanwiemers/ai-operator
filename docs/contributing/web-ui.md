@@ -1335,19 +1335,32 @@ Tailwind utilities and Nuxt UI, without scoped CSS. It is a
   merges, closes, milestone state and releases are shown and the rest is
   folded. The pinned slot is `InboxList.vue`, the
   Inbox's open rows, each a link through `inboxRoute` to its card in the
-  milestone Cockpit; nothing is answered here. The `live` slot holds the
-  live lines of `overviewLines` (`cockpitLive.ts`): one per running issue of
-  `overview.working`, linking to its milestone's Cockpit, else its task. No
+  milestone Cockpit; nothing is answered here. No live lines and no
   composer.
-- The panel (`OverviewPanel.vue`) is the summary tiles (`StatTile`, two per
-  row) and *Working now*, one card per running issue or busy project, one
-  column. The needs-you tile links to the Inbox, the *today* and *last 7
-  days* tiles to the [Metrics page](#metrics-page)'s last 7 days; these
-  links are at least 44 px high on phones. When `finishing` is above 0 the
-  card shows *N finishing* (`overview.ts`) linking to the project page; each
-  engine has its `EngineUsage` meter. From 1180 px the panel is a column;
-  below, the header's *Working now* button opens it as a sheet, which
-  Escape closes, with focus back on the button.
+- The sidebar (`OverviewPanel.vue`, R10 of "Desk: the Cockpit newest first
+  by issue") is Now & next per project, then the summary tiles (`StatTile`,
+  two per row), then *Engine usage*. `overviewNowAndNext` (`nowAndNext.ts`)
+  turns `overview.working` into one entry per project:
+  - Running and Waiting are grouped by milestone. A group's key is the
+    milestone IID, and its rows link to that Cockpit at `#issue-<iid>`
+    (without a milestone, to the task).
+  - Running is the step in words (`stepWords`) with the step's minutes.
+  - Waiting is a running task without a step whose pipeline runs, the
+    project's `ciWaits`, and its `held` items.
+  - Up next is the project's `next`, and Milestones its two `milestones`.
+  - The counts are across projects.
+
+  Each project is a card with its name, *N finishing* (`overview.ts`) and
+  a `NowNext` whose heading ids carry the project (`idPrefix`).
+  - The needs-you tile links to the Inbox. The *today* and *last 7 days*
+    tiles link to the [Metrics page](#metrics-page)'s last 7 days. These
+    links are at least 44 px high on phones.
+  - *Engine usage* has one card per project with active limits or an
+    `EngineUsage` meter.
+
+  As on a milestone, the sidebar is a column from 1180 px that collapses to
+  the rail (`NowRail`). Below 1180 px the Now strip under the header opens
+  it as a slide-over, which Escape closes, with focus back on the strip.
 - *Timeline* is `OverviewTimeline.vue` with the [Timeline](#timeline), a
   `UTabs` pill switch *6 h / 24 h / 7 d* in a `UDashboardToolbar`
   (`?window=6h|24h|7d`, `overviewWindow` falls back to `24h`) and the
@@ -1706,9 +1719,8 @@ event, the scopes, the thread titles and the summary text.
 
 #### Live lines
 
-The Cockpit's `live` slot, between the pinned cards and the toolbar, is
-the Overview's only (below). The milestone and project Cockpits have no
-live lines: what runs now is in the Now & next sidebar, whose Running rows
+No Cockpit has live lines in its stream: what runs now is in the Now &
+next sidebar, whose Running rows
 take their step and minutes from `liveLines` (`web/src/cockpitLive.ts`):
 "#712 implementing · 4 min", the minutes once the run has a step.
 
@@ -1725,10 +1737,9 @@ have no composer (D9):
 - **Overview** (R16, `views/Dashboard.vue`): scope `{}` (all projects).
   The `pinned` slot lists the Inbox's open items as compact cards that link
   to their card in the milestone's Cockpit; nothing is answered there (D6).
-  The live lines are Working now's (`overviewLines`: "shop #712 Add the
-  provider · 4 min"). The panel is `components/OverviewPanel.vue`: the
-  summary tiles, then Working now with the engines' usage meters and
-  limits; below 1180 px *Working now* in the header opens it.
+  The sidebar is `components/OverviewPanel.vue`: Now & next per project,
+  then the summary tiles and the engines' usage meters and limits
+  ([Dashboard](#dashboard)). It has the rail and the strip.
 
 No Cockpit part is a custom component: all are Nuxt UI components and
 existing Desk components, so the [UI kit](#ui-kit) has no row for them.

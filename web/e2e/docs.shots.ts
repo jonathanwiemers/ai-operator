@@ -33,7 +33,7 @@ const shop = '/projects/team-a/shop'
 const text = (s: string) => (page: Page) => expect(page.locator('main').getByText(s).first()).toBeVisible()
 
 const shots: Shot[] = [
-  // The Overview's Cockpit (R16 of "Desk: the Cockpit"): the Inbox's items pinned, Working now in the panel.
+  // The Overview's Cockpit (R16 of "Desk: the Cockpit"): the Inbox's items pinned, Now & next per project in the sidebar.
   { name: 'dashboard', path: '/', ready: text('Support refunds through the payment provider') },
   { name: 'dashboard-dark', path: '/', colorScheme: 'dark', ready: text('Support refunds through the payment provider') },
   // The project's Cockpit (R15 of "Desk: the Cockpit"): %14's pinned cards, the stream, the panel.

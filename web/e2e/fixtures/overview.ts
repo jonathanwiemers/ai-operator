@@ -2,7 +2,9 @@ import type { MilestoneList, OverviewView, StreamPage } from '../../src/types'
 import { ago, cost } from './clock'
 import { longProject, longTitle } from './long'
 
-// GET /api/v1/overview: the dashboard's summary strip and Working now.
+// GET /api/v1/overview: the dashboard's summary strip and Working now, the
+// Overview's Now & next per project: shop runs #277 and has a held issue and
+// one waiting for CI; team-b's project only has its next issue.
 export const overview: OverviewView = {
   running: 1,
   paused: 1,
@@ -19,13 +21,29 @@ export const overview: OverviewView = {
       milestoneIID: 12,
       task: 'shop-277-implement',
       since: ago(12),
+      step: '3 run implementer',
+      stepSince: ago(4),
       next: { issueIID: 278, title: 'Guest checkout: confirmation mail', milestoneIID: 12 },
       finishing: 2,
+      held: [{ issueIID: 279, title: 'Guest checkout: saved addresses', milestoneIID: 12, reason: 'CI failed 3 times' }],
+      ciWaits: [{ issueIID: 280, title: 'Guest checkout: order summary', milestoneIID: 12 }],
+      milestones: [
+        { iid: 12, title: 'Checkout without account', state: 'running' },
+        { iid: 14, title: 'Payment providers: refunds, partial captures and the provider switch', state: 'next' },
+      ],
+      engineUsage: [
+        {
+          engine: 'claude',
+          windows: [{ name: 'five_hour', percent: 42, resetsAt: ago(-125) }],
+          observedAt: ago(5),
+        },
+      ],
     },
     {
       namespace: 'team-b',
       project: 'a-project-with-a-rather-long-name.example',
       next: { issueIID: 3, title: 'Set up the project' },
+      milestones: [{ iid: 1, title: 'First steps', state: 'next' }],
     },
   ],
   history: true,

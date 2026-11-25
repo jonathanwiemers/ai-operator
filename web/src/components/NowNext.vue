@@ -13,7 +13,10 @@ import Badge from './Badge.vue'
 // Running and Waiting take rows grouped under headings (NowGroup), so the
 // project and the Overview reuse it (D820-P3). Every followed link emits
 // follow, so the page closes its slide-over and what it opens shows.
+// idPrefix keeps the section headings' ids unique where a page shows
+// several (the Overview, one per project).
 const props = defineProps<{
+  idPrefix?: string
   running: NowGroup[]
   waiting: NowGroup[]
   next: NowRow[]
@@ -24,6 +27,7 @@ const props = defineProps<{
   milestoneTo: (iid: number) => RouteLocationRaw
 }>()
 const emit = defineEmits<{ follow: [] }>()
+const id = (section: string) => `${props.idPrefix ?? ''}now-${section}`
 
 const count = (groups: NowGroup[]) => groups.reduce((n, g) => n + g.rows.length, 0)
 const sections = computed(() =>
@@ -41,8 +45,8 @@ const empty = computed(() => !sections.value.length && !props.next.length)
   <div class="now" data-now-next>
     <UEmpty v-if="empty" icon="i-lucide-inbox" title="Nothing running" variant="naked" size="xs" data-now-empty />
 
-    <section v-for="s in sections" :key="s.id" :aria-labelledby="`now-${s.id}`" :data-now-section="s.id">
-      <h3 :id="`now-${s.id}`">
+    <section v-for="s in sections" :key="s.id" :aria-labelledby="id(s.id)" :data-now-section="s.id">
+      <h3 :id="id(s.id)">
         <span>{{ s.label }}</span><Badge>{{ s.count }}</Badge>
       </h3>
       <template v-for="g in s.groups" :key="g.key">
@@ -66,8 +70,8 @@ const empty = computed(() => !sections.value.length && !props.next.length)
       </template>
     </section>
 
-    <section v-if="next.length" aria-labelledby="now-next" data-now-section="next">
-      <h3 id="now-next">
+    <section v-if="next.length" :aria-labelledby="id('next')" data-now-section="next">
+      <h3 :id="id('next')">
         <span>Up next</span><Badge>{{ next.length + moreNext }}</Badge>
       </h3>
       <ul>
@@ -89,8 +93,8 @@ const empty = computed(() => !sections.value.length && !props.next.length)
       />
     </section>
 
-    <section v-if="milestones.length" aria-labelledby="now-milestones" data-now-section="milestones">
-      <h3 id="now-milestones"><span>Milestones</span></h3>
+    <section v-if="milestones.length" :aria-labelledby="id('milestones')" data-now-section="milestones">
+      <h3 :id="id('milestones')"><span>Milestones</span></h3>
       <ul>
         <li v-for="m in milestones" :key="m.iid" :data-now-milestone="m.iid">
           <UButton

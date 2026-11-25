@@ -84,7 +84,7 @@ same pinned cards and threads, but no composer:
 - **The Overview's Cockpit** spans all your projects. It pins the open
   Inbox items as short cards that open their card in the milestone's
   Cockpit. It shows merges and milestone state changes, and folds the rest
-  per project. The panel is *Working now*.
+  per project. Its Now & next sidebar has a card per project.
 
 ## Talk to the pilot
 

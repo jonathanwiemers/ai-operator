@@ -176,16 +176,27 @@ the [Cockpit](../concepts/glossary.md#cockpit) across all your projects:
 
 - **Pinned**: the open items of the [Inbox](#inbox) of every project. A click
   opens the item's card in its milestone's Cockpit, where you answer it.
-- **Running now**: one line per running issue; it opens the milestone's Cockpit.
 - **The threads**: one per project, the newest activity on top, with merges
   and milestone state changes. The rest folds into closed lines; click one,
   or switch on *Expand all*.
 
-There is no message box. The panel *Working now* beside the stream (on a narrow
-screen *Working now* in the header opens it) has the summary (milestones
-running, paused and waiting, what needs you, spend today and in 7 days) and per
-project what runs, what is next, the engines' usage and limits, and *N
-finishing* for done milestones not yet closed.
+There is no message box. The **Now & next** sidebar beside the stream has
+one card per project:
+
+- *Running*: each running issue with its step and minutes, "#712
+  implementing · 4 min". A row opens the issue's thread in its milestone's
+  Cockpit.
+- *Waiting*: issues that wait for CI, and held issues with the reason.
+- *Up next*: the issue the project runs next.
+- *Milestones*: the milestone that runs and the next one.
+- *N finishing*, next to the project's name, for done milestones not yet
+  closed.
+
+Below the projects are the summary (milestones running, paused and waiting,
+what needs you, spend today and in 7 days) and each project's engine usage
+and limits. The sidebar collapses to a rail with the counts, as on a
+milestone. On a narrow screen the one-line strip under the header, "1
+running · 2 waiting · next #278", opens it.
 
 *Timeline* (`/?tab=timeline`) shows the
 [Overview timeline](milestone-order-and-timeline.md#the-overview-timeline)

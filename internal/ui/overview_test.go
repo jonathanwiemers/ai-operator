@@ -124,6 +124,79 @@ func TestOverviewWithoutDatabase(t *testing.T) {
 	}
 }
 
+// TestOverviewNowAndNext: a running task's step and CI state, and the
+// project's held issues and its running and next milestone of the queue,
+// repeated on each of its entries.
+func TestOverviewNowAndNext(t *testing.T) {
+	now := time.Now().Truncate(time.Second)
+	stepSince := now.Add(-4 * time.Minute)
+	ap := &aiv1.AgentProject{ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "shop"},
+		Status: aiv1.AgentProjectStatus{MilestoneOrder: []int64{4, 5, 6}}}
+	spec := func(iid int64, ap *aiv1.AutopilotStatus) aiv1.AgentTask {
+		s := *specTask("team-a", "shop", iid, int(iid), ap)
+		s.Spec.Autopilot = true
+		return s
+	}
+	hold := func(reason string) *aiv1.ItemHold { return &aiv1.ItemHold{Kind: aiv1.PauseKind("ci"), Reason: reason} }
+	// %4 runs: #41 is held (its title from the plan), #42 has a hold but is
+	// merged, #43 runs a step. %5 is paused, with a held issue that stays
+	// out; %6 waits for its turn and is next.
+	m4 := spec(4, &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning, Items: []aiv1.AutopilotItem{
+		{IID: 41, State: aiv1.AutopilotItemActive, Hold: hold("CI red twice")},
+		{IID: 42, State: aiv1.AutopilotItemMerged, Hold: hold("stale")},
+		{IID: 43, State: aiv1.AutopilotItemActive}}})
+	m4.Status.Plan = []aiv1.PlannedIssue{{Key: "a", IID: 41, Title: "Refunds"}}
+	m5 := spec(5, &aiv1.AutopilotStatus{Phase: aiv1.AutopilotPaused, Items: []aiv1.AutopilotItem{
+		{IID: 51, State: aiv1.AutopilotItemActive, Hold: hold("paused anyway")}}})
+	m6 := spec(6, &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning})
+	impl := func(name string, issue int64, step string, ci aiv1.CIState) aiv1.AgentTask {
+		t := aiv1.AgentTask{ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: name},
+			Spec: aiv1.AgentTaskSpec{ProjectRef: "shop", Type: aiv1.TaskTypeImplement, Milestone: &aiv1.MilestoneRef{IID: 4},
+				Issue: &aiv1.IssueRef{IID: issue, Title: "Issue"}},
+			Status: aiv1.AgentTaskStatus{Phase: aiv1.TaskPhaseRunning, CI: &aiv1.CIStatus{State: ci}}}
+		if step != "" {
+			t.Status.Run.CurrentStep, t.Status.Run.CurrentStepSince = step, &metav1.Time{Time: stepSince}
+		}
+		return t
+	}
+	// #45 is between runs while its pipeline runs: a CI wait. #46's pipeline
+	// is pending too, but its task is archived.
+	idle, archived := impl("shop-45", 45, "", aiv1.CIStateRunning), impl("shop-46", 46, "", aiv1.CIStatePending)
+	idle.Status.Phase, archived.Status.Phase = aiv1.TaskPhaseIdle, aiv1.TaskPhaseArchived
+	tasks := []aiv1.AgentTask{m4, m5, m6, impl("shop-43", 43, "3 run implementer", aiv1.CIStateSuccess),
+		impl("shop-44", 44, "", aiv1.CIStateRunning), idle, archived}
+
+	got := workingNow(map[string]*aiv1.AgentProject{"team-a/shop": ap}, tasks, now)
+	if len(got) != 2 {
+		t.Fatalf("working = %+v", got)
+	}
+	steps := map[int64]WorkingNow{got[0].IssueIID: got[0], got[1].IssueIID: got[1]}
+	if w := steps[43]; w.Step != "3 run implementer" || w.StepSince == nil || !w.StepSince.Equal(stepSince) || w.CI != aiv1.CIStateSuccess {
+		t.Errorf("#43 = %+v", w)
+	}
+	if w := steps[44]; w.Step != "" || w.StepSince != nil || w.CI != aiv1.CIStateRunning {
+		t.Errorf("#44 between runs = %+v", w)
+	}
+	wantHeld := []HeldItem{{IssueIID: 41, Title: "Refunds", MilestoneIID: 4, Reason: "CI red twice"}}
+	wantMilestones := []OverviewMilestone{{IID: 4, Title: "M4", State: "running"}, {IID: 6, Title: "M6", State: "next"}}
+	wantCI := []WorkingNext{{IssueIID: 45, Title: "Issue", MilestoneIID: 4}}
+	for _, w := range got {
+		if !slices.Equal(w.Held, wantHeld) || !slices.Equal(w.Milestones, wantMilestones) || !slices.Equal(w.CIWaits, wantCI) {
+			t.Errorf("#%d: held %+v, milestones %+v, CI waits %+v", w.IssueIID, w.Held, w.Milestones, w.CIWaits)
+		}
+	}
+
+	// Without a running milestone (the first is paused), the next one is
+	// the first waiting for its turn.
+	q := []QueueEntry{{IID: 5, Title: "M5", State: "paused"}, {IID: 6, Title: "M6", State: "holding"}, {IID: 7, State: "waiting"}}
+	if m := overviewMilestones(q); !slices.Equal(m, []OverviewMilestone{{IID: 6, Title: "M6", State: "next"}}) {
+		t.Errorf("paused first = %+v", m)
+	}
+	if m := overviewMilestones(nil); m != nil {
+		t.Errorf("empty queue = %+v", m)
+	}
+}
+
 func TestOverviewDays(t *testing.T) {
 	now := time.Date(2026, 11, 21, 23, 30, 0, 0, time.UTC)
 	utcDay := time.Date(2026, 11, 21, 0, 0, 0, 0, time.UTC)

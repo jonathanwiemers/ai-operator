@@ -36,22 +36,47 @@ type WorkingNext struct {
 	MilestoneIID int64  `json:"milestoneIID,omitempty"`
 }
 
+// HeldItem is an issue of a running autopilot that a hold keeps back, with
+// the hold's reason.
+type HeldItem struct {
+	IssueIID     int64  `json:"issueIID"`
+	Title        string `json:"title,omitempty"`
+	MilestoneIID int64  `json:"milestoneIID"`
+	Reason       string `json:"reason,omitempty"`
+}
+
+// OverviewMilestone is a milestone of the project queue: the one that runs,
+// and the next one in rank that is not paused.
+type OverviewMilestone struct {
+	IID   int64  `json:"iid"`
+	Title string `json:"title"`
+	State string `json:"state" tstype:"'running' | 'next'"`
+}
+
 // WorkingNow is one running implement task of a project, which holds a run
 // slot since Since, or a project with an autopilot, queued work or finishing
-// milestones and no running task (no issue then). Next, Finishing and the
-// engine limits are the project's.
+// milestones and no running task (no issue then). Step and StepSince are the
+// run's current step (empty between runs), CI the state of the pushed head's
+// pipeline. Next, Finishing, Held, CIWaits, Milestones and the engine limits
+// are the project's, repeated on each of its entries.
 type WorkingNow struct {
-	Namespace    string             `json:"namespace"`
-	Project      string             `json:"project"`
-	IssueIID     int64              `json:"issueIID,omitempty"`
-	Title        string             `json:"title,omitempty"`
-	MilestoneIID int64              `json:"milestoneIID,omitempty"`
-	Task         string             `json:"task,omitempty"`
-	Since        *time.Time         `json:"since,omitempty"`
-	Next         *WorkingNext       `json:"next,omitempty"`
-	Finishing    int                `json:"finishing,omitempty"`
-	UsageLimits  []aiv1.UsageLimit  `json:"usageLimits,omitempty"`
-	EngineUsage  []aiv1.EngineUsage `json:"engineUsage,omitempty"`
+	Namespace    string              `json:"namespace"`
+	Project      string              `json:"project"`
+	IssueIID     int64               `json:"issueIID,omitempty"`
+	Title        string              `json:"title,omitempty"`
+	MilestoneIID int64               `json:"milestoneIID,omitempty"`
+	Task         string              `json:"task,omitempty"`
+	Since        *time.Time          `json:"since,omitempty"`
+	Step         string              `json:"step,omitempty"`
+	StepSince    *time.Time          `json:"stepSince,omitempty"`
+	CI           aiv1.CIState        `json:"ci,omitempty" tstype:"aiv1.CIState"`
+	Next         *WorkingNext        `json:"next,omitempty"`
+	Finishing    int                 `json:"finishing,omitempty"`
+	Held         []HeldItem          `json:"held,omitempty"`
+	CIWaits      []WorkingNext       `json:"ciWaits,omitempty"`
+	Milestones   []OverviewMilestone `json:"milestones,omitempty"`
+	UsageLimits  []aiv1.UsageLimit   `json:"usageLimits,omitempty"`
+	EngineUsage  []aiv1.EngineUsage  `json:"engineUsage,omitempty"`
 }
 
 // spendSincer sums the spend of projects from a time on (the history
@@ -135,9 +160,10 @@ func workingNow(projects map[string]*aiv1.AgentProject, tasks []aiv1.AgentTask, 
 	for _, ap := range projects {
 		pt := projectTasks(tasks, ap)
 		base := WorkingNow{Namespace: ap.Namespace, Project: ap.Name, Next: nextItem(pt),
-			Finishing:   len(finishing(pt, gitLabRef(ap).WebURL, now)),
+			Finishing: len(finishing(pt, gitLabRef(ap).WebURL, now)), Held: heldItems(pt),
+			CIWaits: ciWaits(pt), Milestones: overviewMilestones(queue(ap.Status.MilestoneOrder, pt, nil)),
 			UsageLimits: ap.Status.UsageLimits, EngineUsage: ap.Status.EngineUsage}
-		active := base.Next != nil || base.Finishing > 0
+		active := base.Next != nil || base.Finishing > 0 || len(base.CIWaits) > 0
 		running := 0
 		for i := range pt {
 			t := &pt[i]
@@ -154,6 +180,12 @@ func workingNow(projects map[string]*aiv1.AgentProject, tasks []aiv1.AgentTask, 
 			}
 			if a := t.Status.Run.LastActivityTime; a != nil {
 				e.Since = optTime(a.Time)
+			}
+			if e.Step = t.Status.Run.CurrentStep; e.Step != "" && t.Status.Run.CurrentStepSince != nil {
+				e.StepSince = optTime(t.Status.Run.CurrentStepSince.Time)
+			}
+			if t.Status.CI != nil {
+				e.CI = t.Status.CI.State
 			}
 			out = append(out, e)
 			running++
@@ -202,16 +234,83 @@ func nextItem(tasks []aiv1.AgentTask) *WorkingNext {
 		return nil
 	}
 	iid := spec.Status.Autopilot.Items[slices.IndexFunc(spec.Status.Autopilot.Items, pendingItem)].IID
-	n := &WorkingNext{IssueIID: iid, MilestoneIID: spec.Spec.Milestone.IID}
-	if i := slices.IndexFunc(spec.Status.Plan, func(p aiv1.PlannedIssue) bool { return p.IID == iid }); i >= 0 {
-		n.Title = spec.Status.Plan[i].Title
+	return &WorkingNext{IssueIID: iid, Title: itemTitle(spec, tasks, iid), MilestoneIID: spec.Spec.Milestone.IID}
+}
+
+// itemTitle is the title of issue iid of spec's milestone: the plan's, else
+// that of a task of the issue.
+func itemTitle(spec *aiv1.AgentTask, tasks []aiv1.AgentTask, iid int64) string {
+	if i := slices.IndexFunc(spec.Status.Plan, func(p aiv1.PlannedIssue) bool { return p.IID == iid }); i >= 0 && spec.Status.Plan[i].Title != "" {
+		return spec.Status.Plan[i].Title
 	}
 	for i := range tasks {
-		if t := &tasks[i]; n.Title == "" && t.Spec.Issue != nil && t.Spec.Issue.IID == iid {
-			n.Title = t.Spec.Issue.Title
+		if t := &tasks[i]; t.Spec.Issue != nil && t.Spec.Issue.IID == iid && t.Spec.Issue.Title != "" {
+			return t.Spec.Issue.Title
 		}
 	}
-	return n
+	return ""
+}
+
+// heldItems lists the active issues with a hold of the project's running
+// autopilots, by milestone and issue.
+func heldItems(tasks []aiv1.AgentTask) []HeldItem {
+	var out []HeldItem
+	for i := range tasks {
+		t := &tasks[i]
+		a := t.Status.Autopilot
+		if t.Spec.Type != aiv1.TaskTypeSpec || t.Spec.Milestone == nil || a == nil || a.Phase != aiv1.AutopilotRunning {
+			continue
+		}
+		for _, it := range a.Items {
+			if it.Hold != nil && it.State == aiv1.AutopilotItemActive {
+				out = append(out, HeldItem{IssueIID: it.IID, Title: itemTitle(t, tasks, it.IID),
+					MilestoneIID: t.Spec.Milestone.IID, Reason: it.Hold.Reason})
+			}
+		}
+	}
+	slices.SortFunc(out, func(a, b HeldItem) int {
+		return cmp.Or(cmp.Compare(a.MilestoneIID, b.MilestoneIID), cmp.Compare(a.IssueIID, b.IssueIID))
+	})
+	return out
+}
+
+// ciWaits lists the issues whose implement task is between runs (Idle or
+// Hibernated) while the pipeline of its pushed head is still to finish, by
+// milestone and issue: they wait for CI.
+func ciWaits(tasks []aiv1.AgentTask) []WorkingNext {
+	var out []WorkingNext
+	for i := range tasks {
+		t := &tasks[i]
+		between := t.Status.Phase == aiv1.TaskPhaseIdle || t.Status.Phase == aiv1.TaskPhaseHibernated
+		if t.Spec.Type != aiv1.TaskTypeImplement || t.Spec.Issue == nil || !between || t.Status.CI == nil || (t.Status.CI.State != aiv1.CIStatePending && t.Status.CI.State != aiv1.CIStateRunning) {
+			continue
+		}
+		w := WorkingNext{IssueIID: t.Spec.Issue.IID, Title: t.Spec.Issue.Title}
+		if t.Spec.Milestone != nil {
+			w.MilestoneIID = t.Spec.Milestone.IID
+		}
+		out = append(out, w)
+	}
+	slices.SortFunc(out, func(a, b WorkingNext) int {
+		return cmp.Or(cmp.Compare(a.MilestoneIID, b.MilestoneIID), cmp.Compare(a.IssueIID, b.IssueIID))
+	})
+	return out
+}
+
+// overviewMilestones picks from the project queue (queue, the project
+// page's) the milestone that runs and the first after it that waits for
+// its turn: paused milestones are neither.
+func overviewMilestones(q []QueueEntry) []OverviewMilestone {
+	var out []OverviewMilestone
+	for _, e := range q {
+		switch {
+		case e.State == "running" && len(out) == 0:
+			out = append(out, OverviewMilestone{IID: e.IID, Title: e.Title, State: "running"})
+		case e.State == "holding" || e.State == "waiting":
+			return append(out, OverviewMilestone{IID: e.IID, Title: e.Title, State: "next"})
+		}
+	}
+	return out
 }
 
 func pendingItem(it aiv1.AutopilotItem) bool {

@@ -1,7 +1,7 @@
 // Tests of src/nowAndNext.ts: npm test (node --test, no extra dependencies).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { nowAndNext, nowStripText, projectNowAndNext } from '../src/nowAndNext.ts'
+import { nowAndNext, nowStripText, overviewNowAndNext, projectNowAndNext } from '../src/nowAndNext.ts'
 
 const now = Date.parse('2026-11-25T10:00:00Z')
 const milestone = { iid: 57, title: 'Desk: Now & next' }
@@ -231,4 +231,77 @@ test('projectNowAndNext: Up next from the milestone that runs first, capped; Mil
     { iid: 59, title: 'M59', text: 'waiting · not planned yet', current: false },
   ])
   assert.equal(nowStripText(nn.counts), 'next #717')
+})
+
+// overviewNowAndNext: the Overview's Working now entries (GET /api/overview),
+// the project-level fields repeated on each of a project's entries.
+const shop = {
+  namespace: 'team-a',
+  project: 'shop',
+  finishing: 1,
+  next: { issueIID: 717, title: 'Refund mails', milestoneIID: 57 },
+  held: [{ issueIID: 715, title: 'Coupons', milestoneIID: 57, reason: 'CI failed 3 times' }],
+  ciWaits: [{ issueIID: 714, title: 'Invoices', milestoneIID: 57 }],
+  milestones: [
+    { iid: 57, title: 'Desk', state: 'running' },
+    { iid: 58, title: 'Billing', state: 'next' },
+  ],
+}
+
+test('overviewNowAndNext: per project, running with its step and minutes, CI waits and holds, the milestones', () => {
+  const working = [
+    { ...shop, issueIID: 712, title: 'Now & next', milestoneIID: 57, task: 'shop-712', step: '3 run implementer', stepSince: '2026-11-25T09:56:00Z' },
+    // Running without a step while its pipeline runs: a CI wait.
+    { ...shop, issueIID: 713, title: 'Rail', milestoneIID: 57, task: 'shop-713', ci: 'Running' },
+    // Running without a step and no pipeline to wait for, without a milestone.
+    { ...shop, issueIID: 9, title: 'Loose', task: 'shop-9' },
+    // A project with nothing running.
+    { namespace: 'team-a', project: 'api', milestones: [{ iid: 3, title: 'Auth', state: 'next' }] },
+  ]
+  const { projects, counts } = overviewNowAndNext(working, now)
+  assert.deepEqual(
+    projects.map((p) => p.key),
+    ['team-a/shop', 'team-a/api'],
+  )
+  const [s, a] = projects
+  assert.equal(s.finishing, 1)
+  assert.deepEqual(s.running, [
+    { key: '0', rows: [{ iid: 9, title: 'Loose', text: '#9 starting', task: 'shop-9' }] },
+    { key: '57', rows: [{ iid: 712, title: 'Now & next', text: '#712 implementing · 4 min', task: 'shop-712' }] },
+  ])
+  assert.deepEqual(s.waiting, [
+    {
+      key: '57',
+      rows: [
+        { iid: 713, title: 'Rail', text: '#713 waiting for CI', task: 'shop-713' },
+        { iid: 714, title: 'Invoices', text: '#714 waiting for CI' },
+        { iid: 715, title: 'Coupons', text: '#715 held: CI failed 3 times' },
+      ],
+    },
+  ])
+  assert.deepEqual(s.next, [{ iid: 717, title: 'Refund mails', text: '#717' }])
+  assert.deepEqual(s.milestones, [
+    { iid: 57, title: 'Desk', text: 'running', current: false },
+    { iid: 58, title: 'Billing', text: 'next', current: false },
+  ])
+  assert.deepEqual([a.running, a.waiting, a.next, a.finishing], [[], [], [], 0])
+  assert.deepEqual(a.milestones, [{ iid: 3, title: 'Auth', text: 'next', current: false }])
+  assert.deepEqual(counts, { running: 2, waiting: 3, next: 1, nextIID: 717 })
+})
+
+test('overviewNowAndNext: counts across projects, nothing without entries', () => {
+  const other = { namespace: 'team-b', project: 'web', held: [{ issueIID: 4, milestoneIID: 2 }], next: { issueIID: 5, title: 'Five' } }
+  const { projects, counts } = overviewNowAndNext([{ ...shop, held: [], ciWaits: [] }, other], now)
+  assert.deepEqual(projects[1].waiting, [{ key: '2', rows: [{ iid: 4, title: '', text: '#4 held' }] }])
+  assert.deepEqual(counts, { running: 0, waiting: 1, next: 2, nextIID: 717 })
+  assert.deepEqual(overviewNowAndNext(undefined, now), { projects: [], counts: { running: 0, waiting: 0, next: 0, nextIID: undefined } })
+})
+
+test('overviewNowAndNext: a held issue is only in Waiting, as lane held on a milestone', () => {
+  const held = { ...shop, ciWaits: [{ issueIID: 715, title: 'Coupons', milestoneIID: 57 }] }
+  const working = [{ ...held, issueIID: 715, title: 'Coupons', milestoneIID: 57, task: 'shop-715', step: '3 run implementer' }]
+  const { projects, counts } = overviewNowAndNext(working, now)
+  assert.deepEqual(projects[0].running, [])
+  assert.deepEqual(projects[0].waiting, [{ key: '57', rows: [{ iid: 715, title: 'Coupons', text: '#715 held: CI failed 3 times' }] }])
+  assert.deepEqual([counts.running, counts.waiting], [0, 1])
 })

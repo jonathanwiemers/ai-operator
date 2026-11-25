@@ -1,5 +1,6 @@
-import { liveLines, type LiveLine } from './cockpitLive.ts'
-import type { Milestone, MilestoneView, QueueEntry, QueueItem, Task } from './generated/views.ts'
+import { liveLines, stepWords, type LiveLine } from './cockpitLive.ts'
+import { duration } from './format.ts'
+import type { Milestone, MilestoneView, QueueEntry, QueueItem, Task, WorkingNow } from './generated/views.ts'
 import { queueDone, waitingLabel } from './milestoneQueue.ts'
 
 // Now & next (R7 of "Desk: the Cockpit newest first by issue"): what a
@@ -214,6 +215,90 @@ function milestoneRows(m: Pick<MilestoneView, 'iid' | 'title'>, items: readonly 
 
 function mergedText(done: number, total: number): string {
   return total > 0 ? `${done} of ${total} merged` : 'not planned yet'
+}
+
+// OverviewProjectNow is Now & next of one project on the Overview (R10):
+// Running and Waiting grouped by milestone (a group's key is its
+// milestone's IID, "0" without one; the groups have no heading), Up next the
+// project's next item, and its running and next milestone.
+export interface OverviewProjectNow {
+  key: string
+  namespace: string
+  project: string
+  finishing: number
+  running: NowGroup[]
+  waiting: NowGroup[]
+  next: NowRow[]
+  milestones: NowMilestone[]
+}
+
+export interface OverviewNowAndNext {
+  projects: OverviewProjectNow[]
+  counts: NowCounts
+}
+
+// overviewNowAndNext sorts the Overview's Working now entries by project.
+// An entry with a running task works: its step in words and the minutes of
+// the step, "starting" before its first step; without a step while its
+// pushed head's pipeline runs it waits for CI (laneRows' rules). Waiting
+// adds the project's issues between runs that wait for CI and its held
+// issues. A held issue is only in Waiting, as lane held is on a milestone
+// (laneRows): its running task or CI wait adds no row. A row's task is set while it
+// runs (the link without a milestone). The counts are across all projects;
+// next is the first project's.
+export function overviewNowAndNext(working: readonly WorkingNow[] | undefined, now: number): OverviewNowAndNext {
+  const projects = new Map<string, OverviewProjectNow>()
+  const groups = new Map<string, { running: Map<number, NowRow[]>; waiting: Map<number, NowRow[]>; held: Set<string> }>()
+  const add = (to: Map<number, NowRow[]>, milestone: number | undefined, row: NowRow) =>
+    to.set(milestone ?? 0, [...(to.get(milestone ?? 0) ?? []), row])
+  for (const w of working ?? []) {
+    const key = `${w.namespace}/${w.project}`
+    let g = groups.get(key)
+    if (!g) {
+      g = { running: new Map(), waiting: new Map(), held: new Set((w.held ?? []).map((h) => `${h.milestoneIID}/${h.issueIID}`)) }
+      groups.set(key, g)
+      for (const c of w.ciWaits ?? []) {
+        if (!g.held.has(`${c.milestoneIID ?? 0}/${c.issueIID}`)) add(g.waiting, c.milestoneIID, { iid: c.issueIID, title: c.title, text: `#${c.issueIID} waiting for CI` })
+      }
+      for (const h of w.held ?? []) {
+        const reason = h.reason?.trim()
+        add(g.waiting, h.milestoneIID, { iid: h.issueIID, title: h.title ?? '', text: reason ? `#${h.issueIID} held: ${reason}` : `#${h.issueIID} held` })
+      }
+      projects.set(key, {
+        key,
+        namespace: w.namespace,
+        project: w.project,
+        finishing: w.finishing ?? 0,
+        running: [],
+        waiting: [],
+        next: w.next ? [{ iid: w.next.issueIID, title: w.next.title, text: `#${w.next.issueIID}` }] : [],
+        milestones: (w.milestones ?? []).map((m) => ({ iid: m.iid, title: m.title, text: m.state, current: false })),
+      })
+    }
+    if (!w.issueIID || !w.task || g.held.has(`${w.milestoneIID ?? 0}/${w.issueIID}`)) continue
+    const row = (text: string): NowRow => ({ iid: w.issueIID!, title: w.title ?? '', text, task: w.task })
+    if (w.step) {
+      const since = Date.parse(w.stepSince ?? '')
+      const parts = [`#${w.issueIID} ${stepWords(w.step)}`]
+      if (!Number.isNaN(since)) parts.push(duration(Math.max(0, now - since)))
+      add(g.running, w.milestoneIID, row(parts.join(' · ')))
+    } else if (ciWaits.has(w.ci ?? '')) add(g.waiting, w.milestoneIID, row(`#${w.issueIID} waiting for CI`))
+    else add(g.running, w.milestoneIID, row(`#${w.issueIID} starting`))
+  }
+  const sorted = (m: Map<number, NowRow[]>): NowGroup[] =>
+    [...m.entries()].sort(([a], [b]) => a - b).map(([iid, rows]) => ({ key: String(iid), rows: rows.sort((a, b) => a.iid - b.iid) }))
+  const count = (groups: NowGroup[]) => groups.reduce((n, g) => n + g.rows.length, 0)
+  const out = [...projects.values()].map((p) => ({ ...p, running: sorted(groups.get(p.key)!.running), waiting: sorted(groups.get(p.key)!.waiting) }))
+  const next = out.flatMap((p) => p.next)
+  return {
+    projects: out,
+    counts: {
+      running: out.reduce((n, p) => n + count(p.running), 0),
+      waiting: out.reduce((n, p) => n + count(p.waiting), 0),
+      next: next.length,
+      nextIID: next[0]?.iid,
+    },
+  }
 }
 
 // nowStripText is the one-line strip under the header on narrow screens,

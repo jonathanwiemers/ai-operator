@@ -1,5 +1,5 @@
 import { duration } from './format.ts'
-import type { Task, WorkingNow } from './generated/views.ts'
+import type { Task } from './generated/views.ts'
 import { runInProgress } from './taskHealth.ts'
 
 // The Cockpit's live lines (R11 of "Desk: the Cockpit"): one line per issue
@@ -58,38 +58,4 @@ export function liveLines(tasks: readonly Task[] | undefined, now: number): Live
     })
   }
   return lines.sort((a, b) => a.iid - b.iid)
-}
-
-// OverviewLine is a live line of the Overview Cockpit (R16): one per
-// running issue of Working now, across projects, "shop #712 Add the
-// provider · 4 min". It links to the issue's milestone Cockpit, else to its
-// task.
-export interface OverviewLine {
-  key: string
-  text: string
-  to:
-    | { name: 'stream-milestone'; params: { namespace: string; name: string; iid: string } }
-    | { name: 'task'; params: { namespace: string; name: string; task: string } }
-}
-
-// overviewLines: the Working now entries that hold a run (an issue and a
-// task), by project and issue. A project without a running issue has none.
-export function overviewLines(working: readonly WorkingNow[] | undefined, now: number): OverviewLine[] {
-  const lines: (OverviewLine & { sort: string })[] = []
-  for (const w of working ?? []) {
-    if (!w.issueIID || !w.task) continue
-    const base = { namespace: w.namespace, name: w.project }
-    const parts = [`${w.project} #${w.issueIID}${w.title ? ` ${w.title}` : ''}`]
-    const since = Date.parse(w.since ?? '')
-    if (!Number.isNaN(since)) parts.push(duration(Math.max(0, now - since)))
-    lines.push({
-      key: `${w.namespace}/${w.project}/${w.task}`,
-      text: parts.join(' · '),
-      to: w.milestoneIID
-        ? { name: 'stream-milestone', params: { ...base, iid: String(w.milestoneIID) } }
-        : { name: 'task', params: { ...base, task: w.task } },
-      sort: `${w.namespace}/${w.project}/${String(w.issueIID).padStart(10, '0')}`,
-    })
-  }
-  return lines.sort((a, b) => a.sort.localeCompare(b.sort)).map(({ sort: _, ...l }) => l)
 }

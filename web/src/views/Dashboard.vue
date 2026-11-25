@@ -7,13 +7,14 @@ import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { alertColor } from '../badgeTone'
 import { getInbox, getOverview } from '../client'
-import { overviewLines } from '../cockpitLive'
 import ContextLayout from '../components/ContextLayout.vue'
 import Cockpit from '../components/cockpit/Cockpit.vue'
 import InboxList from '../components/InboxList.vue'
 import MilestoneSections from '../components/MilestoneSections.vue'
+import NowRail from '../components/NowRail.vue'
 import OverviewPanel from '../components/OverviewPanel.vue'
 import { useNow, useResource } from '../live'
+import { nowStripText, overviewNowAndNext } from '../nowAndNext'
 import { pageHeaderUi } from '../pageHeader'
 import RouteTabs from '../ui/RouteTabs.vue'
 import { dashboardAlias, dashboardTabFromRoute, dashboardTabs, tabQuery } from '../streamTabs'
@@ -22,10 +23,12 @@ import { dashboardAlias, dashboardTabFromRoute, dashboardTabs, tabQuery } from '
 // and Timeline (?tab=timeline). The Cockpit pins the Inbox's open items of
 // all projects (InboxList, each a link to its card in the milestone
 // Cockpit; nothing is answered here, D6), then the stream across projects
-// (merges and milestone state shown, the rest folded per project), then the
-// live lines of Working now; no composer (D9). The panel is Working now with
-// the summary and spend tiles (OverviewPanel): a column from 1180 px, below
-// a sheet that the header's Working now button opens. The Timeline tab is
+// (merges and milestone state shown, the rest folded per project); no
+// composer (D9). The sidebar is Now & next per project with the summary and
+// spend tiles and the engine meters (OverviewPanel, R10 of "Desk: the
+// Cockpit newest first by issue"): a column from 1180 px that collapses to
+// a rail with the counts, below a slide-over that the Now strip under the
+// header opens, as on a milestone page. The Timeline tab is
 // the Timeline across projects and the milestone lists. An old ?tab=activity,
 // stream or overview opens the Cockpit (dashboardAlias, D791-P2).
 const route = useRoute()
@@ -45,42 +48,56 @@ const OverviewTimeline = defineAsyncComponent(() => import('../components/Overvi
 const overview = useResource(() => getOverview, ['project', 'task'])
 const inbox = useResource(() => getInbox, ['project', 'task'])
 const now = useNow()
-const lines = computed(() => overviewLines(overview.data.value?.working, now.value))
+const counts = computed(() => (overview.data.value ? overviewNowAndNext(overview.data.value.working, now.value).counts : null))
+const nowStrip = computed(() => (counts.value ? nowStripText(counts.value) : 'Now & next'))
 
 const panelOpen = ref(false)
-const panelOpener = ref<HTMLElement | null>(null)
+const panelOpener = ref<HTMLElement | null | false>(null)
 function openPanel(e: MouseEvent) {
   panelOpener.value = e.currentTarget as HTMLElement
   panelOpen.value = true
+}
+// followPanel: a link in the sidebar was followed: the slide-over closes and
+// focus stays at what the link opened.
+function followPanel() {
+  panelOpener.value = false
+  panelOpen.value = false
 }
 </script>
 
 <template>
   <ContextLayout
     v-model:open="panelOpen"
-    title="Working now"
-    description="What runs now across projects, the engines' usage and the spend"
+    title="Now & next"
+    description="What runs, waits and comes next in every project, the spend and the engines' usage"
     :opener="panelOpener"
+    collapsible
   >
+    <template v-if="counts" #rail><NowRail :counts="counts" /></template>
     <template #default="{ sheet }">
-      <!-- The header and the tab row, then the tab, which scrolls. -->
+      <!-- The header, the Now strip (below 1180 px) and the tab row, then
+           the tab, which scrolls. -->
       <div class="flex min-h-0 min-w-0 flex-col">
         <div class="px-4 pt-3.5 tablet:px-7">
-          <UPageHeader title="Overview" :ui="pageHeaderUi">
-            <template v-if="sheet" #links>
-              <UButton
-                color="neutral"
-                variant="outline"
-                size="sm"
-                class="min-h-11 justify-center tablet:min-h-0"
-                label="Working now"
-                aria-haspopup="dialog"
-                :aria-expanded="panelOpen"
-                data-panel-open="working"
-                @click="openPanel"
-              />
-            </template>
-          </UPageHeader>
+          <UPageHeader title="Overview" :ui="pageHeaderUi" />
+          <UButton
+            v-if="sheet"
+            color="neutral"
+            variant="soft"
+            size="sm"
+            block
+            icon="i-lucide-activity"
+            trailing-icon="i-lucide-chevron-right"
+            class="mb-2 min-h-11 justify-start tablet:min-h-0"
+            :label="nowStrip"
+            :aria-label="`Now & next: ${nowStrip}`"
+            aria-haspopup="dialog"
+            :aria-expanded="panelOpen"
+            :ui="{ label: 'truncate', trailingIcon: 'ms-auto' }"
+            data-panel-open="now"
+            data-now-strip
+            @click="openPanel"
+          />
           <RouteTabs :tabs="dashboardTabs" :active="tab" :to="(id) => ({ query: tabQuery(route.query, id, dashboardTabs) })" />
         </div>
 
@@ -116,30 +133,18 @@ function openPanel(e: MouseEvent) {
               />
               <InboxList v-else-if="inbox.data.value" :items="inbox.data.value.items" />
             </template>
-            <!-- The live lines of Working now (all projects), each a link to
-                 its milestone's Cockpit or its task. -->
-            <template #live>
-              <section v-if="lines.length" aria-label="Running now" class="grid gap-1 border-t border-(--border) pt-2" data-cockpit-live>
-                <UButton
-                  v-for="l in lines"
-                  :key="l.key"
-                  color="neutral"
-                  variant="ghost"
-                  block
-                  icon="i-lucide-activity"
-                  class="justify-start text-left text-[13.5px]"
-                  :to="l.to"
-                  :label="l.text"
-                  data-cockpit-live-line
-                />
-              </section>
-            </template>
           </Cockpit>
         </div>
       </div>
     </template>
     <template #panel="{ sheet }">
-      <OverviewPanel :overview="overview.data.value" :error="overview.error.value ?? undefined" :loading="overview.loading.value" :sheet="sheet" />
+      <OverviewPanel
+        :overview="overview.data.value"
+        :error="overview.error.value ?? undefined"
+        :loading="overview.loading.value"
+        :sheet="sheet"
+        @follow="followPanel"
+      />
     </template>
   </ContextLayout>
 </template>

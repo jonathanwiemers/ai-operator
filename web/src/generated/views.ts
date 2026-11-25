@@ -1268,10 +1268,31 @@ export interface WorkingNext {
   milestoneIID?: number /* int64 */;
 }
 /**
+ * HeldItem is an issue of a running autopilot that a hold keeps back, with
+ * the hold's reason.
+ */
+export interface HeldItem {
+  issueIID: number /* int64 */;
+  title?: string;
+  milestoneIID: number /* int64 */;
+  reason?: string;
+}
+/**
+ * OverviewMilestone is a milestone of the project queue: the one that runs,
+ * and the next one in rank that is not paused.
+ */
+export interface OverviewMilestone {
+  iid: number /* int64 */;
+  title: string;
+  state: 'running' | 'next';
+}
+/**
  * WorkingNow is one running implement task of a project, which holds a run
  * slot since Since, or a project with an autopilot, queued work or finishing
- * milestones and no running task (no issue then). Next, Finishing and the
- * engine limits are the project's.
+ * milestones and no running task (no issue then). Step and StepSince are the
+ * run's current step (empty between runs), CI the state of the pushed head's
+ * pipeline. Next, Finishing, Held, CIWaits, Milestones and the engine limits
+ * are the project's, repeated on each of its entries.
  */
 export interface WorkingNow {
   namespace: string;
@@ -1281,8 +1302,14 @@ export interface WorkingNow {
   milestoneIID?: number /* int64 */;
   task?: string;
   since?: string;
+  step?: string;
+  stepSince?: string;
+  ci?: aiv1.CIState;
   next?: WorkingNext;
   finishing?: number /* int */;
+  held?: HeldItem[];
+  ciWaits?: WorkingNext[];
+  milestones?: OverviewMilestone[];
   usageLimits?: aiv1.UsageLimit[];
   engineUsage?: aiv1.EngineUsage[];
 }
