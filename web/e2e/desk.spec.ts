@@ -221,7 +221,8 @@ const routes: Route[] = [
       path,
       features: [...features.features, { name: 'plans' }],
       ready: async (page) => {
-        await expect(page.locator('main').getByText('Not planned')).toBeVisible()
+        // Exact: the sidebar's Milestones rows say "not planned yet".
+        await expect(page.locator('main').getByText('Not planned', { exact: true })).toBeVisible()
         const bar = page.locator('main').getByRole('progressbar')
         await expect(bar).toHaveAttribute('aria-valuenow', '2')
         await expect(bar).toHaveAttribute('aria-valuemax', '4')
@@ -2391,22 +2392,24 @@ test.describe('rail sheet', () => {
 })
 
 // The context layout (ContextLayout.vue, docs/contributing/web-ui.md "Sheets"): below
-// 1180 px the panel is closed and the content has the full width; the
-// header's Queue and Decisions buttons open the project's context panel from
-// the right on that view (R15 of "Desk: the Cockpit"; a milestone page's
-// panel has a spec of its own, e2e/milestone-panel.spec.ts, and the project
-// panel's views e2e/project-cockpit.spec.ts). The Queue view shows the
-// milestone's queue, its companions and the last 30 days, fits the width,
-// and back (or scrim, close button, Escape) closes it without leaving an
-// entry. From 1180 px the project page keeps the panel at its side without a
-// click, the Cockpit, Milestones and Board beside it do not scroll sideways,
-// and the page has no button.
+// 1180 px the panel is closed and the content has the full width; the Now
+// strip under the header opens the project's Now & next sidebar from the
+// right (R9 of "Desk: the Cockpit newest first by issue"; a milestone page's
+// sidebar has a spec of its own, e2e/milestone-panel.spec.ts, and the
+// project's e2e/project-cockpit.spec.ts). It shows Running, Up next and the
+// milestones, and its History section the companions and the last 30 days;
+// it fits the width, and back (or scrim, close button, Escape) closes it
+// without leaving an entry. From 1180 px the project page keeps the sidebar
+// at its side without a click, the Cockpit, Milestones and Board beside it
+// do not scroll sideways, and the page has no button.
 test.describe('context sheet', () => {
   const pages = [
     { page: 'project', route: routes.find((r) => r.name === 'stream-project-cockpit')!, milestone: /^Checkout without account/ },
   ]
-  const sections = (m: RegExp) => [m, /^Companions/, /^Last 30 days/]
-  const queueButton = (page: Page) => page.locator('main [data-stream-head] [data-panel-open="queue"]')
+  const sections = (_m: RegExp) => [/^Running/, /^Up next/, /^Milestones/, /^Companions/, /^Last 30 days/]
+  const queueButton = (page: Page) => page.locator('main [data-stream-head] [data-now-strip]')
+  // History, closed by default, holds the companions and the last 30 days.
+  const openHistory = (scope: ReturnType<Page['locator']>) => scope.locator('[data-project-history-toggle]').click()
   const sheetEntry = (page: Page) => page.evaluate(() => (history.state as Record<string, unknown> | null)?.__sheet)
 
   async function load(page: Page, baseURL: string | undefined, route: Route, size: { width: number; height: number }) {
@@ -2423,7 +2426,7 @@ test.describe('context sheet', () => {
 
   async function openSheet(page: Page) {
     await queueButton(page).click()
-    const sheet = page.getByRole('dialog', { name: 'Queue' })
+    const sheet = page.getByRole('dialog', { name: 'Now & next' })
     await expect(sheet).toBeVisible()
     await sheet.evaluate((e) => Promise.all(e.getAnimations().map((a) => a.finished)))
     await expect.poll(() => sheetEntry(page), 'the sheet pushed its entry').toBeDefined()
@@ -2435,7 +2438,7 @@ test.describe('context sheet', () => {
       test(`${name} page opens it, back closes it@${size.width}`, async ({ page, baseURL }, testInfo) => {
         const problems = await load(page, baseURL, route, size)
         const url = page.url()
-        await expect(page.locator('aside.ctxp'), 'closed until the Queue button is clicked').toBeHidden()
+        await expect(page.locator('aside[data-project-panel]'), 'closed until the Now strip is clicked').toBeHidden()
         const full = await page.locator('[data-context-layout]').evaluate((l) => {
           const content = l.firstElementChild!.getBoundingClientRect()
           return Math.abs(content.width - l.getBoundingClientRect().width) < 1
@@ -2443,16 +2446,9 @@ test.describe('context sheet', () => {
         expect(full, 'the content has the full width').toBe(true)
         const sheet = await openSheet(page)
 
+        await openHistory(sheet)
         for (const heading of sections(milestone)) {
           await expect(sheet.getByRole('heading', { name: heading })).toBeVisible()
-        }
-        if (name === 'project') {
-          // The decisions as one line per kind, no IDs or Revisit chips (R10).
-          const groups = sheet.locator('[data-decision-groups] li')
-          await expect(groups).toHaveText(['Revisit · 1', 'Open · 2', 'Superseded · 1'])
-          await expect(groups.first().getByRole('link')).toHaveAttribute('href', '/projects/team-a/shop/milestones/12?tab=decisions')
-          await expect(sheet.getByText('D275-P1')).toHaveCount(0)
-          await expect(sheet.getByRole('button', { name: 'Revisit' })).toHaveCount(0)
         }
         const shot = join(testInfo.project.outputDir, '..', 'screenshots', `context-sheet-${name}@${size.width}.png`)
         await page.screenshot({ path: shot })
@@ -2506,7 +2502,7 @@ test.describe('context sheet', () => {
       await close(page)
       await expect(sheet).toBeHidden()
       await expect.poll(() => sheetEntry(page), 'the entry is gone').toBeUndefined()
-      // The focus is back on the Queue button (Decision 6).
+      // The focus is back on the Now strip (Decision 6).
       await expect(queueButton(page)).toBeFocused()
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })
@@ -2517,7 +2513,8 @@ test.describe('context sheet', () => {
       test(`${name} page keeps the side panel and no button@${size.width}`, async ({ page, baseURL }) => {
         const problems = await load(page, baseURL, route, size)
         await expect(page.locator('main [data-panel-open]')).toHaveCount(0)
-        const panel = page.locator('aside.ctxp')
+        const panel = page.locator('aside[data-project-panel]')
+        await openHistory(panel)
         for (const heading of sections(milestone)) await expect(panel.getByRole('heading', { name: heading })).toBeVisible()
         expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
       })
@@ -2530,7 +2527,7 @@ test.describe('context sheet', () => {
   for (const tab of ['milestones', 'cockpit', 'board'] as const) {
     test(`project ${tab} beside the panel does not scroll sideways@1180`, async ({ page, baseURL }, testInfo) => {
       const problems = await load(page, baseURL, routes.find((r) => r.name === (tab === 'milestones' ? 'stream-project-dark' : `stream-project-${tab}`))!, edgeWidths[2]!)
-      const panel = page.locator('aside.ctxp')
+      const panel = page.locator('aside[data-project-panel]')
       await expect(panel).toBeVisible()
       if (tab === 'milestones') {
         // The paused queue entry: a short badge, the reason on a line of its own.
@@ -2562,7 +2559,7 @@ test.describe('context sheet', () => {
         }
         const content = l.firstElementChild!
         const scrollers = [...content.querySelectorAll('.scroll')]
-        const panel = l.querySelector('aside.ctxp')!
+        const panel = l.querySelector('aside[data-project-panel]')!
         return {
           content: over(content),
           scrollers: scrollers.map(over).filter((d) => d > 0),
@@ -2802,8 +2799,7 @@ test.describe('landmarks and route focus', () => {
       // A column on the project page; the milestone route is its Issues
       // tab, whose table takes the full width, so its panel is a sheet
       // (ContextLayout; the Cockpit's column: e2e/milestone-panel.spec.ts).
-      await expect(page.getByRole('complementary', { name: 'Project context', exact: true })).toHaveCount(route === project ? 1 : 0)
-      await expect(page.getByRole('complementary', { name: 'Now & next', exact: true })).toHaveCount(0)
+      await expect(page.getByRole('complementary', { name: 'Now & next', exact: true })).toHaveCount(route === project ? 1 : 0)
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })
 
@@ -2898,8 +2894,8 @@ test.describe('reduced motion', () => {
     await mockAPI(page, route, problems)
     await page.goto(route.path)
     await route.ready(page)
-    await page.locator('main [data-stream-head] [data-panel-open="queue"]').click()
-    const sheet = page.getByRole('dialog', { name: 'Queue' })
+    await page.locator('main [data-stream-head] [data-now-strip]').click()
+    const sheet = page.getByRole('dialog', { name: 'Now & next' })
     await expect(sheet).toBeVisible()
     const motion = await sheet.evaluate((e) => ({
       transitions: [e, ...e.querySelectorAll('*')].flatMap((c) => getComputedStyle(c).transitionDuration.split(', ')).filter((d) => d !== '0s'),
@@ -5287,8 +5283,9 @@ test('metrics: canvases are labelled images and Show as table is one Tab away', 
   await expect(spend.getByRole('button', { name: 'Hide table' })).toBeVisible()
 })
 
-// Heatmap cells (the project panel's history, ContextPanel.vue; R7): a label with the date and the count,
-// and a text summary.
+// Heatmap cells (the History section of the project's sidebar,
+// ProjectHistory.vue; R7): a label with the date and the count, and a text
+// summary.
 test('heatmap cells carry a date and count label@1280', async ({ page, baseURL }) => {
   const route = routes.find((r) => r.name === 'stream-project-cockpit')!
   const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
@@ -5298,6 +5295,7 @@ test('heatmap cells carry a date and count label@1280', async ({ page, baseURL }
   await mockAPI(page, route, problems)
   await page.goto(route.path)
   await route.ready(page)
+  await page.locator('[data-project-panel] [data-project-history-toggle]').click()
   const cells = page.locator('[data-project-panel] [data-heat-day]')
   await expect(cells).toHaveCount(30)
   for (const c of await cells.all()) await expect(c).toHaveAttribute('aria-label', /^(\d{1,2} \p{L}+\.?|\p{L}+\.? \d{1,2}): \d+ events?$/u)

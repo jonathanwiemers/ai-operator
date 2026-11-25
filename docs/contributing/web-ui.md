@@ -936,11 +936,10 @@ The rail on phones is the first sheet: the bottom bar's *Projects* opens it from
 left with the rail's content (`components/RailNav.vue`, which the sidebar
 renders on tablet and desktop). It is the `UDashboardSidebar`'s own slideover
 (see [Navigation](#navigation)). A project row reads the state line (`projectStateLine`) and
-`milestoneCounts` (`N active · M settling`, zero parts left out). Below 1180 px the stream header's
-*Queue* and *Decisions* buttons open the project's context panel (`components/ContextPanel.vue`) on that view
-from the right, the side it has on desktop, and on a milestone page the
-Now strip under the header opens the milestone's sidebar
-(`components/MilestonePanel.vue`); widening the window to 1180 px
+`milestoneCounts` (`N active · M settling`, zero parts left out). Below 1180 px the Now
+strip under the stream header opens the page's Now & next sidebar from the
+right, the side it has on desktop: the project's (`components/ProjectPanel.vue`)
+or the milestone's (`components/MilestonePanel.vue`); widening the window to 1180 px
 closes the sheet. Dialogs (`UModal`) close the same ways, for example the
 Retrospective tab's dismiss confirmation.
 
@@ -982,13 +981,13 @@ sets no z-index, and the sticky mobile bar and the fixed bottom bar have 10. The
 `rail sheet …` cover each way to close, that the router did not navigate
 and the API was not asked again, and a link inside the sheet followed by
 back; `rail-sheet@375.png` shows the open sheet. The cases `context sheet …`
-open the Queue sheet on the project page at 375 and
-768 px, check its three parts (the queue, companions, the last
-30 days), that it fits the width, and that back, scrim, close button and
-Escape close it, the last three with the focus back on the Queue button
-(the rail sheet: every way, on *Projects*); `context-sheet-<page>@<width>.png` show it open. At
-1280 px the project page keeps the panel at its side and neither page has
-the button.
+open the project's Now & next sheet from the Now strip at 375 and
+768 px, check its parts (Running, Up next, Milestones, and in the opened
+History the companions and the last 30 days), that it fits the width, and
+that back, scrim, close button and Escape close it, the last three with
+the focus back on the strip (the rail sheet: every way, on *Projects*);
+`context-sheet-<page>@<width>.png` show it open. At 1280 px the project
+page keeps the sidebar at its side and has no strip.
 
 ### DeskChat
 
@@ -1260,16 +1259,15 @@ do, and that on a phone a row stacks inside its width
 
 The header of the project and milestone pages (`web/src/views/Stream.vue`)
 are Tailwind utilities and Nuxt UI; only the
-history's day cells in the project panel keep scoped CSS (`.cells` in
-`ContextPanel.vue`).
+history's day cells in the project sidebar keep scoped CSS (`.cells` in
+`ProjectHistory.vue`).
 
 - The `UPageHeader` comes first: the milestone's status as eyebrow
   (`milestoneStatus` of `src/milestoneRows.ts`: *Autopilot paused*, or the
   state), the title, the [header cost](#cost-chips) as meta line, and on
-  the right `HeaderActions` with `shown` 0: the panel's view buttons
-  (below 1180 px: *Queue* and *Decisions* on a project, *Issues*, *Queue*
-  and *Decisions* on a milestone), and ⋯
-  with the project or milestone in GitLab. A project has no *Metrics*
+  the right `HeaderActions` with `shown` 0: ⋯ with the project or
+  milestone in GitLab. Below 1180 px the Now strip follows on a line of
+  its own (R8 of "Desk: the Cockpit newest first by issue"). A project has no *Metrics*
   button; the Metrics tab is one click away. While a milestone loads, the
   title comes from the project's milestone list (`%<iid>` without it),
   never *Loading…*.
@@ -1277,9 +1275,8 @@ history's day cells in the project panel keep scoped CSS (`.cells` in
   else. A project's default tab is its Cockpit (R15 of the Cockpit spec):
   `Cockpit.vue` over the project's stream, `ProjectPinned.vue` pinning each
   milestone's `MilestoneNeeds` that has open needs (the views of the
-  milestones the Inbox names and of those whose autopilot is not done), and
-  `CockpitLive` with a `milestones` map, so each live line links to its
-  milestone's Cockpit; no composer. *Milestones* holds `ProjectQueue`,
+  milestones the Inbox names and of those whose autopilot is not done);
+  no composer and no live lines: what runs is in the Now & next sidebar. *Milestones* holds `ProjectQueue`,
   `ProjectFinishing` and `MilestoneSections`, or `ProjectBoards` with
   `?view=board` (a `UTabs` switch in its toolbar).
 - Stream rows (`stream/EventCard.vue`) break long URLs, branches and SHAs
@@ -1622,7 +1619,7 @@ A milestone page opens on the Cockpit (spec "Desk: the Cockpit", R9 and
 R10; the order from R3 of "Desk: the Cockpit newest first by issue"),
 `web/src/components/cockpit/Cockpit.vue`, built from Nuxt UI
 components only. Top to bottom: the composer, the latest exchange with
-the pilot, the pinned cards, the live lines, the toolbar, the threads
+the pilot, the pinned cards, the toolbar, the threads
 with the newest activity on top, and *Load older* last.
 
 - **Conversation.** `components/cockpit/CockpitConversation.vue` (prop
@@ -1709,15 +1706,11 @@ event, the scopes, the thread titles and the summary text.
 
 #### Live lines
 
-`components/cockpit/CockpitLive.vue` (R11), in the Cockpit's `live` slot
-between the pinned cards and the toolbar until Now & next replaces it, has one line per issue whose implementer runs now, from the
-page's tasks (`liveLines` in `web/src/cockpitLive.ts`): "#712 implementing
-· 4 min", the minutes once the run has a step. With the `transcript` grant
-a line is a `UCollapsible` that mounts `LiveTranscript` while open; an
-owner message the runner wrote into the call shows there as a *user* turn.
-Without the grant it links to the task. On the project Cockpit each line
-links to its milestone's Cockpit. A live reload of the tasks drops a line
-when its run ends.
+The Cockpit's `live` slot, between the pinned cards and the toolbar, is
+the Overview's only (below). The milestone and project Cockpits have no
+live lines: what runs now is in the Now & next sidebar, whose Running rows
+take their step and minutes from `liveLines` (`web/src/cockpitLive.ts`):
+"#712 implementing · 4 min", the minutes once the run has a step.
 
 #### Project and Overview Cockpits
 
@@ -1727,8 +1720,8 @@ have no composer (D9):
 - **Project** (R15, `Stream.vue`): scope `{ namespace, name }`. The
   `pinned` slot is `components/cockpit/ProjectPinned.vue`: per milestone
   with open needs (`needsOpen`), its `MilestoneNeeds` under the milestone's
-  name and *Talk to the pilot* to that milestone's Cockpit. The panel is
-  `ContextPanel` ([Context panel](#context-panel-and-pause-history)).
+  name and *Talk to the pilot* to that milestone's Cockpit. The sidebar is
+  `ProjectPanel` ([Context panel](#context-panel-and-pause-history)).
 - **Overview** (R16, `views/Dashboard.vue`): scope `{}` (all projects).
   The `pinned` slot lists the Inbox's open items as compact cards that link
   to their card in the milestone's Cockpit; nothing is answered there (D6).
@@ -2427,20 +2420,40 @@ threads, so a prompt shows once.
 
 ### Context panel and pause history
 
-The project's context panel (`ContextPanel.vue`, R15 of the Cockpit spec)
-has a `UTabs` view switch, as the milestone's, kept in `?panel=`
-(`projectPanelViews`: *Queue*, the default, and *Decisions*):
+The project's sidebar (`ProjectPanel.vue`, R9 of "Desk: the Cockpit newest
+first by issue") is Now & next across the project, the same `NowNext` as
+a milestone's ([Milestone panel](#milestone-panel)), fed by
+`projectNowAndNext` (`nowAndNext.ts`) from the project detail and the
+loaded milestone view:
 
-- *Queue*: the active milestone's queue (`QueueList` with `compact`, one
-  row per item, its run cost; a waiting milestone shows a line with the
-  milestone it waits for), its companions and the last 30 days: the day
+- **Running** and **Waiting** of every milestone, grouped under its title
+  (`NowGroup`, keyed by the milestone's IID). The project detail has each
+  milestone's tasks and spec task, not its queue lanes (D822-P1), so
+  `projectItems` makes queue items of them (lane held for an Active spec
+  item with a hold; lane running for a task in phase Running or Queued, or
+  with its pipeline still running) and the milestone's rules (`laneRows`)
+  sort them. A row links to the issue's thread in its milestone's Cockpit
+  (`#issue-<iid>`), with `?live=1` for a live run under the transcript
+  grant, which is the project's (the loaded milestone view's
+  `permissions.transcript`).
+- **Up next** of the milestone that runs first: the project page loads the
+  view of the first queue entry in state `running`, and its items give Up
+  next with the same cap; *+N more* opens its Issues tab. While no
+  milestone runs, Up next is empty.
+- **Milestones**: the whole project queue, "running · 3 of 9 merged".
+- **History** (`ProjectHistory.vue`), a `UCollapsible` at the bottom,
+  closed by default and not remembered (D822-P2), open while a day is
+  picked: the loaded milestone's companions and the last 30 days, the day
   cells, a grid of 24 px targets (WCAG 2.5.8) with one shared tooltip, then
   runs and spend and the four totals against the previous 30 days. A day
   pages the project's Cockpit back to its end (`dayEndCursor`, the scope's
   `before` in `useCockpitStream`; live events do not add to it), *Back to
   now* returns.
-- *Decisions*: `MilestoneDecisions` with the milestone select of the old
-  Decisions tab (`?milestone=`).
+
+It has the rail and the strip of the milestone's sidebar. `projectAlias`
+drops the old `?panel=queue`, and `Stream.vue` opens the sheet for it below
+1180 px. The old Queue view's queue list is not kept: Up next, Milestones
+and the Milestones tab cover it (D822-P3). Decisions are a tab.
 
 What needs you is the Cockpit's pinned cards (`ProjectPinned`), and the
 Inbox across projects; a milestone page has `MilestonePanel`.
@@ -2450,18 +2463,18 @@ Every page with a panel uses one layout, `components/ContextLayout.vue`
 1180 px its `panel` slot is a 320 px column beside the content; below, the
 content has the full width and the panel is a `USlideover` from the right,
 closed by default and loaded only there. The page binds `v-model:open` to
-its buttons (the panel's views) and shows them only while the default slot's
-`sheet` is true; a `?panel=` link opens the sheet on that view. Back and
+the Now strip and shows it only while the default slot's `sheet` is true;
+an old `?panel=` link opens the sheet. Back and
 Escape close the sheet (`useBackClose` with `keepOnQuery`, so a query change
 inside it keeps it open; a link inside it closes it), focus returns to
-`opener`, the button that opened it, and widening past 1180 px closes it.
+`opener`, the strip that opened it, and widening past 1180 px closes it.
 `column: false` keeps the panel a sheet at every width, for content that
 needs the full width: a milestone's Issues tab (the table's fixed columns).
 The e2e `context sheet …` cases check the project's closed sheet below
 1180 px (each way to close it, its fit), the column at 1180 px and that the
 Cockpit, Milestones and Board beside it do not scroll sideways;
-`project-cockpit.spec.ts` checks both views, the day jump and the old tab
-links.
+`project-cockpit.spec.ts` checks the sidebar's groups and links, History's
+day jump, the rail, the strip and the old links.
 
 ### Milestone panel
 

@@ -177,9 +177,14 @@ export function projectTabFromRoute(v: QueryValue, tabs: readonly Tab<string>[])
 
 // projectAlias is the query of an old project link (?tab=activity, stream,
 // board; ?panel=decisions) at the place its content moved to, null when it
-// needs no change; Stream.vue replaces the URL with it on load.
+// needs no change; Stream.vue replaces the URL with it on load. The old
+// ?panel=queue goes (nowPanelQuery), as on a milestone: Stream.vue opens
+// the Now & next sidebar for it (R9 of "Desk: the Cockpit newest first by
+// issue").
 export function projectAlias<V>(query: Record<string, V>): Record<string, V | string> | null {
-  return panelAliasQuery(query) ?? aliasQuery(query, projectTabAliases)
+  const dropped = nowPanelQuery(query)
+  const base = dropped ?? query
+  return panelAliasQuery(base) ?? aliasQuery(base, projectTabAliases) ?? dropped
 }
 
 // panelAliasQuery is the query of an old link to the panel's Decisions view

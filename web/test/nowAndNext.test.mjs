@@ -1,7 +1,7 @@
 // Tests of src/nowAndNext.ts: npm test (node --test, no extra dependencies).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { nowAndNext, nowStripText } from '../src/nowAndNext.ts'
+import { nowAndNext, nowStripText, projectNowAndNext } from '../src/nowAndNext.ts'
 
 const now = Date.parse('2026-11-25T10:00:00Z')
 const milestone = { iid: 57, title: 'Desk: Now & next' }
@@ -145,4 +145,90 @@ test('nowStripText leaves out the parts that are zero', () => {
   assert.equal(nowStripText({ running: 1, waiting: 0, next: 0 }), '1 running')
   assert.equal(nowStripText({ running: 0, waiting: 0, next: 1, nextIID: 717 }), 'next #717')
   assert.equal(nowStripText({ running: 0, waiting: 2, next: 0 }), 'Nothing running · 2 waiting')
+})
+
+// projectNowAndNext (R9): the project page's milestones with their tasks and
+// spec task, and the loaded view of the milestone that runs first.
+const spec = (items) => ({ name: 'spec', type: 'Spec', status: { autopilot: { phase: 'Running', items } } })
+const issueTask = (iid, status) => ({ ...task(iid, status), issue: { iid, title: `Issue ${iid}` } })
+
+test('projectNowAndNext: Running and Waiting grouped by milestone, holds from spec items', () => {
+  const nn = projectNowAndNext({
+    milestones: [
+      {
+        iid: 58,
+        title: 'Second',
+        tasks: [{ ...live(812, '3 run implementer'), issue: { iid: 812, title: 'Issue 812' } }, issueTask(813, { phase: 'Idle' })],
+        spec: spec([
+          { iid: 812, state: 'Active' },
+          { iid: 813, state: 'Active', hold: { kind: 'ci', reason: 'CI failed 3 times', since: '2026-11-25T08:00:00Z' } },
+          { iid: 814, state: 'Active', hold: { kind: 'review', reason: 'Review failed', since: '2026-11-25T08:00:00Z' } },
+        ]),
+      },
+      {
+        iid: 57,
+        title: 'First',
+        tasks: [
+          issueTask(714, { phase: 'Idle', ci: { sha: 'abc', state: 'Running' } }),
+          { ...live(712, '8 review round 1'), issue: { iid: 712, title: 'Issue 712' } },
+          // Merged: neither running nor waiting, even with a hold left.
+          issueTask(700, { phase: 'Running', ci: { sha: 'old', state: 'Running' } }),
+          issueTask(701, { phase: 'Idle' }),
+        ],
+        spec: spec([{ iid: 700, state: 'Merged', hold: { kind: 'ci', reason: 'old', since: '2026-11-25T08:00:00Z' } }]),
+      },
+      { iid: 56, title: 'Done', tasks: [issueTask(600, { phase: 'Idle' })] },
+    ],
+    first: undefined,
+    queue: [],
+    now,
+  })
+  assert.deepEqual(
+    nn.running.map((g) => [g.key, g.heading, g.rows.map((r) => r.text)]),
+    [
+      ['58', 'Second', ['#812 implementing · 4 min']],
+      ['57', 'First', ['#712 reviewing · 4 min']],
+    ],
+  )
+  assert.equal(nn.running[0].rows[0].pod, 'shop-812-pod')
+  assert.deepEqual(
+    nn.waiting.map((g) => [g.key, g.rows.map((r) => r.text)]),
+    [
+      ['58', ['#813 held: CI failed 3 times', '#814 held: Review failed']],
+      ['57', ['#714 waiting for CI']],
+    ],
+  )
+  assert.deepEqual(nn.counts, { running: 2, waiting: 3, next: 0, nextIID: undefined })
+  assert.deepEqual(nn.next, [])
+})
+
+test('projectNowAndNext: Up next from the milestone that runs first, capped; Milestones is the project queue', () => {
+  const first = {
+    iid: 57,
+    tasks: [],
+    autopilot: {
+      items: [
+        item(717, 'ready'),
+        item(720, 'waiting', { waitingFor: [712] }),
+        ...[721, 722, 723, 724].map((i) => item(i, 'waiting')),
+        item(712, 'running'),
+      ],
+    },
+  }
+  const queue = [entry(57, 3, 9), entry(58, 0, 5), entry(59, 0, 0)]
+  queue[0].state = 'running'
+  const nn = projectNowAndNext({ milestones: [], first, queue, now })
+  assert.deepEqual(
+    nn.next.map((r) => r.text),
+    ['#717 ready to land', '#720 after #712', '#721 waiting for a free slot', '#722 waiting for a free slot', '#723 waiting for a free slot'],
+  )
+  assert.equal(nn.moreNext, 1)
+  assert.equal(nn.nextOf, 57)
+  assert.deepEqual(nn.counts, { running: 0, waiting: 0, next: 6, nextIID: 717 })
+  assert.deepEqual(nn.milestones, [
+    { iid: 57, title: 'M57', text: 'running · 3 of 9 merged', current: false },
+    { iid: 58, title: 'M58', text: 'waiting · 0 of 5 merged', current: false },
+    { iid: 59, title: 'M59', text: 'waiting · not planned yet', current: false },
+  ])
+  assert.equal(nowStripText(nn.counts), 'next #717')
 })

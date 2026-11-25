@@ -1,20 +1,46 @@
-// The project Cockpit (R15 of "Desk: the Cockpit", #790): the project page
-// opens on a Cockpit across its milestones. On top the pinned cards of every
-// milestone with open needs, each under its milestone's name with a link to
-// that milestone's Cockpit; the live lines of all running issues; below
-// them the threads per milestone and issue, newest on top; no composer. The panel is Queue ·
-// Decisions (a column at 1280 px, a slide-over from the header's buttons at
-// 390 px), and the old project tabs (?tab=activity, decisions, board) open
-// where their content moved. axe on both widths. The fixture project
-// team-a/shop has %14 (paused, its problems) and %12 (running, one open
-// proposal: fixtures/projectCockpit.ts). Run with npm run e2e (built UI,
-// Chromium).
+// The project Cockpit (R15 of "Desk: the Cockpit", #790; R9 of "Desk: the
+// Cockpit newest first by issue", #822): the project page opens on a
+// Cockpit across its milestones. On top the pinned cards of every milestone
+// with open needs, each under its milestone's name with a link to that
+// milestone's Cockpit; below them the threads per milestone and issue,
+// newest on top; no composer and no live lines. The sidebar is Now & next
+// across the project (a column at 1280 px, a slide-over from the Now strip
+// at 390 px): Running and Waiting grouped by milestone, each row a link to
+// the issue's thread in its milestone's Cockpit, Up next of the milestone
+// that runs first, the project queue, and a History section, closed by
+// default, whose day pages the Cockpit back. The old project links
+// (?tab=activity, decisions, board; ?panel=queue, decisions) open where
+// their content moved. axe on both widths. The fixture project team-a/shop
+// has %14 (paused, its problems) and %12 (running, one open proposal:
+// fixtures/projectCockpit.ts); withRunning (below) makes #282 of %14 run its
+// implementer and holds #281. Run with npm run e2e (built UI, Chromium).
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Page } from '@playwright/test'
 import { journeyAt } from './journey'
 import { answer, now } from './fixtures'
 import { checkoutWithProposal } from './fixtures/projectCockpit'
-import { checkout as checkoutMilestone, payments as paymentsMilestone } from './fixtures/task'
+import { captures, checkout as checkoutMilestone, payments as paymentsMilestone } from './fixtures/task'
+import type { ProjectDetail } from '../src/generated/views'
+
+// withRunning: #282 of %14 runs its implementer (captures, 4 min) and the
+// autopilot holds #281, so Running has a group per milestone (#277 of %12
+// runs too) and Waiting one.
+function withRunning(p: ProjectDetail): ProjectDetail {
+  const hold = { kind: 'ciRed', reason: 'CI failed 3 times', since: now.toISOString() }
+  return {
+    ...p,
+    milestones: p.milestones.map((m) => {
+      if (m.iid !== 14) return m
+      const spec = m.spec!
+      const items = [{ iid: 281, state: 'Active' as const, hold }, { iid: 282, state: 'Active' as const }]
+      return {
+        ...m,
+        tasks: m.tasks.map((t) => (t.issue?.iid === 282 ? captures : t)),
+        spec: { ...spec, status: { ...spec.status, autopilot: { ...spec.status.autopilot!, items } } },
+      }
+    }),
+  }
+}
 
 const projectPath = '/projects/team-a/shop'
 
@@ -35,7 +61,8 @@ async function open(page: Page, baseURL: string | undefined, path: string, width
       problems.push(`${req.method()} ${url.pathname}`)
       return r.fulfill({ status: 404, json: { error: 'no fixture' } })
     }
-    const body = p === `${projectPath}/milestones/12` ? checkoutWithProposal : answer(p, url.searchParams)
+    let body = p === `${projectPath}/milestones/12` ? checkoutWithProposal : answer(p, url.searchParams)
+    if (p === projectPath) body = withRunning(body as ProjectDetail)
     if (body === undefined) {
       problems.push(`GET ${url.pathname}`)
       return r.fulfill({ status: 404, json: { error: 'no fixture' } })
@@ -50,10 +77,10 @@ async function open(page: Page, baseURL: string | undefined, path: string, width
 const tabs = (page: Page) => page.locator('main [data-stream-head]').getByRole('navigation', { name: 'View' }).getByRole('link')
 const pinnedMilestone = (page: Page, iid: number) => page.locator(`main [data-pinned-milestone="${iid}"]`)
 const groups = (page: Page) => page.locator('main [data-cockpit-stream] [data-cockpit-group]')
-const panel = (page: Page) => page.getByRole('complementary', { name: 'Project context' })
-// The header's buttons by their data attribute: while the modal slide-over
-// is open, the page behind it is hidden from role queries.
-const headerButton = (page: Page, view: string) => page.locator(`main [data-stream-head] [data-panel-open="${view}"]`)
+const panel = (page: Page) => page.getByRole('complementary', { name: 'Now & next' })
+// The Now strip by its data attribute: while the modal slide-over is open,
+// the page behind it is hidden from role queries.
+const strip = (page: Page) => page.locator('main [data-stream-head] [data-now-strip]')
 
 // axe (WCAG 2.2 AA); color-contrast is left out as on the milestone Cockpit
 // (cockpit.spec.ts): the Desk-wide rule of #641. No known-a11y entry.
@@ -98,10 +125,9 @@ async function expectCockpit(page: Page) {
   await expect(groups(page).nth(1)).toContainText('#281 ·')
   for (const n of [0, 1]) await expect(groups(page).nth(n).getByRole('button').first()).toHaveAttribute('aria-expanded', 'false')
 
-  // No composer (D9); the running issue's live line links to its
-  // milestone's Cockpit.
+  // No composer (D9) and no live lines: what runs is in the sidebar.
   await expect(page.locator('main [data-cockpit-composer]')).toHaveCount(0)
-  await expect(page.locator('main [data-cockpit-live-line]').first()).toHaveAttribute('href', `${projectPath}/milestones/12`)
+  await expect(page.locator('main [data-cockpit-live]')).toHaveCount(0)
 }
 
 for (const width of [1280, 390]) {
@@ -116,6 +142,13 @@ for (const width of [1280, 390]) {
     await expect(trigger).toHaveAttribute('aria-expanded', 'true')
     await expect(groups(page).nth(0).locator('li').first()).toBeVisible()
 
+    // On a phone the fixed bottom bar covers what scrolled under it, which
+    // axe's target-size counts as obscured: the viewport takes the whole
+    // page, so nothing lies under the bar.
+    if (width < 760) {
+      const height = await page.evaluate(() => document.documentElement.scrollHeight)
+      await page.setViewportSize({ width, height: height + 200 })
+    }
     expect(await axe(page, 'main')).toEqual([])
     const fit = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
     expect(fit, 'the page does not scroll sideways').toBe(0)
@@ -123,41 +156,83 @@ for (const width of [1280, 390]) {
   })
 }
 
-test('the panel is Queue beside the Cockpit, a history day pages the Cockpit@1280', async ({ page, baseURL }) => {
+// What the sidebar shows with withRunning, wide or in the slide-over.
+async function expectNowNext(scope: ReturnType<Page['locator']>) {
+  // Running grouped by milestone, in the project's order; each row opens
+  // the issue's thread in its milestone's Cockpit, a live run with its
+  // transcript (the transcript grant); #277 has no run request to show.
+  const running = scope.locator('[data-now-section="running"]')
+  await expect(running.locator('h4')).toHaveText([paymentsMilestone.title, checkoutMilestone.title])
+  await expect(running.locator('[data-now-row="282"]')).toContainText('#282 implementing · 4 min')
+  await expect(running.locator('[data-now-row="282"]')).toHaveAttribute('href', `${projectPath}/milestones/14?live=1#issue-282`)
+  await expect(running.locator('[data-now-row="277"]')).toHaveAttribute('href', `${projectPath}/milestones/12#issue-277`)
+  const waiting = scope.locator('[data-now-section="waiting"]')
+  await expect(waiting.locator('h4')).toHaveText([paymentsMilestone.title])
+  await expect(waiting.locator('[data-now-row="281"]')).toContainText('#281 held: CI failed 3 times')
+  // Up next of %12, the milestone that runs first; Milestones is the queue.
+  await expect(scope.locator('[data-now-section="next"] [data-now-row]')).toHaveText([/^#278 waiting for a free slot/])
+  await expect(scope.locator('[data-now-milestone]')).toHaveCount(3)
+  await expect(scope.locator('[data-now-milestone]').first()).toContainText('running')
+  await expect(scope.locator('[data-now-milestone="12"] a')).toHaveAttribute('href', `${projectPath}/milestones/12`)
+}
+
+test('the sidebar is Now & next across the milestones, History pages the Cockpit, it collapses to a rail@1280', journeyAt(1280), async ({ page, baseURL }) => {
   const problems = await open(page, baseURL, projectPath, 1280)
   await expect(panel(page)).toBeVisible()
-  await expect(page.locator('main [data-panel-open]')).toHaveCount(0)
-  await expect(panel(page).getByRole('tab'), 'one view, no switch; decisions are a tab').toHaveCount(0)
+  await expect(page.locator('main [data-panel-open]'), 'no strip beside the column').toHaveCount(0)
+  await expectNowNext(panel(page))
+
+  // History is closed by default; opened, a day pages the Cockpit back and
+  // Back to now returns.
+  const toggle = panel(page).locator('[data-project-history-toggle]')
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await expect(panel(page).locator('[data-heat-day]')).toHaveCount(0)
+  await toggle.click()
   await expect(panel(page).getByText('Last 30 days')).toBeVisible()
   await expect(panel(page).locator('[data-heat-day]')).toHaveCount(30)
   expect(await axe(page, '[data-project-panel]')).toEqual([])
-
-  // A day pages the Cockpit back; Back to now returns.
   await panel(page).locator('[data-heat-day]').nth(20).click()
-  await expect(page.locator('main [data-cockpit-jumped]')).toBeVisible()
+  await expect(page.locator('main [data-cockpit-jumped]')).toContainText('Events up to the end of')
   await expect(panel(page).locator('[data-heat-day]').nth(20)).toHaveAttribute('aria-pressed', 'true')
   await page.locator('main [data-cockpit-jumped]').getByRole('button', { name: 'Back to now' }).click()
   await expect(page.locator('main [data-cockpit-jumped]')).toHaveCount(0)
 
+  // The rail with the counts, as on a milestone.
+  await page.locator('[data-rail-collapse]').click()
+  await expect(page.locator('[data-now-rail] [data-now-count="running"]')).toContainText('2 running')
+  await expect(page.locator('[data-now-rail] [data-now-count="waiting"]')).toContainText('1 waiting')
+  expect(await axe(page, '[data-sidebar-rail]')).toEqual([])
+  await page.locator('[data-rail-expand]').click()
+  await expect(panel(page)).toBeVisible()
   expect(problems).toEqual([])
 })
 
-test('the Queue button opens the panel as a slide-over, Escape closes it and focus returns@390', async ({ page, baseURL }) => {
+test('the Now strip opens the sidebar as a slide-over, Escape closes it and focus returns@390', journeyAt(390), async ({ page, baseURL }) => {
   const problems = await open(page, baseURL, projectPath, 390)
   await expect(panel(page), 'no column on a phone').toHaveCount(0)
-  await expect(headerButton(page, 'decisions'), 'decisions are a tab').toHaveCount(0)
-  const button = headerButton(page, 'queue')
-  await expect(button).toHaveAttribute('aria-expanded', 'false')
-  await button.click()
-  const sheet = page.getByRole('dialog', { name: 'Queue' })
+  await expect(strip(page)).toHaveText('2 running · 1 waiting · next #278')
+  await expect(strip(page)).toHaveAttribute('aria-expanded', 'false')
+  await strip(page).click()
+  const sheet = page.getByRole('dialog', { name: 'Now & next' })
   await expect(sheet).toBeVisible()
   await sheet.evaluate((e) => Promise.all(e.getAnimations().map((a) => a.finished)))
+  await expectNowNext(sheet)
+  await sheet.locator('[data-project-history-toggle]').click()
   await expect(sheet.getByText('Last 30 days', { exact: true })).toBeVisible()
   expect(await axe(page, '[role="dialog"]')).toEqual([])
 
   await page.keyboard.press('Escape')
   await expect(sheet).toBeHidden()
-  await expect(button).toBeFocused()
+  await expect(strip(page)).toBeFocused()
+  expect(problems).toEqual([])
+})
+
+// The old link to the panel's Queue view opens the sidebar (as on a
+// milestone page): a slide-over on a phone.
+test('?panel=queue opens the sidebar@390', async ({ page, baseURL }) => {
+  const problems = await open(page, baseURL, `${projectPath}?panel=queue`, 390)
+  await expect(page).toHaveURL(new RegExp(`${projectPath}$`))
+  await expect(page.getByRole('dialog', { name: 'Now & next' })).toBeVisible()
   expect(problems).toEqual([])
 })
 

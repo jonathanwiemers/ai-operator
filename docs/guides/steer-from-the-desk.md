@@ -72,11 +72,15 @@ tab.
 ### The project and the Overview
 
 A project page and the *Overview* open on a Cockpit of their own, with the
-same pinned cards, folded groups and panel, but no composer:
+same pinned cards and threads, but no composer:
 
 - **A project's Cockpit** spans its milestones. Each pinned card shows its
   milestone's name, and *Talk to the pilot* opens that milestone's Cockpit.
-  The panel has *Queue* and *Decisions*.
+  Its threads show their milestone's name. *Now & next* groups *Running*
+  and *Waiting* by milestone; a row opens the issue's thread in its
+  milestone's Cockpit. *Up next* is of the milestone that runs first, and
+  *Milestones* is the project's queue. *History* (closed at first) has the
+  companions and the last 30 days: a day pages the Cockpit back to it.
 - **The Overview's Cockpit** spans all your projects. It pins the open
   Inbox items as short cards that open their card in the milestone's
   Cockpit. It shows merges and milestone state changes, and folds the rest
@@ -265,8 +269,7 @@ with the option's letter in the comment's thread (see
 ## Revisit a decision
 
 Each [decision](../concepts/glossary.md#decision) in a milestone's queue
-has a *Revisit* button, on the *Issues* tab and in the project's context
-panel. The decision's card on the *Decisions* tab has it too, with a
+has a *Revisit* button on the *Issues* tab. The decision's card on the *Decisions* tab has it too, with a
 line that says what will happen. It is there for owners with the `chat`
 grant, while the milestone has its pilot. The decision's ID opens its card
 on the *Decisions* tab, or the comment on GitLab without the history
@@ -381,9 +384,8 @@ researches, engine usage, sign out), and *Metrics* and *Research* where you
 have them. The bar hides while you type.
 
 - Tables become cards, and every button is big enough to tap.
-- On a project page, the *Queue* and *Decisions* buttons in the header open
-  the context panel on that view; on a milestone page, the *Issues*, *Queue*
-  and *Decisions* buttons open the milestone panel.
+- On a project or milestone page, the Now strip under the header
+  ("2 running · 1 waiting · next #717") opens the *Now & next* sidebar.
 - Text that is cut off opens with a tap.
 - Prompts, pause cards, chat and *Restart run* work as on a desktop.
 

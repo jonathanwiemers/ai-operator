@@ -264,8 +264,15 @@ test('?panel=decisions opens the Decisions tab, other parameters stay', () => {
     assert.deepEqual(alias({ tab: 'issues', panel: 'decisions' }), { tab: 'decisions' }, '?tab= gives way')
     assert.equal(alias({ tab: 'decisions' }), null)
   }
-  assert.equal(projectAlias({ panel: 'queue' }), null, "the project panel's Queue")
   assert.deepEqual(milestoneAlias({ panel: 'decisions', pilot: '1' }), { tab: 'decisions' }, 'the pilot drawer goes too')
+})
+
+// The project panel's old Queue view is the Now & next sidebar (R9 of "Desk:
+// the Cockpit newest first by issue"): ?panel= goes, Stream.vue opens it.
+test('projectAlias: ?panel=queue goes, other parameters stay', () => {
+  assert.deepEqual(projectAlias({ panel: 'queue' }), {})
+  assert.deepEqual(projectAlias({ panel: 'queue', tab: 'metrics' }), { tab: 'metrics' })
+  assert.deepEqual(projectAlias({ panel: 'queue', tab: 'board' }), { tab: 'milestones', view: 'board' })
 })
 
 test('projectAlias: current links need no change', () => {

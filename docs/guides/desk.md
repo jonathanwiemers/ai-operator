@@ -209,10 +209,12 @@ A project page has the tabs *Cockpit | Milestones | Metrics*, and *Plans* with D
 - **Plans**: the project's [plans](write-a-milestone.md#draft-it-in-the-desk)
   and *New plan* for this project; a [plan's decisions](write-a-milestone.md#answer-the-agents-decisions) have a wizard.
 
-A panel on the right shows *Queue*: the active milestone's queue, its companions and the last 30 days. Pick a day to page the Cockpit back to it; *Back to now* returns.
-Below 1180 px the *Queue* button in the header opens it from the right; Escape closes it.
+The **Now & next** sidebar on the right shows what runs in all the project's milestones:
+*Running* and *Waiting*, grouped by milestone, each a link to the issue's thread in its milestone's Cockpit; *Up next* of the milestone that runs first; and *Milestones*, the project's queue.
+At the bottom, *History* (closed until you open it) shows the active milestone's companions and the last 30 days. Pick a day to page the Cockpit back to it; *Back to now* returns.
+You can collapse the sidebar to a rail with the counts, as on a milestone. Below 1180 px the Now strip under the header opens it from the right; Escape closes it.
 
-Old links open where their content is now: `?tab=activity` and `stream` open *Cockpit*, `?panel=decisions` the *Decisions* tab (the milestone you picked stays), and `?tab=board` the *Board* of *Milestones* (`?tab=milestones&view=board`).
+Old links open where their content is now: `?tab=activity` and `stream` open *Cockpit*, `?panel=queue` opens the sidebar, `?panel=decisions` the *Decisions* tab (the milestone you picked stays), and `?tab=board` the *Board* of *Milestones* (`?tab=milestones&view=board`).
 
 ## A milestone
 

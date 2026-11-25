@@ -57,8 +57,9 @@ for a finding that needs its own issue.
 
 The shell (`App.vue`) has one `header` (the top bar on phones), a `nav`
 labelled "Main" (the sidebar), the phone's bottom bar `nav` labelled
-"Sections", one `main` with `id="main"`, and the context panel as an
-`aside` labelled "Context" (`ContextPanel.vue`, in a sheet below 1180 px).
+"Sections", one `main` with `id="main"`, and the project's or milestone's
+sidebar as an `aside` labelled "Now & next" (`ProjectPanel.vue`,
+`MilestonePanel.vue`, in a sheet below 1180 px).
 
 "Skip to content" is the first focusable element. It is visually hidden
 until it has focus, and Enter moves focus to `main` without changing the

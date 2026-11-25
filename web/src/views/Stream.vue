@@ -11,7 +11,6 @@ import { hasFeature } from '../api'
 import { getInbox, getMilestone, getProject, getProjectHistory, LoginRequiredError, NotFoundError } from '../client'
 import { setCrumbNames } from '../crumbNames'
 import ContextLayout from '../components/ContextLayout.vue'
-import ContextPanel from '../components/ContextPanel.vue'
 import CostChip from '../components/CostChip.vue'
 import HeaderActions from '../components/HeaderActions.vue'
 import PauseCardCompact from '../components/PauseCardCompact.vue'
@@ -19,12 +18,12 @@ import ProjectBoards from '../components/ProjectBoards.vue'
 import SpendPanel from '../components/SpendPanel.vue'
 import Cockpit from '../components/cockpit/Cockpit.vue'
 import CockpitComposer from '../components/cockpit/CockpitComposer.vue'
-import CockpitLive from '../components/cockpit/CockpitLive.vue'
 import ProjectPinned from '../components/cockpit/ProjectPinned.vue'
 import MilestoneDecisions from '../components/MilestoneDecisions.vue'
 import MilestoneIssues from '../components/MilestoneIssues.vue'
 import MilestoneNeeds from '../components/MilestoneNeeds.vue'
 import MilestonePanel from '../components/MilestonePanel.vue'
+import ProjectPanel from '../components/ProjectPanel.vue'
 import MilestoneRetro from '../components/MilestoneRetro.vue'
 import MilestoneSections from '../components/MilestoneSections.vue'
 import PlanList from '../components/PlanList.vue'
@@ -33,7 +32,7 @@ import ProjectFinishing from '../components/ProjectFinishing.vue'
 import RouteTabs from '../ui/RouteTabs.vue'
 import { live, useNow, useResource } from '../live'
 import { needsOpen } from '../needsOpen'
-import { nowAndNext, nowStripText } from '../nowAndNext'
+import { nowAndNext, nowStripText, projectNowAndNext } from '../nowAndNext'
 import NowRail from '../components/NowRail.vue'
 import { pausePrompt } from '../pauseCard'
 import {
@@ -148,24 +147,28 @@ const projectInbox = computed(() => {
 
 // The context panel (docs/contributing/web-ui.md, "Context panel and pause history"), laid out by
 // ContextLayout: a column from 1180 px; below, a sheet that the header's
-// button opens. A project's is ContextPanel (Queue; R15 of "Desk: the
-// Cockpit"), a milestone's MilestonePanel (Now & next, R7 of "Desk: the
-// Cockpit newest first by issue"). Focus returns to
-// the button that opened the sheet (panelOpener). A milestone's Issues tab
-// (a table of fixed columns) needs the full width: there the panel is a
-// sheet at every width.
+// strip opens. A project's is ProjectPanel (Now & next across its
+// milestones and History, R9 of "Desk: the Cockpit newest first by issue"),
+// a milestone's MilestonePanel (Now & next, R7). Both collapse to a rail
+// (R8). Focus returns to the strip that opened the sheet (panelOpener). A
+// milestone's Issues tab (a table of fixed columns) needs the full width:
+// there the panel is a sheet at every width.
 const hasContext = computed(() => !!props.namespace && !!props.name)
 const contextOpen = ref(false)
 const panelOpener = ref<HTMLElement | null | false>(null)
-const panel = computed(() => (milestoneIID.value ? { id: 'now', label: 'Now & next' } : { id: 'queue', label: 'Queue' }))
 
-// A milestone's Now & next counts (R8): the collapsed sidebar's rail and,
+// The Now & next counts (R8; a project's across its milestones, R9): the collapsed sidebar's rail and,
 // where the sidebar is a slide-over, the strip under the header that opens
 // it ("2 running · 1 waiting · next #717", or "Nothing running").
 const now = useNow()
 const nowCounts = computed(() => {
+  if (!milestoneIID.value) {
+    const p = pageProject.value
+    if (!p) return null
+    return projectNowAndNext({ milestones: p.milestones, first: runsFirst.value, queue: p.queue, now: now.value }).counts
+  }
   const m = pageMilestone.value
-  if (!milestoneIID.value || !m) return null
+  if (!m) return null
   return nowAndNext({ milestone: m, items: m.autopilot?.items, tasks: m.tasks, queue: pageProject.value?.queue, now: now.value }).counts
 })
 const nowStrip = computed(() => (nowCounts.value ? nowStripText(nowCounts.value) : 'Now & next'))
@@ -262,10 +265,14 @@ async function loadHistory() {
 
 async function loadMilestone() {
   const iid = milestoneIID.value
-  // Prefer scoped milestone; else first with autopilot.
+  // Prefer the scoped milestone; on the project page the one that runs
+  // first in the queue (Up next of its Now & next, R9), else the first
+  // with autopilot.
   let pick = iid
   if (!pick && project.value?.milestones.length) {
-    const ap = project.value.milestones.find((m) => m.spec?.status.autopilot?.phase === 'Running')
+    const first = project.value.queue?.find((e) => e.state === 'running')?.iid
+    const ap = project.value.milestones.find((m) => m.iid === first)
+      ?? project.value.milestones.find((m) => m.spec?.status.autopilot?.phase === 'Running')
       ?? project.value.milestones.find((m) => m.spec?.status.autopilot)
       ?? project.value.milestones[0]
     pick = ap?.iid
@@ -283,22 +290,19 @@ async function loadMilestone() {
   }
 }
 
+// runsFirst: on the project page, the loaded milestone while it is the
+// first running entry of the project queue, whose items are Up next of the
+// sidebar (R9); null while none runs, so Up next is empty then.
+const runsFirst = computed(() => {
+  const first = pageProject.value?.queue?.find((e) => e.state === 'running')?.iid
+  return !milestoneIID.value && first !== undefined && milestone.value?.iid === first ? milestone.value : null
+})
+
 // pageProject: the loaded project, once it is the route's (the old one stays
 // in project while the next loads).
 const pageProject = computed(() => {
   const p = project.value
   return p && p.namespace === props.namespace && p.name === props.name ? p : null
-})
-
-// projectTasks: the implement tasks of all the project's milestones, for the
-// project Cockpit's live lines, and each task's milestone, whose Cockpit
-// its line links to (R15).
-const projectTasks = computed(() => {
-  const ms = pageProject.value?.milestones ?? []
-  return {
-    tasks: ms.flatMap((m) => m.tasks),
-    milestones: Object.fromEntries(ms.flatMap((m) => m.tasks.map((t) => [t.name, m.iid]))),
-  }
 })
 
 // title: the milestone's title from the loaded milestone, else from the
@@ -327,7 +331,7 @@ const cockpitHeaders = computed(() => {
     return { issues: m.issues, items: m.autopilot?.items, tasks: m.tasks, status: status.value ?? undefined, transcript: !!m.permissions?.transcript }
   }
   const ms = pageProject.value?.milestones ?? []
-  return { tasks: projectTasks.value.tasks, milestones: Object.fromEntries(ms.map((x) => [x.iid, x.title])) }
+  return { tasks: ms.flatMap((x) => x.tasks), milestones: Object.fromEntries(ms.map((x) => [x.iid, x.title])) }
 })
 
 // A change of the open milestone's status is announced (useAnnounce.ts).
@@ -418,18 +422,18 @@ watch(
     v-else
     v-model:open="contextOpen"
     :column="panelColumn"
-    :title="panel.label"
-    :description="milestoneIID ? 'What runs, waits and comes next, and the milestones after this one' : 'The queue and companions of the project\'s active milestone, and its last 30 days'"
+    title="Now & next"
+    :description="milestoneIID ? 'What runs, waits and comes next, and the milestones after this one' : 'What runs, waits and comes next in the project\'s milestones, its queue and its history'"
     :opener="panelOpener"
-    :collapsible="!!milestoneIID"
+    collapsible
   >
     <template v-if="nowCounts" #rail><NowRail :counts="nowCounts" /></template>
     <template #default="{ sheet }">
     <div class="stream">
       <!-- The page header (decision 4): the milestone's status as eyebrow,
            the title, the cost as meta line (one number on every tab,
-           headerCost.ts), the project panel's button or a milestone's Now strip (below 1180 px) and ⋯ with the links to
-           GitLab on the right, then the tab row; the page's alerts are in
+           headerCost.ts) and ⋯ with the links to GitLab on the right,
+           the Now strip (below 1180 px), then the tab row; the page's alerts are in
            the tabs. Filters and search are in the tabs'
            toolbars (decision 3). -->
       <div data-stream-head class="bg-(--bg) px-4 pt-3.5 tablet:px-7">
@@ -439,29 +443,13 @@ watch(
           </template>
           <template v-if="pageCost" #description><CostChip :cost="pageCost" data-header-cost /></template>
           <template #links>
-            <HeaderActions :actions="links" :shown="0">
-              <!-- The project panel's button (below 1180 px, phones too); a
-                   milestone has the strip below instead. -->
-              <template v-if="sheet && !milestoneIID">
-                <UButton
-                  color="neutral"
-                  variant="outline"
-                  size="sm"
-                  class="min-h-11 justify-center tablet:min-h-0"
-                  :label="panel.label"
-                  aria-haspopup="dialog"
-                  :aria-expanded="contextOpen"
-                  :data-panel-open="panel.id"
-                  @click="openContext"
-                />
-              </template>
-            </HeaderActions>
+            <HeaderActions :actions="links" :shown="0" />
           </template>
         </UPageHeader>
         <!-- The Now strip (R8): one line of the header, above the tabs,
-             where the milestone's sidebar is a slide-over. -->
+             where the sidebar is a slide-over. -->
         <UButton
-          v-if="sheet && milestoneIID"
+          v-if="sheet"
           color="neutral"
           variant="soft"
           size="sm"
@@ -517,11 +505,10 @@ watch(
         </div>
       </div>
       <div v-else-if="tab === 'cockpit' && !milestoneIID && namespace && name" class="scroll board">
-        <!-- The project's Cockpit (R15): the pinned cards of every milestone
-             with open needs under its name, the stream across the
-             milestones folded per milestone and issue, the live lines of
-             all running issues under the pinned cards, each a link to its
-             milestone's Cockpit; no composer (D9). -->
+        <!-- The project's Cockpit (R15, R9 of "Desk: the Cockpit newest
+             first by issue"): the pinned cards of every milestone with open
+             needs under its name, then the threads per milestone and issue;
+             no composer (D9). What runs now is in the Now & next sidebar. -->
         <UAlert
           v-if="cockpitBefore"
           :color="alertColor('info')"
@@ -534,9 +521,6 @@ watch(
         <Cockpit :scope="{ namespace, name, before: cockpitBefore }" :project="project" :can-steer="canSteer" :headers="cockpitHeaders">
           <template #pinned>
             <ProjectPinned :namespace="namespace" :name="name" :project="pageProject" :inbox="projectInbox" />
-          </template>
-          <template #live>
-            <CockpitLive :namespace="namespace" :name="name" :tasks="projectTasks.tasks" :milestones="projectTasks.milestones" />
           </template>
         </Cockpit>
       </div>
@@ -641,15 +625,17 @@ watch(
         :sheet="sheet"
         @follow="followPanel"
       />
-      <ContextPanel
+      <ProjectPanel
         v-else
-        :class="{ 'ctx-sheet': sheet }"
         :namespace="namespace!"
         :name="name!"
+        :project="pageProject"
         :milestone="milestone"
-        :milestones="project?.milestones"
+        :first="runsFirst"
         :history="history"
         :jumped="cockpitBefore"
+        :sheet="sheet"
+        @follow="followPanel"
         @day="jumpDay"
         @clear="cockpitDay = undefined"
       />
@@ -680,11 +666,6 @@ watch(
 }
 .milestones {
   padding-top: 4px;
-}
-/* In the sheet the panel needs no edge of its own; the sheet's body scrolls. */
-.ctx-sheet {
-  border-left: 0;
-  overflow-y: visible;
 }
 @media (max-width: 759.98px) {
   .scroll {

@@ -35,9 +35,6 @@ export const knownA11y: Record<string, string> = {
   'stream-project-board@375': `${R6} R6: color-contrast`,
   'stream-project-board@1180': `${R6} R6: color-contrast`,
   'stream-project-board@1180-dark': `${R6} R6: color-contrast`,
-  // The project panel's queue and companion rows (muted badges) are in view
-  // since the panel lost its Needs you list (R15 of "Desk: the Cockpit").
-  'stream-project-metrics@1180': `${R6} R6: color-contrast`,
   'stream-project-metrics@1180-dark': `${R6} R6: color-contrast`,
   'stream-project-dark@375': `${R6} R6: color-contrast`,
   'stream-project-dark@1180': `${R6} R6: color-contrast`,
@@ -66,7 +63,6 @@ export const knownA11y: Record<string, string> = {
   'task-live@1180-dark': `${R6} R6: color-contrast`,
   'task-logs@1180-dark': `${R6} R6: color-contrast`,
   'task-calls@1180-dark': `${R6} R6: color-contrast`,
-  'stream-project-plans@1180': `${R6} R6: color-contrast`,
   'stream-project-plans@1180-dark': `${R6} R6: color-contrast`,
   'all-plans@1280-dark': `${R6} R6: color-contrast`,
   'plan-new@1280-dark': `${R6} R6: color-contrast`,
