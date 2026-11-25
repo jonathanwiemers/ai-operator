@@ -3,6 +3,7 @@ package ui
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -332,5 +333,42 @@ func TestValidateSessionRefresh(t *testing.T) {
 				t.Fatalf("err = %v, want %q", err, tc.wantErr)
 			}
 		})
+	}
+}
+
+func TestWebPushConfig(t *testing.T) {
+	load := func(extra string) *Config {
+		file := filepath.Join(t.TempDir(), "config.yaml")
+		body := "externalURL: https://ai.example.com\noidc:\n  issuerURL: https://idp\n  clientID: c\n" + extra
+		if err := os.WriteFile(file, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv(EnvSessionKey, strings.Repeat("k", 32))
+		cfg, err := LoadConfig(file, ":9080")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return cfg
+	}
+	cfg := load("")
+	if !cfg.WebPush.On() || !slices.Equal(cfg.WebPush.AllowedHosts, DefaultPushHosts) {
+		t.Errorf("defaults: %+v", cfg.WebPush)
+	}
+	cfg = load("webPush:\n  enabled: false\n  allowedHosts: [push.example.com]\n")
+	if cfg.WebPush.On() || !slices.Equal(cfg.WebPush.AllowedHosts, []string{"push.example.com"}) {
+		t.Errorf("read: %+v", cfg.WebPush)
+	}
+	cfg = load("webPush:\n  allowedHosts: []\n")
+	if len(cfg.WebPush.AllowedHosts) != 0 {
+		t.Errorf("an empty list stays empty: %+v", cfg.WebPush)
+	}
+	for _, bad := range []string{"https://x", "x:443", "*.", "a/b", "Example.com", "*.*.x.com"} {
+		c := &Config{ExternalURL: "https://ai.example.com", OIDC: OIDCConfig{IssuerURL: "https://idp", ClientID: "c"}, SessionKey: strings.Repeat("k", 32)}
+		c.Default()
+		c.WebPush.AllowedHosts = []string{bad}
+		err := c.Validate(":9080")
+		if err == nil || !strings.Contains(err.Error(), bad) {
+			t.Errorf("%q: err = %v", bad, err)
+		}
 	}
 }

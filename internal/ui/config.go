@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -58,6 +59,7 @@ type Config struct {
 	GitLab        GitLabConfig        `json:"gitlab"`
 	Research      ResearchConfig      `json:"research"`
 	Plan          PlanConfig          `json:"plan"`
+	WebPush       WebPushConfig       `json:"webPush"`
 
 	// Set from the environment.
 	SessionKey         string `json:"-"`
@@ -68,6 +70,41 @@ type Config struct {
 	ResearchDBPassword string `json:"-"`
 	ChatDBUser         string `json:"-"`
 	ChatDBPassword     string `json:"-"`
+}
+
+// DefaultPushHosts are the push services endpoints may point to.
+var DefaultPushHosts = []string{
+	"fcm.googleapis.com",
+	"*.push.apple.com",
+	"updates.push.services.mozilla.com",
+	"*.notify.windows.com",
+}
+
+// WebPushConfig is the Web Push section.
+type WebPushConfig struct {
+	// Enabled turns push on; nil means true. Push also needs the research
+	// database and externalURL.
+	Enabled *bool `json:"enabled,omitempty"`
+	// AllowedHosts are the host names push endpoints must be on: exact names
+	// or "*." plus a name for any subdomain. Nil means DefaultPushHosts; an
+	// empty list allows no host.
+	AllowedHosts []string `json:"allowedHosts,omitempty"`
+}
+
+// On reports whether push is enabled.
+func (c WebPushConfig) On() bool { return c.Enabled == nil || *c.Enabled }
+
+var pushHostRE = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*$`)
+
+// validateWebPush checks the allowed host patterns.
+func (c *Config) validateWebPush() []error {
+	var errs []error
+	for _, h := range c.WebPush.AllowedHosts {
+		if !pushHostRE.MatchString(strings.TrimPrefix(h, "*.")) {
+			errs = append(errs, fmt.Errorf("webPush.allowedHosts: %q must be a lowercase host name or *. and a host name, without scheme, port or path", h))
+		}
+	}
+	return errs
 }
 
 // ResearchConfig is the Research section. It is on exactly when
@@ -289,6 +326,9 @@ func (c *Config) Default() {
 	if c.Research.Enabled() && c.Research.Database.SSLMode == "" {
 		c.Research.Database.SSLMode = "require"
 	}
+	if c.WebPush.AllowedHosts == nil {
+		c.WebPush.AllowedHosts = slices.Clone(DefaultPushHosts)
+	}
 	if c.Plan.MaxBudgetUSD == "" {
 		c.Plan.MaxBudgetUSD = DefaultPlanMaxBudgetUSD
 	}
@@ -384,6 +424,7 @@ func (c *Config) Validate(bindAddress string) error {
 	errs = append(errs, c.validateResearch()...)
 	errs = append(errs, c.validateChat()...)
 	errs = append(errs, c.validatePlan()...)
+	errs = append(errs, c.validateWebPush()...)
 	return errors.Join(errs...)
 }
 

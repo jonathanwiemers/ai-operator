@@ -201,6 +201,17 @@ ui:
   # URL users open, without a path, e.g. https://ai.example.com. The OIDC
   # redirect URI is <externalURL>/oauth2/callback. Required with auth.mode oidc.
   externalURL: ""
+  # Web Push: notifications while the Desk is closed. Push also needs
+  # research.database.host and ui.externalURL, and is off without them.
+  webPush:
+    enabled: true
+    # Push endpoints must be https on one of these hosts (anti-SSRF); "*." matches
+    # any subdomain. An empty list allows no host.
+    allowedHosts:
+      - fcm.googleapis.com
+      - "*.push.apple.com"
+      - updates.push.services.mozilla.com
+      - "*.notify.windows.com"
   port: 9080
   healthProbePort: 8081
   auth:

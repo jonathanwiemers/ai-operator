@@ -86,6 +86,7 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 {{- end -}}
 {{- $plan := .Values.plan -}}
 {{- $_ := set $cfg "plan" (dict "maxBudgetUSD" ($plan.maxBudgetUSD | toString) "maxBudgetUSDLimit" ($plan.maxBudgetUSDLimit | toString)) -}}
+{{- $_ := set $cfg "webPush" (dict "enabled" $ui.webPush.enabled "allowedHosts" $ui.webPush.allowedHosts) -}}
 {{- toYaml $cfg }}
 {{- end }}
 

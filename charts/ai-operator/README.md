@@ -302,6 +302,8 @@ the database, and the operator acts on them.
 | `ui.networkPolicy.from` | `[]` | NetworkPolicy peers, e.g. the Gateway's namespace |
 | `ui.service.type`, `ui.service.annotations` | `ClusterIP`, `{}` | |
 | `ui.port`, `ui.healthProbePort` | `9080`, `8081` | |
+| `ui.webPush.enabled` | `true` | Web Push notifications while the Desk is closed. Push also needs `research.database.host` and `ui.externalURL`; without them it is off |
+| `ui.webPush.allowedHosts` | `fcm.googleapis.com`, `*.push.apple.com`, `updates.push.services.mozilla.com`, `*.notify.windows.com` | host names push endpoints must be https on (anti-SSRF); `*.` matches any subdomain; an empty list allows no host |
 | `ui.replicaCount` | `1` | replicas share logins through the session key, but refresh tokens rotate on use and renewals are single-flight per process: with more than 1 replica, a parallel renewal on another pod can lose and end the login. Logout revokes the refresh token at the provider |
 | `ui.resources` | 20m / 48Mi requests, 192Mi limit | |
 | `ui.nodeSelector`, `ui.tolerations`, `ui.affinity`, `ui.podAnnotations`, `ui.podLabels`, `ui.extraArgs` | | |
