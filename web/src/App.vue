@@ -4,7 +4,6 @@ import { useRoute, useRouter } from 'vue-router'
 import { hasFeature, session, setFeatures } from './api'
 import { getAbout, getFeatures, getInbox, getMe, getProjects, getProjectSets, getResearches, LoginRequiredError } from './client'
 import { inboxKey, newNotifications, notificationText, notifyCategory } from './inboxNotify'
-import { inboxRoute } from './inboxRoute'
 import { connectEvents, disconnectEvents, live } from './live'
 import { notifyActive, notifyDialog, refreshPermission, wants } from './notify'
 import { textEntry } from './textEntry'
@@ -34,6 +33,10 @@ const RailNav = defineAsyncComponent(() => import('./components/RailNav.vue'))
 const SearchPalette = defineAsyncComponent(() => import('./components/SearchPalette.vue'))
 const BottomTabBar = defineAsyncComponent(() => import('./ui/BottomTabBar.vue'))
 const NotifySettings = defineAsyncComponent(() => import('./components/NotifySettings.vue'))
+// The service worker's page side (deskWorker.ts): registration, the
+// notifications and their clicks, the `?open=` query. It loads right after
+// the shell.
+const deskWorker = import('./deskWorker')
 import type { InboxItem, ProjectSummary, ResearchSummary } from './types'
 import type { ProjectSetSummary } from './generated/views'
 
@@ -136,20 +139,10 @@ function onInbox(items: InboxItem[]) {
   const fresh = inboxSeeded ? newNotifications(seenInbox, items) : []
   for (const item of items) seenInbox.add(inboxKey(item))
   inboxSeeded = true
-  for (const item of fresh) if (wants(notifyCategory(item))) showNotification(item)
-}
-
-function showNotification(item: InboxItem) {
-  const { title, body } = notificationText(item)
-  try {
-    const n = new Notification(title, { body, tag: inboxKey(item), icon: '/logo.svg' })
-    n.onclick = () => {
-      window.focus()
-      void router.push(inboxRoute(item))
-      n.close()
-    }
-  } catch {
-    // Browsers that show notifications only from a service worker.
+  for (const item of fresh) {
+    if (!wants(notifyCategory(item))) continue
+    const { title, body } = notificationText(item)
+    void deskWorker.then((w) => w.showDeskNotification(title, body, inboxKey(item), { item }))
   }
 }
 
@@ -215,6 +208,7 @@ onMounted(() => {
   document.addEventListener('focusin', onFocusIn)
   document.addEventListener('focusout', onFocusOut)
   window.addEventListener('keydown', onKey)
+  void deskWorker.then((w) => w.startWorker(router))
 })
 onBeforeUnmount(() => {
   window.clearInterval(aboutTimer)

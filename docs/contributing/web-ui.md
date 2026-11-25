@@ -2680,8 +2680,45 @@ where the Inbox row does (one mapping, `inboxRoute.ts`): a milestone's
 entry opens its Cockpit at its card (R17 of the Cockpit spec), problems
 and pauses through the `problem` route, prompts at `#prompt-Q<n>`,
 proposals at their prompt's hash or `#pinned` (`pinnedAnchor`, the pinned
-section's id, scrolled to by the router). There is no
-service worker, no Web Push and no e-mail. The choice is kept per browser.
+section's id, scrolled to by the router). Notifications show through the
+service worker (next section); there is no Web Push and no e-mail. The
+choice is kept per browser.
+
+### Service worker
+
+The Desk has one service worker, `/sw.js` with scope `/`. It exists so
+notifications show where the browser allows them only through a service
+worker (Chrome on Android), and so a click opens its item in the open Desk
+window. It has no `fetch` handler and caches nothing: no offline use.
+
+- **Build.** `src/sw.ts` is built by a second Vite build after the app's
+  (`vite.sw.config.ts`, library mode, `iife`) into `dist/app/sw.js`: one
+  file without imports, not hashed. The server sends it with
+  `Cache-Control: no-cache`, and the CSP allows `worker-src 'self'`.
+  `tsconfig.sw.json` type-checks it with the `WebWorker` lib, which
+  clashes with `DOM`, so `tsconfig.json` leaves it out. `npm run
+  typecheck` and `npm run build` run both.
+- **Shared code.** `notifyOpen.ts` is imported by the worker and the app:
+  `NotifyOpen` (what a click opens, `{ item }`), `openURL`, `parseOpen` and
+  `clickTarget`. Keep it free of DOM and Vue. The worker has no route
+  logic; the app routes with `inboxRoute()`.
+- **Lifecycle.** `skipWaiting` on install and `clients.claim` on activate:
+  with no cache, a new version breaks nothing mid-session, and the open
+  tab gets click messages at once.
+- **Page side.** `deskWorker.ts`, loaded by `App.vue` after the shell to
+  keep the initial bundle in its budget, registers the worker in a secure
+  context and shows every notification with
+  `registration.showNotification(title, { body, tag, data: { open } })`.
+  Without an active worker it falls back to `new Notification`.
+- **Click.** The worker closes the notification and picks a window with
+  `clickTarget`: a focused Desk window first, then a visible one, then
+  any of its origin. It focuses that window and posts `{ open }`; the app
+  runs `router.push(inboxRoute(item))`. Without a window it opens
+  `/?open=<JSON>`, which the app reads once and replaces with the item's
+  route, so the query goes.
+- **Checks.** `test/notifyOpen.test.mjs` covers the click target and the
+  `?open=` round trip, `e2e/service-worker.spec.ts` the registration and
+  the `?open=` landing.
 
 ### History
 

@@ -87,9 +87,12 @@ test('inboxRoute: an issue budget warning opens its implement task, without one 
 // R15: the Inbox row and the notification lead to the same route.
 test('inboxRoute: the Inbox rows and the notification click both route with it', () => {
   const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8')
-  const app = read('../src/App.vue')
-  assert.match(app, /router\.push\(inboxRoute\(item\)\)/)
-  assert.doesNotMatch(app, /router\.push\(\{/)
+  // A notification click, from the service worker's message or a plain
+  // Notification, and a window opened on ?open= (deskWorker.ts).
+  const worker = read('../src/deskWorker.ts')
+  assert.match(worker, /router\?\.push\(inboxRoute\(open\.item\)\)/)
+  assert.match(worker, /r\.replace\(open \? inboxRoute\(open\.item\)/)
+  assert.doesNotMatch(read('../src/App.vue'), /router\.push\(/)
   // The open items are InboxList's rows (the Inbox and the Overview Cockpit).
   const inbox = read('../src/components/InboxList.vue')
   const list = inbox.slice(inbox.indexOf('<ul'), inbox.indexOf('</ul>'))
