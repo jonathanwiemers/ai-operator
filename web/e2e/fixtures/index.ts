@@ -30,6 +30,8 @@ export const api: Record<string, Fixture> = {
   '/me': me,
   '/features': features,
   '/about': about,
+  // Push is off by default; push.spec.ts answers with a key.
+  '/push': { available: false, reason: "Push notifications need the Desk's database (database.host)." },
   '/projects': projects,
   '/projectsets': projectSets,
   '/inbox': inbox,

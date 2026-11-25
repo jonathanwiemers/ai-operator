@@ -2,8 +2,9 @@ import { reactive } from 'vue'
 
 // Browser notifications: off until the user turns them on, remembered per
 // browser with the categories picked in the Notifications dialog
-// (components/NotifySettings.vue). Only while a Desk tab is open (no Web
-// Push). Keep imports out of here: this module is in the initial bundle.
+// (components/NotifySettings.vue). In an open Desk tab, or with Web Push
+// (push.ts) also while the Desk is closed. Keep imports out of here: this
+// module is in the initial bundle.
 
 export type NotifyPermission = NotificationPermission | 'unsupported'
 
@@ -86,6 +87,9 @@ export const notify = reactive({
   categories: resolve(),
   // Whether the history database is there: null until a stream page says.
   history: null as boolean | null,
+  // Whether this device has a push subscription (push.ts): its pushes come
+  // also with the Desk open, so the tab raises none of its own.
+  push: false,
 })
 
 // refreshPermission picks up a permission changed in the browser's settings.

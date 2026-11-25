@@ -13,13 +13,13 @@
 import { computed, inject, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { hasFeature, session } from '../api'
-import { logout } from '../client'
+import { logout, pushRoutes } from '../client'
 import { aboutLine } from '../about'
 import { accountItems, initials } from '../accountMenu'
 import { themeInjectionKey, type Theme } from '../colorScheme'
 import { absTime, loginLasts, resetLabel, windowLabel } from '../format'
 import { live, useNow } from '../live'
-import { openNotifyDialog } from '../notify'
+import { notify, openNotifyDialog } from '../notify'
 import { openSets, railItems, railNewPlan } from '../railItems'
 import type { EngineUsage, ProjectSummary, ResearchSummary } from '../types'
 import type { ProjectSetSummary } from '../generated/views'
@@ -59,6 +59,15 @@ function setTheme(t: Theme) {
   theme.value = t
   themes?.set(t)
 }
+// Sign-out ends this device's pushes first, for at most 3 s (D809-P2): a
+// leftover subscription expires on the Desk after 30 days.
+async function signOut() {
+  if (notify.push) {
+    const done = import('../push').then((p) => p.unsubscribePush(pushRoutes))
+    await Promise.race([done.catch(() => undefined), new Promise((r) => window.setTimeout(r, 3000))])
+  }
+  await logout()
+}
 const account = computed(() =>
   accountItems({
     me: session.me ?? null,
@@ -67,7 +76,7 @@ const account = computed(() =>
     theme: theme.value,
     setTheme,
     openNotifications: openNotifyDialog,
-    signOut: () => void logout(),
+    signOut: () => void signOut(),
   }),
 )
 const username = computed(() => session.me?.username ?? '')

@@ -372,6 +372,14 @@ build, so the CI `web` job enforces it. It prints
   own (about 0.4 kB). Loading `UModal` or `USwitch` lazily inside the
   dialog did not avoid it. The cap rose to 142.9 kB and the raise was
   reported on its merge request.
+- 2026-11-25, subscribing to Web Push (#809, R5 of the Desk push
+  milestone): 143.0 kB, up from 142.87 kB. `push.ts` is lazy and comes
+  with `deskWorker.ts` and the Notifications dialog; the push routes
+  (`pushRoutes` in `client.ts`) and the shell's push start and in-tab
+  guards are in the initial chunks.
+  `push.ts` takes the routes as an argument: importing `client.ts` there
+  split Vue's reactivity into an initial chunk of its own (+1.1 kB). The
+  cap rose to 143.1 kB and the raise was reported on its merge request.
 - The cap only drops. A change that breaks it is reported, not answered by
   raising it.
 

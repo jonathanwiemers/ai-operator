@@ -2,7 +2,7 @@
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, toRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { hasFeature, session, setFeatures } from './api'
-import { getAbout, getFeatures, getInbox, getMe, getProjects, getProjectSets, getResearches, getStream, LoginRequiredError } from './client'
+import { getAbout, getFeatures, getInbox, getMe, getProjects, getProjectSets, getResearches, getStream, LoginRequiredError, pushRoutes } from './client'
 import { newNotifications, notificationText, seenKeys } from './inboxNotify'
 import { connectEvents, disconnectEvents, live } from './live'
 import { notify, notifyActive, notifyDialog, refreshPermission, wants, wantsEvents } from './notify'
@@ -135,7 +135,8 @@ function onInbox(items: InboxItem[]) {
   inboxLoaded = true
   inboxCount.value = items.length
   refreshPermission()
-  if (!notifyActive()) {
+  // A device with a push subscription gets its notifications as pushes.
+  if (!notifyActive() || notify.push) {
     inboxSeeded = false
     return
   }
@@ -151,7 +152,7 @@ function onInbox(items: InboxItem[]) {
 // Event notifications (pollEvents in deskWorker.ts), while one of their
 // categories is wanted. Without the history database (notify.history
 // false) the first answer stops them.
-const eventsWanted = computed(() => !!session.me && !session.loginRequired && hasFeature('factory') && wantsEvents())
+const eventsWanted = computed(() => !!session.me && !session.loginRequired && hasFeature('factory') && !notify.push && wantsEvents())
 function pollEvents() {
   if (eventsWanted.value) void deskWorker.then((w) => w.pollEvents({ fetchPage: getStream, wants, history: (on) => (notify.history = on) }))
 }
@@ -240,6 +241,8 @@ watch(
     if (ready) {
       connectEvents()
       void loadRail()
+      // Web Push (push.ts): a subscribed device stores its subscription again.
+      void deskWorker.then((w) => w.startPush(pushRoutes, notify))
     } else {
       disconnectEvents()
     }

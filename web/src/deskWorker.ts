@@ -12,6 +12,10 @@ import type { StreamPage } from './types'
 // Chrome on Android shows them; a click on one focuses this window and the
 // worker posts `{ open }`, or it opens a new one on `/?open=…`.
 
+// Web Push's start (push.ts) comes along: a second lazy import in App.vue
+// would cost the initial bundle its preload list.
+export { startPush } from './push.ts'
+
 let router: Router | null = null
 // The worker's registration once it is active; null without one.
 let worker: ServiceWorkerRegistration | null = null

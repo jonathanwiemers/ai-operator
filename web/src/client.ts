@@ -36,6 +36,8 @@ import type {
   ProjectDetail,
   ProjectSetSummary,
   ProjectSummary,
+  PushInfo,
+  PushSubscriptionRequest,
   ResearchCreated,
   ResearchForm,
   ResearchResponse,
@@ -122,11 +124,14 @@ export async function post<T>(path: string, body: unknown): Promise<T> {
   return data as T
 }
 
-async function del(path: string): Promise<void> {
+// del sends a DELETE, or with method a PUT, whose answer the caller does not
+// read. JSON.stringify(undefined) is no body.
+async function del(path: string, body?: unknown, method = 'DELETE'): Promise<void> {
   const resp = await fetch(`/api/v1${path}`, {
-    method: 'DELETE',
-    headers: { Accept: 'application/json' },
+    method,
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
     credentials: 'same-origin',
+    body: JSON.stringify(body),
   })
   if (resp.status === 401) loginRequired()
   if (!resp.ok) {
@@ -661,6 +666,18 @@ export function getGitLabStatus(): Promise<GitLabStatusView> {
 // token.
 export async function disconnectGitLab(): Promise<void> {
   await post('/oauth2/gitlab/logout', {})
+}
+
+// pushRoutes are the push routes, handed to push.ts by its callers:
+// importing client.ts there would split Vue's reactivity out of the initial
+// bundle into a chunk of its own. info: GET /push, whether this Desk sends
+// push notifications, and its key; put: PUT /push/subscription, stores or
+// refreshes this device's subscription with its categories; remove: DELETE
+// /push/subscription of an endpoint.
+export const pushRoutes = {
+  info: () => get<PushInfo>('/push'),
+  put: (body: PushSubscriptionRequest) => del('/push/subscription', body, 'PUT'),
+  remove: (endpoint: string) => del('/push/subscription', { endpoint }),
 }
 
 // logout: POST /oauth2/logout, then go where the server says (the
