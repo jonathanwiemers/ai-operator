@@ -33,8 +33,9 @@ const shop = '/projects/team-a/shop'
 const text = (s: string) => (page: Page) => expect(page.locator('main').getByText(s).first()).toBeVisible()
 
 const shots: Shot[] = [
-  { name: 'dashboard', path: '/', ready: text('Checkout without account') },
-  { name: 'dashboard-dark', path: '/', colorScheme: 'dark', ready: text('Checkout without account') },
+  // The Overview's Cockpit (R16 of "Desk: the Cockpit"): the Inbox's items pinned, Working now in the panel.
+  { name: 'dashboard', path: '/', ready: text('Support refunds through the payment provider') },
+  { name: 'dashboard-dark', path: '/', colorScheme: 'dark', ready: text('Support refunds through the payment provider') },
   // The project's Cockpit (R15 of "Desk: the Cockpit"): %14's pinned cards, the stream, the panel.
   { name: 'project-stream', path: shop, ready: (page) => expect(page.locator('main [data-pinned-milestone="14"] [data-problem]').first()).toBeVisible() },
   { name: 'milestone-issues', path: `${shop}/milestones/14?tab=issues`, ready: text('Document the refund flow for support') },
@@ -59,7 +60,7 @@ const shots: Shot[] = [
     name: 'account-menu',
     path: '/',
     phone: true,
-    ready: text('Checkout without account'),
+    ready: text('Support refunds through the payment provider'),
     open: async (page) => {
       await openSheet((p) => p.getByRole('navigation', { name: 'Sections' }).getByRole('button', { name: 'Projects' }))(page)
       await page.getByRole('dialog').locator('[data-account-button]').scrollIntoViewIfNeeded()

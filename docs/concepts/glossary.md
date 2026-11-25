@@ -38,6 +38,14 @@ A spending cap in US dollars, for an issue or for a whole milestone (the
 owner whether to raise it; see
 [Budgets and spend](../guides/budgets-and-spend.md).
 
+### Cockpit
+
+The main view of a milestone, a project and the Overview in the
+[Desk](#desk): one stream with what [needs you](#needs-you) pinned on top,
+merges and milestone state shown, and runs, CI rounds and reviews folded into
+closed lines. A milestone's Cockpit ends with the message box to its
+[pilot](#pilot). See [The Desk](../guides/desk.md#overview).
+
 ### Companion repository
 
 A second GitLab project an issue may change in the same run, for example an

@@ -8,7 +8,8 @@
 // the plans feature. Milestone pages: Cockpit (the default, R10) | Issues |
 // Metrics, then Retrospective once one exists (R14); the pilot's composer
 // is at the bottom of the milestone's Cockpit (R12). The dashboard at /:
-// Overview | Activity. The task page (and the issue page with a live task):
+// Cockpit (the default, R16: the stream across all projects) | Timeline;
+// its old Overview and Activity tabs open the Cockpit (dashboardAlias). The task page (and the issue page with a live task):
 // Overview | Chat | Live | Logs | Calls (R10; Logs for the task's owners,
 // run watchdog R8).
 // Renamed and merged tabs keep their old ids as aliases (tabAlias): Metrics
@@ -18,7 +19,7 @@
 // milestoneAlias).
 export type ProjectTab = 'cockpit' | 'milestones' | 'metrics' | 'plans'
 export type MilestoneTab = 'cockpit' | 'issues' | 'metrics' | 'retrospective'
-export type DashboardTab = 'overview' | 'activity'
+export type DashboardTab = 'cockpit' | 'timeline'
 export type TaskTab = 'overview' | 'chat' | 'live' | 'logs' | 'calls'
 // A plan's tabs on phones: Chat, Decisions, Draft. Tablet and wider keep
 // the chat left and show planPaneTabs (Draft, Decisions) on the right; one
@@ -78,8 +79,8 @@ export function milestoneTabsFor(m: { retrospective?: unknown } | null): Tab<Mil
 }
 
 export const dashboardTabs: Tab<DashboardTab>[] = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'activity', label: 'Activity' },
+  { id: 'cockpit', label: 'Cockpit' },
+  { id: 'timeline', label: 'Timeline' },
 ]
 
 // taskTabs are all of a task's tabs; a task shows those it has content
@@ -128,6 +129,11 @@ const projectTabAliases: TabAliases = {
   board: { tab: 'milestones', view: 'board' },
 }
 
+// dashboardTabAliases are where the dashboard's removed tabs went (R16 of
+// "Desk: the Cockpit", D791-P2): Activity (once Stream) and Overview, whose
+// Working now is in the Cockpit's panel, into the Cockpit.
+const dashboardTabAliases: TabAliases = { activity: {}, stream: {}, overview: {} }
+
 // tabAlias is the current id of a ?tab= value: the renamed tab's id for an
 // old one, the value itself otherwise.
 export function tabAlias(v: string | null | undefined): string | null | undefined {
@@ -175,6 +181,20 @@ export function projectTabFromRoute(v: QueryValue, tabs: readonly Tab<string>[])
 // no change; Stream.vue replaces the URL with it on load.
 export function projectAlias<V>(query: Record<string, V>): Record<string, V | string> | null {
   return aliasQuery(query, projectTabAliases)
+}
+
+// dashboardTabFromRoute is the dashboard's tab: ?tab= as tabFromQuery reads
+// it, a removed tab's id as the Cockpit (dashboardTabAliases), until
+// Dashboard.vue has rewritten the URL.
+export function dashboardTabFromRoute(v: QueryValue): DashboardTab {
+  return tabFromQuery(aliasedTab(v, dashboardTabAliases), dashboardTabs)
+}
+
+// dashboardAlias is the query of an old dashboard link (?tab=activity,
+// stream, overview) at the Cockpit, null when it needs no change;
+// Dashboard.vue replaces the URL with it on load.
+export function dashboardAlias<V>(query: Record<string, V>): Record<string, V | string> | null {
+  return aliasQuery(query, dashboardTabAliases)
 }
 
 // milestoneTabFromRoute is a milestone page's tab: ?tab= as tabFromQuery

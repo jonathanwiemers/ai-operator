@@ -61,7 +61,7 @@ export const historyStreamKinds: StreamKind[] = [...pilotStreamKinds, ...runtime
 
 export const promptStreamKinds: StreamKind[] = ['prompt.posted', 'prompt.answered', 'prompt.closed']
 
-export const streamFilters: { id: StreamFilter; label: string; kinds?: StreamKind[] }[] = [
+const streamFilters: { id: StreamFilter; label: string; kinds?: StreamKind[] }[] = [
   { id: 'all', label: 'All' },
   { id: 'chat', label: 'Chat', kinds: ['note', 'proposal', ...promptStreamKinds] },
   { id: 'needs', label: 'Needs you', kinds: ['needs'] },

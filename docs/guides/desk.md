@@ -177,20 +177,27 @@ while a Desk tab is open. *Notifications on* turns them off.
 
 ## Overview
 
-*Overview* (`/`) shows, from top to bottom:
+*Overview* (`/`) has the tabs *Cockpit | Timeline* and opens on *Cockpit*,
+the [Cockpit](../concepts/glossary.md#cockpit) across all your projects:
 
-- **the summary**: milestones running, paused and waiting, what needs you,
-  and the spend of today and the last 7 days;
-- **Working now**: per project the issue that runs now and for how long, what
-  is next, usage limits, and *N finishing* for done milestones not yet closed;
-- **In progress**: every milestone in work, those that need you first;
-- **Recently done**: the newest done milestones, *Show all* for more;
-- **Timeline**: which issue of which project ran when, in the last 6 h,
-  24 h or 7 d ([the Overview timeline](milestone-order-and-timeline.md#the-overview-timeline)).
+- **Pinned**: the open items of the [Inbox](#inbox) of every project. A click
+  opens the item's card in its milestone's Cockpit, where you answer it.
+- **The stream**: merges and milestone state changes. The rest folds into one
+  closed line per project; click it, or switch on *Expand all*.
+- **Running now**: one line per running issue; it opens the milestone's Cockpit.
 
-A milestone row shows its progress (merged of all issues), open issues, cost,
-tokens and open leftovers; an unknown cost is a dash, never $0. The *Activity*
-tab (`/?tab=activity`, old `?tab=stream` links too) shows every event of all your projects.
+There is no message box. The panel *Working now* beside the stream (on a narrow
+screen *Working now* in the header opens it) has the summary (milestones
+running, paused and waiting, what needs you, spend today and in 7 days) and per
+project what runs, what is next, the engines' usage and limits, and *N
+finishing* for done milestones not yet closed.
+
+*Timeline* (`/?tab=timeline`) shows the
+[Overview timeline](milestone-order-and-timeline.md#the-overview-timeline)
+(which issue ran when, in the last 6 h, 24 h or 7 d), *In progress* (milestones
+in work, those that need you first) and *Recently done* (*Show all* for more).
+A milestone row shows progress, open issues, cost (a dash when unknown), tokens
+and leftovers. Old `?tab=overview`, `activity` and `stream` links open *Cockpit*.
 
 ## A project
 

@@ -9,19 +9,15 @@ import UTabs from '@nuxt/ui/components/Tabs.vue'
 import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import Badge from '../components/Badge.vue'
-import ExtLink from '../components/ExtLink.vue'
-import Markdown from '../components/Markdown.vue'
-import PauseCardCompact from '../components/PauseCardCompact.vue'
+import InboxList from '../components/InboxList.vue'
 import RelTime from '../components/RelTime.vue'
 import { duration, plural } from '../format'
 import { handledLabel, handledRoute, handledSubject, handledView, type HandledView } from '../inboxHandled'
-import { inboxRoute } from '../inboxRoute'
 import { pausedStrip } from '../inboxStrip'
 import { getInbox } from '../client'
 import { useResource } from '../live'
 import { pageHeaderUi, toolbarUi } from '../pageHeader'
 import { disableNotify, enableNotify, notify, notifyActive, refreshPermission } from '../notify'
-import Truncated from '../ui/Truncated.vue'
 
 const { data, error, loading } = useResource(() => getInbox, ['project', 'task'])
 
@@ -44,15 +40,11 @@ const strip = computed(() => pausedStrip(data.value?.items ?? [], Date.now()))
 
 onMounted(refreshPermission)
 
-// A row is a list item whose title link covers it (after:absolute), so a tap
-// anywhere opens the item. What sits above the cover keeps its own tap: the
-// companion's merge request link and a clipped reason, which opens in place.
-const row =
-  'relative grid min-h-11 gap-1 px-4 py-3 hover:bg-(--surface-2) tablet:grid-cols-[120px_1fr_minmax(120px,0.6fr)_auto] tablet:items-baseline tablet:gap-3'
+// A handled row is a list item whose title link covers it (after:absolute),
+// so a tap anywhere opens the item; the open items are InboxList's rows.
 const handledRow =
   'relative grid min-h-11 gap-1 px-4 py-3 hover:bg-(--surface-2) tablet:grid-cols-[90px_minmax(120px,0.5fr)_1fr_auto] tablet:items-baseline tablet:gap-3'
 const cover = 'text-(--text) after:absolute after:inset-0 hover:no-underline'
-const reason = 'muted min-w-0 text-[13px] [&[role=button]]:relative [&[role=button]]:z-1'
 </script>
 
 <template>
@@ -117,49 +109,7 @@ const reason = 'muted min-w-0 text-[13px] [&[role=button]]:relative [&[role=butt
     <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
     <div v-if="loading && !data" class="card empty">Loading…</div>
     <UEmpty v-else-if="data && view === 'open' && !data.items.length" icon="i-lucide-inbox" title="Nothing waiting." class="mt-[18px]" />
-    <ul
-      v-else-if="data && view === 'open'"
-      class="m-0 mt-[18px] list-none divide-y divide-(--border) overflow-hidden rounded-(--radius) border border-(--border) bg-(--surface) p-0"
-    >
-      <li v-for="(item, i) in data.items" :key="i">
-        <PauseCardCompact
-          v-if="item.kind === 'pause'"
-          flat
-          :kind="item.pauseKind"
-          :reason="item.reason"
-          :issue="item.issueIID"
-          :hold="item.hold"
-          :project="item.project"
-          :milestone-title="item.title"
-          :to="inboxRoute(item)"
-        />
-        <!-- A ready companion: the row opens the home task, the ref the companion MR in GitLab. -->
-        <div v-else-if="item.kind === 'companionReady'" :class="row">
-          <span class="font-semibold break-words">{{ item.project }}</span>
-          <span class="min-w-0 break-words">
-            <RouterLink :to="inboxRoute(item)" :class="cover"
-              ><b>Companion ready</b><template v-if="item.issueIID"> · #{{ item.issueIID }}</template></RouterLink
-            >
-            {{ ' ' }}<ExtLink :href="item.url" class="mono relative z-1">{{ item.title }}</ExtLink>
-          </span>
-          <Truncated :lines="2" :class="reason"><Markdown mode="inline" :text="item.reason" /></Truncated>
-          <span class="faint text-xs"><RelTime :time="item.at" /></span>
-        </div>
-        <div v-else :class="row">
-          <span class="font-semibold break-words">{{ item.project }}</span>
-          <span class="min-w-0 break-words">
-            <RouterLink :to="inboxRoute(item)" :class="cover">
-              <b v-if="item.kind === 'proposal' && item.proposalID != null">P{{ item.proposalID }}</b>
-              <b v-else-if="item.kind === 'pilotError'">Pilot write rejected</b>
-              <b v-else-if="item.issueIID">#{{ item.issueIID }}</b>
-              {{ item.title }}
-            </RouterLink>
-          </span>
-          <Truncated :lines="2" :class="reason"><Markdown mode="inline" :text="item.reason" /></Truncated>
-          <span class="faint text-xs"><RelTime :time="item.at" /></span>
-        </div>
-      </li>
-    </ul>
+    <InboxList v-else-if="data && view === 'open'" class="mt-[18px]" :items="data.items" />
     <template v-else-if="data">
       <UEmpty v-if="!handled.length" icon="i-lucide-inbox" title="Nothing handled in the last 7 days." class="mt-[18px]" />
       <ul

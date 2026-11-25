@@ -5,11 +5,10 @@ import { computed, defineAsyncComponent, ref, watch, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import UButton from '@nuxt/ui/components/Button.vue'
 import UDashboardToolbar from '@nuxt/ui/components/DashboardToolbar.vue'
-import UInput from '@nuxt/ui/components/Input.vue'
 import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
 import UTabs from '@nuxt/ui/components/Tabs.vue'
 import { hasFeature } from '../api'
-import { getInbox, getMilestone, getProject, getProjectHistory, getStream, LoginRequiredError, NotFoundError } from '../client'
+import { getInbox, getMilestone, getProject, getProjectHistory, LoginRequiredError, NotFoundError } from '../client'
 import { setCrumbNames } from '../crumbNames'
 import ContextLayout from '../components/ContextLayout.vue'
 import ContextPanel from '../components/ContextPanel.vue'
@@ -22,7 +21,6 @@ import Cockpit from '../components/cockpit/Cockpit.vue'
 import CockpitComposer from '../components/cockpit/CockpitComposer.vue'
 import CockpitLive from '../components/cockpit/CockpitLive.vue'
 import ProjectPinned from '../components/cockpit/ProjectPinned.vue'
-import EventCard from '../components/stream/EventCard.vue'
 import MilestoneIssues from '../components/MilestoneIssues.vue'
 import MilestoneNeeds from '../components/MilestoneNeeds.vue'
 import MilestonePanel from '../components/MilestonePanel.vue'
@@ -30,30 +28,22 @@ import MilestoneRetro from '../components/MilestoneRetro.vue'
 import MilestoneSections from '../components/MilestoneSections.vue'
 import PlanList from '../components/PlanList.vue'
 import ProjectFinishing from '../components/ProjectFinishing.vue'
-import DeskChat from '../ui/DeskChat.vue'
 import RouteTabs from '../ui/RouteTabs.vue'
-import { streamMessages } from '../chatView'
 import { live, useResource } from '../live'
 import { needsOpen } from '../needsOpen'
 import { pausePrompt } from '../pauseCard'
 import {
   dayEndCursor,
-  groupThreads,
-  kindsForFilter,
-  streamEventKey,
-  streamFilters,
-  type StreamFilter,
 } from '../stream'
 import type {
   Cost,
   HistoryResponse,
   MilestoneView,
   ProjectDetail,
-  StreamEvent,
 } from '../types'
 import { milestoneStatus } from '../milestoneRows'
 import { alertColor, toneText } from '../badgeTone'
-import { pageHeaderUi, searchToolbarUi } from '../pageHeader'
+import { pageHeaderUi } from '../pageHeader'
 import { headerCost, keepCost, totalsCost } from '../headerCost'
 import {
   milestoneTabFromRoute,
@@ -78,20 +68,19 @@ import { announceChange } from '../ui/useAnnounce'
 const ProjectQueue = defineAsyncComponent(() => import('../components/ProjectQueue.vue'))
 
 const props = defineProps<{
-  namespace?: string
-  name?: string
+  namespace: string
+  name: string
   iid?: string
   // problem: the problem route (the Cockpit with one thread open).
   problem?: string
 }>()
 
-const everything = computed(() => !props.namespace || !props.name)
 const milestoneIID = computed(() => (props.iid ? Number(props.iid) : undefined))
 
 // tab: Cockpit (the default), Milestones, Metrics or Plans (feature plans) on
 // projects, Cockpit (the default), Issues, Metrics or Retrospective on
 // milestones, kept in ?tab= so it can be linked to (a #prompt-Q<n> link
-// without it opens the Cockpit); Everything has no tabs. A milestone shows
+// without it opens the Cockpit). A milestone shows
 // Retrospective only once it has one (milestoneTabsFor); a project's and a
 // milestone's removed tabs' links open where their content moved
 // (projectAlias, milestoneAlias). The milestone Cockpit tab's badge is the
@@ -102,7 +91,6 @@ const route = useRoute()
 const pageMilestone = computed(() => (milestone.value?.iid === milestoneIID.value ? milestone.value : null))
 const needsCount = computed(() => (pageMilestone.value ? needsOpen(pageMilestone.value).count : 0))
 const tabs = computed(() => {
-  if (everything.value) return []
   if (!milestoneIID.value) return projectTabsFor(hasFeature('plans'))
   return milestoneTabsFor(pageMilestone.value)
 })
@@ -114,7 +102,6 @@ const tabBadges = computed(() => (milestoneIID.value && needsCount.value ? { coc
 // ?tab=retrospective link waits for it; once loaded, a hidden tab falls
 // back to the first one, the Cockpit (Decision 7).
 const tab = computed((): string => {
-  if (everything.value) return 'activity'
   if (props.problem) return 'cockpit'
   if (milestoneIID.value) {
     const loaded = milestone.value?.iid === milestoneIID.value || milestoneFailed.value
@@ -129,28 +116,12 @@ function tabTo(id: string) {
   if (!props.problem) return { query }
   return { name: 'stream-milestone' as const, params: { namespace: props.namespace, name: props.name, iid: props.iid }, query }
 }
-const filter = ref<StreamFilter>('all')
-
 const router = useRouter()
-const q = ref('')
-const qDraft = ref('')
-const events = ref<StreamEvent[]>([])
-const older = ref<string | undefined>()
-const newest = ref<string | undefined>()
-const historyOn = ref(true)
-const loading = ref(true)
-const loadingOlder = ref(false)
 const error = ref('')
 const notFound = ref(false)
-let seq = 0
-
 const project = ref<ProjectDetail | null>(null)
 
 async function loadProject() {
-  if (everything.value) {
-    project.value = null
-    return
-  }
   try {
     project.value = await getProject(props.namespace!, props.name!)
   } catch (e) {
@@ -173,7 +144,6 @@ const milestoneFailed = ref(false)
 
 const projectInbox = computed(() => {
   const items = inbox.value?.items ?? []
-  if (everything.value) return items
   return items.filter((i) => i.namespace === props.namespace && i.project === props.name)
 })
 
@@ -185,7 +155,7 @@ const projectInbox = computed(() => {
 // the button that opened the sheet (panelOpener). A milestone's Issues tab
 // (a table of fixed columns) needs the full width: there the panel is a
 // sheet at every width.
-const hasContext = computed(() => !everything.value && !!props.namespace && !!props.name)
+const hasContext = computed(() => !!props.namespace && !!props.name)
 const contextOpen = ref(false)
 const panelOpener = ref<HTMLElement | null>(null)
 const pagePanelViews = computed(() => (milestoneIID.value ? panelViews : projectPanelViews))
@@ -239,7 +209,7 @@ watch(
   () => [milestoneIID.value, route.query.panel] as const,
   ([, panel]) => {
     if (panelBySwitch) return void (panelBySwitch = false)
-    if (everything.value || !panel || route.query.tab === 'decisions') return
+    if (!panel || route.query.tab === 'decisions') return
     if (!panelColumn.value || window.matchMedia('(max-width: 1179.98px)').matches) {
       panelOpener.value = null
       contextOpen.value = true
@@ -250,10 +220,10 @@ watch(
 const canSteer = computed(() => !!milestone.value?.permissions?.steer)
 
 // paused: the loaded milestone's paused autopilot, pinned above the composer
-// (project and milestone streams only; the Inbox covers Everything).
+// (project and milestone pages).
 const paused = computed(() => {
   const m = milestone.value
-  return !everything.value && m?.autopilot?.phase === 'Paused' ? m : null
+  return m?.autopilot?.phase === 'Paused' ? m : null
 })
 
 // pauseProps: the compact pause card's props (stream and Issues tabs).
@@ -274,80 +244,7 @@ const pauseProps = computed(() => {
   }
 })
 
-// The stream as a chat (DeskChat): oldest first, new events at the bottom.
-const streamChat = computed(() => streamMessages(groupThreads(events.value)))
-
-function streamQuery(extra: Record<string, string | undefined> = {}): URLSearchParams {
-  const params = new URLSearchParams()
-  if (!everything.value) params.set('project', `${props.namespace}/${props.name}`)
-  if (milestoneIID.value) params.set('milestone', String(milestoneIID.value))
-  // Chat kinds collide with history ids: only with the chat feature, and
-  // only when "all" names them explicitly (other chips unchanged).
-  const kinds = kindsForFilter(filter.value, hasFeature('chat'))
-  if (kinds) params.set('kinds', kinds.join(','))
-  if (q.value.trim()) params.set('q', q.value.trim())
-  for (const [k, v] of Object.entries(extra)) {
-    if (v) params.set(k, v)
-  }
-  params.set('limit', '50')
-  return params
-}
-
-async function loadInitial() {
-  const mine = ++seq
-  loading.value = true
-  error.value = ''
-  notFound.value = false
-  try {
-    const page = await getStream(streamQuery())
-    if (mine !== seq) return
-    events.value = page.events
-    older.value = page.older
-    newest.value = page.newest
-    historyOn.value = page.history
-  } catch (e) {
-    if (mine !== seq || e instanceof LoginRequiredError) return
-    if (e instanceof NotFoundError) notFound.value = true
-    else error.value = errorMessage(e)
-  } finally {
-    if (mine === seq) loading.value = false
-  }
-}
-
-async function loadOlder() {
-  if (!older.value || loadingOlder.value) return
-  loadingOlder.value = true
-  try {
-    const page = await getStream(streamQuery({ before: older.value }))
-    events.value = [...events.value, ...page.events]
-    older.value = page.older
-  } catch (e) {
-    if (!(e instanceof LoginRequiredError)) error.value = errorMessage(e)
-  } finally {
-    loadingOlder.value = false
-  }
-}
-
-async function loadLive() {
-  if (!newest.value) return
-  try {
-    const page = await getStream(streamQuery({ after: newest.value }))
-    if (page.events.length) {
-      const seen = new Set(events.value.map(streamEventKey))
-      const fresh = page.events.filter((e) => !seen.has(streamEventKey(e)))
-      if (fresh.length) events.value = [...fresh, ...events.value]
-      if (page.newest) newest.value = page.newest
-    }
-  } catch {
-    /* live refresh is best-effort */
-  }
-}
-
 async function loadHistory() {
-  if (everything.value) {
-    history.value = null
-    return
-  }
   try {
     history.value = await getProjectHistory(props.namespace!, props.name!, 30, Intl.DateTimeFormat().resolvedOptions().timeZone)
   } catch (e) {
@@ -357,10 +254,6 @@ async function loadHistory() {
 
 async function loadMilestone() {
   const iid = milestoneIID.value
-  if (everything.value) {
-    milestone.value = null
-    return
-  }
   // Prefer scoped milestone; else first with autopilot.
   let pick = iid
   if (!pick && project.value?.milestones.length) {
@@ -380,16 +273,6 @@ async function loadMilestone() {
     milestone.value = null
     milestoneFailed.value = !!iid
   }
-}
-
-function applySearch() {
-  q.value = qDraft.value
-  void loadInitial()
-}
-
-function setFilter(id: StreamFilter) {
-  filter.value = id
-  void loadInitial()
 }
 
 // pageProject: the loaded project, once it is the route's (the old one stays
@@ -446,7 +329,7 @@ const links = computed(() => {
 watch(
   () => [milestoneIID.value, route.query] as const,
   ([iid, query]) => {
-    const next = iid ? milestoneAlias(query) : everything.value ? null : projectAlias(query)
+    const next = iid ? milestoneAlias(query) : projectAlias(query)
     if (next) void router.replace({ query: next, hash: route.hash })
   },
   { immediate: true },
@@ -463,11 +346,11 @@ function showCost(next: Cost | null) {
   shownCost.value = { key: costKey.value, cost: keepCost(prev, next) }
 }
 watch(
-  () => (everything.value || !pageProject.value ? null : headerCost(pageProject.value, pageMilestone.value, milestoneIID.value)),
+  () => (!pageProject.value ? null : headerCost(pageProject.value, pageMilestone.value, milestoneIID.value)),
   showCost,
   { immediate: true },
 )
-const pageCost = computed(() => (!everything.value && shownCost.value.key === costKey.value ? shownCost.value.cost : null))
+const pageCost = computed(() => (shownCost.value.key === costKey.value ? shownCost.value.cost : null))
 
 // The breadcrumbs name the milestone by the project's list, or the
 // milestone once loaded (R19).
@@ -484,7 +367,6 @@ watch(
   () => {
     cockpitDay.value = undefined
     void loadProject()
-    if (everything.value) void loadInitial()
     void loadHistory()
   },
   { immediate: true },
@@ -499,7 +381,6 @@ watch(
   () => live.version,
   () => {
     if (!live.kinds || live.kinds.some((k) => k === 'project' || k === 'task')) {
-      if (everything.value) void loadLive()
       void loadProject()
       void loadMilestone()
     }
@@ -525,10 +406,9 @@ watch(
            headerCost.ts), the panel's view buttons (below 1180 px) and ⋯ with the links to
            GitLab on the right, then the tab row; the page's alerts are in
            the tabs. Filters and search are in the tabs'
-           toolbars (decision 3). On the dashboard's Activity tab
-           (everything) the dashboard has the header. -->
+           toolbars (decision 3). -->
       <div data-stream-head class="bg-(--bg) px-4 pt-3.5 tablet:px-7">
-        <UPageHeader v-if="!everything" :title="title" :ui="pageHeaderUi">
+        <UPageHeader :title="title" :ui="pageHeaderUi">
           <template v-if="status" #headline>
             <span :class="toneText[status.tone]" data-stream-status>{{ status.label }}</span>
           </template>
@@ -554,7 +434,7 @@ watch(
             </HeaderActions>
           </template>
         </UPageHeader>
-        <RouteTabs v-if="!everything" :tabs="tabs" :active="tab" :to="tabTo" :badges="tabBadges" />
+        <RouteTabs :tabs="tabs" :active="tab" :to="tabTo" :badges="tabBadges" />
       </div>
 
       <!-- A project's milestones (R9), in the dashboard's lists, or its
@@ -591,76 +471,6 @@ watch(
           <ProjectFinishing v-if="project" class="mb-3" :namespace="namespace" :name="name" :finishing="project.finishing ?? []" :gitlab="project.gitlab.url" />
           <MilestoneSections :namespace="namespace" :name="name" />
         </div>
-      </div>
-      <div v-else-if="tab === 'activity'" class="scroll stream">
-        <!-- The dashboard's Activity tab (everything; R16 makes it a Cockpit). -->
-        <!-- The tab's toolbar (decision 3): the event kind (UTabs pills)
-             left, the search right; on phones the search takes a row of
-             its own, last. -->
-        <UDashboardToolbar class="mt-3" :ui="searchToolbarUi" data-tab-toolbar>
-          <template #left>
-            <UTabs
-              :model-value="filter"
-              :items="streamFilters.map((f) => ({ label: f.label, value: f.id }))"
-              variant="pill"
-              size="sm"
-              :content="false"
-              class="min-w-0 max-w-full"
-              :ui="{ list: 'w-auto max-w-full overflow-x-auto' }"
-              aria-label="Show events"
-              data-stream-filter
-              @update:model-value="setFilter($event as StreamFilter)"
-            />
-          </template>
-          <template #right>
-            <form role="search" class="w-full tablet:w-45" @submit.prevent="applySearch">
-              <UInput
-                v-model="qDraft"
-                type="search"
-                placeholder="Search…"
-                aria-label="Search activity"
-                icon="i-lucide-search"
-                class="w-full"
-                :ui="{ base: 'tablet:text-sm/5' }"
-              />
-            </form>
-          </template>
-        </UDashboardToolbar>
-        <UAlert v-if="!historyOn" :color="alertColor('info')" variant="subtle" class="mt-3" description="History needs the research database." />
-        <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
-        <div v-if="loading && !events.length" class="empty">Loading…</div>
-        <DeskChat
-          v-else
-          class="min-h-[60dvh]"
-          label="Activity"
-          :messages="streamChat"
-          :older="!!older"
-          :loading-older="loadingOlder"
-          empty="No events yet."
-          @older="loadOlder"
-        >
-          <template #content="{ message }">
-            <div v-if="message.metadata.day" class="day">{{ message.metadata.day }}</div>
-            <EventCard
-              v-if="message.metadata.notes"
-              :notes="message.metadata.notes"
-              :project="project"
-              :can-steer="canSteer"
-              @posted="loadInitial"
-            />
-            <EventCard
-              v-else-if="message.metadata.event"
-              :event="message.metadata.event"
-              :project="project"
-              :prompts="milestone?.prompts"
-              :can-steer="canSteer"
-              @posted="loadInitial"
-            />
-          </template>
-          <template #prompt>
-            <p class="pick muted">Pick a project in the rail to message a pilot or issue.</p>
-          </template>
-        </DeskChat>
       </div>
       <div v-else-if="tab === 'cockpit' && !milestoneIID && namespace && name" class="scroll board">
         <!-- The project's Cockpit (R15): the pinned cards of every milestone
@@ -812,12 +622,6 @@ watch(
 .scroll.board {
   padding-top: 18px;
 }
-/* The Activity tab is a chat: the feed scrolls, the composer stays below. */
-.scroll.stream {
-  display: flex;
-  flex-direction: column;
-  padding-bottom: 16px;
-}
 /* The Cockpit's composer is sticky at the bottom (CockpitComposer.vue):
    no padding under it. On a phone the page scrolls, not this pane, so the
    composer sticks to the screen above the bottom bar and the keyboard. */
@@ -826,27 +630,6 @@ watch(
 }
 .milestones {
   padding-top: 4px;
-}
-.day {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--text-3);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  margin: 22px 0 10px;
-}
-.day::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--border);
-}
-.pick {
-  padding: 14px 0 4px;
-  font-size: 13.5px;
 }
 /* In the sheet the panel needs no edge of its own; the sheet's body scrolls. */
 .ctx-sheet {

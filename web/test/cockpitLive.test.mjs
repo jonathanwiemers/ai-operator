@@ -1,7 +1,7 @@
 // Tests of src/cockpitLive.ts: npm test (node --test, no extra dependencies).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { liveLines, stepWords } from '../src/cockpitLive.ts'
+import { liveLines, overviewLines, stepWords } from '../src/cockpitLive.ts'
 
 const now = Date.parse('2026-11-24T10:00:00Z')
 const task = (name, iid, run, extra = {}) => ({
@@ -51,4 +51,23 @@ test('a finished run, the pilot and a task without an issue have no line', () =>
   )
   assert.deepEqual(lines, [])
   assert.deepEqual(liveLines(undefined, now), [])
+})
+
+test('overviewLines: running issues of every project, linked to their milestone Cockpit or task', () => {
+  const now = Date.parse('2026-11-25T12:00:00Z')
+  const working = [
+    { namespace: 'team-b', project: 'api', issueIID: 7, task: 'api-7', since: '2026-11-25T11:56:00Z' },
+    { namespace: 'team-a', project: 'shop', issueIID: 12, title: 'Refunds', milestoneIID: 14, task: 'shop-12', since: '2026-11-25T11:58:00Z' },
+    { namespace: 'team-a', project: 'shop', issueIID: 11, milestoneIID: 14, task: 'shop-11' },
+    // A project without a running issue has no line.
+    { namespace: 'team-c', project: 'idle', next: { issueIID: 3, title: 'Next' } },
+  ]
+  const lines = overviewLines(working, now)
+  assert.deepEqual(
+    lines.map((l) => l.text),
+    ['shop #11', 'shop #12 Refunds · 2 min', 'api #7 · 4 min'],
+  )
+  assert.deepEqual(lines[1].to, { name: 'stream-milestone', params: { namespace: 'team-a', name: 'shop', iid: '14' } })
+  assert.deepEqual(lines[2].to, { name: 'task', params: { namespace: 'team-b', name: 'api', task: 'api-7' } })
+  assert.deepEqual(overviewLines(undefined, now), [])
 })

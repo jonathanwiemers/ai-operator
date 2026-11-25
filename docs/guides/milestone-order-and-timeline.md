@@ -118,7 +118,7 @@ records them; older issues show no held segments.
 
 ## The Overview timeline
 
-The *Overview* has a *Timeline* section after *Working now*. It shows one
+The *Overview* has a *Timeline* tab (`/?tab=timeline`). It shows one
 row per project you may see:
 
 ```

@@ -107,22 +107,25 @@ async function costsReady(page: Page): Promise<void> {
 
 // Every named route has a case here, with a variant per tab.
 const routes: Route[] = [
+  // The Overview opens on its Cockpit (R16 of "Desk: the Cockpit"): the
+  // Inbox's items pinned, Working now in the panel.
   {
     name: 'overview',
     path: '/',
-    ready: (page) => expect(page.getByText('Checkout without account').first()).toBeVisible(),
+    ready: (page) => expect(page.getByText('Support refunds through the payment provider').first()).toBeVisible(),
   },
   // The dark tokens (.dark in style.css), for the screenshots.
   {
     name: 'overview-dark',
     path: '/',
     colorScheme: 'dark',
-    ready: (page) => expect(page.getByText('Checkout without account').first()).toBeVisible(),
+    ready: (page) => expect(page.getByText('Support refunds through the payment provider').first()).toBeVisible(),
   },
+  // The Timeline tab: the Timeline across projects and the milestone lists.
   {
-    name: 'overview-activity',
-    path: '/?tab=activity',
-    ready: (page) => expect(page.getByText('Review round 2').first()).toBeVisible(),
+    name: 'overview-timeline',
+    path: '/?tab=timeline',
+    ready: (page) => expect(page.getByText('Checkout without account').first()).toBeVisible(),
   },
   {
     name: 'inbox',
@@ -1043,8 +1046,8 @@ for (const { name, label, current } of [
 
 // Project tabs (R15 of "Desk: the Cockpit"): a project opens on its
 // Cockpit, the queue is on Milestones, and an old ?tab=stream link opens
-// the Cockpit on a project and Activity on the dashboard.
-test.describe('Cockpit, Milestones and Activity tabs', () => {
+// the Cockpit on a project and on the dashboard (R16), whose tabs are Cockpit · Timeline.
+test.describe('Cockpit, Milestones and Timeline tabs', () => {
   async function open(page: Page, baseURL: string | undefined, path: string): Promise<Problems> {
     const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
     await page.setViewportSize({ width: 1280, height: 900 })
@@ -1080,20 +1083,24 @@ test.describe('Cockpit, Milestones and Activity tabs', () => {
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
   })
 
-  test('/?tab=stream opens Activity@1280', async ({ page, baseURL }) => {
+  test('/?tab=stream opens the Cockpit@1280', async ({ page, baseURL }) => {
     const problems = await open(page, baseURL, '/?tab=stream')
+    await expect(page).toHaveURL(/:\d+\/$/)
     const strip = page.locator('main').getByRole('navigation', { name: 'View' })
-    await expect(strip.locator('a[aria-current="page"]')).toHaveText(/^Activity/)
-    await expect(page.locator('main [data-stream-filter]')).toBeVisible()
-    await expect(page.getByRole('searchbox', { name: 'Search activity' })).toBeVisible()
+    await expect(strip.locator('a[aria-current="page"]')).toHaveText(/^Cockpit/)
+    await expect(page.locator('main [data-cockpit]')).toBeVisible()
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
   })
 
-  test('the dashboard tabs read Overview · Activity@1280', async ({ page, baseURL }) => {
+  test('the dashboard tabs read Cockpit · Timeline@1280', async ({ page, baseURL }) => {
     const problems = await open(page, baseURL, '/')
     const tabs = page.locator('main').getByRole('navigation', { name: 'View' }).getByRole('link')
-    await expect(tabs).toHaveText(['Overview', 'Activity'])
+    await expect(tabs).toHaveText(['Cockpit', 'Timeline'])
     await expect(tabs.nth(0)).toHaveAttribute('aria-current', 'page')
+    await tabs.nth(1).click()
+    await expect(page).toHaveURL(/\/\?tab=timeline$/)
+    await expect(page.locator('main [data-overview-timeline]')).toBeVisible()
+    await expect(page.locator('main [data-cockpit]')).toHaveCount(0)
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
   })
 })
@@ -3444,7 +3451,7 @@ test.describe('note thread', () => {
 // state on one line, the figures below.
 test.describe('milestone rows', () => {
   const pages = [
-    { name: 'overview', project: true },
+    { name: 'overview-timeline', project: true },
     { name: 'stream-project-dark', project: false },
   ]
   for (const { name, project } of pages) {
@@ -3510,13 +3517,13 @@ test.describe('milestone rows', () => {
   }
 })
 
-// The overview's Working now cards (DashboardOverview.vue, R12): one column
-// on a phone, two on a tablet, and on desktop as many columns of at least
-// 300 px as fit, as before. The Inbox tile of the summary strip is a link of
-// at least 44 px at every width.
+// The Overview's Working now cards (OverviewPanel.vue, R16 of "Desk: the
+// Cockpit"): in the Cockpit's panel, a column from 1180 px and a sheet that
+// the header's Working now button opens below, one card under the other.
+// The Inbox tile of the summary is a link of at least 44 px at every width.
 test.describe('overview cards', () => {
   for (const size of widths) {
-    test(`working now columns@${size.width}`, journeyAt(size.width), async ({ page, baseURL }, testInfo) => {
+    test(`working now in the panel@${size.width}`, async ({ page, baseURL }, testInfo) => {
       const route = routes.find((r) => r.name === 'overview')!
       const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
       await page.setViewportSize(size)
@@ -3526,7 +3533,9 @@ test.describe('overview cards', () => {
       await page.goto(route.path)
       await route.ready(page)
 
-      const cards = page.locator('main article')
+      if (size.width < 1180) await page.locator('main [data-panel-open="working"]').click()
+      else await expect(page.locator('main [data-panel-open]')).toHaveCount(0)
+      const cards = page.locator('[data-overview-panel] [data-overview-working] article')
       await expect(cards).toHaveCount(overview.working.length)
       // R7 Decision 6: "N finishing" on a card with held-open done milestones.
       const finishing = cards.first().locator('[data-overview-finishing]')
@@ -3542,24 +3551,13 @@ test.describe('overview cards', () => {
       const [a, b] = await cards.evaluateAll((els) =>
         els.slice(0, 2).map((e) => {
           const r = e.getBoundingClientRect()
-          return { left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width) }
+          return { left: Math.round(r.left), top: Math.round(r.top) }
         }),
       )
-      const grid = (await cards.first().locator('xpath=..').boundingBox())!
-      if (size.width < 760) {
-        expect(b!.left, 'one column').toBe(a!.left)
-        expect(b!.top, 'stacked').toBeGreaterThan(a!.top)
-        expect(a!.width, 'full width').toBeGreaterThan(grid.width - 2)
-      } else if (size.width < 1180) {
-        expect(b!.top, 'one row').toBe(a!.top)
-        expect(a!.width, 'half the width each').toBeGreaterThan(grid.width / 2 - 12)
-      } else {
-        expect(b!.top, 'one row').toBe(a!.top)
-        expect(a!.width, 'at least 300 px').toBeGreaterThanOrEqual(300)
-        expect(a!.width, 'room for more columns').toBeLessThan(grid.width / 2 - 12)
-      }
+      expect(b!.left, 'one column').toBe(a!.left)
+      expect(b!.top, 'stacked').toBeGreaterThan(a!.top)
 
-      const chip = page.locator('main ul[aria-label="Summary"] a[href="/inbox"]')
+      const chip = page.locator('[data-overview-panel] ul[aria-label="Summary"] a[href="/inbox"]')
       const height = (await chip.boundingBox())!.height
       expect(height, 'Inbox tile: a hit area of 44 px at every width').toBeGreaterThanOrEqual(44)
 

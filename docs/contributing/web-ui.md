@@ -355,6 +355,12 @@ build, so the CI `web` job enforces it. It prints
   a lazy chunk, but its name is in the preload lists of the routes that
   use it, and `absTime` in `format.ts` gained seconds and the zone name. The
   cap rose to 142.0 kB and the raise was reported on its merge request.
+- 2026-11-25, the Overview Cockpit (#791, R16 of the Cockpit milestone):
+  142.1 kB, up from 141.9 kB. The views stay lazy. `Cockpit.vue`, which was
+  only in the project page's chunk, is now shared with the Overview, so it
+  and the Reka UI parts it uses become chunks of their own, and their names
+  go into the preload lists in the entry chunk. The cap rose to 142.2 kB and
+  the raise was reported on its merge request.
 - The cap only drops. A change that breaks it is reported, not answered by
   raising it.
 
@@ -416,6 +422,13 @@ loads anyway.
   combobox move out of the Metrics chunk into chunks of their own, which
   compress worse. The cap was raised to 178.5 kB and the raise reported on
   its merge request.
+  2026-11-25, with the Overview Cockpit (#791, R16 of the Cockpit
+  milestone): 178.9 kB. The Overview's Cockpit (`USwitch`, `UInput`,
+  `UCollapsible`) and its panel (`StatTile`, `EngineUsage`) share chunks with
+  the Metrics page, and Vite splits `Label`, `useTypeahead` and the line
+  formatters into chunks of their own, which compress worse. The milestone
+  requires the Cockpit there, so the cap was raised to 179.0 kB and the raise
+  reported on its merge request.
 
 ## UI kit
 
@@ -1227,8 +1240,8 @@ do, and that on a phone a row stacks inside its width
 
 ### Activity header
 
-The header of the project and milestone pages and the dashboard's Activity
-tab (`web/src/views/Stream.vue`) are Tailwind utilities and Nuxt UI; only the
+The header of the project and milestone pages (`web/src/views/Stream.vue`)
+are Tailwind utilities and Nuxt UI; only the
 history's day cells in the project panel keep scoped CSS (`.cells` in
 `ContextPanel.vue`).
 
@@ -1241,8 +1254,7 @@ history's day cells in the project panel keep scoped CSS (`.cells` in
   with the project or milestone in GitLab. A project has no *Metrics*
   button; the Metrics tab is one click away. While a milestone loads, the
   title comes from the project's milestone list (`%<iid>` without it),
-  never *Loading…*. On the dashboard's *Activity* tab the dashboard has the
-  header, and Stream.vue shows none.
+  never *Loading…*.
 - The [RouteTabs](#routetabs) row follows; the header block holds nothing
   else. A project's default tab is its Cockpit (R15 of the Cockpit spec):
   `Cockpit.vue` over the project's stream, `ProjectPinned.vue` pinning each
@@ -1252,9 +1264,6 @@ history's day cells in the project panel keep scoped CSS (`.cells` in
   milestone's Cockpit; no composer. *Milestones* holds `ProjectQueue`,
   `ProjectFinishing` and `MilestoneSections`, or `ProjectBoards` with
   `?view=board` (a `UTabs` switch in its toolbar).
-- The dashboard's Activity tab opens with its [toolbar](#filters): the event filter on
-  the left, the search (`UInput`, 16 px on phones, 14 px from 760 px) on
-  the right, on a full-width row of its own on phones.
 - Stream rows (`stream/EventCard.vue`) break long URLs, branches and SHAs
   anywhere, so a row never widens the stream.
 
@@ -1264,7 +1273,9 @@ tab at 375, 768 and 1280 px.
 
 ### Inbox
 
-The Inbox (`web/src/views/Inbox.vue`) is Tailwind utilities and Nuxt UI,
+The Inbox (`web/src/views/Inbox.vue`, its open rows in
+`components/InboxList.vue`, which the Overview Cockpit pins too) is
+Tailwind utilities and Nuxt UI,
 without scoped CSS.
 
 - Each item is a list row whose title link covers the row (`after:absolute`),
@@ -1293,33 +1304,48 @@ reason opens in place, and that a row and *Open* navigate
 
 ### Dashboard
 
-The dashboard (`web/src/views/Dashboard.vue`) and its Overview tab
-(`components/DashboardOverview.vue`, with `MilestoneSections.vue` and
-`EngineUsage.vue`) are Tailwind utilities and Nuxt UI, without scoped CSS.
+The dashboard (`web/src/views/Dashboard.vue`, R16 of the Cockpit spec) is
+Tailwind utilities and Nuxt UI, without scoped CSS. It is a
+[ContextLayout](#context-panel-and-pause-history) with the panel
+`components/OverviewPanel.vue`.
 
-- *Overview* and *Activity* (`?tab=activity`, old `?tab=stream` too) are a
-  [RouteTabs](#routetabs) strip under the heading; on a phone the strip's links are 44 px high.
-- The summary strip's chips wrap. The needs-you chip links to the Inbox,
-  the *today* and *last 7 days* chips to the [Metrics page](#metrics-page)'s
-  last 7 days; these links are at least 44 px high on phones.
-- *Working now* has one column of cards on phones, two on tablets, and on
-  desktop as many columns of at least 300 px as fit, as before. Long titles
-  and project names break instead of widening a card. When `finishing` is
-  above 0 the card shows *N finishing* (`overview.ts`) linking to the
-  project page.
-- The milestone lists use the shared milestone row grid
-  (`MilestoneList.vue`); *Show all* is a `UButton`.
-- *Timeline* follows *Working now*: `OverviewTimeline.vue` with the
-  [Timeline](#timeline), a `UTabs` pill switch *6 h / 24 h / 7 d* in a
-  `UDashboardToolbar` (`?window=6h|24h|7d`, `overviewWindow` falls back to
-  `24h`) and the milestone legend. Without `overview.history` it shows the
-  same info `UAlert` as the milestone lists; over 500 issues
-  (`truncated`) a note says the timeline is cut.
+- *Cockpit* (default) and *Timeline* (`?tab=timeline`) are a
+  [RouteTabs](#routetabs) strip under the heading; on a phone the strip's
+  links are 44 px high. `dashboardAlias` (`streamTabs.ts`) rewrites the old
+  `?tab=activity`, `stream` and `overview` to the Cockpit on load.
+- *Cockpit* is `Cockpit.vue` with an empty scope, so `cockpitItems` runs
+  with scope `all`: merges, closes, milestone state and releases are shown,
+  the rest is folded per project. The pinned slot is `InboxList.vue`, the
+  Inbox's open rows, each a link through `inboxRoute` to its card in the
+  milestone Cockpit; nothing is answered here. The composer slot holds the
+  live lines of `overviewLines` (`cockpitLive.ts`): one per running issue of
+  `overview.working`, linking to its milestone's Cockpit, else its task. No
+  composer.
+- The panel (`OverviewPanel.vue`) is the summary tiles (`StatTile`, two per
+  row) and *Working now*, one card per running issue or busy project, one
+  column. The needs-you tile links to the Inbox, the *today* and *last 7
+  days* tiles to the [Metrics page](#metrics-page)'s last 7 days; these
+  links are at least 44 px high on phones. When `finishing` is above 0 the
+  card shows *N finishing* (`overview.ts`) linking to the project page; each
+  engine has its `EngineUsage` meter. From 1180 px the panel is a column;
+  below, the header's *Working now* button opens it as a sheet, which
+  Escape closes, with focus back on the button.
+- *Timeline* is `OverviewTimeline.vue` with the [Timeline](#timeline), a
+  `UTabs` pill switch *6 h / 24 h / 7 d* in a `UDashboardToolbar`
+  (`?window=6h|24h|7d`, `overviewWindow` falls back to `24h`) and the
+  milestone legend, then the milestone lists (`MilestoneSections.vue`, the
+  shared milestone row grid of `MilestoneList.vue`; *Show all* is a
+  `UButton`). Without `overview.history` it shows the same info `UAlert` as
+  the milestone lists; over 500 issues (`truncated`) a note says the
+  timeline is cut.
 
-The e2e cases `overview cards › working now columns@<width>` at 375, 768
-and 1280 px check the columns and the Inbox chip's height
-(`overview-cards@<width>.png`); the route checks cover `overview` and
-`overview-stream` at the three widths.
+`e2e/overview-cockpit.spec.ts` checks the pinned items of two projects, the
+folded groups, the live line, the panel as a column at 1280 px and as a
+sheet at 390 px, a pinned item opening its card, the old links and axe. The
+e2e cases `overview cards › working now in the panel@<width>` at 375, 768
+and 1280 px check the panel's one column and the Inbox tile's height
+(`overview-cards@<width>.png`); the route checks cover `overview`,
+`overview-dark` and `overview-timeline` at the three widths.
 
 ### Project Queue and Finishing
 
@@ -2200,7 +2226,8 @@ The tab lists, defaults and aliases are in `web/src/streamTabs.ts`
 (unit-tested in `test/streamTabs.test.mjs`); a tab is always `?tab=`, never
 a path (decision 13 of the header and tabs milestone).
 
-- **Dashboard** (`/`): *Overview* (default) and *Activity* (`/?tab=activity`).
+- **Dashboard** (`/`): *Cockpit* (default) and *Timeline* (`/?tab=timeline`);
+  the old `?tab=activity`, `stream` and `overview` open the Cockpit.
   The summary strip's spend is the UTC day and the last 7 days. *Recently
   done* shows the newest 10, *Show all* loads up to 200. A milestone row's
   cost is a dash when unknown, never $0. A user with research alone starts

@@ -1,4 +1,4 @@
-// The Overview's Timeline across projects (DashboardOverview.vue,
+// The Overview's Timeline across projects (its Timeline tab, ?tab=timeline;
 // OverviewTimeline.vue, #667): one row per project, bars coloured by
 // milestone with a legend, overlapping bars on separate lines, a
 // 6 h / 24 h / 7 d switch kept in ?window=, and the info alert without the
@@ -44,7 +44,8 @@ async function open(page: Page, baseURL: string | undefined, opts: Opts = {}) {
     if (typeof body === 'string') return r.fulfill({ status: 200, contentType: 'text/plain; charset=utf-8', body })
     return r.fulfill({ status: 200, json: body })
   })
-  await page.goto(`/${opts.query ?? ''}`)
+  // The Timeline is the Overview's second tab (R16 of "Desk: the Cockpit").
+  await page.goto(`/?tab=timeline${(opts.query ?? '').replace(/^\?/, '&')}`)
   await expect(page.getByText('Checkout without account').first()).toBeVisible()
   return { problems, windows }
 }

@@ -61,7 +61,7 @@ async function open(page: Page, baseURL: string | undefined, opts: Opts = {}) {
     return r.fulfill({ status: 200, json: body })
   })
   await page.goto('/')
-  await expect(page.getByText('Checkout without account').first()).toBeVisible()
+  await expect(page.getByText('Support refunds through the payment provider').first()).toBeVisible()
   return { problems }
 }
 

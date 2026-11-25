@@ -69,7 +69,7 @@ numbered requirements give the planner a clear split.
 
 ## 2. Watch it get planned
 
-Open the Desk. Your milestone shows up on *Overview* on the operator's next
+Open the Desk. Your milestone shows up on the *Timeline* tab of *Overview* on the operator's next
 poll, with the state `running`. Click its title to open it.
 
 The milestone page opens on the *Issues* tab. It says *No issues planned

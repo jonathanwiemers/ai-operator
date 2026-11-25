@@ -90,7 +90,8 @@ test('inboxRoute: the Inbox rows and the notification click both route with it',
   const app = read('../src/App.vue')
   assert.match(app, /router\.push\(inboxRoute\(item\)\)/)
   assert.doesNotMatch(app, /router\.push\(\{/)
-  const inbox = read('../src/views/Inbox.vue')
+  // The open items are InboxList's rows (the Inbox and the Overview Cockpit).
+  const inbox = read('../src/components/InboxList.vue')
   const list = inbox.slice(inbox.indexOf('<ul'), inbox.indexOf('</ul>'))
   const links = list.match(/:to="[^"]*"/g)
   assert.ok(links.length >= 3)
