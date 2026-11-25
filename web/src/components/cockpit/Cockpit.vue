@@ -5,10 +5,12 @@ import UDashboardToolbar from '@nuxt/ui/components/DashboardToolbar.vue'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
 import USwitch from '@nuxt/ui/components/Switch.vue'
-import { ref } from 'vue'
+import { computed, provide, ref } from 'vue'
 import { alertColor } from '../../badgeTone'
+import { getDecisions } from '../../client'
+import { cockpitDecisionsKey, decisionsByID } from '../../cockpitDecision'
 import { threadHeader, type ThreadHeaderContext } from '../../cockpitThread'
-import { useNow } from '../../live'
+import { useNow, useResource } from '../../live'
 import { searchToolbarUi } from '../../pageHeader'
 import type { ProjectDetail, PromptView } from '../../types'
 import { useCockpitStream, type CockpitStreamScope } from '../../useCockpitStream'
@@ -38,6 +40,19 @@ const props = defineProps<{
 const stream = useCockpitStream(() => props.scope)
 const { scopeKind, conversation, threads, older, historyOn, loading, loadingOlder, error } = stream
 const now = useNow()
+
+// The decisions the decision items revisit in place (R5, D819-P1): one load
+// per Cockpit, of the milestone, or of the whole project (milestone 0) so
+// every milestone's decisions resolve; the Overview loads none.
+const decisions = useResource(() => {
+  const { namespace, name, milestoneIID } = props.scope
+  if (!namespace || !name) return null
+  return () => getDecisions(namespace, name, { milestone: milestoneIID ?? 0, q: '', state: 'all' })
+}, ['task'])
+provide(
+  cockpitDecisionsKey,
+  computed(() => decisionsByID(decisions.data.value?.decisions)),
+)
 
 const qDraft = ref('')
 function applySearch() {

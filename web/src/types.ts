@@ -190,6 +190,11 @@ export interface StreamEventData {
   lines?: string[]
   ran?: boolean
   releaseURL?: string
+  // decision.recorded: the decision's ID, choice and the ID it supersedes
+  // (also title and kind); untrusted agent text.
+  id?: string
+  choice?: string
+  supersedes?: string
 }
 
 export type SpendLevel = 'milestone' | 'issue' | 'run' | 'call'

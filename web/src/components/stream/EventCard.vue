@@ -15,6 +15,7 @@ import {
   releaseEventTitle,
 } from '../../releaseEvents'
 import Badge from '../Badge.vue'
+import CockpitDecision from '../cockpit/CockpitDecision.vue'
 import ExtLink from '../ExtLink.vue'
 import LocalText from '../LocalText.vue'
 import Markdown from '../Markdown.vue'
@@ -125,6 +126,7 @@ function taskLink(ev: StreamEvent) {
       <template v-else-if="isRelease">⚑</template>
       <template v-else-if="isPrompt">?</template>
       <template v-else-if="e.kind === 'chat.user' || e.kind === 'chat.agent'">C</template>
+      <template v-else-if="e.kind === 'decision.recorded'">D</template>
       <template v-else>·</template>
     </div>
     <!-- Long URLs, branches and SHAs break anywhere (overflow-wrap is
@@ -132,6 +134,7 @@ function taskLink(ev: StreamEvent) {
     <div class="min-w-0 wrap-anywhere">
       <div class="meta">
         <b v-if="isRelease && releaseEventTitle(e)">{{ releaseEventTitle(e) }}</b>
+        <b v-else-if="e.kind === 'decision.recorded'">Decision</b>
         <b v-else><LocalText :text="e.summary || e.kind" /></b>
         <span v-if="e.issueIID" class="ctx">#{{ e.issueIID }}</span>
         <span v-else-if="e.mergeRequestIID" class="ctx">!{{ e.mergeRequestIID }}</span>
@@ -296,6 +299,9 @@ function taskLink(ev: StreamEvent) {
       <div v-else-if="isPrompt" class="compact">
         <span><LocalText :text="e.summary" /></span>
       </div>
+
+      <!-- decision.recorded (R5 of "Desk: the Cockpit newest first by issue") -->
+      <CockpitDecision v-else-if="e.kind === 'decision.recorded'" :event="e" />
 
       <!-- Desk chat -->
       <div v-else-if="e.kind === 'chat.user' || e.kind === 'chat.agent'" class="card">
