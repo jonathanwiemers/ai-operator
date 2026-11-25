@@ -266,7 +266,7 @@ the agent dropped. `available` is `false` without the history database.
 |-----------------|---------|-------|
 | `GET /api/v1/inbox` | What needs you now: questions, prompts, proposals, pauses, failed runs, budget warnings. `handled` lists what closed in the last 7 days, at most 50 rows, newest first: closed prompts and the pilot's actions, with `kind` (`prompt` or `acted`), `closedReason`, `closedBy`, `by` and `at`. | see |
 | `GET /api/v1/events` | Server-sent events that say *what* changed (a project, a task, a research), without content. | login |
-| `GET /api/v1/stream` | The activity stream: comments, runs, pushes, CI, reviews, prompts, chat. `?project=`, `?milestone=`, `?issue=`, `?kinds=`, `?q=`. Comment bodies only with `conversation`. | see, research database |
+| `GET /api/v1/stream` | The activity stream: comments, runs, pushes, CI, reviews, prompts, chat, decisions (`decision.recorded`). `?project=`, `?milestone=`, `?issue=`, `?kinds=`, `?q=`. Comment bodies only with `conversation`. | see, research database |
 | `GET /api/v1/projects/{namespace}/{name}/history` | Activity per day: runs, merges, cost. `?days=` (1 to 90), `?tz=`. | see, research database |
 | `GET /api/v1/spend` | What a project, milestone, issue, task or run cost, with breakdowns by kind, role and model. A project, milestone or issue also gets its merged issues' merged lines and the cost per 100 merged production lines (`mergedLines`). `?namespace=&project=` are required; narrow it with `&milestone=`, `&issue=`, `&task=` and `&run=` (`run` needs `task`). | see, research database |
 | `GET /api/v1/costs` | Costs over a range for the Metrics page. `?range=` or `?from=&to=`, `?group=`, filters. | see, research database |
@@ -276,6 +276,12 @@ the agent dropped. `available` is `false` without the history database.
 | `GET /api/v1/metrics/flow` | The issues merged in the range, each once at its latest merge: merged issues per bucket, the median wall time (first run start to merge) and median agent time (the sum of the issue's call durations), and the review and fix calls per merged issue. An issue counts whole, with its runs and calls before the range. It takes the parameters of `/api/v1/costs`; only the range and `?project=` apply. | see, research database |
 | `GET /api/v1/metrics/pauses` | The milestone pauses that started in the range: per bucket and kind, totals, open now, by kind, resolver and via, per project, and the ten longest with a link to the milestone (`?tab=pilot`, which opens its *Cockpit*). It takes the parameters of `/api/v1/costs`; only the range and `?project=` apply. `truncated` is set when more than 20000 pause events were found, and only the newest were read. | see, research database |
 | `GET /api/v1/timeline` | When each issue ran, waited and was held, for one milestone or a time window. See [Timeline](#timeline). | see |
+
+The stream's `decision.recorded` event is a decision saved for an issue. It
+has the milestone, the issue and the decision's posting time, and its `data`
+is `{id, title, choice, kind, supersedes}` (`supersedes` only when it
+replaces an earlier decision). The history recorder writes one per decision
+ID, once. The Cockpit shows it in the issue's thread; the Overview does not.
 
 ### Timeline
 

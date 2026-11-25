@@ -30,14 +30,16 @@ read from the top like a pull request.
   *Accept* or *Reject*, or write in its thread. A link with `#problem-…` or
   `#prompt-…`, and every Inbox entry, opens the Cockpit with that card open
   and in view.
-- **Live lines** come next: one line per issue whose agent works now, such
-  as *#712 implementing · 4 min*. With the `transcript` grant the line opens
-  the agent's [live transcript](desk.md#live-transcript) in place; without
-  it, the line links to the task. The line goes away when the run ends.
 - **Threads** come below the toolbar: one per issue, and a *Milestone*
   thread for events without an issue. The thread with the newest activity
-  is on top, and each lists its events newest first. **Shown events** are
-  what the pilot did and why, merges and the milestone's state changes.
+  is on top. Its header shows the issue, its state and, while an agent
+  works on it, the step with its time, such as *Implementing · 4 min*. With
+  the `transcript` grant a running issue's thread has a closed *Live
+  transcript* ([more](desk.md#live-transcript)). It lists its newest 3
+  events first; *Show N more* shows the rest. **Shown events** are what the
+  pilot did and why, merges and the milestone's state changes. A pilot
+  action about an issue shows there too.
+- **Decisions** are events in their issue's thread: ID, title, choice and *Revisit* ([Decisions tab](decisions.md)). The ID opens the card there. A replaced one says *Superseded by …*.
 - **Folded groups** hold the rest. The runs, CI rounds, reviews and
   checkpoints of a thread between two shown events become one closed line,
   such as *#712 · 3 runs, 2 CI rounds, review clean*. Click it, or press
@@ -66,8 +68,6 @@ every page. On a narrower screen, and on a phone, a one-line strip under
 the page header sums it up, such as "1 running · 2 waiting · next #717",
 or "Nothing running". The strip opens the sidebar as a sheet from the
 right. Escape closes it and puts the focus back on the strip.
-The [decisions](../concepts/glossary.md#decision) are on the *Decisions*
-tab.
 
 ### The project and the Overview
 

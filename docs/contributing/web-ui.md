@@ -1661,6 +1661,19 @@ with the newest activity on top, and *Load older* last.
   and the local time span; Enter or Space opens it to its event cards.
   *Expand all* opens every group; a group opened or closed by hand keeps
   that until the switch changes.
+- **Threads.** `CockpitThread.vue` is one thread: the header from
+  `threadHeader` (`cockpitThread.ts`: ref, title, state badge, the running
+  step from `liveLines`, the milestone on a project), with the `transcript`
+  grant a closed `LiveTranscript` for a running issue, then the newest 3
+  items and a `UCollapsible` *Show N more* for the rest. The issue's thread
+  is the anchor `#issue-<iid>`; `?live=1` opens its transcript too.
+- **Decisions in threads.** `Cockpit.vue` loads the milestone's decisions
+  once (`getDecisions` with `state: 'all'`, reloaded on `task` updates) and
+  provides them as `cockpitDecisionsKey` (`cockpitDecision.ts`).
+  `CockpitDecision.vue` renders a `decision.recorded` event: the ID linked
+  through `decisionHref`, the title, the choice, "Superseded by D…" and the
+  loaded decision's `DecisionRevisit`, the same component as the Decisions
+  tab. Without the loaded decision it shows the event's data only.
 - **Composer** (R12). The `composer` slot comes first; on a milestone it is
   `web/src/components/cockpit/CockpitComposer.vue`, none on a stored
   milestone. Its header is the pilot line ([Milestone Pilot](#milestone-pilot));

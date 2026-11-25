@@ -11,7 +11,7 @@ is in [Steer from the Desk](../guides/steer-from-the-desk.md),
 [The Desk](../guides/desk.md),
 [Status and history](../reference/status-and-history.md#owner-messages),
 [Web UI development](../contributing/web-ui.md#cockpit) and
-[Design](../contributing/design.md#pod-topology).
+[Design](../contributing/design.md#pod-topology). Its layout was later reordered by [Desk: the Cockpit newest first by issue](desk-cockpit-now-and-next.spec.md): threads by issue, Now & next instead of the live lines and the panel.
 
 ## Goal
 

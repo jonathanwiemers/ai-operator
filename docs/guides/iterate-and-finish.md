@@ -108,8 +108,8 @@ Once an issue of a planned milestone is merged and closed, you can still
 change its decisions. The operator then creates a **follow-up issue** in
 the milestone that changes it.
 
-**In the Desk.** Open the project's panel on *Decisions*, pick the milestone and find the
-decision's card, or its *Issues* tab, where each issue lists its decision
+**In the Desk.** Open the project's *Decisions* tab, pick the milestone and find the
+decision's card, or the decision's event in its issue's thread in the *Cockpit*, or the *Issues* tab, where each issue lists its decision
 IDs. Each has a **Revisit** button:
 
 1. Click **Revisit**. A prompt opens pinned in the milestone's *Cockpit* and in

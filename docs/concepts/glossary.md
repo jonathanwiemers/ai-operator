@@ -41,10 +41,12 @@ owner whether to raise it; see
 ### Cockpit
 
 The main view of a milestone, a project and the Overview in the
-[Desk](#desk): one stream with what [needs you](#needs-you) pinned on top,
-merges and milestone state shown, and runs, CI rounds and reviews folded into
-closed lines. A milestone's Cockpit ends with the message box to its
-[pilot](#pilot). See [The Cockpit](../guides/steer-from-the-desk.md#the-cockpit).
+[Desk](#desk). A milestone's Cockpit reads from the top: the message box to
+its [pilot](#pilot), the latest exchange with it, what [needs you](#needs-you),
+then one thread per issue with the latest activity first, with merges and
+milestone state shown, [decisions](#decision) in their issue's thread, and
+runs, CI rounds and reviews folded into closed lines. [Now & next](#now--next)
+sits beside it. See [The Cockpit](../guides/steer-from-the-desk.md#the-cockpit).
 
 ### Companion repository
 
@@ -160,6 +162,16 @@ commands. See [Security](security.md#who-may-command).
 What waits for a milestone's owners, pinned on top of its Cockpit in the [Desk](#desk) (once a tab of its own): the
 open and resolved [problems](#problem-thread), each with its thread, and
 the pilot's proposals. See [The Desk](../guides/desk.md#the-pinned-cards).
+
+### Now & next
+
+The sidebar beside a [Cockpit](#cockpit) in the [Desk](#desk): what is going
+on and what comes next. *Running* lists the issues an agent works on, with
+step and time; *Waiting* the issues that wait for CI or a review and the held
+ones; *Up next* the next issues; *Milestones* the milestone and the ones
+after it. It collapses to a rail with counts; below 1180 px a one-line strip
+under the header opens it. See
+[The Cockpit](../guides/steer-from-the-desk.md#the-cockpit).
 
 ### Pause
 

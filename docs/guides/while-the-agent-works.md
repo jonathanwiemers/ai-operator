@@ -14,11 +14,12 @@ with fixes if needed → merge, by you or by
 
 ## Follow it in the Desk
 
-The milestone's [Cockpit](../concepts/glossary.md#cockpit) shows one live
-line per issue whose agent works now, such as *#42 implementing · 4 min*.
-With the `transcript` grant it opens the agent's transcript in place.
+The milestone's [Now & next](../concepts/glossary.md#now--next) sidebar
+lists the issue under *Running*, such as *#42 implementing · 4 min*. A click
+opens the issue's thread in the [Cockpit](../concepts/glossary.md#cockpit);
+with the `transcript` grant the thread opens with the agent's transcript.
 
-Click the issue in the panel's *Issues* or on the *Issues* tab to open its
+Click the issue on the *Issues* tab to open its
 task page. It shows the merge request, the run as it happens, the CI
 pipeline and what the run cost. The *Live* tab follows the agent: its
 steps, what it says and the tools it calls. See

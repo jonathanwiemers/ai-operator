@@ -10,7 +10,7 @@ place where the decisions are written.
 The refund issue #42 of the milestone *Payments* is merged. You want to
 know which currency the agent picked for refunds:
 
-1. Open the project in the Desk, switch its panel to *Decisions* (*Decisions* in the header on a phone) and pick *Payments* in the *Milestone* select.
+1. Open the project in the Desk, open its *Decisions* tab and pick *Payments* in the *Milestone* select.
 2. Type `currency` in the search box. One card is left:
 
    > **How refunds are booked** `D42-3` *Implementation*
@@ -124,8 +124,11 @@ see the line without them.
 
 ## Links to a decision
 
-- A decision ID in the milestone's queue, on the *Issues* tab and in the
-  project's context panel, opens the milestone's *Decisions* tab at its card.
+- A decision ID on the *Issues* tab, and in the decision's event in its
+  issue's thread in the *Cockpit*, opens the milestone's *Decisions* tab at
+  its card.
+- *Revisit* works in the Cockpit too: the decision's event in the issue's
+  thread has the same button and options as the card.
 - The tracking issue's *Decisions* list links to the milestone's
   *Decisions* tab.
 - Each card keeps *on GitLab* for the comment itself.

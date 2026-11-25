@@ -78,9 +78,8 @@ message box to the pilot at the bottom. In GitLab, the operator opens a
 [tracking issue](../concepts/glossary.md#tracking-issue) for the milestone
 right away. It holds the milestone's status, and you can comment there.
 
-When the planner is done, the panel's *Issues* beside the stream lists the
-planned issues by state: running, waiting for the issues they depend on,
-next, and merged. The *Issues* tab has the full table, each issue with its
+When the planner is done, the *Now & next* sidebar beside the stream lists what runs, what waits
+and the issues that come next. The *Issues* tab has the full table, each issue with its
 state and, once it has one, its merge request. Its *Lanes* view groups them
 by where they are, with the decisions of each. In GitLab the same issues
 appear in the milestone, each with an `agent::` label (see
