@@ -42,11 +42,13 @@ export function sameKey(applicationServerKey: ArrayBuffer | null, publicKey: str
 }
 
 // subscriptionBody is the PUT body of a subscription (its toJSON()) with the
-// categories picked on this device.
-export function subscriptionBody(sub: PushSubscriptionJSON, categories: Record<string, boolean>): PushSubscriptionRequest {
-  return {
+// categories picked on this device. Without categories (the service worker
+// cannot read them) the field is left out and the server keeps the stored ones.
+export function subscriptionBody(sub: PushSubscriptionJSON, categories: Record<string, boolean> | undefined): PushSubscriptionRequest {
+  const body: PushSubscriptionRequest = {
     endpoint: sub.endpoint ?? '',
     keys: { p256dh: sub.keys?.p256dh ?? '', auth: sub.keys?.auth ?? '' },
-    categories: Object.keys(categories).filter((c) => categories[c]),
   }
+  if (categories) body.categories = Object.keys(categories).filter((c) => categories[c])
+  return body
 }

@@ -2724,20 +2724,31 @@ choice is kept per browser.
 The Desk has one service worker, `/sw.js` with scope `/`. It exists so
 notifications show where the browser allows them only through a service
 worker (Chrome on Android), and so a click opens its item in the open Desk
-window. It has no `fetch` handler and caches nothing: no offline use.
+window, and it shows the Web Push notifications the server sends and
+subscribes again after `pushsubscriptionchange`. It has no `fetch`
+handler and caches nothing: no offline use.
 
 - **Build.** `src/sw.ts` is built by a second Vite build after the app's
   (`vite.sw.config.ts`, library mode, `iife`) into `dist/app/sw.js`: one
   file without imports, not hashed. The server sends it with
   `Cache-Control: no-cache`, and the CSP allows `worker-src 'self'`.
-  `tsconfig.sw.json` type-checks it with the `WebWorker` lib, which
-  clashes with `DOM`, so `tsconfig.json` leaves it out. `npm run
+  `tsconfig.sw.json` type-checks it with the `WebWorker` and `DOM`
+  libs (the shared text helpers import types from DOM modules), so
+  `tsconfig.json` leaves it out. `npm run
   typecheck` and `npm run build` run both.
 - **Shared code.** `notifyOpen.ts` is imported by the worker and the app:
   `NotifyOpen` (what a click opens, `{ item }` or `{ event }`; an event
   opens its milestone through `milestoneRoute()`), `openURL`, `parseOpen` and
   `clickTarget`. Keep it free of DOM and Vue. The worker has no route
   logic; the app routes with `inboxRoute()`.
+- **Push.** `pushNotify.ts` (pure) turns a payload `{ item }` or
+  `{ event }` into a notification with the in-tab texts, the key as `tag`
+  and `data: { open }`, so a tap uses the click path below. An unreadable
+  payload shows "Something new in the Desk": browsers may drop a
+  subscription whose pushes show nothing. `pushsubscriptionchange` fetches
+  `GET /api/v1/push`, subscribes and sends `PUT` without categories (the
+  server keeps the stored ones); errors are dropped, the next Desk start
+  refreshes it.
 - **Lifecycle.** `skipWaiting` on install and `clients.claim` on activate:
   with no cache, a new version breaks nothing mid-session, and the open
   tab gets click messages at once.

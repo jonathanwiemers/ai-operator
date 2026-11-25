@@ -1,9 +1,13 @@
 // The Desk's service worker, served as /sw.js (vite.sw.config.ts builds it
 // into one file without imports). It exists so notifications show where the
-// browser allows them only through a service worker (Chrome on Android), and
-// so a click on one opens its item in the open Desk window. It has no fetch
+// browser allows them only through a service worker (Chrome on Android), so a
+// click on one opens its item in the open Desk window, and so it shows the
+// Web Push notifications the server sends while the Desk is closed and
+// subscribes again when the browser drops the subscription. It has no fetch
 // handler and caches nothing (docs/contributing/web-ui.md, "Service worker").
 import { clickTarget, openURL, parseOpen } from './notifyOpen'
+import { pushNotification } from './pushNotify'
+import { keyBytes, subscriptionBody } from './pushSubscribe'
 
 declare const self: ServiceWorkerGlobalScope
 
@@ -11,6 +15,43 @@ declare const self: ServiceWorkerGlobalScope
 // tab gets the click messages right away.
 self.addEventListener('install', () => void self.skipWaiting())
 self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()))
+
+// Every push with userVisibleOnly must show a notification, or the browser
+// may drop the subscription: an unreadable payload shows a generic one.
+self.addEventListener('push', (e) => {
+  let payload: unknown
+  try {
+    payload = e.data?.json()
+  } catch {
+    payload = undefined
+  }
+  const n = pushNotification(payload) ?? {
+    title: 'Desk',
+    options: { body: 'Something new in the Desk', tag: 'desk', icon: '/logo.svg', data: {} },
+  }
+  e.waitUntil(self.registration.showNotification(n.title, n.options).catch(() => undefined))
+})
+
+self.addEventListener('pushsubscriptionchange', (e) => e.waitUntil(resubscribe()))
+
+// resubscribe makes a new subscription and sends it without categories (the
+// server keeps the stored ones); errors are dropped, the next Desk start
+// refreshes the subscription anyway.
+async function resubscribe() {
+  try {
+    const info = (await (await fetch('/api/v1/push', { credentials: 'same-origin' })).json()) as { publicKey?: string }
+    if (!info.publicKey) return
+    const sub = await self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyBytes(info.publicKey) })
+    await fetch('/api/v1/push/subscription', {
+      method: 'PUT',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(subscriptionBody(sub.toJSON(), undefined)),
+    })
+  } catch {
+    // See above.
+  }
+}
 
 self.addEventListener('notificationclick', (e) => {
   e.notification.close()
