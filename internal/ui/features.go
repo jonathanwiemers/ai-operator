@@ -79,9 +79,11 @@ const (
 
 // ConnectResearch opens the research store with open, retrying with backoff
 // until it succeeds or ctx ends. Until then the research endpoints answer
-// 503; the factory does not depend on it.
+// 503; the factory does not depend on it. Once connected, it makes sure the
+// push key exists.
 func (s *Server) ConnectResearch(ctx context.Context, open func(context.Context) (*store.Store, error)) {
 	s.connectStore(ctx, open, s.SetResearchStore, "research database")
+	s.preparePushKey(ctx)
 }
 
 // ConnectChat opens the chat writer store with open, retrying with backoff

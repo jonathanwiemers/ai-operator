@@ -77,21 +77,30 @@ type PushSubscription struct {
 	Failures    int
 }
 
+// ErrPushSubscriptionTaken is UpsertPushSubscription's error for an
+// endpoint stored for another username.
+var ErrPushSubscriptionTaken = errors.New("the push subscription belongs to another user")
+
 // UpsertPushSubscription stores sub by its endpoint and returns its id and
-// whether the row is new. It sets the keys, the principal and refreshed_at
-// to now. An existing row keeps its categories with keepCategories and
-// takes sub.Categories otherwise; a new row always takes sub.Categories.
+// whether the row is new. It sets the keys, the roles and refreshed_at to
+// now. An existing row keeps its categories with keepCategories and takes
+// sub.Categories otherwise; a new row always takes sub.Categories. A row of
+// another username is left as it is: ErrPushSubscriptionTaken.
 func (s *Store) UpsertPushSubscription(ctx context.Context, sub PushSubscription, keepCategories bool, now time.Time) (id int64, created bool, err error) {
 	err = s.pool.QueryRow(ctx, `INSERT INTO push_subscriptions
 			(endpoint, p256dh, auth, username, roles, categories, created_at, refreshed_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
 		ON CONFLICT (endpoint) DO UPDATE SET
-			p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth, username = EXCLUDED.username,
+			p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth,
 			roles = EXCLUDED.roles, refreshed_at = EXCLUDED.refreshed_at,
 			categories = CASE WHEN $8::boolean THEN push_subscriptions.categories ELSE EXCLUDED.categories END
+		WHERE push_subscriptions.username = EXCLUDED.username
 		RETURNING id, (xmax = 0)`,
 		sub.Endpoint, sub.P256dh, sub.Auth, sub.Username, nonNil(sub.Roles), nonNil(sub.Categories), now, keepCategories,
 	).Scan(&id, &created)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, false, ErrPushSubscriptionTaken
+	}
 	if err != nil {
 		return 0, false, fmt.Errorf("upsert push subscription: %w", err)
 	}

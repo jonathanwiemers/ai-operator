@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"bytes"
+	"errors"
 	"slices"
 	"testing"
 	"time"
@@ -53,8 +54,9 @@ func wantKeys(t *testing.T, what string, got []string, want ...string) {
 	}
 }
 
-// A second upsert of an endpoint updates the principal and refreshed_at and
-// keeps the id; keepCategories keeps the stored categories.
+// A second upsert of an endpoint by its user updates the keys, roles and
+// refreshed_at and keeps the id; keepCategories keeps the stored categories.
+// Another user gets ErrPushSubscriptionTaken.
 func TestUpsertPushSubscription(t *testing.T) {
 	s := storetest.New(t)
 	id, created := upsertPush(t, s, pushSub("https://fcm.googleapis.com/a", "ann", "problem"), false, pushNow)
@@ -64,11 +66,16 @@ func TestUpsertPushSubscription(t *testing.T) {
 	other, _ := upsertPush(t, s, store.PushSubscription{Endpoint: "https://fcm.googleapis.com/b", Username: "bob"}, false, pushNow)
 
 	later := pushNow.Add(time.Hour)
-	sub := pushSub("https://fcm.googleapis.com/a", "ann2", "question")
+	sub := pushSub("https://fcm.googleapis.com/a", "ann", "question")
 	sub.Roles, sub.P256dh = []string{"ops", "dev"}, "new-p256dh"
 	again, created := upsertPush(t, s, sub, false, later)
 	if again != id || created {
 		t.Errorf("second upsert = (%d, %v), want (%d, false)", again, created, id)
+	}
+	// Another user cannot take the endpoint over.
+	if _, _, err := s.UpsertPushSubscription(t.Context(), pushSub("https://fcm.googleapis.com/a", "mallory", "release"), false,
+		later); !errors.Is(err, store.ErrPushSubscriptionTaken) {
+		t.Errorf("upsert by another user = %v, want ErrPushSubscriptionTaken", err)
 	}
 	sub.Categories = []string{"release"}
 	if again, created = upsertPush(t, s, sub, true, later.Add(time.Minute)); again != id || created {
@@ -80,8 +87,8 @@ func TestUpsertPushSubscription(t *testing.T) {
 		t.Fatalf("subscriptions = %+v, want ids %d and %d", subs, id, other)
 	}
 	got := subs[0]
-	if got.Username != "ann2" || !slices.Equal(got.Roles, []string{"ops", "dev"}) || got.P256dh != "new-p256dh" ||
-		got.Auth != "auth-ann2" || !slices.Equal(got.Categories, []string{"question"}) ||
+	if got.Username != "ann" || !slices.Equal(got.Roles, []string{"ops", "dev"}) || got.P256dh != "new-p256dh" ||
+		got.Auth != "auth-ann" || !slices.Equal(got.Categories, []string{"question"}) ||
 		!got.CreatedAt.Equal(pushNow) || !got.RefreshedAt.Equal(later.Add(time.Minute)) || got.Failures != 0 {
 		t.Errorf("subscription = %+v", got)
 	}

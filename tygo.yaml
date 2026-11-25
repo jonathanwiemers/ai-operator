@@ -119,6 +119,7 @@ packages:
       - projectsets.go
       - problems.go
       - prompt.go
+      - push.go
       - queue.go
       - release.go
       - research.go

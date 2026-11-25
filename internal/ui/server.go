@@ -75,6 +75,8 @@ type Server struct {
 	// planDecisionReads reads plans' decision history instead of research
 	// (tests).
 	planDecisionReads planDecisionReader
+	// pushes is the push routes' store instead of research (tests).
+	pushes pushStore
 	// chat is the chat writer's store, nil until connected or without
 	// the writer login.
 	chat atomic.Pointer[store.Store]
@@ -213,6 +215,9 @@ func (s *Server) routes() []route {
 		{"GET /api/v1/metrics/flow", s.authed(s.metricsFlow)},
 		{"GET /api/v1/metrics/pauses", s.authed(s.metricsPauses)},
 		{"GET /api/v1/timeline", s.authed(s.timeline)},
+		{"GET /api/v1/push", s.authed(s.pushInfo)},
+		{"PUT /api/v1/push/subscription", s.authed(s.putPushSubscription)},
+		{"DELETE /api/v1/push/subscription", s.authed(s.deletePushSubscription)},
 	}...)
 	if s.cfg.Research.Enabled() {
 		rs = append(rs, []route{

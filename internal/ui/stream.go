@@ -577,26 +577,13 @@ type HandledItem struct {
 // with questions, failed or blocked, the pilots' open proposals and paused
 // autopilots. It comes from the live state, not the history.
 func (s *Server) inbox(w http.ResponseWriter, r *http.Request) {
-	p := principalOf(r)
-	var projects aiv1.AgentProjectList
-	if err := s.reader.List(r.Context(), &projects); err != nil {
+	visible, tasks, err := s.viewableInbox(r.Context(), principalOf(r))
+	if err != nil {
 		s.internalError(w, err)
 		return
-	}
-	var tasks aiv1.AgentTaskList
-	if err := s.reader.List(r.Context(), &tasks); err != nil {
-		s.internalError(w, err)
-		return
-	}
-	visible := map[string]*aiv1.AgentProject{}
-	for i := range projects.Items {
-		ap := &projects.Items[i]
-		if s.authz.CanView(p, ap.Namespace, ap.Name) {
-			visible[ap.Namespace+"/"+ap.Name] = ap
-		}
 	}
 	now := time.Now()
-	writeJSON(w, http.StatusOK, InboxResponse{Items: inboxOf(visible, tasks.Items, now), Handled: handledOf(visible, tasks.Items, now)})
+	writeJSON(w, http.StatusOK, InboxResponse{Items: inboxOf(visible, tasks, now), Handled: handledOf(visible, tasks, now)})
 }
 
 // inboxTitleMax cuts a prompt's question in the Inbox.

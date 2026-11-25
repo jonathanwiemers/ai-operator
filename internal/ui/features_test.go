@@ -121,10 +121,16 @@ func TestResearchHandlerWaitsForStore(t *testing.T) {
 		t.Errorf("projects before the store connects: status %d", code)
 	}
 
+	// The zero store cannot be queried: the push key goes to a fake.
+	pushes := &fakePushStore{}
+	env.server.pushes = pushes
 	opened := &store.Store{}
 	env.server.ConnectResearch(context.Background(), func(context.Context) (*store.Store, error) { return opened, nil })
 	if code := serve(env.server); code != http.StatusNoContent {
 		t.Errorf("after the store connected: status %d, want 204", code)
+	}
+	if pushes.stored() == nil {
+		t.Error("no push key after the store connected")
 	}
 }
 

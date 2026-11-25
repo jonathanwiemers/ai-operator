@@ -1663,6 +1663,46 @@ export interface PromptAnswerView {
 }
 
 //////////
+// source: push.go
+
+/**
+ * PushInfo says whether this Desk sends push notifications: with Available
+ * the device may subscribe with PublicKey (the applicationServerKey,
+ * base64url), otherwise Reason says what is missing.
+ */
+export interface PushInfo {
+  available: boolean;
+  reason?: string;
+  publicKey?: string;
+}
+/**
+ * PushSubscriptionRequest is the body of PUT /api/v1/push/subscription: the
+ * device's PushSubscription.toJSON() and the categories picked on it.
+ */
+export interface PushSubscriptionRequest {
+  endpoint: string;
+  keys: PushSubscriptionKeys;
+  /**
+   * Categories are the picked categories. Absent keeps the stored ones,
+   * or the defaults on a new subscription; empty picks none.
+   */
+  categories?: string[];
+}
+/**
+ * PushSubscriptionKeys are a subscription's keys, base64url.
+ */
+export interface PushSubscriptionKeys {
+  p256dh: string;
+  auth: string;
+}
+/**
+ * PushUnsubscribeRequest is the body of DELETE /api/v1/push/subscription.
+ */
+export interface PushUnsubscribeRequest {
+  endpoint: string;
+}
+
+//////////
 // source: queue.go
 
 /**
