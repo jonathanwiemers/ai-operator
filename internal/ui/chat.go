@@ -20,6 +20,17 @@ const maxChatBody = 16 << 10
 
 var chatKinds = map[string]bool{"message": true, "interrupt": true, "command": true}
 
+// notPilotChat answers a message or interrupt posted to a task other than a
+// milestone's pilot: the pilot is the only chat on milestones.
+const notPilotChat = "talk to the pilot in the milestone's Cockpit"
+
+// takesChat reports whether task takes chat messages and interrupts: only a
+// milestone's pilot task does. Every task takes commands (the restart button,
+// the pause and problem cards).
+func takesChat(task *aiv1.AgentTask) bool {
+	return task.Spec.Type == aiv1.TaskTypeCoordinate && task.Spec.Milestone != nil
+}
+
 // chatRequest is a message posted from the Desk composer.
 type chatRequest struct {
 	Body      string `json:"body"`
@@ -38,7 +49,8 @@ type ChatMessageView struct {
 }
 
 // postChat inserts a user chat message for the task. Needs the chat grant
-// and the chat writer login; 201 on create, 200 when the client key already
+// and the chat writer login. Messages and interrupts go to a milestone's
+// pilot task only (403 elsewhere), commands to every task; 201 on create, 200 when the client key already
 // existed (retry-safe). The audit line never includes the text.
 func (s *Server) postChat(w http.ResponseWriter, r *http.Request) {
 	if !s.cfg.ChatEnabled() {
@@ -60,6 +72,10 @@ func (s *Server) postChat(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(req.Decisions) > 0 {
 		badRequest(w, "decisions are answered on a plan only")
+		return
+	}
+	if req.Kind != "command" && !takesChat(task) {
+		writeError(w, http.StatusForbidden, notPilotChat)
 		return
 	}
 	id, created, ok := s.insertChat(w, r, store.ChatMessage{

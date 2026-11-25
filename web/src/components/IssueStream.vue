@@ -7,7 +7,7 @@ import { hasFeature } from '../api'
 import { getStream, LoginRequiredError } from '../client'
 import { live } from '../live'
 import { streamMessages } from '../chatView'
-import { chatStreamKinds, groupThreads, kindsForFilter, streamEventKey } from '../stream'
+import { chatStreamKinds, groupThreads, allStreamKinds, streamEventKey } from '../stream'
 import DeskChat from '../ui/DeskChat.vue'
 import EventCard from './stream/EventCard.vue'
 import type { PromptView, StreamEvent, StreamKind } from '../types'
@@ -50,7 +50,7 @@ function streamQuery(extra: Record<string, string> = {}): URLSearchParams {
   // Chat rows come only when the kinds name them (as on the Stream tab).
   const kinds = props.kinds
     ? props.kinds.filter((k) => hasFeature('chat') || !chatStreamKinds.includes(k))
-    : kindsForFilter('all', hasFeature('chat'))
+    : allStreamKinds(hasFeature('chat'))
   if (kinds) params.set('kinds', kinds.join(','))
   return params
 }

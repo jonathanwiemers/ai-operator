@@ -1,12 +1,9 @@
 import { plural } from './format.ts'
 import type { GitLabStatus, ProjectDetail, PromptView, Stage, StreamEvent, StreamKind } from './types'
 
-// Filter chips map to kinds sent as kinds= on GET /stream.
-export type StreamFilter = 'all' | 'chat' | 'needs' | 'runs' | 'ci' | 'merged'
-
-// Every kind belongs to one tab of a milestone: Pilot (questions, pauses,
+// Every kind is in one of two lists: pilot kinds (questions, pauses,
 // what the pilot did, the owners' messages, decisions, the retrospective)
-// or Stream (runs, pushes, CI, reviews, merges). Mirrors internal/ui/stream.go.
+// or runtime kinds (runs, pushes, CI, reviews, merges). Mirrors internal/ui/stream.go.
 export const pilotStreamKinds = [
   'prompt.posted',
   'prompt.answered',
@@ -59,36 +56,16 @@ export const historyStreamKinds: StreamKind[] = [...pilotStreamKinds, ...runtime
   (k) => !chatStreamKinds.includes(k),
 )
 
-export const promptStreamKinds: StreamKind[] = ['prompt.posted', 'prompt.answered', 'prompt.closed']
-
-const streamFilters: { id: StreamFilter; label: string; kinds?: StreamKind[] }[] = [
-  { id: 'all', label: 'All' },
-  { id: 'chat', label: 'Chat', kinds: ['note', 'proposal', ...promptStreamKinds] },
-  { id: 'needs', label: 'Needs you', kinds: ['needs'] },
-  { id: 'runs', label: 'Runs', kinds: ['run.started', 'run.finished', 'push', 'checkpoint'] },
-  { id: 'ci', label: 'CI & review', kinds: ['ci', 'review'] },
-  { id: 'merged', label: 'Merged', kinds: ['merged', 'closed', 'item.skipped'] },
-]
-
-// kindsForFilter: with includeChat, "all" must name every kind (including
-// chat.user/chat.agent); other chips stay as they are.
-export function kindsForFilter(id: StreamFilter, includeChat = false): StreamKind[] | undefined {
-  if (id === 'all') {
-    return includeChat ? [...historyStreamKinds, ...chatStreamKinds] : undefined
-  }
-  return streamFilters.find((f) => f.id === id)?.kinds
+// allStreamKinds is kinds= for every kind: with includeChat it names them
+// all, chat.user and chat.agent among them (chat rows come only when named);
+// without it none, so the API sends its history kinds.
+export function allStreamKinds(includeChat: boolean): StreamKind[] | undefined {
+  return includeChat ? [...historyStreamKinds, ...chatStreamKinds] : undefined
 }
 
 // streamEventKey dedupes history and chat rows whose numeric ids collide.
 export function streamEventKey(e: Pick<StreamEvent, 'id' | 'kind'>): string {
   return `${e.kind.startsWith('chat.') ? 'chat' : 'event'}:${e.id}`
-}
-
-export function filterForKind(kind: StreamKind): StreamFilter | null {
-  for (const f of streamFilters) {
-    if (f.kinds?.includes(kind)) return f.id
-  }
-  return null
 }
 
 // Project rail status from board stage counts.

@@ -20,7 +20,7 @@
 export type ProjectTab = 'cockpit' | 'milestones' | 'metrics' | 'plans'
 export type MilestoneTab = 'cockpit' | 'issues' | 'metrics' | 'retrospective'
 export type DashboardTab = 'cockpit' | 'timeline'
-export type TaskTab = 'overview' | 'chat' | 'live' | 'logs' | 'calls'
+export type TaskTab = 'overview' | 'live' | 'logs' | 'calls'
 // A plan's tabs on phones: Chat, Decisions, Draft. Tablet and wider keep
 // the chat left and show planPaneTabs (Draft, Decisions) on the right; one
 // ?tab= serves both layouts (D617-P1).
@@ -87,7 +87,6 @@ export const dashboardTabs: Tab<DashboardTab>[] = [
 // for, Overview always.
 export const taskTabs: Tab<TaskTab>[] = [
   { id: 'overview', label: 'Overview' },
-  { id: 'chat', label: 'Chat' },
   { id: 'live', label: 'Live' },
   { id: 'logs', label: 'Logs' },
   { id: 'calls', label: 'Calls' },
@@ -209,11 +208,17 @@ export function milestoneTabFromRoute(v: QueryValue, tabs: readonly Tab<string>[
 // taskTabFromRoute is a task's tab among those available: ?tab= as
 // tabFromQuery reads it (unknown or unavailable tabs open Overview), but an
 // old #live-transcript link without ?tab= opens Live where the task has it.
+// The removed Chat tab opens Overview (taskTabAliases).
 export function taskTabFromRoute(v: QueryValue, hash: string, available: readonly Tab<TaskTab>[] = taskTabs): TaskTab {
   const none = v == null || v === '' || (Array.isArray(v) && !v.length)
   if (none && hash === '#live-transcript' && available.some((t) => t.id === 'live')) return 'live'
-  return tabFromQuery(v, available)
+  return tabFromQuery(aliasedTab(v, taskTabAliases), available)
 }
+
+// taskTabAliases are where a task's removed tabs went: the Chat tab into
+// Overview, as the pilot is the only chat on milestones (R18 of "Desk: the
+// Cockpit"). Task-only, not in tabAliases: chat is a plan tab (D792-P2).
+const taskTabAliases: TabAliases = { chat: { tab: 'overview' } }
 
 // milestoneAlias is the query of an old milestone link at the place its
 // content moved to (milestoneTabAliases), null when it needs no change;

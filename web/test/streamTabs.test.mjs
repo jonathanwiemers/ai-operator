@@ -156,7 +156,7 @@ test('tabAlias: the milestone aliases are not project aliases', () => {
 })
 
 test('task tabs: Overview is the default and drops the parameter', () => {
-  assert.deepEqual(taskTabs.map((t) => t.id), ['overview', 'chat', 'live', 'logs', 'calls'])
+  assert.deepEqual(taskTabs.map((t) => t.id), ['overview', 'live', 'logs', 'calls'])
   assert.equal(taskTabFromRoute(undefined, ''), 'overview')
   assert.equal(taskTabFromRoute('', ''), 'overview')
   assert.equal(taskTabFromRoute('details', ''), 'overview', 'the old Details tab opens Overview')
@@ -164,6 +164,15 @@ test('task tabs: Overview is the default and drops the parameter', () => {
   assert.equal(taskTabFromRoute('logs', '', taskTabs.filter((t) => t.id !== 'logs')), 'overview')
   assert.deepEqual(tabQuery({ tab: 'chat', q: 'x' }, 'overview', taskTabs), { q: 'x' })
   assert.deepEqual(tabQuery({}, 'calls', taskTabs), { tab: 'calls' })
+})
+
+test('taskTabFromRoute: the removed Chat tab opens Overview, a plan keeps its Chat tab', () => {
+  assert.equal(taskTabFromRoute('chat', ''), 'overview')
+  assert.equal(taskTabFromRoute(['chat', 'calls'], ''), 'overview', 'the first value wins, as for other tabs')
+  assert.equal(taskTabFromRoute('chat', '#live-transcript'), 'overview')
+  assert.equal(tabAlias('chat'), 'chat', 'the alias is task-only')
+  assert.equal(tabFromQuery('chat', planTabs), 'chat')
+  assert.equal(tabFromQuery('chat', [...planTabs].reverse()), 'chat')
 })
 
 test('taskTabFromRoute: unknown and unavailable tabs open Overview', () => {

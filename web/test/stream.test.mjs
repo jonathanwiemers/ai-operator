@@ -3,14 +3,13 @@ import { test } from 'node:test'
 import {
   dayEndCursor,
   dayLabel,
-  filterForKind,
   groupThreads,
   heatLevel,
   historyStreamKinds,
   pilotStreamKinds,
   runtimeStreamKinds,
   keepNoteTarget,
-  kindsForFilter,
+  allStreamKinds,
   noteDisabledReason,
   noteHint,
   notePlaceholder,
@@ -25,30 +24,15 @@ import {
   streamEventKey,
 } from '../src/stream.ts'
 
-test('kindsForFilter maps chips to API kinds', () => {
-  assert.equal(kindsForFilter('all'), undefined)
-  assert.deepEqual(kindsForFilter('all', true), [...historyStreamKinds, 'chat.user', 'chat.agent'])
-  assert.deepEqual(kindsForFilter('chat'), ['note', 'proposal', 'prompt.posted', 'prompt.answered', 'prompt.closed'])
-  assert.deepEqual(kindsForFilter('runs'), ['run.started', 'run.finished', 'push', 'checkpoint'])
-  assert.deepEqual(kindsForFilter('ci'), ['ci', 'review'])
-  assert.deepEqual(kindsForFilter('merged'), ['merged', 'closed', 'item.skipped'])
-  assert.deepEqual(kindsForFilter('needs'), ['needs'])
+test('allStreamKinds names every kind with the chat, none without', () => {
+  assert.equal(allStreamKinds(false), undefined)
+  assert.deepEqual(allStreamKinds(true), [...historyStreamKinds, 'chat.user', 'chat.agent'])
 })
 
 test('streamEventKey namespaces chat ids apart from history', () => {
   assert.equal(streamEventKey({ id: 1, kind: 'note' }), 'event:1')
   assert.equal(streamEventKey({ id: 1, kind: 'chat.user' }), 'chat:1')
   assert.equal(streamEventKey({ id: 1, kind: 'chat.agent' }), 'chat:1')
-})
-
-test('filterForKind reverse maps kinds', () => {
-  assert.equal(filterForKind('note'), 'chat')
-  assert.equal(filterForKind('proposal'), 'chat')
-  assert.equal(filterForKind('run.finished'), 'runs')
-  assert.equal(filterForKind('ci'), 'ci')
-  assert.equal(filterForKind('merged'), 'merged')
-  assert.equal(filterForKind('needs'), 'needs')
-  assert.equal(filterForKind('autopilot'), null)
 })
 
 test('projectDot from stages', () => {
@@ -123,15 +107,6 @@ test('groupThreads keeps separate issues apart', () => {
   assert.equal(items.length, 2)
   assert.equal(items[0].notes[0].issueIID, 2)
   assert.equal(items[1].notes[0].issueIID, 1)
-})
-
-test('prompt kinds are history kinds and show under the Chat chip', async () => {
-  const { promptStreamKinds } = await import('../src/stream.ts')
-  assert.deepEqual(promptStreamKinds, ['prompt.posted', 'prompt.answered', 'prompt.closed'])
-  for (const k of promptStreamKinds) {
-    assert.ok(historyStreamKinds.includes(k))
-    assert.equal(filterForKind(k), 'chat')
-  }
 })
 
 test('mirrored prompt notes are dropped from threads', async () => {

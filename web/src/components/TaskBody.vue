@@ -29,22 +29,21 @@ import Truncated from '../ui/Truncated.vue'
 import LiveTranscript from './LiveTranscript.vue'
 import Conversation from './Conversation.vue'
 import PromptCard from './PromptCard.vue'
-import TaskChat from './TaskChat.vue'
 import TaskCalls from './TaskCalls.vue'
 import TaskLogs from './TaskLogs.vue'
 import RestartRun from './RestartRun.vue'
-import type { ProposalView, TaskResponse } from '../types'
+import type { TaskResponse } from '../types'
 import { announceChange } from '../ui/useAnnounce'
 
 // What the Task page holds below its title: stage and links, then tabs by
 // ?tab= (R10, decision 11) and the task's banners below them (Decision 4 of
 // "Desk: one header and one row of tabs"): Overview (the stat tiles, the
-// last run's summary, prompts, review, CI, plan, autopilot, then pod and
-// conditions; ?tab=details, the old Details tab, opens it), Chat (chat,
-// conversation), Live, Logs (owners) and Calls. Only the active tab is
-// mounted, so the live transcript and the chat poll only while shown
-// (D318-P1). The Task page and the issue page (with a live task) both
-// render it from the task they loaded.
+// last run's summary, prompts, the GitLab conversation, review, CI, plan,
+// autopilot, then pod and conditions; ?tab=details, the old Details
+// tab, and ?tab=chat, the removed Chat tab, open it), Live, Logs (owners)
+// and Calls. Only the active tab is mounted, so the live transcript polls
+// only while shown (D318-P1). The Task page and the issue page (with a
+// live task) both render it from the task they loaded.
 // page: on the Task page, where the header has the title; the issue page
 // shows the header without it, under its own.
 const props = defineProps<{ namespace: string; name: string; task: string; data: TaskResponse; page?: boolean }>()
@@ -55,10 +54,6 @@ const run = computed(() => t.value.status.run ?? {})
 const issueURL = (iid: number) => `${project.value?.gitlab.webURL}/-/issues/${iid}`
 
 const autopilotItems = computed(() => t.value.status.autopilot?.items ?? [])
-// proposals: the pilot's proposals the chat can accept or reject (those with an ID).
-const proposals = computed((): ProposalView[] =>
-  (t.value.status.pilot?.proposals ?? []).flatMap((p) => (p.id ? [{ id: p.id, summary: p.summary, postedAt: p.postedAt }] : [])),
-)
 
 // Conditions whose True state is the bad one. An Unknown one is neutral:
 // the muted badge's text misses the 4.5:1 contrast of WCAG AA.
@@ -98,19 +93,16 @@ const conditionColumns: DataListColumn[] = [
 const resultTone = (r: string | undefined) =>
   r === 'Succeeded' ? 'success' : r === 'NeedsInput' || r === 'Deferred' ? 'warning' : r === 'Failed' ? 'danger' : 'muted'
 
-// Desk chat: compose with permissions.chat; read when the chat feature is on.
 const prompts = computed(() => taskPrompts(props.data.prompts))
-const showChat = computed(() => !!props.data.permissions?.chat || hasFeature('chat'))
 
-// The tabs this task has content for: Overview always, Chat
-// with the chat or the conversation, Live with transcript access, Calls
-// with the history database (the calls endpoint answers 404 without it),
-// Logs for the task's owners.
+// The tabs this task has content for: Overview always, Live with
+// transcript access, Calls with the history database (the calls endpoint
+// answers 404 without it), Logs for the task's owners. There is no Chat
+// tab: the pilot in the milestone's Cockpit is the only chat (R18).
 const route = useRoute()
 const tabs = computed(() => {
   const has: Record<TaskTab, boolean> = {
     overview: true,
-    chat: showChat.value || !!props.data.permissions?.gitlab,
     live: !!props.data.permissions?.transcript,
     logs: !!props.data.permissions?.logs,
     calls: hasFeature('history'),
@@ -127,8 +119,6 @@ const badges = computed(() => ({ overview: prompts.value.filter(promptOpen).leng
 const noSummary = computed(
   () => !prompts.value.length && t.value.type !== 'Implement' && !t.value.status.plan?.length && !t.value.status.autopilot,
 )
-// Where the chat's "Live transcript" link goes: the Live tab, on this page.
-const transcriptTo = computed(() => (tabs.value.some((x) => x.id === 'live') ? tabTo('live') : undefined))
 
 // The header (decision 4, D627-P1): one status, then the run's step with
 // its age, restarts only when there were any, and Stalled (R8).
@@ -257,6 +247,19 @@ const actions = computed(() => [
       </div>
     </section>
 
+    <!-- The GitLab conversation, once on the removed Chat tab (R18 of
+         "Desk: the Cockpit"): the pilot is the only Desk chat. -->
+    <section v-if="data.permissions?.gitlab" class="section">
+      <component :is="sec" :class="h3">Conversation</component>
+      <Conversation
+        :namespace="namespace"
+        :name="name"
+        :task="task"
+        :steer="!!data.permissions?.steer"
+        :stamp="`${run.observedRunRequest ?? ''}|${run.activeRunRequest ?? ''}|${run.mergeRequestIID ?? ''}|${t.status.ci?.state ?? ''}|${t.status.autopilot?.phase ?? ''}`"
+      />
+    </section>
+
     <div v-if="t.type === 'Implement'" :class="['section', cols]">
       <section class="min-w-0">
         <component :is="sec" :class="h3">Review</component>
@@ -382,37 +385,6 @@ const actions = computed(() => [
         </div>
       </section>
     </div>
-  </template>
-
-  <template v-else-if="tab === 'chat'">
-    <section v-if="showChat" class="section">
-      <component :is="sec" :class="h3">Chat with the agent</component>
-      <TaskChat
-        :namespace="namespace"
-        :name="name"
-        :task="task"
-        :can-post="!!data.permissions?.chat"
-        :transcript="transcriptTo"
-        :phase="t.status.phase"
-        :message="t.status.message"
-        :pod-name="t.status.podName"
-        :task-type="t.type"
-        :autopilot-phase="t.status.autopilot?.phase"
-        :autopilot-items="t.status.autopilot?.items"
-        :proposals="proposals"
-      />
-    </section>
-
-    <section v-if="data.permissions?.gitlab" class="section">
-      <component :is="sec" :class="h3">Conversation</component>
-      <Conversation
-        :namespace="namespace"
-        :name="name"
-        :task="task"
-        :steer="!!data.permissions?.steer"
-        :stamp="`${run.observedRunRequest ?? ''}|${run.activeRunRequest ?? ''}|${run.mergeRequestIID ?? ''}|${t.status.ci?.state ?? ''}|${t.status.autopilot?.phase ?? ''}`"
-      />
-    </section>
   </template>
 
   <section v-else-if="tab === 'live'" id="live-transcript" class="section">

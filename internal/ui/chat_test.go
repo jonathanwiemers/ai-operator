@@ -12,6 +12,9 @@ import (
 	"testing"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 	"github.com/jonathanwiemers/ai-operator/internal/research/storetest"
 )
@@ -83,6 +86,54 @@ func (e *testEnv) postChatErr(t *testing.T, path string, body any) (int, string)
 	return resp.StatusCode, out["error"]
 }
 
+// chatPilotTask is the milestone pilot task addChatPilot creates.
+const chatPilotTask = "shop-pilot-m3-checkout"
+
+// addChatPilot adds the shop milestone's pilot task, the only task that
+// takes chat messages.
+func addChatPilot(t *testing.T, env *testEnv) {
+	t.Helper()
+	if err := env.reader.Create(t.Context(), &aiv1.AgentTask{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: chatPilotTask},
+		Spec: aiv1.AgentTaskSpec{
+			ProjectRef: "shop", Type: aiv1.TaskTypeCoordinate,
+			Milestone: &aiv1.MilestoneRef{ID: 30, IID: 3, Title: "Checkout"},
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestPostChatPilotOnly checks the pilot-only gate without a database: a
+// post that passes it stops at the missing chat store (503).
+func TestPostChatPilotOnly(t *testing.T) {
+	env := newTestEnv(t, withChat(oidcConfig(Rule{Roles: []string{"chatters"}, Projects: []string{"team-a/shop"}, Chat: true})))
+	addChatPilot(t, env)
+	env.idp.user = map[string]any{"sub": "u1", "email": "ada@example.com"}
+	env.idp.info = map[string]any{"urn:zitadel:iam:org:project:roles": map[string]any{"chatters": map[string]any{"1": "acme"}}}
+	env.login(t, "/")
+	pilot := "/api/v1/projects/team-a/shop/tasks/" + chatPilotTask + "/chat"
+	impl := "/api/v1/projects/team-a/shop/tasks/shop-42-add-paypal/chat"
+	plan := "/api/v1/projects/team-a/shop/tasks/shop-spec-m3-checkout/chat"
+	for _, tc := range []struct {
+		path, kind, body string
+		want             int
+	}{
+		{pilot, "message", "hello", http.StatusServiceUnavailable},
+		{pilot, "interrupt", "stop", http.StatusServiceUnavailable},
+		{pilot, "command", `{"cmd":"restart"}`, http.StatusServiceUnavailable},
+		{impl, "message", "hello", http.StatusForbidden},
+		{impl, "interrupt", "stop", http.StatusForbidden},
+		{impl, "command", `{"cmd":"restart"}`, http.StatusServiceUnavailable},
+		{plan, "message", "hello", http.StatusForbidden},
+	} {
+		code, errBody := env.postChatErr(t, tc.path, map[string]any{"body": tc.body, "kind": tc.kind, "clientKey": "k"})
+		if code != tc.want || (tc.want == http.StatusForbidden && errBody != notPilotChat) {
+			t.Errorf("%s %s: %d %q, want %d", tc.path, tc.kind, code, errBody, tc.want)
+		}
+	}
+}
+
 func TestChatGrantValidation(t *testing.T) {
 	valid := func() *Config {
 		c := &Config{
@@ -148,7 +199,7 @@ func TestCanChat(t *testing.T) {
 
 func TestPostChat(t *testing.T) {
 	_, reader, chat := chatStores(t)
-	shop := "/api/v1/projects/team-a/shop/tasks/shop-42-add-paypal/chat"
+	shop := "/api/v1/projects/team-a/shop/tasks/" + chatPilotTask + "/chat"
 	rules := []Rule{
 		{Roles: []string{"chatters"}, Projects: []string{"team-a/shop"}, Chat: true, Conversation: true},
 		{Roles: []string{"viewers"}, Projects: []string{"team-a/shop"}},
@@ -156,6 +207,7 @@ func TestPostChat(t *testing.T) {
 
 	login := func(t *testing.T, role string) *testEnv {
 		env := chatEnv(t, rules, reader, chat)
+		addChatPilot(t, env)
 		env.idp.user = map[string]any{"sub": "u1", "email": "ada@example.com"}
 		env.idp.info = map[string]any{"urn:zitadel:iam:org:project:roles": map[string]any{role: map[string]any{"1": "acme"}}}
 		env.login(t, "/")
@@ -172,6 +224,30 @@ func TestPostChat(t *testing.T) {
 		code, out = env.postChat(t, shop, map[string]any{"body": "hello again", "clientKey": "k1"})
 		if code != http.StatusOK || out["id"] != id {
 			t.Fatalf("retry: %d %+v, want 200 id=%v", code, out, id)
+		}
+	})
+
+	t.Run("kinds by task", func(t *testing.T) {
+		env := login(t, "chatters")
+		impl := "/api/v1/projects/team-a/shop/tasks/shop-42-add-paypal/chat"
+		restart := `{"cmd":"restart"}`
+		for _, tc := range []struct {
+			path, kind, body string
+			want             int
+		}{
+			{shop, "message", "hello pilot", http.StatusCreated},
+			{shop, "interrupt", "stop", http.StatusCreated},
+			{shop, "command", restart, http.StatusCreated},
+			{impl, "message", "hello", http.StatusForbidden},
+			{impl, "interrupt", "stop", http.StatusForbidden},
+			{impl, "command", restart, http.StatusCreated},
+		} {
+			code, errBody := env.postChatErr(t, tc.path, map[string]any{
+				"body": tc.body, "kind": tc.kind, "clientKey": tc.path + tc.kind,
+			})
+			if code != tc.want || (tc.want == http.StatusForbidden && errBody != notPilotChat) {
+				t.Errorf("%s %s: %d %q, want %d", tc.path, tc.kind, code, errBody, tc.want)
+			}
 		}
 	})
 

@@ -73,7 +73,6 @@ export type {
   TaskPhase,
   CIState,
   RunStatus,
-  AutopilotPhase,
   AutopilotItem,
   PauseKind,
   ReviewError,

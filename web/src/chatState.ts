@@ -1,9 +1,6 @@
 import type { AgentPlanPhase } from './generated/api'
 import type { AutopilotItem, ChatKind, ChatMessage, ChatState, TaskPhase } from './types'
 
-// Efforts the Desk chat API accepts on use/effort commands (api/v1alpha1.Efforts).
-export const chatEfforts = ['low', 'medium', 'high', 'xhigh', 'max'] as const
-
 type ChatWaitingKind = 'capacity' | 'starting' | 'answering'
 
 export interface ChatWaitingInput {

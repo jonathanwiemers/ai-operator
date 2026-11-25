@@ -85,7 +85,6 @@ const taskPagePaths = {
 }
 const taskReady: Record<TaskTab, string> = {
   overview: 'Summary of the last run',
-  chat: 'Please keep the refund reasons in the',
   live: 'The pod is not available',
   logs: 'step started',
   calls: 'Agent calls',
@@ -665,10 +664,10 @@ test.describe('sign in again', () => {
   // event stream waits until the login expires and then answers 401, the
   // provider's stand-in sends the browser straight back to the route.
   for (const c of [
-    { route: 'task-chat', composer: '.composer.chat', text: 'Half a thought for the agent' },
+    { route: 'stream-milestone-pilot', composer: '.composer.chat', text: 'Half a thought for the pilot' },
   ]) {
     test(`unsent text in ${c.composer} survives the sign-in@1280`, journeyAt(1280), async ({ page, baseURL }) => {
-      const route = routes.find((r) => r.name === c.route)!
+      const route = [...routes, pilotRoute].find((r) => r.name === c.route)!
       const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
       const seen = { logins: 0, back: '' }
       let phase: 'signed-in' | 'expired' | 'back' = 'signed-in'
@@ -1325,8 +1324,8 @@ for (const { width, height } of widths) {
 }
 
 // iOS zooms on focus into a control under 16 px (style.css, the phone rule
-// in the base layer): on a phone every visible input of the task's Chat
-// tab, the chat composer's among them, and the stream search are 16 px; on a desktop
+// in the base layer): on a phone every visible input of the milestone
+// Cockpit, the pilot composer's among them, and the stream search are 16 px; on a desktop
 // the composer keeps its own size.
 for (const { width, height, phone } of [
   { width: 375, height: 812, phone: true },
@@ -1339,11 +1338,11 @@ for (const { width, height, phone } of [
     await watch(page, new URL(baseURL ?? '').origin, problems)
     const fontSize = (l: ReturnType<Page['locator']>) => l.evaluate((e) => parseFloat(getComputedStyle(e).fontSize))
 
-    const task = routes.find((r) => r.name === 'task-chat')!
-    await mockAPI(page, task, problems)
-    await page.goto(task.path)
-    await task.ready(page)
-    const composer = page.getByPlaceholder('Message the agent…')
+    const cockpit = pilotRoute
+    await mockAPI(page, cockpit, problems)
+    await page.goto(cockpit.path)
+    await cockpit.ready(page)
+    const composer = page.getByPlaceholder('Message the pilot…')
     await expect(composer).toBeVisible()
     if (phone) {
       expect(await fontSize(composer), 'task composer').toBeGreaterThanOrEqual(16)
@@ -1352,7 +1351,7 @@ for (const { width, height, phone } of [
           .filter((e) => e.offsetParent !== null && !['checkbox', 'radio'].includes((e as HTMLInputElement).type))
           .map((e) => `${e.tagName.toLowerCase()} ${e.getAttribute('aria-label') ?? e.getAttribute('placeholder') ?? ''}: ${getComputedStyle(e).fontSize}`),
       )
-      expect(sizes.length, 'inputs on the task page').toBeGreaterThan(0)
+      expect(sizes.length, 'inputs on the Cockpit').toBeGreaterThan(0)
       expect(sizes.filter((s) => parseFloat(s.slice(s.lastIndexOf(':') + 1)) < 16), 'inputs under 16 px').toEqual([])
     } else {
       expect(await fontSize(composer), 'task composer on a desktop').toBeLessThan(16)
@@ -1411,7 +1410,7 @@ test.describe('touch', () => {
 // these pages is at least 44 px high at 375 px. Not counted: what cannot be
 // tapped (hidden from assistive technology, transparent, or a disabled
 // checkbox of a markdown task list). Exceptions are listed in hitAllowlist.
-const hitRoutes = ['overview', 'overview-dark', 'inbox', 'metrics', 'metrics-filtered', 'researches', 'research-new', 'task', 'task-chat', 'task-logs', 'task-calls', 'stream-milestone-retrospective', 'stream-milestone-metrics', 'research', 'research-report', 'research-run']
+const hitRoutes = ['overview', 'overview-dark', 'inbox', 'metrics', 'metrics-filtered', 'researches', 'research-new', 'task', 'task-logs', 'task-calls', 'stream-milestone-retrospective', 'stream-milestone-metrics', 'research', 'research-report', 'research-run']
 
 // "<route> <element as reported>" → why it may stay under 44 px.
 const hitAllowlist: Record<string, string> = {
@@ -2694,12 +2693,12 @@ test.describe('bottom bar', () => {
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
   })
 
-  test('hides while the task composer has the focus@375', async ({ page, baseURL }, testInfo) => {
+  test('hides while the pilot composer has the focus@375', async ({ page, baseURL }, testInfo) => {
     const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
-    await open(page, baseURL, routes.find((r) => r.name === 'task-chat')!, problems)
+    await open(page, baseURL, pilotRoute, problems)
     const nav = bar(page)
     await expect(nav).toBeVisible()
-    const composer = page.getByPlaceholder('Message the agent…')
+    const composer = page.getByPlaceholder('Message the pilot…')
     await composer.focus()
     await expect(nav).toBeHidden()
     const shot = join(testInfo.project.outputDir, '..', 'screenshots', 'bottom-bar-typing@375.png')
@@ -3031,6 +3030,38 @@ test.describe('task tabs', () => {
       await expect(page.locator('main').getByText('shop-281-implement-ws')).toBeVisible()
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })
+
+    // The Chat tab is gone (R18 of "Desk: the Cockpit"): the pilot is the
+    // only chat. An old ?tab=chat link opens Overview, which keeps the
+    // GitLab conversation; the restart button still posts its command.
+    test(`${pageName} has no Chat tab, ?tab=chat opens Overview@1280`, journeyAt(1280), async ({ page, baseURL }) => {
+      const route = routes.find((r) => r.name === pageName)!
+      const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+      await page.setViewportSize({ width: 1280, height: 800 })
+      await page.clock.setFixedTime(now)
+      await watch(page, new URL(baseURL ?? '').origin, problems)
+      await mockAPI(page, route, problems)
+      const posts: unknown[] = []
+      await page.route(/\/api\/v1\/projects\/team-a\/shop\/tasks\/[^/]+\/chat$/, async (r) => {
+        if (r.request().method() !== 'POST') return r.fallback()
+        posts.push(r.request().postDataJSON())
+        return r.fulfill({ status: 201, json: { id: 77 } })
+      })
+      await page.goto(`${route.path}?tab=chat`)
+      const strip = page.locator('main').getByRole('navigation', { name: 'Task' })
+      await expect(strip.getByRole('link', { name: /^Overview/ })).toHaveAttribute('aria-current', 'page')
+      await expect(strip.getByRole('link', { name: /^Chat/ })).toHaveCount(0)
+      await expect(page.locator('main').getByText(taskReady.overview).first()).toBeVisible()
+      await expect(page.locator('main').getByRole('heading', { name: 'Conversation', exact: true })).toBeVisible()
+      await expect(page.getByPlaceholder('Message the agent…')).toHaveCount(0)
+
+      await page.locator('main [data-restart-run]').click()
+      const dialog = page.getByRole('dialog', { name: 'Restart the run?' })
+      await dialog.getByRole('button', { name: /^Restart/ }).click()
+      await expect.poll(() => posts.length).toBe(1)
+      expect(posts[0]).toMatchObject({ body: JSON.stringify({ cmd: 'restart' }), kind: 'command' })
+      expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+    })
   }
 })
 
@@ -3058,7 +3089,6 @@ test.describe('block markdown', () => {
       expect(await summary.locator('li').count(), 'a list').toBeGreaterThan(1)
       await expect(summary).not.toContainText('**')
 
-      await page.locator('main').getByRole('navigation', { name: 'Task' }).getByRole('link', { name: 'Chat' }).click()
       const note = page.locator('main .md').filter({ hasText: 'partial refunds' }).filter({ has: page.locator('strong') }).first()
       await expect(note.locator('strong').first()).toBeVisible()
       await expect(note).not.toContainText('**')
@@ -3122,7 +3152,7 @@ test.describe('composer', () => {
   }
 
   async function open(page: Page, baseURL: string | undefined, name: string, size: { width: number; height: number }) {
-    const route = routes.find((r) => r.name === name)!
+    const route = [...routes, pilotRoute].find((r) => r.name === name)!
     const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
     await page.setViewportSize(size)
     await watch(page, new URL(baseURL ?? '').origin, problems)
@@ -3146,13 +3176,13 @@ test.describe('composer', () => {
   for (const size of [widths[0]!, widths[2]!]) {
     const phone = size.width < 760
 
-    test(`task chat sends a message@${size.width}`, journeyAt(size.width), async ({ page, baseURL }, testInfo) => {
-      const { route, problems } = await open(page, baseURL, 'task-chat', size)
+    test(`pilot chat sends a message@${size.width}`, journeyAt(size.width), async ({ page, baseURL }, testInfo) => {
+      const { route, problems } = await open(page, baseURL, 'stream-milestone-pilot', size)
       const posts = await capture(page, /\/api\/v1\/projects\/team-a\/shop\/tasks\/[^/]+\/chat$/, { id: 99 })
       await page.goto(route.path)
       await route.ready(page)
 
-      const text = page.getByPlaceholder('Message the agent…')
+      const text = page.getByPlaceholder('Message the pilot…')
       const composer = page.locator('.composer.chat')
       await touchSizes(composer, phone)
       await expect(composer.getByRole('button', { name: 'Send' })).toBeDisabled()
@@ -3164,7 +3194,7 @@ test.describe('composer', () => {
 
       await expect(text).toHaveValue('')
       expect(posts).toHaveLength(1)
-      expect(posts[0]!.path).toBe('/api/v1/projects/team-a/shop/tasks/shop-281-implement/chat')
+      expect(posts[0]!.path).toBe('/api/v1/projects/team-a/shop/tasks/shop-m14-pilot/chat')
       expect(posts[0]!.body).toEqual({ body: 'Keep the refund reasons short.', clientKey: expect.any(String), kind: 'message' })
 
       // Ctrl+Enter sends too, with a new key.
@@ -3177,8 +3207,8 @@ test.describe('composer', () => {
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })
 
-    test(`task chat keeps the draft and shows the error of a failed send@${size.width}`, async ({ page, baseURL }) => {
-      const { route, problems } = await open(page, baseURL, 'task-chat', size)
+    test(`pilot chat keeps the draft and shows the error of a failed send@${size.width}`, async ({ page, baseURL }) => {
+      const { route, problems } = await open(page, baseURL, 'stream-milestone-pilot', size)
       const keys: string[] = []
       await page.route(/\/api\/v1\/projects\/team-a\/shop\/tasks\/[^/]+\/chat$/, async (r) => {
         if (r.request().method() !== 'POST') return r.fallback()
@@ -3187,7 +3217,7 @@ test.describe('composer', () => {
       })
       await page.goto(route.path)
       await route.ready(page)
-      const text = page.getByPlaceholder('Message the agent…')
+      const text = page.getByPlaceholder('Message the pilot…')
       await text.fill('Retry me')
       await text.press('Control+Enter')
       await expect(page.locator('main').getByText('Too many messages; try again in a minute.')).toBeVisible()
@@ -3207,10 +3237,11 @@ test.describe('composer', () => {
   }
 
   test('chat composer stays above the bottom bar and the keyboard@375', async ({ page, baseURL }, testInfo) => {
-    const { route, problems } = await open(page, baseURL, 'task-chat', widths[0]!)
+    const { route, problems } = await open(page, baseURL, 'stream-milestone-pilot', widths[0]!)
     await page.goto(route.path)
     await route.ready(page)
-    const composer = page.locator('.composer.chat')
+    // The Cockpit's dock, whose bottom edge sits on the bar or the keyboard.
+    const composer = page.locator('main [data-cockpit-composer]')
     const bottom = async () => (await composer.boundingBox())!.y + (await composer.boundingBox())!.height
     const barTop = await page.getByRole('navigation', { name: 'Sections' }).evaluate((e) => e.getBoundingClientRect().top)
 
@@ -3222,8 +3253,8 @@ test.describe('composer', () => {
     // useKeyboardInset sets from visualViewport) lifts the composer.
     await composer.locator('textarea').focus()
     await page.evaluate(() => document.documentElement.style.setProperty('--keyboard-inset', '300px'))
-    // The chat card from 100 px down: the composer floats within it.
-    await page.locator('[data-task-chat]').evaluate((e) => window.scrollBy(0, e.getBoundingClientRect().top - 100))
+    // The Cockpit from 100 px down: the composer floats within it.
+    await page.locator('main [data-cockpit]').evaluate((e) => window.scrollBy(0, e.getBoundingClientRect().top - 100))
     await expect.poll(bottom).toBeLessThanOrEqual(812 - 300 + 0.5)
     expect(await bottom()).toBeGreaterThan(812 - 300 - 2)
     const shot = join(testInfo.project.outputDir, '..', 'screenshots', 'composer-keyboard@375.png')
@@ -3368,7 +3399,7 @@ test.describe('note thread', () => {
     const phone = size.width < 760
 
     test(`conversation shows the notes and posts a comment@${size.width}`, async ({ page, baseURL }, testInfo) => {
-      const route = routes.find((r) => r.name === 'task-chat')!
+      const route = routes.find((r) => r.name === 'task')!
       const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
       await page.setViewportSize(size)
       await page.clock.setFixedTime(now)

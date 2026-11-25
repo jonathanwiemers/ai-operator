@@ -45,7 +45,6 @@ const shots: Shot[] = [
     path: `${shop}/milestones/14?tab=retrospective`,
     ready: text('Retry the registry push in the release job'),
   },
-  { name: 'task-chat', path: `${shop}/tasks/shop-281-implement?tab=chat`, ready: text('Please keep the refund reasons in the') },
   {
     name: 'costs',
     path: '/costs?range=30d',
