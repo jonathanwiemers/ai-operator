@@ -253,6 +253,10 @@ for (const width of [375, 1280]) {
     const live = thread.getByRole('button', { name: 'Live transcript' })
     await expect(live).toHaveAttribute('aria-expanded', 'true')
     await expect(thread.getByText('Switching to the retry helper.')).toBeVisible()
+    const owner = thread.locator('[data-owner-message]')
+    await expect(owner).toContainText('Message from @alice via the pilot')
+    await expect(owner).toContainText('Use the existing retry helper.')
+    await expect(owner).not.toContainText('Take this into account')
     await expect(thread).toBeInViewport()
     expect(opened.transcripts.length).toBeGreaterThan(0)
     // It closes and opens by keyboard.
@@ -306,51 +310,16 @@ for (const width of [375, 1280]) {
     })
   }
 
-  // The live lines (R11): #282's running implementer is one line between
-  // the pinned cards and the stream, and the finished runs of #280 and
-  // #281 have none.
-  test(`a running issue's line opens its transcript with the owner's message, by keyboard@${width}`, async ({ page, baseURL }) => {
+  // The live lines are gone from the milestone Cockpit (R7 of "Desk: the
+  // Cockpit newest first by issue"): #282's running implementer is in the
+  // Now & next sidebar (milestone-panel.spec.ts) and its thread.
+  test(`a running issue has no live line in the Cockpit@${width}`, async ({ page, baseURL }) => {
     const opened = await open(page, baseURL, milestonePath, width, oldestFirst, { transcript: true })
-    await expect(liveLines(page)).toHaveCount(1)
-    const line = liveLines(page).getByRole('button', { name: '#282 implementing · 4 min' })
-    await expect(line).toHaveAttribute('aria-expanded', 'false')
-    const pinnedBox = (await pinned(page).boundingBox())!
-    const streamBox = (await stream(page).boundingBox())!
-    const lineBox = (await line.boundingBox())!
-    expect(lineBox.y).toBeGreaterThan(pinnedBox.y)
-    expect(lineBox.y).toBeLessThan(streamBox.y)
-    // Closed, the line opens no transcript stream.
-    expect(opened.transcripts).toEqual([])
-
-    await line.focus()
-    await page.keyboard.press('Enter')
-    await expect(line).toHaveAttribute('aria-expanded', 'true')
-    const owner = liveLines(page).locator('[data-owner-message]')
-    await expect(owner).toContainText('Message from @alice via the pilot')
-    await expect(owner).toContainText('Use the existing retry helper.')
-    await expect(owner).not.toContainText('Take this into account')
-    await expect(liveLines(page).getByText('Switching to the retry helper.')).toBeVisible()
-    await page.keyboard.press('Space')
-    await expect(line).toHaveAttribute('aria-expanded', 'false')
-    await page.keyboard.press('Space')
-    await expect(line).toHaveAttribute('aria-expanded', 'true')
-    expect(opened.problems).toEqual([])
-  })
-
-  test(`without the transcript grant the line links to the task@${width}`, async ({ page, baseURL }) => {
-    const { problems } = await open(page, baseURL, milestonePath, width, oldestFirst, { transcript: false })
-    const link = liveLines(page).getByRole('link', { name: '#282 implementing · 4 min' })
-    await expect(link).toHaveAttribute('href', `/projects/team-a/shop/tasks/${captures.name}`)
-    await expect(liveLines(page).getByRole('button')).toHaveCount(0)
-    await expect(liveLines(page).locator('[data-owner-message]')).toHaveCount(0)
-    expect(problems).toEqual([])
-  })
-
-  test(`without a running issue the Cockpit has no live line@${width}`, async ({ page, baseURL }) => {
-    const { problems } = await open(page, baseURL, milestonePath, width)
     await expect(groups(page)).toHaveCount(3)
+    await expect(pinned(page)).toBeVisible()
     await expect(liveLines(page)).toHaveCount(0)
-    expect(problems).toEqual([])
+    expect(opened.transcripts).toEqual([])
+    expect(opened.problems).toEqual([])
   })
 
   // R14: a removed milestone tab's old link opens where its content moved,
@@ -386,9 +355,6 @@ for (const width of [375, 1280]) {
       await expect(groups(page)).toHaveCount(3)
       await expect(row(page, 281)).toBeVisible()
       await toggle(page, 0)
-      // and #282's live line open on its transcript.
-      await liveLines(page).getByRole('button').click()
-      await expect(liveLines(page).locator('[data-owner-message]')).toBeVisible()
       await expect(groups(page).nth(0).getByText('Pipeline failed on #281')).toBeVisible()
       const results = await new AxeBuilder({ page })
         .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])

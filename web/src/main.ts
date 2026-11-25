@@ -102,10 +102,13 @@ const router = createRouter({
   // navigation (the window scrolls on phones). A missing card leaves the
   // scroll to the card once it loads. A new hash on the same page (a
   // decision card's link to its successor) does not scroll: the card the
-  // hash names scrolls itself into view (MilestoneDecisions.vue).
+  // hash names scrolls itself into view (MilestoneDecisions.vue). Nor does
+  // a thread link on the same page (Now & next's rows, with or without
+  // ?live=1): the thread scrolls itself into view (CockpitThread.vue).
   scrollBehavior: (to, from, saved) => {
     if (saved) return saved
     if (to.hash.startsWith('#prompt-') || to.hash === pinnedAnchor) return { el: to.hash, top: 12 }
+    if (to.hash.startsWith('#issue-') && to.path === from.path) return false
     if (to.hash && to.hash !== from.hash && to.fullPath.split('#')[0] === from.fullPath.split('#')[0]) return false
     return { top: 0 }
   },

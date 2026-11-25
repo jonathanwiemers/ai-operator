@@ -238,35 +238,27 @@ const taskTabAliases: TabAliases = { chat: { tab: 'overview' } }
 // new place (D789-P1). The pilot drawer's ?pilot= goes too: the pilot's
 // composer is at the bottom of the Cockpit (R12 of "Desk: the Cockpit").
 // A repeated ?tab= is read by its first value; other parameters stay. An
-// old ?panel=decisions opens the Decisions tab (panelAliasQuery).
+// old ?panel=decisions opens the Decisions tab (panelAliasQuery); the old
+// ?panel=issues and ?panel=queue go (nowPanelQuery).
 export function milestoneAlias<V>(query: Record<string, V>): Record<string, V | string> | null {
   const { pilot: _, ...rest } = query
-  return panelAliasQuery(rest) ?? aliasQuery(rest, milestoneTabAliases) ?? (Object.hasOwn(query, 'pilot') ? rest : null)
+  const dropped = nowPanelQuery(rest)
+  const base = dropped ?? rest
+  return (
+    panelAliasQuery(base) ?? aliasQuery(base, milestoneTabAliases) ?? (dropped || Object.hasOwn(query, 'pilot') ? base : null)
+  )
 }
 
-// A milestone's context panel (R13 of "Desk: the Cockpit"): its views,
-// switched at the top of the panel and kept in ?panel= (D786-P1), Issues
-// the default and left out. A project's panel (R15) has Queue only. The
-// Decisions view is a tab again (panelAliasQuery).
-export type PanelView = 'issues' | 'queue'
-export const panelViews: Tab<PanelView>[] = [
-  { id: 'issues', label: 'Issues' },
-  { id: 'queue', label: 'Queue' },
-]
-export const projectPanelViews: Tab<PanelView>[] = panelViews.slice(1)
-
-// panelFromQuery reads ?panel= against views as tabFromQuery reads ?tab=:
-// unknown, empty or repeated values fall back to the first known one, else
-// to the first view.
-export function panelFromQuery(v: QueryValue, views: readonly Tab<PanelView>[] = panelViews): PanelView {
-  return tabFromQuery(v, views)
-}
-
-// panelQuery is the query with the panel on view, keeping the other
-// parameters; the first of views drops ?panel=.
-export function panelQuery<V>(query: Record<string, V>, view: PanelView, views: readonly Tab<PanelView>[] = panelViews): Record<string, V | string> {
-  const { panel: _, ...rest } = query
-  return view === views[0]!.id ? rest : { ...rest, panel: view }
+// nowPanelQuery is the query of an old link to the milestone panel's
+// Issues or Queue view (?panel=issues, ?panel=queue) without ?panel=: the
+// panel is the Now & next sidebar, one view (R7 of "Desk: the Cockpit
+// newest first by issue", D820-P2). null for any other query. Stream.vue
+// opens the sidebar for such a link, a slide-over below 1180 px.
+function nowPanelQuery<V>(query: Record<string, V>): Record<string, V> | null {
+  const panel: unknown = Array.isArray(query.panel) ? query.panel[0] : query.panel
+  if (panel !== 'issues' && panel !== 'queue') return null
+  const { panel: _p, ...rest } = query
+  return rest
 }
 
 // tabQuery is the query for a tab, keeping the other parameters; the

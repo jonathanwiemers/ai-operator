@@ -8,7 +8,7 @@ import { queueDone, waitingLabel } from './milestoneQueue.ts'
 
 // NowRow is one line of a section, "#712 implementing · 4 min". task, pod
 // and run are set while the issue has a live run (LiveTranscript).
-interface NowRow {
+export interface NowRow {
   iid: number
   title: string
   text: string
@@ -17,7 +17,16 @@ interface NowRow {
   run?: string
 }
 
-interface NowMilestone {
+// NowGroup is the rows of a section under a heading: a milestone's on the
+// project page, a project's on the Overview (D820-P3). A milestone page has
+// one group without a heading.
+export interface NowGroup {
+  key: string
+  heading?: string
+  rows: NowRow[]
+}
+
+export interface NowMilestone {
   iid: number
   title: string
   text: string

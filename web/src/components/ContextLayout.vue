@@ -11,12 +11,14 @@ import { useBackClose } from '../ui/useBackClose'
 // default slot's `sheet` says whether the panel is a sheet at this width, so
 // the page shows the buttons only then. Back and Escape close the sheet
 // (useBackClose), and focus returns to opener, the button that opened it. A
-// query change inside the sheet (the milestone panel's ?panel=) keeps it open.
+// query change inside the sheet keeps it open. opener false: a link in the
+// sheet was followed, focus stays where the link led (no jump back to the
+// header on phones, where the window scrolls).
 //
 // column: false keeps the panel a sheet at every width, for content that
 // needs the full width (a milestone's Issues table). Without a panel slot
 // the content is all there is.
-const props = withDefaults(defineProps<{ column?: boolean; title?: string; description?: string; opener?: HTMLElement | null }>(), {
+const props = withDefaults(defineProps<{ column?: boolean; title?: string; description?: string; opener?: HTMLElement | null | false }>(), {
   column: true,
   title: 'Context',
   description: undefined,
@@ -33,6 +35,7 @@ const narrow = ref(narrowQuery.matches)
 const sheet = computed(() => narrow.value || !props.column)
 useBackClose(open, { keepOnQuery: true })
 function focusOpener(e: Event) {
+  if (props.opener === false) return void e.preventDefault()
   if (!props.opener?.isConnected) return
   e.preventDefault()
   props.opener.focus()

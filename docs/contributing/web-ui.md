@@ -939,8 +939,8 @@ renders on tablet and desktop). It is the `UDashboardSidebar`'s own slideover
 `milestoneCounts` (`N active · M settling`, zero parts left out). Below 1180 px the stream header's
 *Queue* and *Decisions* buttons open the project's context panel (`components/ContextPanel.vue`) on that view
 from the right, the side it has on desktop, and on a milestone page the
-*Issues*, *Queue* and *Decisions* buttons open the milestone panel on that
-view (`components/MilestonePanel.vue`); widening the window to 1180 px
+*Now & next* button opens the milestone's sidebar
+(`components/MilestonePanel.vue`); widening the window to 1180 px
 closes the sheet. Dialogs (`UModal`) close the same ways, for example the
 Retrospective tab's dismiss confirmation.
 
@@ -2465,31 +2465,36 @@ links.
 
 ### Milestone panel
 
-A milestone page's panel is `components/MilestonePanel.vue` (R13 of
-"Desk: the Cockpit"). A `UTabs` pill switch at its top picks one of three
-views, kept in `?panel=issues|queue|decisions` (`panelFromQuery`,
-`panelQuery` in `streamTabs.ts`; Issues is the default and left out):
+A milestone page's panel is the **Now & next** sidebar (R7 of "Desk: the
+Cockpit newest first by issue"): `components/MilestonePanel.vue` is its
+frame (the `Now & next` landmark and title) and feeds
+`components/NowNext.vue` from `nowAndNext` (`nowAndNext.ts`) with the
+milestone's queue items and tasks, the project's queue and `useNow()`:
 
-- **Issues**: the milestone's issues by state, running, waiting, next,
-  merged and skipped (`panelIssueGroups` in `milestoneRows.ts`: the row
-  state, and for an open issue its autopilot queue lane, a waiting or held
-  lane before an active state). Each row links to its issue page; *Open
-  table* goes to the Issues tab.
-- **Queue**: the project's milestone queue (`project.queue`, the data of
-  `ProjectQueue`), this milestone marked with `aria-current="page"`.
-  Moves and Pause stay on the project's Milestones tab.
-- **Decisions**: the milestone's stored decisions (`GET …/decisions`),
-  loaded while the view is open; the superseded ones are in a closed
-  `UCollapsible`. Each links to its issue page.
+- **Running** and **Waiting**: each row is a router link to the issue's
+  thread on the Cockpit tab (`#issue-<iid>`, the other query parameters
+  kept, `?tab=` dropped). With the transcript grant a running row with a
+  live run adds `?live=1`, which opens the thread's Live transcript.
+- **Up next**: at most 5, then *+N more* to the Issues tab.
+- **Milestones**: this one ("3 of 9 merged", `aria-current="page"`), then
+  the next 3 of the project queue, each a link to its Cockpit.
 
-Below 1180 px (and on the Issues tab) the header has
-*Issues*, *Queue* and *Decisions* buttons, on phones too (D786-P2); each
-sets `?panel=` and opens the sheet, titled by the view, on its view. The
-panel's styles are scoped, not Tailwind utilities, and it uses icons the
-initial bundle already has: the initial budget is at its cap (see
-[Bundle budget](#bundle-budget)). `e2e/milestone-panel.spec.ts` checks each
-view at 1280 px and 390 px, `?panel=` across a reload, Escape, focus
-return and axe.
+`NowNext` takes Running and Waiting as rows grouped under headings
+(`NowGroup`), so the project and the Overview can group them by milestone
+or project (D820-P3). With nothing running, waiting or next it shows
+"Nothing running" (`UEmpty`).
+
+There is one view, so no `?panel=`: `milestoneAlias` drops the old
+`?panel=issues` and `?panel=queue`, and `Stream.vue` opens the sheet for
+them below 1180 px (D820-P2). Below 1180 px (and on the Issues tab) the
+header has one *Now & next* button, on phones too; a followed link closes
+the sheet without returning focus to the button (`opener` false), and the
+router does not jump to the top for a `#issue-` link on the same page, so
+the thread stays in view on phones. The panel's styles are scoped, not Tailwind utilities, and it
+uses icons the initial bundle already has: the initial budget is at its
+cap (see [Bundle budget](#bundle-budget)). `e2e/milestone-panel.spec.ts`
+checks the four sections at 1280 px and 390 px, the row links, the old
+links, Escape, focus return and axe.
 
 The milestone API carries the **pause history** (`pauses`, from the
 `autopilot.paused`/`autopilot.resumed` events within the history

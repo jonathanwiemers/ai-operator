@@ -51,16 +51,11 @@ import {
   milestoneTabFromRoute,
   milestoneTabs,
   milestoneTabsFor,
-  panelFromQuery,
-  panelQuery,
-  panelViews,
   milestoneAlias,
   projectAlias,
-  projectPanelViews,
   projectTabFromRoute,
   projectTabsFor,
   tabQuery,
-  type PanelView,
 } from '../streamTabs'
 import NotFound from './NotFound.vue'
 import { announceChange } from '../ui/useAnnounce'
@@ -151,23 +146,16 @@ const projectInbox = computed(() => {
 
 // The context panel (docs/contributing/web-ui.md, "Context panel and pause history"), laid out by
 // ContextLayout: a column from 1180 px; below, a sheet that the header's
-// buttons of the panel's views open. A project's is ContextPanel (Queue;
-// R15 of "Desk: the Cockpit"), a milestone's MilestonePanel (Issues,
-// Queue; R13); the view is ?panel=. Focus returns to
+// button opens. A project's is ContextPanel (Queue; R15 of "Desk: the
+// Cockpit"), a milestone's MilestonePanel (Now & next, R7 of "Desk: the
+// Cockpit newest first by issue"). Focus returns to
 // the button that opened the sheet (panelOpener). A milestone's Issues tab
 // (a table of fixed columns) needs the full width: there the panel is a
 // sheet at every width.
 const hasContext = computed(() => !!props.namespace && !!props.name)
 const contextOpen = ref(false)
-const panelOpener = ref<HTMLElement | null>(null)
-const pagePanelViews = computed(() => (milestoneIID.value ? panelViews : projectPanelViews))
-const panelView = computed(() => panelFromQuery(route.query.panel, pagePanelViews.value))
-const panelLabel = computed(() => pagePanelViews.value.find((v) => v.id === panelView.value)!.label)
-function setPanel(view: PanelView) {
-  if (view === panelView.value) return
-  panelBySwitch = true
-  void router.replace({ query: panelQuery(route.query, view, pagePanelViews.value) })
-}
+const panelOpener = ref<HTMLElement | null | false>(null)
+const panel = computed(() => (milestoneIID.value ? { id: 'now', label: 'Now & next' } : { id: 'queue', label: 'Queue' }))
 
 // A day of the project panel's history pages the project's Cockpit back to
 // the end of that day (D790-P2): the Cockpit tab opens, the sheet closes so
@@ -195,22 +183,27 @@ function setMilestonesView(v: string | number) {
   const { view: _, ...rest } = route.query
   void router.replace({ query: v === 'board' ? { ...rest, view: 'board' } : rest })
 }
-function openContext(e: MouseEvent, view?: PanelView) {
+function openContext(e: MouseEvent) {
   panelOpener.value = e.currentTarget as HTMLElement
-  if (view) setPanel(view)
   contextOpen.value = true
 }
+// followPanel: a link in the sidebar was followed (NowNext's follow): the
+// sheet closes and focus stays at what the link opened, not on the header
+// button, whose focus would scroll a phone's window back to the top.
+function followPanel() {
+  panelOpener.value = false
+  contextOpen.value = false
+}
 
-// A link that names a panel view (?panel=) opens the sheet where the panel
-// is one, so the view shows; the view switch inside the sheet (setPanel)
-// and closing the sheet do not reopen it. The old ?panel=decisions is the
-// Decisions tab (milestoneAlias, projectAlias) and opens no sheet.
+// A link that names a panel view (?panel=: the project's queue, a
+// milestone's old Issues or Queue view, which milestoneAlias then drops)
+// opens the sheet where the panel is one; closing the sheet does not
+// reopen it. The old ?panel=decisions is the Decisions tab
+// (milestoneAlias, projectAlias) and opens no sheet.
 const panelColumn = computed(() => !milestoneIID.value || tab.value !== 'issues')
-let panelBySwitch = false
 watch(
   () => [milestoneIID.value, route.query.panel] as const,
   ([, panel]) => {
-    if (panelBySwitch) return void (panelBySwitch = false)
     if (!panel || panel === 'decisions') return
     if (!panelColumn.value || window.matchMedia('(max-width: 1179.98px)').matches) {
       panelOpener.value = null
@@ -412,8 +405,8 @@ watch(
     v-else
     v-model:open="contextOpen"
     :column="panelColumn"
-    :title="panelLabel"
-    :description="milestoneIID ? 'The milestone\'s issues and the project\'s queue' : 'The queue and companions of the project\'s active milestone, and its last 30 days'"
+    :title="panel.label"
+    :description="milestoneIID ? 'What runs, waits and comes next, and the milestones after this one' : 'The queue and companions of the project\'s active milestone, and its last 30 days'"
     :opener="panelOpener"
   >
     <template #default="{ sheet }">
@@ -432,20 +425,18 @@ watch(
           <template v-if="pageCost" #description><CostChip :cost="pageCost" data-header-cost /></template>
           <template #links>
             <HeaderActions :actions="links" :shown="0">
-              <!-- The panel's views (below 1180 px, phones too). -->
+              <!-- The panel's button (below 1180 px, phones too). -->
               <template v-if="sheet">
                 <UButton
-                  v-for="v in pagePanelViews"
-                  :key="v.id"
                   color="neutral"
                   variant="outline"
                   size="sm"
                   class="min-h-11 justify-center tablet:min-h-0"
-                  :label="v.label"
+                  :label="panel.label"
                   aria-haspopup="dialog"
-                  :aria-expanded="contextOpen && panelView === v.id"
-                  :data-panel-open="v.id"
-                  @click="openContext($event, v.id)"
+                  :aria-expanded="contextOpen"
+                  :data-panel-open="panel.id"
+                  @click="openContext"
                 />
               </template>
             </HeaderActions>
@@ -547,16 +538,8 @@ watch(
               @posted="reload"
             />
           </template>
-          <!-- The live lines of running issues (R11), under the pinned cards. -->
-          <template #live>
-            <CockpitLive
-              v-if="namespace && name && pageMilestone"
-              :namespace="namespace"
-              :name="name"
-              :tasks="pageMilestone.tasks"
-              :transcript="!!pageMilestone.permissions?.transcript"
-            />
-          </template>
+          <!-- What runs now is in the Now & next sidebar, no live lines (R7
+               of "Desk: the Cockpit newest first by issue"). -->
         </Cockpit>
       </div>
       <div v-else-if="tab === 'issues'" class="scroll board">
@@ -619,9 +602,8 @@ watch(
         :iid="milestoneIID"
         :milestone="pageMilestone"
         :queue="pageProject?.queue ?? []"
-        :view="panelView"
         :sheet="sheet"
-        @update:view="setPanel"
+        @follow="followPanel"
       />
       <ContextPanel
         v-else

@@ -2803,7 +2803,7 @@ test.describe('landmarks and route focus', () => {
       // tab, whose table takes the full width, so its panel is a sheet
       // (ContextLayout; the Cockpit's column: e2e/milestone-panel.spec.ts).
       await expect(page.getByRole('complementary', { name: 'Project context', exact: true })).toHaveCount(route === project ? 1 : 0)
-      await expect(page.getByRole('complementary', { name: 'Milestone context', exact: true })).toHaveCount(0)
+      await expect(page.getByRole('complementary', { name: 'Now & next', exact: true })).toHaveCount(0)
       expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
     })
 
@@ -2817,12 +2817,12 @@ test.describe('landmarks and route focus', () => {
     })
   }
 
-  test('the milestone page panel sheet is the Milestone context landmark@760', async ({ page, baseURL }) => {
+  test('the milestone page panel sheet is the Now & next landmark@760', async ({ page, baseURL }) => {
     const problems = await load(page, baseURL, milestone, { width: 760, height: 1024 })
-    await expect(page.getByRole('complementary', { name: 'Milestone context' }), 'closed').toHaveCount(0)
-    await page.locator('main').getByRole('button', { name: 'Issues', exact: true }).click()
-    const sheet = page.getByRole('dialog', { name: 'Issues' })
-    await expect(sheet.getByRole('complementary', { name: 'Milestone context' })).toBeVisible()
+    await expect(page.getByRole('complementary', { name: 'Now & next' }), 'closed').toHaveCount(0)
+    await page.locator('main').getByRole('button', { name: 'Now & next', exact: true }).click()
+    const sheet = page.getByRole('dialog', { name: 'Now & next' })
+    await expect(sheet.getByRole('complementary', { name: 'Now & next' })).toBeVisible()
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
   })
 

@@ -9,14 +9,10 @@ import {
   milestoneTabFromRoute,
   milestoneTabs,
   milestoneTabsFor,
-  panelFromQuery,
-  panelQuery,
-  panelViews,
   planPaneTab,
   planPaneTabs,
   planTabs,
   projectAlias,
-  projectPanelViews,
   projectTabFromRoute,
   projectTabsFor,
   tabAlias,
@@ -149,7 +145,7 @@ test('milestoneAlias: current links need no change, the pilot drawer\'s ?pilot= 
   assert.deepEqual(milestoneAlias({ pilot: '1' }), {})
   assert.deepEqual(milestoneAlias({ tab: 'metrics', pilot: '1', q: 'x' }), { tab: 'metrics', q: 'x' })
   assert.deepEqual(milestoneAlias({ pilot: ['x', '1'] }), {})
-  assert.deepEqual(milestoneAlias({ tab: 'pilot', pilot: '1', panel: 'queue' }), { panel: 'queue' })
+  assert.deepEqual(milestoneAlias({ tab: 'pilot', pilot: '1', panel: 'queue' }), {})
 })
 
 test('tabAlias: the milestone aliases are not project aliases', () => {
@@ -266,9 +262,9 @@ test('?panel=decisions opens the Decisions tab, other parameters stay', () => {
       tab: 'decisions',
     })
     assert.deepEqual(alias({ tab: 'issues', panel: 'decisions' }), { tab: 'decisions' }, '?tab= gives way')
-    assert.equal(alias({ panel: 'queue' }), null)
     assert.equal(alias({ tab: 'decisions' }), null)
   }
+  assert.equal(projectAlias({ panel: 'queue' }), null, "the project panel's Queue")
   assert.deepEqual(milestoneAlias({ panel: 'decisions', pilot: '1' }), { tab: 'decisions' }, 'the pilot drawer goes too')
 })
 
@@ -278,14 +274,6 @@ test('projectAlias: current links need no change', () => {
   assert.equal(projectAlias({ tab: 'metrics', q: 'x' }), null)
   assert.equal(projectAlias({ tab: 'pilot' }), null)
   assert.equal(projectAlias({ pilot: '1' }), null)
-})
-
-test('project panel: Queue only, which drops ?panel=', () => {
-  assert.deepEqual(projectPanelViews.map((v) => v.label), ['Queue'])
-  assert.equal(panelFromQuery(undefined, projectPanelViews), 'queue')
-  assert.equal(panelFromQuery('issues', projectPanelViews), 'queue')
-  assert.equal(panelFromQuery('decisions', projectPanelViews), 'queue')
-  assert.deepEqual(panelQuery({ panel: 'queue', q: 'x' }, 'queue', projectPanelViews), { q: 'x' })
 })
 
 test('milestone tabs have no Plans', () => {
@@ -314,21 +302,15 @@ test('Metrics tab: the Spend tab renamed, ?tab=spend still opens it', () => {
   assert.deepEqual(tabQuery({ tab: 'spend', q: 'x' }, 'metrics', milestoneTabs), { q: 'x', tab: 'metrics' })
 })
 
-test('panelFromQuery: issues by default, queue by ?panel=', () => {
-  assert.deepEqual(
-    panelViews.map((v) => v.id),
-    ['issues', 'queue'],
-  )
-  assert.equal(panelFromQuery(undefined), 'issues')
-  assert.equal(panelFromQuery(''), 'issues')
-  assert.equal(panelFromQuery('nope'), 'issues')
-  assert.equal(panelFromQuery('queue'), 'queue')
-  assert.equal(panelFromQuery('decisions'), 'issues', 'a tab again')
-  assert.equal(panelFromQuery(['nope', 'queue']), 'queue')
-})
-
-test('panelQuery: keeps the other parameters, Issues drops ?panel=', () => {
-  assert.deepEqual(panelQuery({ tab: 'issues' }, 'queue'), { tab: 'issues', panel: 'queue' })
-  assert.deepEqual(panelQuery({ tab: 'metrics', panel: 'queue' }, 'issues'), { tab: 'metrics' })
-  assert.deepEqual(panelQuery({}, 'queue'), { panel: 'queue' })
+// The milestone panel's old Issues and Queue views are the Now & next
+// sidebar (R7 of "Desk: the Cockpit newest first by issue", D820-P2): the
+// alias drops ?panel=, Stream.vue opens the sidebar.
+test('milestoneAlias: ?panel=issues and ?panel=queue go, other parameters stay', () => {
+  assert.deepEqual(milestoneAlias({ panel: 'issues' }), {})
+  assert.deepEqual(milestoneAlias({ panel: 'queue' }), {})
+  assert.deepEqual(milestoneAlias({ panel: ['queue', 'decisions'] }), {}, 'the first value wins')
+  assert.deepEqual(milestoneAlias({ tab: 'metrics', panel: 'queue', q: 'x' }), { tab: 'metrics', q: 'x' })
+  assert.deepEqual(milestoneAlias({ tab: 'board', panel: 'issues' }), { tab: 'issues', view: 'board' }, 'with a removed tab')
+  assert.deepEqual(milestoneAlias({ panel: 'issues', pilot: '1' }), {}, 'the pilot drawer goes too')
+  assert.equal(milestoneAlias({ panel: 'nope' }), null)
 })

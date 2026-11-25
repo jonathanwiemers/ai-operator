@@ -217,9 +217,9 @@ Old links open where their content is now: `?tab=activity` and `stream` open *Co
 ## A milestone
 
 A milestone page opens on *Cockpit*, which counts what waits for you. It starts with the [message box to the pilot](#message-the-pilot) and your latest exchange with it, then the problems, proposals and questions, pinned and answered there,
-a live line per running agent that opens its transcript, a search, and one thread per issue, the newest activity on top, with runs, CI and reviews folded into groups (open one, or *Expand all*).
+a search, and one thread per issue, the newest activity on top, with runs, CI and reviews folded into groups (open one, or *Expand all*).
 Then come *Issues*, *Decisions* and *Metrics*, and *Retrospective* once written. The tab is in the address, so you can link to it.
-A panel on the right switches between *Issues* (the issues by state: running, waiting, next, merged, skipped; *Open table* opens the Issues tab), and *Queue* (the project's milestones, this one marked). Below 1180 px, and on the Issues tab, the *Issues* and *Queue* buttons in the header open it from the right; Escape closes it. The open view is in the address (`?panel=queue`).
+The *Now & next* sidebar on the right shows what runs (with the step and its time), what waits (for CI, or held with the reason), what comes next and the next milestones. A running or waiting row opens the issue's thread in the Cockpit. Below 1180 px, and on the Issues tab, the *Now & next* button in the header opens it from the right; Escape closes it.
 
 Old links to the former tabs open where their content is now, and the address changes to match: `?tab=activity`, `stream`, `needs` and `pilot` open *Cockpit*, `?panel=decisions` the *Decisions* tab (`?tab=decisions`), and `?tab=board` the *Board* view of *Issues* (`?tab=issues&view=board`).
 

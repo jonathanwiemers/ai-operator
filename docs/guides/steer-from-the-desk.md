@@ -48,18 +48,22 @@ read from the top like a pull request.
 
 ### The panel
 
-Beside the stream, a panel switches between three views:
+Beside the stream, the **Now & next** sidebar shows what goes on:
 
-- **Issues**: the issues by state (running, waiting, next, merged,
-  skipped). A row opens the issue; *Open table* opens the *Issues* tab.
-- **Queue**: the project's milestones in run order, this one marked.
-- **Decisions**: the milestone's [decisions](../concepts/glossary.md#decision),
-  with replaced ones in a closed group.
+- **Running**: the issues an agent works on, with the step and its time,
+  such as "#712 implementing · 4 min". A row opens the issue's thread in
+  the Cockpit. If you may watch the transcript, the thread opens with its
+  live transcript.
+- **Waiting**: issues waiting for CI, and held issues with the reason.
+- **Up next**: the next 5 issues, such as "#717 after #712". *+N more*
+  opens the *Issues* tab.
+- **Milestones**: this milestone with "3 of 9 merged", then the next ones.
 
-From 1180 px the panel is a column. On a narrower screen, and on a phone,
-the *Issues*, *Queue* and *Decisions* buttons in the page header open it as
-a sheet from the right. Escape closes it and puts the focus back on the
-button. The open view is in the address, as `?panel=queue`.
+From 1180 px the sidebar is a column. On a narrower screen, and on a
+phone, the *Now & next* button in the page header opens it as a sheet
+from the right. Escape closes it and puts the focus back on the button.
+The [decisions](../concepts/glossary.md#decision) are on the *Decisions*
+tab.
 
 ### The project and the Overview
 

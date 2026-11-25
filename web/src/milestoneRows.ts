@@ -111,16 +111,10 @@ export function issueProgress(issues: readonly Pick<MilestoneIssueRow, 'state'>[
   return { merged, total: issues.length, open: issues.length - merged }
 }
 
-// PanelIssueState is an issue's state in the milestone panel's Issues view
-// (R13): running, waiting (on dependencies or a hold), next (planned or
+// PanelIssueState is an issue's state in a Cockpit thread's header (once
+// the milestone panel's Issues view, R13): running, waiting (on dependencies or a hold), next (planned or
 // ready, its turn to come), merged and skipped (or closed unmerged).
 export type PanelIssueState = 'running' | 'waiting' | 'next' | 'merged' | 'skipped'
-
-export interface PanelIssueGroup {
-  state: PanelIssueState
-  label: string
-  issues: Pick<MilestoneIssueRow, 'iid' | 'title'>[]
-}
 
 const panelIssueLabels: Record<PanelIssueState, string> = {
   running: 'Running',
@@ -154,26 +148,6 @@ const panelIssueTones: Record<PanelIssueState, Tone> = {
 // thread's header).
 export function panelIssueBadge(s: PanelIssueState): { label: string; tone: Tone } {
   return { label: panelIssueLabels[s], tone: panelIssueTones[s] }
-}
-
-// panelIssueGroups are a milestone's issues by panel state, in the order
-// running, waiting, next, merged, skipped, each in the milestone's order;
-// empty states are left out.
-export function panelIssueGroups(
-  issues: readonly Pick<MilestoneIssueRow, 'iid' | 'title' | 'state'>[],
-  queue: readonly Pick<QueueItem, 'iid' | 'lane'>[] = [],
-): PanelIssueGroup[] {
-  const lanes = new Map(queue.map((q) => [q.iid, q.lane]))
-  const groups = (Object.keys(panelIssueLabels) as PanelIssueState[]).map((state) => ({
-    state,
-    label: panelIssueLabels[state],
-    issues: [] as Pick<MilestoneIssueRow, 'iid' | 'title'>[],
-  }))
-  for (const i of issues) {
-    const s = panelIssueState(i.state, lanes.get(i.iid))
-    groups.find((g) => g.state === s)!.issues.push({ iid: i.iid, title: i.title })
-  }
-  return groups.filter((g) => g.issues.length)
 }
 
 // issueStateTone is an issue row's state badge tone.

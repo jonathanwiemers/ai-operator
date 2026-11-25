@@ -8,7 +8,6 @@ import {
   leftoversLabel,
   milestoneRowKey,
   milestoneStatus,
-  panelIssueGroups,
   panelIssueState,
   progressBar,
   progressPct,
@@ -126,24 +125,3 @@ test('panelIssueState: the row state first, then the queue lane of an open issue
   assert.equal(panelIssueState('planned'), 'next')
 })
 
-test('panelIssueGroups: running, waiting, next, merged, skipped, empty ones left out, milestone order kept', () => {
-  const issues = [
-    { iid: 1, title: 'a', state: 'merged' },
-    { iid: 2, title: 'b', state: 'pending' },
-    { iid: 3, title: 'c', state: 'active' },
-    { iid: 4, title: 'd', state: 'planned' },
-    { iid: 5, title: 'e', state: 'pending' },
-    { iid: 6, title: 'f', state: 'merged' },
-  ]
-  const queue = [
-    { iid: 2, lane: 'waiting' },
-    { iid: 5, lane: 'ready' },
-  ]
-  assert.deepEqual(panelIssueGroups(issues, queue), [
-    { state: 'running', label: 'Running', issues: [{ iid: 3, title: 'c' }] },
-    { state: 'waiting', label: 'Waiting', issues: [{ iid: 2, title: 'b' }] },
-    { state: 'next', label: 'Next', issues: [{ iid: 4, title: 'd' }, { iid: 5, title: 'e' }] },
-    { state: 'merged', label: 'Merged', issues: [{ iid: 1, title: 'a' }, { iid: 6, title: 'f' }] },
-  ])
-  assert.deepEqual(panelIssueGroups([]), [])
-})
