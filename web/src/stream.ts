@@ -27,6 +27,7 @@ export const pilotStreamKinds = [
   'hold.set',
   'hold.cleared',
   'pilot.acted',
+  'decision.recorded',
 ] as const satisfies readonly StreamKind[]
 
 export const runtimeStreamKinds = [
@@ -364,6 +365,7 @@ export const cockpitClass: Record<StreamKind, CockpitClass> = {
   'release.started': 'shown',
   'release.ended': 'shown',
   'milestone.started': 'shown',
+  'decision.recorded': 'shown',
   retrospective: 'shown',
   'problem.resolved': 'shown',
   'prompt.answered': 'shown',

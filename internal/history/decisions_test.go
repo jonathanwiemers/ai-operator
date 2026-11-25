@@ -84,3 +84,33 @@ func TestRecorderWritesDecisions(t *testing.T) {
 		t.Errorf("after the re-plan: %v, want D148-P3 only", got)
 	}
 }
+
+// Each decision ID gets one decision.recorded event, at its PostedAt; a
+// re-save writes none again, a new decision one more.
+func TestRecorderWritesDecisionEvents(t *testing.T) {
+	s := storetest.New(t)
+	r := NewRecorder(readyDB{s}, time.Hour, clocktesting.NewFakeClock(now), testLogger(t))
+	r.started.Store(true)
+	ctx := t.Context()
+	events := func() [][]string {
+		t.Helper()
+		return storetest.Rows(t, `SELECT key, issue_iid::text, (at = $1)::text, summary, data->>'choice', data->>'kind'
+			FROM history_events WHERE kind = 'decision.recorded' ORDER BY key`, now)
+	}
+
+	for range 2 {
+		r.RecordIssueDecisions(issueDecisions(148, "D148-P1", "D148-P2"))
+		r.writeDecisions(ctx)
+	}
+	got := events()
+	if len(got) != 2 || got[0][0] != "decision/agents/orbit/D148-P1" || got[0][1] != "148" || got[0][2] != "true" ||
+		got[0][3] != "D148-P1 Title D148-P1" || got[0][4] != "a" || got[0][5] != "planner" {
+		t.Fatalf("after two saves: %v", got)
+	}
+
+	r.RecordIssueDecisions(issueDecisions(148, "D148-P1", "D148-P2", "D148-P3"))
+	r.writeDecisions(ctx)
+	if got := events(); len(got) != 3 {
+		t.Errorf("after a new decision: %v, want 3 events", got)
+	}
+}

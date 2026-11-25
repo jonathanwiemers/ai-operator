@@ -117,6 +117,7 @@ export type StreamKind =
   | 'hold.set'
   | 'hold.cleared'
   | 'pilot.acted'
+  | 'decision.recorded'
 
 // StreamEventData is a stream event's data (Go: map[string]any): the keys
 // of all kinds.

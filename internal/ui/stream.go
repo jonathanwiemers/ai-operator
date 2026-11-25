@@ -57,7 +57,8 @@ var (
 		history.KindProposal, history.KindPilotWriteFailed, history.KindNote, "chat.user", "chat.agent",
 		history.KindRetrospective, history.KindReleaseDecided, history.KindReleaseStarted, history.KindReleaseEnded,
 		history.KindProblemOpened, history.KindProblemResolved, history.KindHoldSet, history.KindHoldCleared,
-		history.KindPilotActed, history.KindMilestoneStarted}
+		history.KindPilotActed, history.KindMilestoneStarted,
+		history.KindDecisionRecorded}
 	runtimeKinds = []string{history.KindRunStarted, history.KindRunFinished, history.KindPush, history.KindCI,
 		history.KindReview, history.KindMerged, history.KindClosed, history.KindItemSkipped, history.KindCheckpoint}
 )

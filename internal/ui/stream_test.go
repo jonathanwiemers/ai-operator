@@ -314,3 +314,32 @@ func TestInboxBudgetWarning(t *testing.T) {
 		t.Errorf("a hidden project's warning shows: %+v", got)
 	}
 }
+
+// A stored decision.recorded event comes back from the stream by its kind,
+// with its data.
+func TestStreamDecisionRecorded(t *testing.T) {
+	owner, reader := readerStore(t)
+	at := time.Now().Add(-time.Hour).Truncate(time.Second)
+	if _, err := owner.InsertEvents(t.Context(), []store.Event{
+		{Key: "decision/team-a/shop/D42-P1", At: at, Namespace: "team-a", Project: "shop", MilestoneIID: 3, IssueIID: 42,
+			Kind: "decision.recorded", Summary: "D42-P1 Use Postgres", ExpiresAt: at.Add(24 * time.Hour),
+			Data: map[string]any{"id": "D42-P1", "title": "Use Postgres", "choice": "a", "kind": "planner"}},
+		{Key: "shop-run", At: at.Add(time.Minute), Namespace: "team-a", Project: "shop", Kind: "run.finished",
+			IssueIID: 42, Summary: "run", ExpiresAt: at.Add(24 * time.Hour)},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	env := newTestEnv(t, withResearch(oidcConfig(Rule{Roles: []string{"shop-devs"}, Projects: []string{"team-a/shop"}}), false))
+	env.server.SetResearchStore(reader)
+	env.idp.user = map[string]any{"sub": "u1", "email": "ada@example.com"}
+	env.idp.info = map[string]any{"urn:zitadel:iam:org:project:roles": map[string]any{"shop-devs": map[string]any{"1": "acme"}}}
+	env.login(t, "/")
+	var page StreamPage
+	if code := env.get(t, "/api/v1/stream?project=team-a/shop&kinds=decision.recorded", &page); code != http.StatusOK {
+		t.Fatalf("status %d", code)
+	}
+	if len(page.Events) != 1 || page.Events[0].Kind != "decision.recorded" || page.Events[0].Data["choice"] != "a" ||
+		page.Events[0].Data["id"] != "D42-P1" || page.Events[0].IssueIID != 42 {
+		t.Errorf("events = %+v, want the decision with its data", page.Events)
+	}
+}

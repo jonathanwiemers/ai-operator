@@ -33,6 +33,8 @@ test('cockpitClass gives every kind exactly one class', () => {
     const cls = want.pinned.includes(k) ? 'pinned' : want.folded.includes(k) ? 'folded' : 'shown'
     assert.equal(cockpitClass[k], cls, k)
   }
+  assert.equal(cockpitClass['decision.recorded'], 'shown')
+  assert.ok(pilotStreamKinds.includes('decision.recorded'))
 })
 
 test('cockpitItems groups folded events by issue between shown events, oldest first', () => {

@@ -71,6 +71,10 @@ const (
 	// KindMilestoneStarted is a spec task's status.plan going from empty to
 	// non-empty: the milestone's issues are planned.
 	KindMilestoneStarted = "milestone.started"
+
+	// KindDecisionRecorded is a decision copied into the research store, once
+	// per decision ID (written by the recorder, not the differ).
+	KindDecisionRecorded = "decision.recorded"
 )
 
 // maxText bounds the texts copied from the status into an event.
