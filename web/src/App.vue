@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, toRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { hasFeature, session, setFeatures } from './api'
 import { getAbout, getFeatures, getInbox, getMe, getProjects, getProjectSets, getResearches, LoginRequiredError } from './client'
-import { inboxKey, newNotifications, notificationText } from './inboxNotify'
+import { inboxKey, newNotifications, notificationText, notifyCategory } from './inboxNotify'
 import { inboxRoute } from './inboxRoute'
 import { connectEvents, disconnectEvents, live } from './live'
-import { notifyActive, refreshPermission } from './notify'
+import { notifyActive, notifyDialog, refreshPermission, wants } from './notify'
 import { textEntry } from './textEntry'
 import UApp from '@nuxt/ui/components/App.vue'
 import UDashboardGroup from '@nuxt/ui/components/DashboardGroup.vue'
@@ -33,6 +33,7 @@ const UBreadcrumb = defineAsyncComponent(() => import('@nuxt/ui/components/Bread
 const RailNav = defineAsyncComponent(() => import('./components/RailNav.vue'))
 const SearchPalette = defineAsyncComponent(() => import('./components/SearchPalette.vue'))
 const BottomTabBar = defineAsyncComponent(() => import('./ui/BottomTabBar.vue'))
+const NotifySettings = defineAsyncComponent(() => import('./components/NotifySettings.vue'))
 import type { InboxItem, ProjectSummary, ResearchSummary } from './types'
 import type { ProjectSetSummary } from './generated/views'
 
@@ -77,6 +78,11 @@ useBackClose(railOpen)
 useBackClose(paletteOpen)
 const paletteUsed = ref(false)
 watch(paletteOpen, (v) => (paletteUsed.value ||= v))
+// The Notifications dialog, the same way: it loads on first open.
+const notifyOpen = toRef(notifyDialog, 'open')
+useBackClose(notifyOpen)
+const notifyUsed = ref(false)
+watch(notifyOpen, (v) => (notifyUsed.value ||= v))
 // ⌘K / Ctrl+K opens and closes the palette, also inside text fields.
 function onKey(e: KeyboardEvent) {
   if (!session.me || session.loginRequired || !isPaletteKey(e)) return
@@ -130,7 +136,7 @@ function onInbox(items: InboxItem[]) {
   const fresh = inboxSeeded ? newNotifications(seenInbox, items) : []
   for (const item of items) seenInbox.add(inboxKey(item))
   inboxSeeded = true
-  for (const item of fresh) showNotification(item)
+  for (const item of fresh) if (wants(notifyCategory(item))) showNotification(item)
 }
 
 function showNotification(item: InboxItem) {
@@ -369,6 +375,7 @@ watch(notifyActive, (on) => {
       </UDashboardSidebar>
 
       <SearchPalette v-if="paletteUsed" :projects="projects" :features="session.features" :fullscreen="isPhone" />
+      <NotifySettings v-if="notifyUsed" />
 
       <!-- The page; last in the group, so Nuxt UI draws no border after it.
            Each view fills the pane's height (flex: 1), the crumb bar keeps its own. -->

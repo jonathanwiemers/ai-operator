@@ -17,7 +17,7 @@ import { pausedStrip } from '../inboxStrip'
 import { getInbox } from '../client'
 import { useResource } from '../live'
 import { pageHeaderUi, toolbarUi } from '../pageHeader'
-import { disableNotify, enableNotify, notify, notifyActive, refreshPermission } from '../notify'
+import { notify, notifyActive, openNotifyDialog, refreshPermission } from '../notify'
 
 const { data, error, loading } = useResource(() => getInbox, ['project', 'task'])
 
@@ -51,24 +51,16 @@ const cover = 'text-(--text) after:absolute after:inset-0 hover:no-underline'
   <div class="page">
     <UPageHeader title="Inbox" description="What needs you now, across projects." :ui="pageHeaderUi">
       <template #links>
-        <span v-if="notify.permission === 'denied'" class="faint text-[13px]">Notifications are blocked in this browser</span>
+        <!-- Opens the Notifications dialog, which says when they are blocked. -->
         <UButton
-          v-else-if="notify.permission !== 'unsupported' && notifyActive()"
-          color="success"
-          variant="soft"
-          icon="i-lucide-bell-ring"
-          label="Notifications on"
-          aria-pressed="true"
-          @click="disableNotify"
-        />
-        <UButton
-          v-else-if="notify.permission !== 'unsupported'"
-          color="neutral"
-          variant="outline"
-          icon="i-lucide-bell"
-          label="Notify me"
-          aria-pressed="false"
-          @click="enableNotify"
+          v-if="notify.permission !== 'unsupported'"
+          :color="notifyActive() ? 'success' : 'neutral'"
+          :variant="notifyActive() ? 'soft' : 'outline'"
+          :icon="notifyActive() ? 'i-lucide-bell-ring' : 'i-lucide-bell'"
+          :label="notifyActive() ? 'Notifications on' : 'Notify me'"
+          aria-haspopup="dialog"
+          data-inbox-notify
+          @click="openNotifyDialog"
         />
       </template>
     </UPageHeader>

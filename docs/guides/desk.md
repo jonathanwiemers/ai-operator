@@ -167,11 +167,11 @@ owner accepted them. A row opens its card in the milestone's *Cockpit*;
 
 ### Browser notifications
 
-Click *Notify me* in the Inbox header and allow notifications in your
-browser. Each new pause, prompt, pilot proposal, agent question, ready
-companion and budget warning then raises one notification (failed and blocked
-tasks only count in the Inbox); a click opens the row's place. They only come
-while a Desk tab is open. *Notifications on* turns them off.
+Open **Notifications** in the account menu, or click *Notify me* in the
+Inbox header. Turn on *Notifications in this browser* and allow them, then
+pick the categories you want. Each new item of a picked category raises one
+notification; a click opens the row's place. They only come while a Desk tab
+is open, and the choices are kept per browser.
 
 ## Overview
 

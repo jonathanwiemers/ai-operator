@@ -6,6 +6,7 @@ import {
   newNotifications,
   notifiable,
   notificationText,
+  notifyCategory,
 } from '../src/inboxNotify.ts'
 
 const pause = (over = {}) => ({
@@ -234,4 +235,14 @@ test('budgetWarning: notifies once per issue and budget, with its text', () => {
     title: 'Budget at 80 % · #12 · shop',
     body: "80 % of the issue's budget of $20.00 spent",
   })
+})
+
+test('notifyCategory: each notifiable kind has its dialog category', () => {
+  assert.equal(notifyCategory(pause()), 'problem')
+  assert.equal(notifyCategory(pause({ hold: true })), 'problem')
+  assert.equal(notifyCategory(proposal()), 'proposal')
+  assert.equal(notifyCategory({ ...task('needs-input'), kind: 'prompt' }), 'question')
+  assert.equal(notifyCategory(task('needs-input')), 'question')
+  assert.equal(notifyCategory(companion()), 'companion')
+  assert.equal(notifyCategory(warning()), 'budget')
 })

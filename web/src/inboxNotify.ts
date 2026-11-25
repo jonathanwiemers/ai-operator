@@ -1,4 +1,5 @@
 import { pauseTitle } from './pauseCard.ts'
+import type { NotifyCategory } from './notify.ts'
 import type { InboxItem } from './types'
 
 // inboxKey identifies an Inbox item across reloads. A pause includes the
@@ -48,6 +49,24 @@ export function notifiable(item: InboxItem): boolean {
     item.kind === 'budgetWarning' ||
     (item.kind === 'task' && item.reason === 'needs-input')
   )
+}
+
+// notifyCategory is a notifiable item's category in the Notifications
+// dialog (notify.ts).
+export function notifyCategory(item: InboxItem): NotifyCategory {
+  switch (item.kind) {
+    case 'proposal':
+      return 'proposal'
+    case 'companionReady':
+      return 'companion'
+    case 'budgetWarning':
+      return 'budget'
+    case 'prompt':
+    case 'task':
+      return 'question'
+    default:
+      return 'problem'
+  }
 }
 
 // newNotifications returns the notifiable items whose key isn't in seen,

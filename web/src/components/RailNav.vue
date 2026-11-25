@@ -5,7 +5,7 @@
 // their sets and the research (src/railItems.ts), then the engine meters with
 // their reset times and, at the very bottom, the account button: avatar,
 // name and live dot, opening the account menu (src/accountMenu.ts) with the
-// login, Appearance, the Desk version and Sign out. App.vue renders it in the
+// login, Appearance, Notifications, the Desk version and Sign out. App.vue renders it in the
 // sidebar on tablet and desktop and in the rail sheet on phones; App.vue
 // loads the data. Collapsed (the sidebar at 64 px) it shows the pages as
 // icons with their names as tooltips, no meters, and the account button as
@@ -19,6 +19,7 @@ import { accountItems, initials } from '../accountMenu'
 import { themeInjectionKey, type Theme } from '../colorScheme'
 import { absTime, loginLasts, resetLabel, windowLabel } from '../format'
 import { live, useNow } from '../live'
+import { openNotifyDialog } from '../notify'
 import { openSets, railItems, railNewPlan } from '../railItems'
 import type { EngineUsage, ProjectSummary, ResearchSummary } from '../types'
 import type { ProjectSetSummary } from '../generated/views'
@@ -59,7 +60,15 @@ function setTheme(t: Theme) {
   themes?.set(t)
 }
 const account = computed(() =>
-  accountItems({ me: session.me ?? null, lasts: lasts.value, about: about.value, theme: theme.value, setTheme, signOut: () => void logout() }),
+  accountItems({
+    me: session.me ?? null,
+    lasts: lasts.value,
+    about: about.value,
+    theme: theme.value,
+    setTheme,
+    openNotifications: openNotifyDialog,
+    signOut: () => void logout(),
+  }),
 )
 const username = computed(() => session.me?.username ?? '')
 const liveText = computed(() => (live.connected ? 'Live' : 'Offline'))

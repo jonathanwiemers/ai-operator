@@ -361,6 +361,17 @@ build, so the CI `web` job enforces it. It prints
   and the Reka UI parts it uses become chunks of their own, and their names
   go into the preload lists in the entry chunk. The cap rose to 142.2 kB and
   the raise was reported on its merge request.
+- 2026-11-25, the notification settings and the Notifications dialog
+  (#797, R4 and R5 of the Desk notifications milestone): 142.8 kB, up from
+  142.2 kB at the cap. The dialog (`NotifySettings.vue`, `UModal`,
+  `USwitch`) and its category labels are lazy and load on first open. The
+  settings (`notify.ts`, about 0.2 kB) are in the entry chunk, since the
+  shell filters notifications by category. The new lazy entry also makes
+  the bundler regroup shared Reka UI modules: `CollectionSlot` moves into
+  the entry chunk and `usePrimitiveElement` becomes an initial chunk of its
+  own (about 0.4 kB). Loading `UModal` or `USwitch` lazily inside the
+  dialog did not avoid it. The cap rose to 142.9 kB and the raise was
+  reported on its merge request.
 - The cap only drops. A change that breaks it is reported, not answered by
   raising it.
 
@@ -1288,7 +1299,9 @@ without scoped CSS.
   Titles and project names wrap instead of being cut off. No `title`
   attribute carries text of the list (`RelTime` keeps the absolute time as
   its `title`; the relative time is shown).
-- *Notify me* and *Notifications on* are `UButton`s with `aria-pressed`.
+- *Notify me* and *Notifications on* are one `UButton` with
+  `aria-haspopup="dialog"`: it opens the Notifications dialog
+  (`components/NotifySettings.vue`), also in the account menu.
   The links of the paused strip are at least 44 px high on phones.
 - Paused autopilots show the compact pause card
   (`components/PauseCardCompact.vue`, `flat` in the list), also on

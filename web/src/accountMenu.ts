@@ -5,7 +5,8 @@ import type { Me } from './generated/views'
 // The account menu's items (RailNav.vue, docs/contributing/web-ui.md
 // "Navigation"), built here so node can test them. Groups, divided by a
 // line: who is signed in (slot 'who'), Appearance with Light / Dark / Auto
-// (slot 'theme'), the Desk version (slot 'about'), and Sign out with OIDC.
+// (slot 'theme'), Notifications (the dialog), the Desk version (slot
+// 'about'), and Sign out with OIDC.
 
 export interface AccountInput {
   me: Pick<Me, 'username' | 'roles' | 'authMode'> | null
@@ -15,6 +16,8 @@ export interface AccountInput {
   about: { text: string; href: string; note: string | null } | null
   theme: Theme
   setTheme: (t: Theme) => void
+  // Opens the Notifications dialog (notify.ts, openNotifyDialog).
+  openNotifications: () => void
   signOut: () => void
 }
 
@@ -69,7 +72,8 @@ export function accountItems(input: AccountInput): AccountItem[][] {
       }),
     ),
   ]
-  const groups: AccountItem[][] = [[who], appearance]
+  const notifications: AccountItem = { label: 'Notifications', icon: 'i-lucide-bell', onSelect: () => input.openNotifications() }
+  const groups: AccountItem[][] = [[who], appearance, [notifications]]
   const a = input.about
   if (a) {
     const link = a.href ? { to: a.href, target: '_blank' } : {}

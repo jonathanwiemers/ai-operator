@@ -10,14 +10,15 @@ const input = (over = {}) => ({
   about,
   theme: 'auto',
   setTheme: () => {},
+  openNotifications: () => {},
   signOut: () => {},
   ...over,
 })
 const labels = (groups) => groups.map((g) => g.map((i) => i.label))
 
-test('accountItems with OIDC: who, Appearance, version, Sign out', () => {
+test('accountItems with OIDC: who, Appearance, Notifications, version, Sign out', () => {
   const g = accountItems(input())
-  assert.deepEqual(labels(g), [['jo'], ['Appearance', 'Light', 'Dark', 'Auto'], ['ai-operator 2026.11.3'], ['Sign out']])
+  assert.deepEqual(labels(g), [['jo'], ['Appearance', 'Light', 'Dark', 'Auto'], ['Notifications'], ['ai-operator 2026.11.3'], ['Sign out']])
   assert.deepEqual(g[0][0], { type: 'label', slot: 'who', label: 'jo', roles: 'owner, viewer', lasts: input().lasts })
   assert.deepEqual(
     g[1].slice(1).map((i) => [i.type, i.theme, i.checked]),
@@ -27,23 +28,23 @@ test('accountItems with OIDC: who, Appearance, version, Sign out', () => {
       ['checkbox', 'auto', true],
     ],
   )
-  assert.equal(g[2][0].to, about.href)
-  assert.equal(g[2][0].target, '_blank')
-  assert.equal(g[2][0].description, about.note)
+  assert.equal(g[3][0].to, about.href)
+  assert.equal(g[3][0].target, '_blank')
+  assert.equal(g[3][0].description, about.note)
 })
 
 test('accountItems with auth off: "No login (auth off)", no login line, no Sign out', () => {
   const g = accountItems(input({ me: { username: 'anonymous', roles: [], authMode: 'none' }, lasts: 'ignored' }))
-  assert.deepEqual(labels(g), [['No login (auth off)'], ['Appearance', 'Light', 'Dark', 'Auto'], ['ai-operator 2026.11.3']])
+  assert.deepEqual(labels(g), [['No login (auth off)'], ['Appearance', 'Light', 'Dark', 'Auto'], ['Notifications'], ['ai-operator 2026.11.3']])
   assert.equal(g[0][0].roles, 'no roles')
   assert.equal(g[0][0].lasts, null)
 })
 
 test('accountItems: the version without a link or note, and none before /about answers', () => {
-  const plain = accountItems(input({ about: { text: 'ai-operator dev', href: '', note: null } }))[2][0]
+  const plain = accountItems(input({ about: { text: 'ai-operator dev', href: '', note: null } }))[3][0]
   assert.equal(plain.to, undefined)
   assert.equal(plain.description, undefined)
-  assert.equal(accountItems(input({ about: null })).length, 3)
+  assert.equal(accountItems(input({ about: null })).length, 4)
 })
 
 test('accountItems: a theme item sets its theme and keeps the menu open; Sign out signs out', () => {
@@ -58,7 +59,7 @@ test('accountItems: a theme item sets its theme and keeps the menu open; Sign ou
   let prevented = false
   light.onSelect({ preventDefault: () => (prevented = true) })
   assert.equal(prevented, true)
-  g[3][0].onSelect(new Event('select'))
+  g[4][0].onSelect(new Event('select'))
   assert.equal(out, 1)
 })
 
@@ -69,4 +70,12 @@ test('initials: two parts or the first two letters, upper case', () => {
   assert.equal(initials('anonymous'), 'AN')
   assert.equal(initials(''), '?')
   assert.equal(initials(undefined), '?')
+})
+
+test('accountItems: Notifications has the bell and opens the dialog', () => {
+  let opened = 0
+  const [item] = accountItems(input({ openNotifications: () => opened++ }))[2]
+  assert.equal(item.icon, 'i-lucide-bell')
+  item.onSelect(new Event('select'))
+  assert.equal(opened, 1)
 })
