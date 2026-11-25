@@ -310,6 +310,20 @@ const status = computed(() => {
   return milestoneIID.value && m?.iid === milestoneIID.value ? milestoneStatus(m) : null
 })
 
+// cockpitHeaders: what the Cockpit's thread headers need (R4 of "Desk: the
+// Cockpit newest first by issue"): a milestone's issue rows, queue items,
+// tasks, status and transcript grant; a project's tasks and milestone
+// titles.
+const cockpitHeaders = computed(() => {
+  const m = pageMilestone.value
+  if (milestoneIID.value) {
+    if (!m) return undefined
+    return { issues: m.issues, items: m.autopilot?.items, tasks: m.tasks, status: status.value ?? undefined, transcript: !!m.permissions?.transcript }
+  }
+  const ms = pageProject.value?.milestones ?? []
+  return { tasks: projectTasks.value.tasks, milestones: Object.fromEntries(ms.map((x) => [x.iid, x.title])) }
+})
+
 // A change of the open milestone's status is announced (useAnnounce.ts).
 announceChange(() =>
   status.value ? { key: `${props.namespace}/${props.name}#${milestoneIID.value}`, text: `Milestone now ${status.value.label}` } : null,
@@ -490,7 +504,7 @@ watch(
           :actions="[{ label: 'Back to now', color: 'neutral', variant: 'outline', onClick: () => (cockpitDay = undefined) }]"
           data-cockpit-jumped
         />
-        <Cockpit :scope="{ namespace, name, before: cockpitBefore }" :project="project" :can-steer="canSteer">
+        <Cockpit :scope="{ namespace, name, before: cockpitBefore }" :project="project" :can-steer="canSteer" :headers="cockpitHeaders">
           <template #pinned>
             <ProjectPinned :namespace="namespace" :name="name" :project="pageProject" :inbox="projectInbox" />
           </template>
@@ -502,7 +516,13 @@ watch(
       <div v-else-if="tab === 'cockpit'" class="scroll board">
         <!-- The milestone's Cockpit (R10): its problem cards, proposals
              and prompts pinned, answered in place, then its stream. -->
-        <Cockpit :scope="{ namespace, name, milestoneIID }" :project="project" :prompts="pageMilestone?.prompts" :can-steer="canSteer">
+        <Cockpit
+          :scope="{ namespace, name, milestoneIID }"
+          :project="project"
+          :prompts="pageMilestone?.prompts"
+          :can-steer="canSteer"
+          :headers="cockpitHeaders"
+        >
           <template #pinned>
             <MilestoneNeeds
               v-if="namespace && name && pageMilestone"

@@ -14,6 +14,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { journeyAt } from './journey'
 import { answer, now } from './fixtures'
 import { checkoutWithProposal } from './fixtures/projectCockpit'
+import { checkout as checkoutMilestone, payments as paymentsMilestone } from './fixtures/task'
 
 const projectPath = '/projects/team-a/shop'
 
@@ -86,9 +87,12 @@ async function expectCockpit(page: Page) {
   // (3 min ago), then the others with #281 of %14 below it; each folds its
   // runs into a group, closed by default.
   const threads = page.locator('main [data-cockpit-stream] [data-cockpit-thread]')
-  await expect(threads.first()).toHaveAttribute('aria-label', '%12 · #277')
-  await expect(threads.filter({ has: page.locator('h2', { hasText: /^Milestone %14$/ }) })).toHaveCount(1)
-  await expect(page.locator('main [data-cockpit-thread][aria-label="%14 · #281"] [data-cockpit-group]')).toHaveCount(1)
+  // Each header shows its milestone's title (R4).
+  await expect(threads.first()).toHaveAttribute('aria-label', new RegExp(`^#277 · .+ · ${checkoutMilestone.title}$`))
+  await expect(threads.first().locator('[data-cockpit-thread-milestone]')).toHaveText(checkoutMilestone.title)
+  await expect(page.locator(`main [data-cockpit-thread][aria-label="Milestone · ${paymentsMilestone.title}"]`)).toHaveCount(1)
+  await expect(page.locator('main #issue-281[data-cockpit-thread] [data-cockpit-group]')).toHaveCount(1)
+  await expect(page.locator('main #issue-281 [data-cockpit-thread-milestone]')).toHaveText(paymentsMilestone.title)
   await expect(groups(page)).toHaveCount(2)
   await expect(groups(page).nth(0)).toContainText('#277 ·')
   await expect(groups(page).nth(1)).toContainText('#281 ·')

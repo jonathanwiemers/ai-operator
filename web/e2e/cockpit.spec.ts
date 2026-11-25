@@ -12,7 +12,7 @@ import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Page } from '@playwright/test'
 import { journeyAt } from './journey'
 import { answer, now } from './fixtures'
-import { captures, capturesTranscript } from './fixtures/task'
+import { captures, capturesTranscript, refundsTitle } from './fixtures/task'
 import type { MilestoneView } from '../src/generated/views'
 import { ago } from './fixtures/clock'
 import type { StreamEvent, StreamKind } from '../src/types'
@@ -55,6 +55,19 @@ const splitIssue: StreamEvent[] = [
   ev('pilot.acted', 16, 281, 'Pilot asked #281 to retry'),
   ev('ci', 14, 281, 'Pipeline failed on #281', { state: 'failed' }),
 ]
+
+// fiveItems: #281's thread with five items, newest first: a group, a pilot
+// action, a group, a pilot action, a group.
+const fiveItems: StreamEvent[] = [
+  ev('run.started', 30, 281, 'Run 1 started on #281'),
+  ev('pilot.acted', 28, 281, 'Pilot asked #281 to retry'),
+  ev('ci', 26, 281, 'Pipeline failed on #281', { state: 'failed' }),
+  ev('pilot.acted', 24, 281, 'Pilot asked #281 to retry again'),
+  ev('run.started', 20, 281, 'Run 2 started on #281'),
+]
+// withRunning: the stream with an event of #282, whose implementer runs
+// with Live.
+const withRunning: StreamEvent[] = [...oldestFirst, ev('run.started', 4, 282, 'Run 3 started on #282')]
 
 type Opened = { problems: string[]; searches: string[]; transcripts: string[] }
 // Live: #282's implementer runs, and the viewer has the transcript grant
@@ -149,7 +162,11 @@ for (const width of [375, 1280]) {
     // #280's merge and group, then #279's merge and group.
     const threads = stream(page).locator('[data-cockpit-thread]')
     await expect(threads).toHaveCount(3)
-    for (const [i, name] of ['#281', '#280', '#279'].entries()) await expect(threads.nth(i)).toHaveAttribute('aria-label', name)
+    for (const [i, name] of [`#281 · ${refundsTitle}`, '#280 · Provider SDK 4 with refund support', '#279 · Refund reasons in the order history'].entries())
+      await expect(threads.nth(i)).toHaveAttribute('aria-label', name)
+    // The header: the issue's state from its row and queue lane (R4).
+    await expect(threads.nth(0).locator('[data-cockpit-thread-state]')).toHaveText('Running')
+    await expect(threads.nth(1).locator('[data-cockpit-thread-state]')).toHaveText('Merged')
     await expect(groups(page).getByRole('button')).toHaveText([
       /^#281 · 1 run, 1 CI round/,
       /^#280 · 1 run, 1 CI round, review clean/,
@@ -191,6 +208,67 @@ for (const width of [375, 1280]) {
     await expect(trigger(page, 1)).toHaveAttribute('aria-expanded', 'false')
     await expect(trigger(page, 0)).toHaveAttribute('aria-expanded', 'true')
     expect(problems).toEqual([])
+  })
+
+  // R4: a thread shows its newest 3 items, Show N more the rest; Expand
+  // all opens the rest and every group.
+  test(`a thread with 5 items shows 3, Show 2 more the rest, Expand all all of them@${width}`, async ({ page, baseURL }) => {
+    const { problems } = await open(page, baseURL, milestonePath, width, fiveItems)
+    const thread = stream(page).locator('#issue-281')
+    const items = thread.locator('ol.items > li')
+    await expect(items).toHaveCount(3)
+    await expect(items.nth(1)).toContainText('Pilot asked #281 to retry again')
+    const more = thread.getByRole('button', { name: 'Show 2 more' })
+    await expect(more).toHaveAttribute('aria-expanded', 'false')
+    await more.focus()
+    await page.keyboard.press('Enter')
+    await expect(items).toHaveCount(5)
+    await expect(items.nth(3)).toContainText('Pilot asked #281 to retry')
+    await thread.getByRole('button', { name: 'Show fewer' }).click()
+    await expect(items).toHaveCount(3)
+
+    await stream(page).getByRole('switch', { name: 'Expand all' }).click()
+    await expect(items).toHaveCount(5)
+    for (let i = 0; i < 3; i++) await expect(trigger(page, i)).toHaveAttribute('aria-expanded', 'true')
+    await expect(thread.getByText('Run 1 started on #281')).toBeVisible()
+    expect(problems).toEqual([])
+  })
+
+  test(`#issue-<iid> scrolls to its thread and opens it fully@${width}`, async ({ page, baseURL }) => {
+    const { problems } = await open(page, baseURL, `${milestonePath}#issue-279`, width)
+    const thread = stream(page).locator('#issue-279')
+    await expect(thread).toBeInViewport()
+    await expect(page.locator('main #issue-281')).toHaveAttribute('aria-label', `#281 · ${refundsTitle}`)
+    // A link on the page (a hash change) does the same.
+    await page.evaluate(() => (location.hash = '#issue-281'))
+    await expect(page.locator('main #issue-281')).toBeInViewport()
+    expect(problems).toEqual([])
+  })
+
+  test(`a running issue's header shows its step, ?live=1 opens its Live transcript@${width}`, async ({ page, baseURL }) => {
+    const opened = await open(page, baseURL, `${milestonePath}?live=1#issue-282`, width, withRunning, { transcript: true })
+    const thread = stream(page).locator('#issue-282')
+    await expect(thread.locator('[data-cockpit-thread-step]')).toHaveText('Implementing · 4 min')
+    await expect(thread).toHaveAttribute('aria-label', '#282 · Partial captures for split shipments')
+    const live = thread.getByRole('button', { name: 'Live transcript' })
+    await expect(live).toHaveAttribute('aria-expanded', 'true')
+    await expect(thread.getByText('Switching to the retry helper.')).toBeVisible()
+    await expect(thread).toBeInViewport()
+    expect(opened.transcripts.length).toBeGreaterThan(0)
+    // It closes and opens by keyboard.
+    await live.focus()
+    await page.keyboard.press('Space')
+    await expect(live).toHaveAttribute('aria-expanded', 'false')
+    expect(opened.problems).toEqual([])
+  })
+
+  test(`without the transcript grant a thread has no Live transcript@${width}`, async ({ page, baseURL }) => {
+    const opened = await open(page, baseURL, `${milestonePath}?live=1#issue-282`, width, withRunning, { transcript: false })
+    const thread = stream(page).locator('#issue-282')
+    await expect(thread.locator('[data-cockpit-thread-step]')).toHaveText('Implementing · 4 min')
+    await expect(thread.getByRole('button', { name: 'Live transcript' })).toHaveCount(0)
+    expect(opened.transcripts).toEqual([])
+    expect(opened.problems).toEqual([])
   })
 
   test(`Expand all opens every group, search narrows the stream@${width}`, async ({ page, baseURL }) => {

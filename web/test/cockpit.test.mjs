@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { chatAnswer, cockpitClass, cockpitStreamQuery, cockpitThreads, groupSummary, pilotStreamKinds, runtimeStreamKinds, threadTitle } from '../src/stream.ts'
+import { chatAnswer, cockpitClass, cockpitStreamQuery, cockpitThreads, groupSummary, pilotStreamKinds, runtimeStreamKinds } from '../src/stream.ts'
 import { localMinute, localTimes, localTimesText } from '../src/localTime.ts'
 
 let id = 0
@@ -97,17 +97,6 @@ test('in project scope groups are keyed by milestone and issue', () => {
   const events = stream(ev('ci', 1), ev('ci', 2, { milestoneIID: 6 }))
   assert.deepEqual(shape(items(events, { scope: 'project' })), ['group:ns/p/5/712:1'])
   assert.deepEqual(shape(items(events, { scope: 'project' }, 'ns/p/6/712')), ['group:ns/p/6/712:1'])
-})
-
-test('threadTitle names the issue, the milestone or the project', () => {
-  const t = (extra) => ({ key: 'k', namespace: 'ns', project: 'shop', at: '', items: [], ...extra })
-  assert.equal(threadTitle(t({ milestoneIID: 5, issueIID: 712 })), '#712')
-  assert.equal(threadTitle(t({ milestoneIID: 5 })), 'Milestone')
-  assert.equal(threadTitle(t({ milestoneIID: 5, issueIID: 712 }), 'project'), '%5 · #712')
-  assert.equal(threadTitle(t({ milestoneIID: 5 }), 'project'), 'Milestone %5')
-  assert.equal(threadTitle(t({ issueIID: 712 }), 'project'), '#712')
-  assert.equal(threadTitle(t({}), 'project'), 'shop')
-  assert.equal(threadTitle(t({}), 'all'), 'shop')
 })
 
 test('groupSummary counts runs, pushes, CI rounds and checkpoints and reads the last review', () => {

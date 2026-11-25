@@ -142,6 +142,20 @@ export function panelIssueState(state: MilestoneIssueRow['state'], lane?: QueueI
   return 'next'
 }
 
+const panelIssueTones: Record<PanelIssueState, Tone> = {
+  running: 'progress',
+  waiting: 'warning',
+  next: 'neutral',
+  merged: 'success',
+  skipped: 'muted',
+}
+
+// panelIssueBadge is a panel state's badge, label and tone (a Cockpit
+// thread's header).
+export function panelIssueBadge(s: PanelIssueState): { label: string; tone: Tone } {
+  return { label: panelIssueLabels[s], tone: panelIssueTones[s] }
+}
+
 // panelIssueGroups are a milestone's issues by panel state, in the order
 // running, waiting, next, merged, skipped, each in the milestone's order;
 // empty states are left out.

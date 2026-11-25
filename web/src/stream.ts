@@ -395,7 +395,7 @@ const allScopeShown: StreamKind[] = [
   'retrospective',
 ]
 
-type CockpitScope = 'milestone' | 'project' | 'all'
+export type CockpitScope = 'milestone' | 'project' | 'all'
 
 export type CockpitGroup = {
   type: 'group'
@@ -530,17 +530,6 @@ export function cockpitThreads(events: StreamEvent[], opts: { scope?: CockpitSco
     }
   })
   return { conversation: cockpitConversation(chat), threads: threads.sort(newestFirst) }
-}
-
-// threadTitle is a thread's header: its issue ("#712"), else "Milestone";
-// with scope 'project' the milestone first ("%5 · #712", "Milestone %5");
-// with scope 'all' the project.
-export function threadTitle(t: CockpitThread, scope: CockpitScope = 'milestone'): string {
-  if (scope === 'all') return t.project
-  const ms = scope === 'project' && t.milestoneIID != null ? `%${t.milestoneIID}` : ''
-  if (t.issueIID != null) return ms ? `${ms} · #${t.issueIID}` : `#${t.issueIID}`
-  if (ms) return `Milestone ${ms}`
-  return scope === 'project' ? t.project : 'Milestone'
 }
 
 // cockpitConversation pairs chat events (newest first) into exchanges.

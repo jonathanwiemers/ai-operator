@@ -1,21 +1,19 @@
 <script setup lang="ts">
 import UAlert from '@nuxt/ui/components/Alert.vue'
 import UButton from '@nuxt/ui/components/Button.vue'
-import UCollapsible from '@nuxt/ui/components/Collapsible.vue'
 import UDashboardToolbar from '@nuxt/ui/components/DashboardToolbar.vue'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UInput from '@nuxt/ui/components/Input.vue'
 import USwitch from '@nuxt/ui/components/Switch.vue'
-import { ref, watch } from 'vue'
+import { ref } from 'vue'
 import { alertColor } from '../../badgeTone'
-import { clockTime } from '../../format'
+import { threadHeader, type ThreadHeaderContext } from '../../cockpitThread'
 import { useNow } from '../../live'
 import { searchToolbarUi } from '../../pageHeader'
-import { threadTitle, type CockpitGroup, type CockpitItem } from '../../stream'
 import type { ProjectDetail, PromptView } from '../../types'
 import { useCockpitStream, type CockpitStreamScope } from '../../useCockpitStream'
-import EventCard from '../stream/EventCard.vue'
 import CockpitConversation from './CockpitConversation.vue'
+import CockpitThread from './CockpitThread.vue'
 
 // Cockpit is a Cockpit tab (R3 of "Desk: the Cockpit newest first by
 // issue"), top to bottom: the composer slot (a milestone's
@@ -24,15 +22,17 @@ import CockpitConversation from './CockpitConversation.vue'
 // a /pilot note), the latest exchange with the pilot, the pinned cards (the
 // pinned slot; a milestone's MilestoneNeeds), the live slot (the live lines
 // until Now & next replaces them), a toolbar with Expand all and the search,
-// the threads of cockpitThreads, newest on top, and Load older last. Shown
-// events are event cards; folded ones are one-line groups (UCollapsible,
-// closed by default) whose trigger is a button with the summary and the
-// time span.
+// the threads of cockpitThreads, newest on top, each a CockpitThread card
+// (R4), and Load older last. headers holds what the thread headers need
+// (threadHeader): the milestone's issue rows, queue items and tasks, the
+// project's milestone titles, the milestone's status, and the transcript
+// grant; the Overview passes none.
 const props = defineProps<{
   scope: CockpitStreamScope
   project?: ProjectDetail | null
   prompts?: PromptView[]
   canSteer?: boolean
+  headers?: Omit<ThreadHeaderContext, 'scope' | 'now'> & { transcript?: boolean }
 }>()
 
 const stream = useCockpitStream(() => props.scope)
@@ -44,42 +44,8 @@ function applySearch() {
   stream.search(qDraft.value)
 }
 
-// A group's open state: what its trigger set, else Expand all. Switching
-// Expand all resets every group to it. The state is kept per event, so it
-// stays when Load older or a live event adds events to the group (its
-// first or last event changes), and two groups of one issue keep their own.
+// Expand all opens every thread fully and every group (CockpitThread).
 const expandAll = ref(false)
-const opened = ref<Record<string, boolean>>({})
-watch(expandAll, () => (opened.value = {}))
-const eventKey = (e: { kind: string; id: number }) => `${e.kind}:${e.id}`
-function isOpen(g: CockpitGroup): boolean {
-  for (const e of g.events) {
-    const v = opened.value[eventKey(e)]
-    if (v !== undefined) return v
-  }
-  return expandAll.value
-}
-function setOpen(g: CockpitGroup, open: boolean) {
-  const next = { ...opened.value }
-  for (const e of g.events) next[eventKey(e)] = open
-  opened.value = next
-}
-
-// itemKey: an item's unique key, for v-for and a group's open state. A
-// group's own key (milestone and issue) repeats when a shown event splits
-// an issue's events, so a group is also named by its first event.
-function itemKey(item: CockpitItem): string {
-  if (item.type === 'event') return `event:${item.event.kind}:${item.event.id}`
-  if (item.type === 'thread') return `thread:${item.key}`
-  const first = item.events[0]
-  return `group:${item.key}:${first?.kind}:${first?.id}`
-}
-
-function span(g: CockpitGroup): string {
-  const from = clockTime(g.from, now.value)
-  const to = clockTime(g.to, now.value)
-  return from === to ? from : `${from} – ${to}`
-}
 </script>
 
 <template>
@@ -124,49 +90,18 @@ function span(g: CockpitGroup): string {
       <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="error" />
       <div v-if="loading && !threads.length && !conversation.length" class="empty">Loading…</div>
       <UEmpty v-else-if="!threads.length && !conversation.length" icon="i-lucide-activity" title="No events yet." variant="naked" size="sm" />
-      <section
+      <CockpitThread
         v-for="t in threads"
         :key="t.key"
-        :aria-label="threadTitle(t, scopeKind)"
-        class="thread"
-        data-cockpit-thread
-      >
-        <h2 class="thread-head">{{ threadTitle(t, scopeKind) }}</h2>
-        <ol class="items">
-          <li v-for="item in t.items" :key="itemKey(item)">
-            <EventCard v-if="item.type === 'thread'" :notes="item.notes" :project="project" :can-steer="canSteer" @posted="stream.reload" />
-            <EventCard
-              v-else-if="item.type === 'event'"
-              :event="item.event"
-              :project="project"
-              :prompts="prompts"
-              :can-steer="canSteer"
-              @posted="stream.reload"
-            />
-            <UCollapsible v-else :open="isOpen(item)" data-cockpit-group @update:open="setOpen(item, $event)">
-              <template #default="{ open }">
-                <UButton
-                  color="neutral"
-                  variant="ghost"
-                  block
-                  class="group-trigger"
-                  :trailing-icon="open ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
-                >
-                  <span class="summary">{{ item.summary }}</span>
-                  <time class="faint" :datetime="item.from">{{ span(item) }}</time>
-                </UButton>
-              </template>
-              <template #content>
-                <ol class="group-events">
-                  <li v-for="e in item.events" :key="`${e.kind}:${e.id}`">
-                    <EventCard :event="e" :project="project" :prompts="prompts" :can-steer="canSteer" @posted="stream.reload" />
-                  </li>
-                </ol>
-              </template>
-            </UCollapsible>
-          </li>
-        </ol>
-      </section>
+        :thread="t"
+        :header="threadHeader(t, { ...headers, scope: scopeKind, now })"
+        :expand-all="expandAll"
+        :transcript="headers?.transcript"
+        :project="project"
+        :prompts="prompts"
+        :can-steer="canSteer"
+        @posted="stream.reload"
+      />
       <UButton
         v-if="older"
         color="neutral"
@@ -188,47 +123,8 @@ function span(g: CockpitGroup): string {
   gap: 8px;
   min-width: 0;
 }
-.items,
-.group-events {
-  display: grid;
-  gap: 10px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.group-events {
-  padding: 8px 0 4px 16px;
-}
-.thread {
-  display: grid;
-  gap: 8px;
-  margin-top: 12px;
-  padding: 10px 12px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-}
-.thread-head {
-  margin: 0;
-  font-size: 13.5px;
-  font-weight: 600;
-}
 .older {
   margin: 16px auto 4px;
   display: flex;
-}
-.group-trigger {
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 13.5px;
-  text-align: left;
-}
-.summary {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.group-trigger time {
-  flex-shrink: 0;
-  margin-left: auto;
-  font-size: 12px;
 }
 </style>
