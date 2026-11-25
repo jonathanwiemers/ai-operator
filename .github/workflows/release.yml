@@ -75,7 +75,7 @@ jobs:
           sudo docker image prune --all --force
           df -h /
 
-      - uses: azure/setup-helm@v4
+      - uses: azure/setup-helm@v5
         if: steps.version.outputs.skip == 'false'
 
       - uses: docker/setup-qemu-action@v3
