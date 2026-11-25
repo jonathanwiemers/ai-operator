@@ -7,9 +7,7 @@ import { hasFeature } from '../api'
 import { companionOf } from '../companion'
 import {
   canRevisit,
-  decisionGroups,
   decisionHref,
-  decisionsTabHref,
   laneGroups,
   parallelCommand,
   parallelMax,
@@ -42,10 +40,8 @@ import LocalText from './LocalText.vue'
 // item shows its wave chip (W1, W2, …) after its number. Links, Revisit,
 // Resume and the stepper's buttons are 44 px high on phones. The order is queueRows'
 // order; grouped (the Issues tab), the items are in lanes (laneGroups) and
-// keep their queue position. Compact (the context panel), the rows carry no
-// decision IDs and Revisit chips: one line per kind with its count
-// (decisionGroups) links to the milestone's Decisions tab.
-const props = defineProps<{ namespace: string; name: string; milestone: MilestoneView; grouped?: boolean; compact?: boolean }>()
+// keep their queue position.
+const props = defineProps<{ namespace: string; name: string; milestone: MilestoneView; grouped?: boolean }>()
 
 const rows = computed(() =>
   queueRows(props.milestone.autopilot?.items ?? [], props.milestone.spec.status.autopilot?.items).map((q, n) => ({
@@ -106,10 +102,8 @@ const milestonePath = computed(() => {
   return router.resolve({ name: 'stream-milestone', params: { namespace, name, iid: String(props.milestone.iid) } }).path
 })
 const decisionLink = (d: { id: string; url?: string }) => decisionHref(d, milestonePath.value, hasFeature('history'))
-const decisionLines = computed(() => (props.compact ? decisionGroups(rows.value) : []))
-const decisionsTab = computed(() => decisionsTabHref(milestonePath.value, hasFeature('history')))
-// decisionsShown: a row lists its decisions and revisit (not compact).
-const decisionsShown = (q: { decisions: unknown[]; revisitOf?: string }) => !props.compact && (q.decisions.length > 0 || !!q.revisitOf)
+// decisionsShown: a row lists its decisions and revisit.
+const decisionsShown = (q: { decisions: unknown[]; revisitOf?: string }) => q.decisions.length > 0 || !!q.revisitOf
 
 const issueURL = (iid: number) => milestoneIssueURL(props.milestone.webURL, iid)
 
@@ -189,31 +183,29 @@ const laneHead = 'm-0 mb-1 px-1.5 text-xs font-semibold tracking-normal text-(--
           <RouterLink v-if="q.task" :to="{ name: 'task', params: { namespace, name, task: q.task } }" :class="tap">
             task
           </RouterLink>
-          <template v-if="!compact">
-            <span v-if="q.revisitOf">revisits {{ q.revisitOf }}</span>
-            <span
-              v-for="d in q.decisions"
-              :key="d.id"
-              class="inline-flex items-center gap-1"
-              :class="{ 'line-through opacity-55': d.superseded }"
-              :title="d.title"
-            >
-              <RouterLink v-if="decisionLink(d).startsWith('/')" :to="decisionLink(d)" :class="tap" data-decision-link>
-                <code>{{ d.id }}</code>
-              </RouterLink>
-              <ExtLink v-else-if="decisionLink(d)" :href="decisionLink(d)" :class="tap"><code>{{ d.id }}</code></ExtLink>
-              <code v-else>{{ d.id }}</code>
-              <UButton
-                v-if="pilotTask && canRevisit(d, milestone.permissions)"
-                color="neutral"
-                variant="outline"
-                size="xs"
-                :disabled="!!sending"
-                :label="sending === d.id ? '…' : 'Revisit'"
-                @click="revisit(d.id)"
-              />
-            </span>
-          </template>
+          <span v-if="q.revisitOf">revisits {{ q.revisitOf }}</span>
+          <span
+            v-for="d in q.decisions"
+            :key="d.id"
+            class="inline-flex items-center gap-1"
+            :class="{ 'line-through opacity-55': d.superseded }"
+            :title="d.title"
+          >
+            <RouterLink v-if="decisionLink(d).startsWith('/')" :to="decisionLink(d)" :class="tap" data-decision-link>
+              <code>{{ d.id }}</code>
+            </RouterLink>
+            <ExtLink v-else-if="decisionLink(d)" :href="decisionLink(d)" :class="tap"><code>{{ d.id }}</code></ExtLink>
+            <code v-else>{{ d.id }}</code>
+            <UButton
+              v-if="pilotTask && canRevisit(d, milestone.permissions)"
+              color="neutral"
+              variant="outline"
+              size="xs"
+              :disabled="!!sending"
+              :label="sending === d.id ? '…' : 'Revisit'"
+              @click="revisit(d.id)"
+            />
+          </span>
         </div>
         <div v-if="q.lane === 'held' && q.hold" class="ml-[26px] flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs" data-hold>
           <span class="min-w-0 flex-[1_1_12rem] [overflow-wrap:anywhere] text-(--tone-warning-fg)"><LocalText :text="q.hold.reason || 'Held.'" /></span>
@@ -232,15 +224,6 @@ const laneHead = 'm-0 mb-1 px-1.5 text-xs font-semibold tracking-normal text-(--
       </li>
     </ol>
   </template>
-  <div v-if="decisionLines.length" class="mt-2 px-1.5 text-xs text-(--text-3)" data-decision-groups>
-    <span class="font-semibold text-(--text-2)">Decisions</span>
-    <ul class="m-0 grid list-none gap-0.5 p-0" aria-label="Decisions">
-      <li v-for="g in decisionLines" :key="g.kind" :data-decision-group="g.kind">
-        <RouterLink v-if="decisionsTab" :to="decisionsTab" :class="tap">{{ g.label }} · {{ g.count }}</RouterLink>
-        <span v-else>{{ g.label }} · {{ g.count }}</span>
-      </li>
-    </ul>
-  </div>
   <CommandStatus :sent="sent" :answer="answer" :error="error" :prompt="promptID" />
   <div v-if="!rows.length" :class="note">The queue is empty.</div>
 </template>

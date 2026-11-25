@@ -9,8 +9,8 @@ import type { HistoryResponse, MilestoneView } from '../types'
 import CompanionsList from './CompanionsList.vue'
 
 // ProjectHistory is the History section at the bottom of the project's Now
-// & next sidebar (R9 of "Desk: the Cockpit newest first by issue"), once the
-// project panel's Queue view: the active milestone's companions and the last
+// & next sidebar (R9 of "Desk: the Cockpit newest first by issue"):
+// the active milestone's companions and the last
 // 30 days. Closed by default and not remembered (D822-P2); open while a day
 // is picked, so a reopened slide-over shows it. A day of the history pages
 // the project's Cockpit back to that day (emit day; the picked one is

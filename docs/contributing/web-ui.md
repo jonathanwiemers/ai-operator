@@ -1560,11 +1560,7 @@ history database only, never GitLab.
 The queue's decision IDs (`QueueList.vue` on the Issues tab) link through
 `decisionHref` (`milestoneQueue.ts`): with the `history` feature to the
 milestone page's `?tab=decisions#<id>` as a RouterLink, else to the GitLab
-comment. The Revisit button stays. In the context panel (`compact`) the
-rows carry no IDs or Revisit chips: `decisionGroups` sums them into one
-line per kind, *Revisit · n* (decisions an issue revisits), *Open · n* and
-*Superseded · n*, each linking to the milestone's Decisions tab with the
-`history` feature (`decisionsTabHref`), plain text without.
+comment. The Revisit button stays.
 
 The e2e cases `milestone decisions › …` (fixture
 `e2e/fixtures/decisions.ts`) cover the cards, search and chips, the

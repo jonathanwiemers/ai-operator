@@ -337,11 +337,8 @@ const refAttrs = computed(() =>
    move the composer between press and release.
 
    Where the composer sits, which utilities cannot say per mode and width.
-   A note composer stays at the top of its pane, as the stream scrolls. */
+   A note composer (the Cockpit's, on top) scrolls with the page (R3). */
 .composer.note {
-  position: sticky;
-  top: 0;
-  z-index: 4;
   background: var(--bg);
   padding: 14px 0 10px;
 }

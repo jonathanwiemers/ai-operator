@@ -57,43 +57,6 @@ export function decisionHref(d: Pick<DecisionRef, 'id' | 'url'>, milestonePath: 
   return d.url ?? ''
 }
 
-// DecisionGroup is one line of the context panel's decisions (R10): a kind
-// and how many of the queue's decisions are of it.
-export interface DecisionGroup {
-  kind: 'revisit' | 'open' | 'superseded'
-  label: string
-  count: number
-}
-
-// decisionGroups sums a queue's decisions per kind, instead of a row of
-// IDs and Revisit chips per issue: Revisit counts the decisions an issue
-// revisits, Open the standing ones, Superseded those a revisit replaced.
-// An ID counts once per kind; kinds without one are left out.
-export function decisionGroups(rows: readonly Pick<QueueRow, 'decisions' | 'revisitOf'>[]): DecisionGroup[] {
-  const ids = { revisit: new Set<string>(), open: new Set<string>(), superseded: new Set<string>() }
-  for (const r of rows) {
-    const revisit = r.revisitOf?.trim().toUpperCase()
-    if (revisit) ids.revisit.add(revisit)
-    for (const d of r.decisions) {
-      const id = d.id.trim().toUpperCase()
-      if (id) ids[d.superseded ? 'superseded' : 'open'].add(id)
-    }
-  }
-  const labels: [DecisionGroup['kind'], string][] = [
-    ['revisit', 'Revisit'],
-    ['open', 'Open'],
-    ['superseded', 'Superseded'],
-  ]
-  return labels.filter(([k]) => ids[k].size).map(([kind, label]) => ({ kind, label, count: ids[kind].size }))
-}
-
-// decisionsTabHref is where the context panel's decision lines link: the
-// milestone's Decisions tab, "<path>?tab=decisions", with the history
-// feature, which it reads; '' without (the lines are text).
-export function decisionsTabHref(milestonePath: string, history: boolean): string {
-  return history && milestonePath ? `${milestonePath}?tab=decisions` : ''
-}
-
 // revisitPromptID finds the prompt id ("Q7") the operator's answer to a
 // revisit names, or '' when it names none.
 export function revisitPromptID(answer: string): string {

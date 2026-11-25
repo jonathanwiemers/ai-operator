@@ -9,11 +9,11 @@ import { useBackClose } from '../ui/useBackClose'
 // (docs/contributing/web-ui.md, "Context panel and pause history"). From
 // 1180 px the panel slot is a column beside the default slot; below, the
 // content has the full width and the panel opens as a sheet from the right,
-// closed by default. The page's own buttons (Context on a project; Issues,
-// Queue and Decisions on a milestone) open it through v-model:open; the
+// closed by default. The page's Now strip (the one-line summary under the
+// header) opens it through v-model:open; the
 // default slot's `sheet` says whether the panel is a sheet at this width, so
-// the page shows the buttons only then. Back and Escape close the sheet
-// (useBackClose), and focus returns to opener, the button that opened it. A
+// the page shows the strip only then. Back and Escape close the sheet
+// (useBackClose), and focus returns to opener, the strip that opened it. A
 // query change inside the sheet keeps it open. opener false: a link in the
 // sheet was followed, focus stays where the link led (no jump back to the
 // header on phones, where the window scrolls).

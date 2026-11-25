@@ -2,8 +2,8 @@ import { duration } from './format.ts'
 import type { Task } from './generated/views.ts'
 import { runInProgress } from './taskHealth.ts'
 
-// The Cockpit's live lines (R11 of "Desk: the Cockpit"): one line per issue
-// whose implementer runs now, "#712 implementing · 4 min".
+// liveLines: one line per issue whose implementer runs now, "#712
+// implementing · 4 min", for the Now & next sidebar and the thread headers.
 
 export interface LiveLine {
   task: string

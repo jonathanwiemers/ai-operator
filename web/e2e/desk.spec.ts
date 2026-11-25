@@ -148,7 +148,7 @@ const routes: Route[] = [
   },
   // The project page's default tab, the Cockpit (R15 of "Desk: the
   // Cockpit"): %14's pinned cards and the stream across the milestones. The
-  // panel's Decisions view is checked in project-cockpit.spec.ts.
+  // old ?panel=decisions link is checked in project-cockpit.spec.ts.
   {
     name: 'stream-project-cockpit',
     path: '/projects/team-a/shop',

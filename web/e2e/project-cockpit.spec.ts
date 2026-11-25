@@ -125,9 +125,8 @@ async function expectCockpit(page: Page) {
   await expect(groups(page).nth(1)).toContainText('#281 ·')
   for (const n of [0, 1]) await expect(groups(page).nth(n).getByRole('button').first()).toHaveAttribute('aria-expanded', 'false')
 
-  // No composer (D9) and no live lines: what runs is in the sidebar.
+  // No composer (D9).
   await expect(page.locator('main [data-cockpit-composer]')).toHaveCount(0)
-  await expect(page.locator('main [data-cockpit-live]')).toHaveCount(0)
 }
 
 for (const width of [1280, 390]) {

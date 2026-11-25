@@ -82,7 +82,7 @@ const milestoneIID = computed(() => (props.iid ? Number(props.iid) : undefined))
 // Retrospective only once it has one (milestoneTabsFor); a project's and a
 // milestone's removed tabs' links open where their content moved
 // (projectAlias, milestoneAlias). The milestone Cockpit tab's badge is the
-// count of the Open items (D674-P2). The pilot's composer is at the bottom
+// count of the Open items (D674-P2). The pilot's composer is on top
 // of the milestone's Cockpit; a project's Cockpit has none (D9).
 const route = useRoute()
 // pageMilestone: the loaded milestone, once it is the route's.
@@ -230,14 +230,13 @@ watch(
 )
 const canSteer = computed(() => !!milestone.value?.permissions?.steer)
 
-// paused: the loaded milestone's paused autopilot, pinned above the composer
-// (project and milestone pages).
+// paused: the loaded milestone's paused autopilot (the Issues tab's card).
 const paused = computed(() => {
   const m = milestone.value
   return m?.autopilot?.phase === 'Paused' ? m : null
 })
 
-// pauseProps: the compact pause card's props (stream and Issues tabs).
+// pauseProps: the compact pause card's props (the Issues tab).
 const pauseProps = computed(() => {
   const m = paused.value
   if (!m || !props.namespace || !props.name) return null
@@ -558,8 +557,6 @@ watch(
               @posted="reload"
             />
           </template>
-          <!-- What runs now is in the Now & next sidebar, no live lines (R7
-               of "Desk: the Cockpit newest first by issue"). -->
         </Cockpit>
       </div>
       <div v-else-if="tab === 'issues'" class="scroll board">

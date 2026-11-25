@@ -140,8 +140,6 @@ test('the sidebar is a column beside the Cockpit with its four sections, a Runni
   await section(page, 'waiting').getByRole('link').first().click()
   await expect(page).toHaveURL(new RegExp(`${milestonePath}#issue-281$`))
 
-  // No live lines in the milestone Cockpit (R7).
-  await expect(page.locator('main [data-cockpit-live]')).toHaveCount(0)
   expect(problems).toEqual([])
 })
 

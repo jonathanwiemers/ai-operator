@@ -144,7 +144,6 @@ const toggle = async (page: Page, n: number) => {
   await trigger(page, n).focus()
   await page.keyboard.press('Enter')
 }
-const liveLines = (page: Page) => page.locator('main [data-cockpit-live]')
 const row = (page: Page, iid: number) =>
   pinned(page).locator(`[data-problem="issue-${iid}"], [data-problem="${1000 + iid}"], [data-problem="${2000 + iid}"]`)
 
@@ -310,14 +309,13 @@ for (const width of [375, 1280]) {
     })
   }
 
-  // The live lines are gone from the milestone Cockpit (R7 of "Desk: the
+  // A running issue loads no transcript unasked (R7 of "Desk: the
   // Cockpit newest first by issue"): #282's running implementer is in the
   // Now & next sidebar (milestone-panel.spec.ts) and its thread.
-  test(`a running issue has no live line in the Cockpit@${width}`, async ({ page, baseURL }) => {
+  test(`a running issue loads no transcript in the Cockpit@${width}`, async ({ page, baseURL }) => {
     const opened = await open(page, baseURL, milestonePath, width, oldestFirst, { transcript: true })
     await expect(groups(page)).toHaveCount(3)
     await expect(pinned(page)).toBeVisible()
-    await expect(liveLines(page)).toHaveCount(0)
     expect(opened.transcripts).toEqual([])
     expect(opened.problems).toEqual([])
   })

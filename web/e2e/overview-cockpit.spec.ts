@@ -130,8 +130,7 @@ async function expectCockpit(page: Page) {
     await expect(g.getByRole('button').first()).toHaveAttribute('aria-expanded', 'false')
   }
 
-  // No live lines in the stream (Now & next has what runs), no composer.
-  await expect(page.locator('main [data-cockpit] [data-cockpit-live]')).toHaveCount(0)
+  // No composer: the Overview has no pilot.
   await expect(page.locator('main [data-cockpit-composer], main textarea')).toHaveCount(0)
 }
 

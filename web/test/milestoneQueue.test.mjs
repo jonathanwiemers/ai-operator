@@ -3,8 +3,6 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   canRevisit,
-  decisionGroups,
-  decisionsTabHref,
   decisionHref,
   laneGroups,
   parallelCommand,
@@ -199,30 +197,4 @@ test('sentLine: pending and sent per command', () => {
   assert.equal(sentLine('parallel', '3', false), 'Limit 3 sent.')
   assert.equal(sentLine('resume', '#42', true), 'Resuming #42…')
   assert.equal(sentLine('resume', '#42', false), 'Resume #42 sent.')
-})
-
-test('decisionGroups: one line per kind with a count, IDs counted once', () => {
-  const rows = [
-    { decisions: [{ id: 'D532-P1' }, { id: 'D532-P2', superseded: true }], revisitOf: 'D532-P2' },
-    { decisions: [{ id: 'd532-p1 ' }, { id: 'D533-1' }], revisitOf: '' },
-    { decisions: [], revisitOf: 'D530-P4' },
-    { decisions: [{ id: '  ' }] },
-  ]
-  assert.deepEqual(decisionGroups(rows), [
-    { kind: 'revisit', label: 'Revisit', count: 2 },
-    { kind: 'open', label: 'Open', count: 2 },
-    { kind: 'superseded', label: 'Superseded', count: 1 },
-  ])
-})
-
-test('decisionGroups: kinds without a decision are left out, none for an empty queue', () => {
-  assert.deepEqual(decisionGroups([{ decisions: [{ id: 'D1' }] }]), [{ kind: 'open', label: 'Open', count: 1 }])
-  assert.deepEqual(decisionGroups([{ decisions: [] }]), [])
-  assert.deepEqual(decisionGroups([]), [])
-})
-
-test('decisionsTabHref: the Decisions tab with history, none without', () => {
-  assert.equal(decisionsTabHref('/projects/a/b/milestones/3', true), '/projects/a/b/milestones/3?tab=decisions')
-  assert.equal(decisionsTabHref('/projects/a/b/milestones/3', false), '')
-  assert.equal(decisionsTabHref('', true), '')
 })

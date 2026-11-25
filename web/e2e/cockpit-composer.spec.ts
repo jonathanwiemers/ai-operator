@@ -198,6 +198,8 @@ test('steer without the chat grant: a /pilot note; neither: the read-only line@1
   let { problems } = await open(page, baseURL, milestonePath, { milestone: withPerms({ chat: false }) })
   await expect(composer(page).locator('.composer.note').getByRole('textbox')).toBeVisible()
   await expect(composer(page).locator('.composer.chat')).toHaveCount(0)
+  // The note composer scrolls with the page too (R3), not sticky.
+  expect(await composer(page).locator('.composer.note').evaluate((e) => getComputedStyle(e).position)).toBe('static')
   expect(problems).toEqual([])
   ;({ problems } = await open(page, baseURL, milestonePath, { milestone: withPerms({ chat: false, steer: false }) }))
   await expect(composer(page)).toContainText("Read-only: only the milestone's owners can message the pilot.")

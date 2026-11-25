@@ -9,7 +9,7 @@
 // | Issues | Decisions | Metrics, then Retrospective once one exists (R14;
 // Decisions is a tab again, R6 of "Desk: the Cockpit newest first by
 // issue"); the pilot's composer
-// is at the bottom of the milestone's Cockpit (R12). The dashboard at /:
+// is on top of the milestone's Cockpit (R3). The dashboard at /:
 // Cockpit (the default, R16: the stream across all projects) | Timeline;
 // its old Overview and Activity tabs open the Cockpit (dashboardAlias). The task page (and the issue page with a live task):
 // Overview | Chat | Live | Logs | Calls (R10; Logs for the task's owners,
@@ -130,7 +130,7 @@ const projectTabAliases: TabAliases = {
 
 // dashboardTabAliases are where the dashboard's removed tabs went (R16 of
 // "Desk: the Cockpit", D791-P2): Activity (once Stream) and Overview, whose
-// Working now is in the Cockpit's panel, into the Cockpit.
+// Working now is in the Now & next sidebar, into the Cockpit.
 const dashboardTabAliases: TabAliases = { activity: {}, stream: {}, overview: {} }
 
 // tabAlias is the current id of a ?tab= value: the renamed tab's id for an
@@ -241,7 +241,7 @@ const taskTabAliases: TabAliases = { chat: { tab: 'overview' } }
 // content moved to (milestoneTabAliases), null when it needs no change;
 // Stream.vue replaces the URL with it on load, so the address shows the
 // new place (D789-P1). The pilot drawer's ?pilot= goes too: the pilot's
-// composer is at the bottom of the Cockpit (R12 of "Desk: the Cockpit").
+// composer is on top of the Cockpit.
 // A repeated ?tab= is read by its first value; other parameters stay. An
 // old ?panel=decisions opens the Decisions tab (panelAliasQuery); the old
 // ?panel=issues and ?panel=queue go (nowPanelQuery).

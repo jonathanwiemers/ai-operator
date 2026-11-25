@@ -111,8 +111,8 @@ export function issueProgress(issues: readonly Pick<MilestoneIssueRow, 'state'>[
   return { merged, total: issues.length, open: issues.length - merged }
 }
 
-// PanelIssueState is an issue's state in a Cockpit thread's header (once
-// the milestone panel's Issues view, R13): running, waiting (on dependencies or a hold), next (planned or
+// PanelIssueState is an issue's state in a Cockpit thread's header:
+// running, waiting (on dependencies or a hold), next (planned or
 // ready, its turn to come), merged and skipped (or closed unmerged).
 export type PanelIssueState = 'running' | 'waiting' | 'next' | 'merged' | 'skipped'
 
