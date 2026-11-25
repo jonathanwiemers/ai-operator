@@ -236,6 +236,13 @@ recommended, from the operator, the pilot or an agent, under an ID such as
 `Q5`. You answer it in the Desk with one click or one sentence; see
 [Steer from the Desk](../guides/steer-from-the-desk.md#answer-prompts).
 
+### Push subscription
+
+A device's permission to get [Desk](#desk) notifications while no Desk tab
+is open. It is made in the Notifications dialog, stored with your user name
+and roles, and deleted when you turn notifications off, sign out or don't
+open the Desk for 30 days. See [Notifications](../reference/notifications.md#push).
+
 ### Read gate
 
 A rule on a role that stops it from reading big files whole, so it reads a

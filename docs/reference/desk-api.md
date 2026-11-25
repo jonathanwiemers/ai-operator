@@ -74,6 +74,7 @@ and leave out the cookie:
 | `GET /api/v1/about` | The Desk's version and the newest release of the operator's own project. | login |
 | `GET /api/v1/features` | The sections you may see: factory, history, chat, plans, research. | login |
 | `GET /api/v1/gitlab` | Whether GitLab is set up and your account is connected. | login |
+| `GET /api/v1/push` and `PUT`, `DELETE /api/v1/push/subscription` | Whether push notifications are on, and a device's push subscription. See [Push API](push-api.md). | login |
 
 ## Projects and milestones
 

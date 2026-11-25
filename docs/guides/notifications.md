@@ -67,12 +67,51 @@ If a Desk window is open, the click brings that window forward and opens
 the item there. It does not open a second window. Only without an open Desk
 window does the browser open a new one.
 
-## Only while a Desk tab is open
+## With the Desk closed
 
-Notifications come only while a Desk tab or the installed Desk app is open.
-The tab may be in the background or in another window. When you close every
-Desk tab, nothing notifies until you open the Desk again; items that came up
-in the meantime don't notify then, they are in the Inbox.
+With a [push subscription](../concepts/glossary.md#push-subscription), your
+device gets notifications while no Desk tab is open: on an iPhone, on
+Android with Chrome closed, and on a computer. Push needs a database and the
+Desk's external URL. If your Desk has none, the dialog says why, and you get
+in-tab notifications only. The
+[reference](../reference/notifications.md#push) lists the reasons.
+
+### On an iPhone or iPad
+
+1. Use iOS 16.4 or later. Open the Desk in Safari, tap **Share**, then **Add
+   to Home Screen**, and tap *Add*.
+2. Open the Desk from its Home Screen icon, not from Safari. In Safari the
+   dialog shows "Add the Desk to your Home Screen to get notifications"
+   instead of the switch.
+3. Open the account menu, choose **Notifications** and turn on
+   *Notifications on this device*. Allow the permission.
+
+### On Android and on a computer
+
+Open the account menu, choose **Notifications** and turn on
+*Notifications on this device*. Allow the permission. You need no install;
+you may [install the Desk](#install-the-desk) if you like.
+
+### Pick categories per device
+
+The same switches pick what this device gets. A phone and a computer each
+keep their own, so you can pick fewer categories on the phone. A change
+applies at once.
+
+### Turn them off
+
+Turn off *Notifications on this device*. The device stops getting pushes.
+**Sign out** on a device does the same for that device. A device you don't
+open for 30 days stops getting pushes too; open the Desk to keep it.
+
+### One notification, not two
+
+On a device with push on, an open Desk tab shows no notifications of its
+own: the push shows each one once. A device without push keeps the in-tab
+notifications.
+
+As in the Inbox, you get pushes only for projects you can view. A tap opens
+the same place as for an in-tab notification.
 
 ## Install the Desk
 
@@ -85,14 +124,12 @@ the address bar, or in the browser menu.
 **On Android, in Chrome:** open the Desk, tap the menu (⋮) and choose
 **Install app** or *Add to home screen* → *Install*. The Desk icon appears
 on your home screen. Turn on notifications in the installed app as above.
-They show as system notifications while the app or a Desk tab is open, and
-a tap opens the item.
+They show as system notifications, and a tap opens the item.
 
 **On an iPhone or iPad (iOS 16.4 or later), in Safari:** open the Desk, tap
 **Share**, then **Add to Home Screen**, and tap *Add*. The Desk icon opens
-the Desk full screen, without Safari's bars. An iPhone
-shows no Desk notifications yet: iOS needs Web Push for them, which a later
-release brings.
+the Desk full screen, without Safari's bars. Turn on notifications from that
+icon, as [above](#on-an-iphone-or-ipad).
 
 ## Next
 

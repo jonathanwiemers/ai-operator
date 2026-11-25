@@ -2716,7 +2716,7 @@ entry opens its Cockpit at its card (R17 of the Cockpit spec), problems
 and pauses through the `problem` route, prompts at `#prompt-Q<n>`,
 proposals at their prompt's hash or `#pinned` (`pinnedAnchor`, the pinned
 section's id, scrolled to by the router). Notifications show through the
-service worker (next section); there is no Web Push and no e-mail. The
+service worker (next section); push is described there too, there is no e-mail. The
 choice is kept per browser.
 
 ### Service worker
@@ -2749,6 +2749,40 @@ handler and caches nothing: no offline use.
   `GET /api/v1/push`, subscribes and sends `PUT` without categories (the
   server keeps the stored ones); errors are dropped, the next Desk start
   refreshes it.
+- **Push page side.** `pushSubscribe.ts` is pure (no DOM, Vue or `client.ts`,
+  so the worker uses it too): `pushState` picks the dialog's state
+  (`push`, `iosHint`, `unavailable`, `inTab`), `sameKey` compares a
+  subscription's `applicationServerKey` with the server's `publicKey`, and
+  `subscriptionBody` builds the `PUT` body. `push.ts` is the browser side,
+  loaded lazily like `deskWorker.ts`: it subscribes with
+  `userVisibleOnly: true`, sends `PUT` on every start while signed in and
+  subscribed (`App.vue` calls `startPush`), subscribes again when the key
+  changed, and unsubscribes with `DELETE` on turning off and on sign-out.
+- **No duplicates.** While `notify.push` is set, `App.vue` shows no in-tab
+  Inbox or event notifications and stops the event poller: the push shows
+  each one.
+- **Sender.** The UI server runs `RunPushSender` next to its informers. It
+  wakes on `project` and `task` events debounced by 2 s, and every 60 s. A
+  cycle runs only after the cache synced and while it holds the store's
+  Postgres advisory lock, taken per cycle with `TryPushLock` and released at
+  its end, so one replica sends at a time and another takes over when it
+  dies. A cycle deletes expired subscriptions and ledger rows, then for each
+  subscription computes `inboxOf` for its stored principal, adds the
+  `autopilot` (`Done`), `milestone.started` and `release.ended` (`Released`,
+  `Failed`) events of the last 15 minutes, keeps the picked categories and
+  sends the keys not yet in the ledger. The payload is the item or event,
+  cut to 3000 bytes; TTL is 24 h; `Urgency` is `high` for `problem` and
+  `question`.
+- **Ledger.** `push_sent` holds `(subscription, key)`. The sender *claims*
+  a key (`ClaimPush`, an insert that reports what was new) right before
+  sending it, and *unclaims* it when the send fails, so the next cycle
+  retries; a payload too big stays claimed. Each cycle *forgets* the rows
+  of Inbox keys that left the Inbox (`ForgetPush`), so an item that comes
+  back pushes again; event keys stay for 30 days. The first `PUT` of an
+  endpoint *seeds* the ledger with every current candidate in all
+  categories; when seeding fails the subscription is deleted again. A 404
+  or 410 deletes the subscription, 10 failures in a row too
+  (`PushFailed`).
 - **Lifecycle.** `skipWaiting` on install and `clients.claim` on activate:
   with no cache, a new version breaks nothing mid-session, and the open
   tab gets click messages at once.

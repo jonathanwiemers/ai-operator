@@ -34,3 +34,5 @@ here once, and the guides link to them. The Helm chart values are in the
 11. **[Notifications](notifications.md)**: the Desk's notification
     categories with their defaults, the events behind them, and which
     browsers show what.
+12. **[Push API](push-api.md)**: the three routes a device uses to subscribe to
+    push notifications, with bodies and status codes.

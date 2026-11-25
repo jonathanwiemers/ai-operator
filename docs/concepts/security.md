@@ -194,6 +194,31 @@ is the one the delivery names. The token is compared in constant time.
 
 The projects of one `AgentProjectSet` share the set's webhook secret.
 
+## Push notifications
+
+With [push](../reference/notifications.md#push) on, the Desk server sends
+notifications to your devices while no Desk tab is open.
+
+- **What a push holds.** The Inbox item or the history event, as JSON, with
+  its reason cut so the push stays small. It holds no token, no comment
+  thread and no log.
+- **Encrypted to the device.** Each push is encrypted with the device's own
+  keys (`aes128gcm`, RFC 8291) and signed with the Desk's VAPID key
+  (RFC 8292). The push service that carries it cannot read it.
+- **Only known push services.** An endpoint must be `https` on a host of
+  `ui.webPush.allowedHosts`, and the server follows no redirect. A user
+  cannot make the Desk call another address (SSRF).
+- **Who gets what.** A subscription stores your user name and roles from
+  your last Desk start. The server checks the access rules for them on
+  every send, so a device never gets a push for a project you cannot view.
+  A device you don't open for 30 days loses its subscription, and turning
+  notifications off or signing out deletes it.
+- **The database login.** The Desk's database login reads every table and
+  writes only the three push tables. The research and chat writers cannot
+  touch them. The VAPID private key lives in the database, not in a
+  Kubernetes Secret, so the Desk's account needs no write access to Secrets.
+- **Logs.** The server logs counts, never endpoints or keys.
+
 ## Research runs
 
 Researches read web pages, which may carry instructions too. A research pod

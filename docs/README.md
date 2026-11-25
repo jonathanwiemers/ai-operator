@@ -47,7 +47,7 @@ release.
 [`AgentResearch` fields](reference/agentresearch.md), the
 [status fields and history events](reference/status-and-history.md), the
 [notification categories](reference/notifications.md) and the
-[Desk API](reference/desk-api.md), for looking things up.
+[Desk API](reference/desk-api.md) and [Push API](reference/push-api.md), for looking things up.
 
 ## Concepts
 
