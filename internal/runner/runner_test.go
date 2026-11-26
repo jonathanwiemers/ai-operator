@@ -840,11 +840,11 @@ func TestSpecSchemaListsProfiles(t *testing.T) {
 	if err := json.Unmarshal([]byte(schema), &v); err != nil {
 		t.Fatalf("schema is not valid JSON: %v", err)
 	}
-	if !strings.Contains(schema, `"enum": ["fast","strong"]`) {
+	if !strings.Contains(schema, `"enum": ["fast","balanced","strong","deep"]`) {
 		t.Fatalf("profiles missing from schema:\n%s", schema)
 	}
 	prompt := buildSpecPrompt(&gitlab.Milestone{Title: "M", Description: "spec"}, nil, aiv1.DefaultProfiles(), 300, false)
-	if !strings.Contains(prompt, "- fast: Small") || !strings.Contains(prompt, "- strong: Everything else") {
+	if !strings.Contains(prompt, "- fast: Follows an existing pattern") || !strings.Contains(prompt, "- deep: Concurrency") {
 		t.Fatalf("profiles missing from prompt:\n%s", prompt)
 	}
 	if !strings.Contains(prompt, "## Size budget\n\nUnder 300 production lines per merge request;") {

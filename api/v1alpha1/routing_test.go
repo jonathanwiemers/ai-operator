@@ -26,7 +26,7 @@ func TestIssueRole(t *testing.T) {
 		{[]string{"agent-profile::strong", "agent-model::cursor/auto", "agent-effort::high"}, "cursor", "auto", "medium", "no effort setting"},
 		{[]string{"agent-profile::strong", "agent-effort::max"}, "claude", "claude-opus-5-5", "high", "above the project's maximum"},
 		{[]string{"agent-profile::strong", "agent-model::claude/gpt-9"}, "claude", "claude-opus-5-5", "medium", "names no allowed model"},
-		{[]string{"agent-effort::lots"}, "claude", DefaultModel, "", "no effort level"},
+		{[]string{"agent-effort::lots"}, "claude", DefaultModel, "medium", "no effort level"},
 	} {
 		role, _, notes := s.IssueRole(tc.labels)
 		if string(role.Engine) != tc.engine || role.Model != tc.model || role.Effort != tc.eff {

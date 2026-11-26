@@ -448,10 +448,10 @@ func TestExperimentValidCondition(t *testing.T) {
 	if c := meta.FindStatusCondition(project.Status.Conditions, aiv1.ConditionExperimentValid); c == nil || c.Status != metav1.ConditionTrue {
 		t.Fatalf("expected ExperimentValid true, got %+v", c)
 	}
-	spec.Agents.Implement.Experiment.Arms[1].Profile = "balanced"
+	spec.Agents.Implement.Experiment.Arms[1].Profile = "huge"
 	reportExperiment(&project, spec)
 	c := meta.FindStatusCondition(project.Status.Conditions, aiv1.ConditionExperimentValid)
-	if c == nil || c.Status != metav1.ConditionFalse || c.Reason != "InvalidExperiment" || !strings.Contains(c.Message, "no profile balanced") {
+	if c == nil || c.Status != metav1.ConditionFalse || c.Reason != "InvalidExperiment" || !strings.Contains(c.Message, "no profile huge") {
 		t.Fatalf("expected ExperimentValid false naming the profile, got %+v", c)
 	}
 	spec.Agents.Implement.Experiment = nil

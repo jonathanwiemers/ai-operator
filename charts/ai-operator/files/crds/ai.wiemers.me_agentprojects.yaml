@@ -110,7 +110,12 @@ spec:
                           summaries.
                         type: boolean
                       effort:
-                        description: Effort level (claude engine only).
+                        description: |-
+                          Effort level (claude engine only). Defaults for a claude role that
+                          sets none: high for agents.spec, medium for agents.implement, the
+                          profiles, agents.review and agents.pilot, low for agents.describe.
+                          A fallback gets no default; agents.implement.conflict gets none of
+                          its own and follows the implementer's effort on the same engine.
                         enum:
                         - low
                         - medium
@@ -478,7 +483,12 @@ spec:
                             minimum: 1000
                             type: integer
                           effort:
-                            description: Effort level (claude engine only).
+                            description: |-
+                              Effort level (claude engine only). Defaults for a claude role that
+                              sets none: high for agents.spec, medium for agents.implement, the
+                              profiles, agents.review and agents.pilot, low for agents.describe.
+                              A fallback gets no default; agents.implement.conflict gets none of
+                              its own and follows the implementer's effort on the same engine.
                             enum:
                             - low
                             - medium
@@ -623,7 +633,12 @@ spec:
                             x-kubernetes-list-type: map
                         type: object
                       effort:
-                        description: Effort level (claude engine only).
+                        description: |-
+                          Effort level (claude engine only). Defaults for a claude role that
+                          sets none: high for agents.spec, medium for agents.implement, the
+                          profiles, agents.review and agents.pilot, low for agents.describe.
+                          A fallback gets no default; agents.implement.conflict gets none of
+                          its own and follows the implementer's effort on the same engine.
                         enum:
                         - low
                         - medium
@@ -955,7 +970,12 @@ spec:
                         minimum: 1000
                         type: integer
                       effort:
-                        description: Effort level (claude engine only).
+                        description: |-
+                          Effort level (claude engine only). Defaults for a claude role that
+                          sets none: high for agents.spec, medium for agents.implement, the
+                          profiles, agents.review and agents.pilot, low for agents.describe.
+                          A fallback gets no default; agents.implement.conflict gets none of
+                          its own and follows the implementer's effort on the same engine.
                         enum:
                         - low
                         - medium
@@ -1121,7 +1141,12 @@ spec:
                             this profile is for.
                           type: string
                         effort:
-                          description: Effort level (claude engine only).
+                          description: |-
+                            Effort level (claude engine only). Defaults for a claude role that
+                            sets none: high for agents.spec, medium for agents.implement, the
+                            profiles, agents.review and agents.pilot, low for agents.describe.
+                            A fallback gets no default; agents.implement.conflict gets none of
+                            its own and follows the implementer's effort on the same engine.
                           enum:
                           - low
                           - medium
@@ -1356,7 +1381,12 @@ spec:
                         minimum: 1000
                         type: integer
                       effort:
-                        description: Effort level (claude engine only).
+                        description: |-
+                          Effort level (claude engine only). Defaults for a claude role that
+                          sets none: high for agents.spec, medium for agents.implement, the
+                          profiles, agents.review and agents.pilot, low for agents.describe.
+                          A fallback gets no default; agents.implement.conflict gets none of
+                          its own and follows the implementer's effort on the same engine.
                         enum:
                         - low
                         - medium
@@ -1646,7 +1676,12 @@ spec:
                         minimum: 1000
                         type: integer
                       effort:
-                        description: Effort level (claude engine only).
+                        description: |-
+                          Effort level (claude engine only). Defaults for a claude role that
+                          sets none: high for agents.spec, medium for agents.implement, the
+                          profiles, agents.review and agents.pilot, low for agents.describe.
+                          A fallback gets no default; agents.implement.conflict gets none of
+                          its own and follows the implementer's effort on the same engine.
                         enum:
                         - low
                         - medium

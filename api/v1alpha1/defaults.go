@@ -42,6 +42,11 @@ const (
 	DefaultReviewRetries        = 2
 	DefaultReviewRetryAfter     = 15 * time.Minute
 	DefaultMaxEffort            = "high"
+	DefaultSpecEffort           = "high"
+	DefaultImplementEffort      = "medium"
+	DefaultReviewEffort         = "medium"
+	DefaultPilotEffort          = "medium"
+	DefaultDescribeEffort       = "low"
 	DefaultPilotBudgetUSD       = "20"
 	DefaultPilotInterventions   = 2
 	DefaultPilotStuckAfter      = 30 * time.Minute
@@ -160,9 +165,20 @@ func (r RoleSpec) withDefaultModel(model string) RoleSpec {
 	return r
 }
 
-// WithDefaults fills in the implementer's defaults.
+// withDefaultEffort sets effort on a claude role that sets none; other
+// engines have no effort setting. RoleSpec.WithDefaults leaves the effort
+// alone, so the conflict role and research keep theirs.
+func (r RoleSpec) withDefaultEffort(effort string) RoleSpec {
+	if r.Effort == "" && r.Engine == EngineClaude {
+		r.Effort = effort
+	}
+	return r
+}
+
+// WithDefaults fills in the implementer's defaults. The conflict role is
+// left as it is: it follows the implementer (ConflictRole).
 func (i ImplementSpec) WithDefaults() ImplementSpec {
-	i.RoleSpec = i.RoleSpec.WithDefaults()
+	i.RoleSpec = i.RoleSpec.WithDefaults().withDefaultEffort(DefaultImplementEffort)
 	if i.StepSession == "" {
 		i.StepSession = StepSessionResume
 	}
@@ -177,7 +193,7 @@ func (i ImplementSpec) WithDefaults() ImplementSpec {
 
 // WithDefaults fills in review defaults. Reviews run on the light model.
 func (r ReviewSpec) WithDefaults() ReviewSpec {
-	r.RoleSpec = r.RoleSpec.withDefaultModel(DefaultLightModel)
+	r.RoleSpec = r.RoleSpec.withDefaultModel(DefaultLightModel).withDefaultEffort(DefaultReviewEffort)
 	if r.Reviewers == nil {
 		r.Reviewers = []ReviewerKind{ReviewerBugbot, ReviewerSecurity}
 	}
@@ -243,20 +259,20 @@ func (s AgentProjectSpec) WithDefaults() AgentProjectSpec {
 		n := int64(DefaultCheckpointMaxFileBytes)
 		s.Checkpoint.MaxFileBytes = &n
 	}
-	s.Agents.Spec = s.Agents.Spec.WithDefaults()
+	s.Agents.Spec = s.Agents.Spec.WithDefaults().withDefaultEffort(DefaultSpecEffort)
 	s.Agents.Implement = s.Agents.Implement.WithDefaults()
 	if len(s.Agents.Profiles) == 0 {
 		s.Agents.Profiles = DefaultProfiles()
 	}
 	profiles := make([]AgentProfile, len(s.Agents.Profiles))
 	for i, p := range s.Agents.Profiles {
-		p.RoleSpec = p.RoleSpec.WithDefaults()
+		p.RoleSpec = p.RoleSpec.WithDefaults().withDefaultEffort(DefaultImplementEffort)
 		profiles[i] = p
 	}
 	s.Agents.Profiles = profiles
 	s.Agents.Review = s.Agents.Review.WithDefaults()
-	s.Agents.Describe.RoleSpec = s.Agents.Describe.RoleSpec.withDefaultModel(DefaultLightModel)
-	s.Agents.Pilot = s.Agents.Pilot.withDefaultModel(DefaultLightModel)
+	s.Agents.Describe.RoleSpec = s.Agents.Describe.RoleSpec.withDefaultModel(DefaultLightModel).withDefaultEffort(DefaultDescribeEffort)
+	s.Agents.Pilot = s.Agents.Pilot.withDefaultModel(DefaultLightModel).withDefaultEffort(DefaultPilotEffort)
 	if s.Pilot.MaxBudgetUSD == "" {
 		s.Pilot.MaxBudgetUSD = DefaultPilotBudgetUSD
 	}
@@ -307,18 +323,30 @@ func (s AgentProjectSpec) WithDefaults() AgentProjectSpec {
 	return s
 }
 
-// DefaultProfiles are used when an AgentProject defines no profiles.
+// DefaultProfiles are used when an AgentProject defines no profiles: the
+// four implementer tiers, lowest first. Their descriptions are the rubric
+// the planner picks a tier by.
 func DefaultProfiles() []AgentProfile {
 	return []AgentProfile{
 		{
 			Name:        "fast",
-			Description: "Small, well-defined changes that follow existing patterns, touch few files and leave no design decisions open.",
-			RoleSpec:    RoleSpec{Engine: EngineClaude, Model: DefaultLightModel},
+			Description: "Follows an existing pattern, touches a few files, adds no new API, type or migration, leaves no decision open (docs, config, tests of existing code, small UI changes).",
+			RoleSpec:    RoleSpec{Engine: EngineClaude, Model: DefaultLightModel, Effort: "medium"},
+		},
+		{
+			Name:        "balanced",
+			Description: "New logic in one package or one area of the UI, with a clear spec and some edge cases.",
+			RoleSpec:    RoleSpec{Engine: EngineClaude, Model: DefaultLightModel, Effort: "high"},
 		},
 		{
 			Name:        "strong",
-			Description: "Everything else: design decisions, cross-cutting or risky changes, unclear scope.",
-			RoleSpec:    RoleSpec{Engine: EngineClaude, Model: DefaultModel},
+			Description: "Crosses layers (for example API, controller and Desk), changes a CRD or the store schema, or needs design within the issue.",
+			RoleSpec:    RoleSpec{Engine: EngineClaude, Model: DefaultModel, Effort: "medium"},
+		},
+		{
+			Name:        "deep",
+			Description: "Concurrency, reconcile or state-machine logic, security, spend accounting, stream parsing, changes that can lose data, or work whose earlier attempt failed.",
+			RoleSpec:    RoleSpec{Engine: EngineClaude, Model: DefaultModel, Effort: "high"},
 		},
 	}
 }

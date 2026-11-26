@@ -666,7 +666,11 @@ export interface RoleSpec {
    */
   model?: string;
   /**
-   * Effort level (claude engine only).
+   * Effort level (claude engine only). Defaults for a claude role that
+   * sets none: high for agents.spec, medium for agents.implement, the
+   * profiles, agents.review and agents.pilot, low for agents.describe.
+   * A fallback gets no default; agents.implement.conflict gets none of
+   * its own and follows the implementer's effort on the same engine.
    * +kubebuilder:validation:Enum=low;medium;high;xhigh;max
    * +optional
    */
