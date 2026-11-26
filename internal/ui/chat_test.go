@@ -110,10 +110,18 @@ func addChatPilot(t *testing.T, env *testEnv) {
 func TestPostChatPilotOnly(t *testing.T) {
 	env := newTestEnv(t, withChat(oidcConfig(Rule{Roles: []string{"chatters"}, Projects: []string{"team-a/shop"}, Chat: true})))
 	addChatPilot(t, env)
+	// The loose issues queue's pilot takes chat like a milestone's.
+	if err := env.reader.Create(t.Context(), &aiv1.AgentTask{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "shop-pilot-queue"},
+		Spec:       aiv1.AgentTaskSpec{ProjectRef: "shop", Type: aiv1.TaskTypeCoordinate, QueueTask: "shop-queue"},
+	}); err != nil {
+		t.Fatal(err)
+	}
 	env.idp.user = map[string]any{"sub": "u1", "email": "ada@example.com"}
 	env.idp.info = map[string]any{"urn:zitadel:iam:org:project:roles": map[string]any{"chatters": map[string]any{"1": "acme"}}}
 	env.login(t, "/")
 	pilot := "/api/v1/projects/team-a/shop/tasks/" + chatPilotTask + "/chat"
+	queuePilot := "/api/v1/projects/team-a/shop/tasks/shop-pilot-queue/chat"
 	impl := "/api/v1/projects/team-a/shop/tasks/shop-42-add-paypal/chat"
 	plan := "/api/v1/projects/team-a/shop/tasks/shop-spec-m3-checkout/chat"
 	for _, tc := range []struct {
@@ -123,6 +131,8 @@ func TestPostChatPilotOnly(t *testing.T) {
 		{pilot, "message", "hello", http.StatusServiceUnavailable},
 		{pilot, "interrupt", "stop", http.StatusServiceUnavailable},
 		{pilot, "command", `{"cmd":"restart"}`, http.StatusServiceUnavailable},
+		{queuePilot, "message", "why is #421 held?", http.StatusServiceUnavailable},
+		{queuePilot, "interrupt", "stop", http.StatusServiceUnavailable},
 		{impl, "message", "hello", http.StatusForbidden},
 		{impl, "interrupt", "stop", http.StatusForbidden},
 		{impl, "command", `{"cmd":"restart"}`, http.StatusServiceUnavailable},
@@ -232,11 +242,16 @@ func TestPostChat(t *testing.T) {
 		env := login(t, "chatters")
 		impl := "/api/v1/projects/team-a/shop/tasks/shop-42-add-paypal/chat"
 		queue := "/api/v1/projects/team-a/shop/tasks/" + naming.QueueTask("shop") + "/chat"
-		if err := env.reader.Create(t.Context(), &aiv1.AgentTask{
-			ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: naming.QueueTask("shop")},
-			Spec:       aiv1.AgentTaskSpec{ProjectRef: "shop", Type: aiv1.TaskTypeQueue},
-		}); err != nil {
-			t.Fatal(err)
+		queuePilot := "/api/v1/projects/team-a/shop/tasks/shop-pilot-queue/chat"
+		for _, o := range []*aiv1.AgentTask{
+			{ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: naming.QueueTask("shop")},
+				Spec: aiv1.AgentTaskSpec{ProjectRef: "shop", Type: aiv1.TaskTypeQueue}},
+			{ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "shop-pilot-queue"},
+				Spec: aiv1.AgentTaskSpec{ProjectRef: "shop", Type: aiv1.TaskTypeCoordinate, QueueTask: naming.QueueTask("shop")}},
+		} {
+			if err := env.reader.Create(t.Context(), o); err != nil {
+				t.Fatal(err)
+			}
 		}
 		restart := `{"cmd":"restart"}`
 		for _, tc := range []struct {
@@ -252,6 +267,9 @@ func TestPostChat(t *testing.T) {
 			// The loose issues queue takes Desk commands, not chat.
 			{queue, "message", "hello", http.StatusForbidden},
 			{queue, "command", restart, http.StatusCreated},
+			// Its pilot takes chat.
+			{queuePilot, "message", "why is #421 held?", http.StatusCreated},
+			{queuePilot, "interrupt", "stop", http.StatusCreated},
 		} {
 			code, errBody := env.postChatErr(t, tc.path, map[string]any{
 				"body": tc.body, "kind": tc.kind, "clientKey": tc.path + tc.kind,

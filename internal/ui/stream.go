@@ -537,6 +537,9 @@ type InboxItem struct {
 	// Hold: the pause item is the hold of one issue (IssueIID) while the
 	// milestone may run on, lifted by "resume #IssueIID".
 	Hold bool `json:"hold,omitempty"`
+	// Queue: the item is the loose issues queue's (its Queue task or its
+	// pilot); the web opens the Loose issues tab for it.
+	Queue bool `json:"queue,omitempty"`
 	// Key identifies the item, stable across loads (inboxKey).
 	Key string `json:"key"`
 	// Notify is the item's notification category, empty for none
@@ -609,7 +612,8 @@ func inboxOf(projects map[string]*aiv1.AgentProject, tasks []aiv1.AgentTask, now
 		if ap == nil {
 			continue
 		}
-		base := InboxItem{Namespace: t.Namespace, Project: ap.Name, Task: t.Name}
+		base := InboxItem{Namespace: t.Namespace, Project: ap.Name, Task: t.Name,
+			Queue: t.Spec.Type == aiv1.TaskTypeQueue || t.Spec.Type == aiv1.TaskTypeCoordinate && t.Spec.QueueTask != ""}
 		if t.Spec.Milestone != nil {
 			base.MilestoneIID = t.Spec.Milestone.IID
 		}
@@ -631,9 +635,9 @@ func inboxOf(projects map[string]*aiv1.AgentProject, tasks []aiv1.AgentTask, now
 				items = append(items, it)
 			}
 		}
-		// A spec task's problems (problem.Open) are one item each; they
-		// stand for its assessment prompts, pause and holds.
-		problems := problemItems(base, t, now)
+		// A spec or Queue task's problems (problem.Open) are one item each;
+		// they stand for its assessment prompts, pause and holds.
+		problems := problemItems(base, t, tasks, now)
 		items = append(items, problems...)
 		needsInputPrompt := false
 		for _, pr := range t.Status.Prompts {
@@ -787,22 +791,34 @@ func notifyCategory(it InboxItem) string {
 }
 
 // problemItems are the Inbox items of t's open problems, one per issue (0:
-// the milestone), while t is a spec task whose autopilot, if any, runs or is
-// paused; nil otherwise. A non-nil result, even empty, means the problems
-// stand for the task's assessment prompts, pause and holds.
-func problemItems(base InboxItem, t *aiv1.AgentTask, now time.Time) []InboxItem {
-	if t.Spec.Type != aiv1.TaskTypeSpec || t.Spec.Milestone == nil {
-		return nil
-	}
-	if a := t.Status.Autopilot; a != nil && a.Phase != aiv1.AutopilotPaused && a.Phase != aiv1.AutopilotRunning {
+// the milestone or the queue), while t is a spec task whose autopilot, if
+// any, runs or is paused, or a Queue task whose autopilot runs or is paused;
+// nil otherwise. A non-nil result, even empty, means the problems stand for
+// the task's assessment prompts, pause and holds. tasks give a queue issue's
+// title.
+func problemItems(base InboxItem, t *aiv1.AgentTask, tasks []aiv1.AgentTask, now time.Time) []InboxItem {
+	a := t.Status.Autopilot
+	switch {
+	case t.Spec.Type == aiv1.TaskTypeSpec && t.Spec.Milestone != nil:
+		if a != nil && a.Phase != aiv1.AutopilotPaused && a.Phase != aiv1.AutopilotRunning {
+			return nil
+		}
+	case t.Spec.Type == aiv1.TaskTypeQueue:
+		// An unset phase is the running queue, as the loose issues view reads it.
+		if a == nil || a.Phase != "" && a.Phase != aiv1.AutopilotPaused && a.Phase != aiv1.AutopilotRunning {
+			return nil
+		}
+	default:
 		return nil
 	}
 	items := []InboxItem{}
 	for _, iid := range problem.Open(t) {
 		it := base
 		it.Kind, it.IssueIID, it.Reason = "problem", iid, problem.Why(t, iid)
-		if it.Title = issueTitle(t, iid); it.Title == "" {
+		if it.Title = issueTitle(t, iid); it.Title == "" && t.Spec.Milestone != nil {
 			it.Title = t.Spec.Milestone.Title
+		} else if it.Title == "" {
+			it.Title = queueIssueTitle(t, tasks, iid)
 		}
 		since := problemSince(t, iid, now)
 		it.At = &since
@@ -813,6 +829,18 @@ func problemItems(base InboxItem, t *aiv1.AgentTask, now time.Time) []InboxItem 
 		items = append(items, it)
 	}
 	return items
+}
+
+// queueIssueTitle is the title of the queue issue iid from its implement task
+// in qt's project, else "Loose issues" (also for 0, the queue itself).
+func queueIssueTitle(qt *aiv1.AgentTask, tasks []aiv1.AgentTask, iid int64) string {
+	for i := range tasks {
+		if t := &tasks[i]; iid != 0 && t.Namespace == qt.Namespace && t.Spec.ProjectRef == qt.Spec.ProjectRef &&
+			t.Spec.Type == aiv1.TaskTypeImplement && t.Spec.Issue != nil && t.Spec.Issue.IID == iid && t.Spec.Issue.Title != "" {
+			return t.Spec.Issue.Title
+		}
+	}
+	return "Loose issues"
 }
 
 // heldItem is whether iid is an active item of ap with a hold.

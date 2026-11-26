@@ -56,4 +56,7 @@ export const looseIssues: LooseIssues = {
   take: true,
   ownerSubjects: ['ada@example.com'],
   queueTask: 'shop-loose-issues',
+  problems: [],
+  prompts: [],
+  proposals: [],
 }

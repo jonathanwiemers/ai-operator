@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"testing"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -181,5 +182,80 @@ func TestLooseIssuesCap(t *testing.T) {
 	var v LooseIssues
 	if env.get(t, shopLoose, &v); len(v.Issues) != 500 || v.Issues[0].IID != 699 {
 		t.Fatalf("%d issues, first #%d", len(v.Issues), v.Issues[0].IID)
+	}
+}
+
+// TestLooseIssuesPilot checks the queue's problems, its open prompts, its
+// pilot's proposals and the round in the view: #51 is held for red CI.
+func TestLooseIssuesPilot(t *testing.T) {
+	env, _ := looseEnv(t, true)
+	withQueue(t, env, "ada@example.com")
+	ctx := context.Background()
+	var ap aiv1.AgentProject
+	if err := env.reader.Get(ctx, client.ObjectKey{Namespace: "team-a", Name: "shop"}, &ap); err != nil {
+		t.Fatal(err)
+	}
+	five := int32(5)
+	ap.Spec.LooseIssues.Pilot.RoundIssues = &five
+	if err := env.reader.Update(ctx, &ap); err != nil {
+		t.Fatal(err)
+	}
+	var q aiv1.AgentTask
+	if err := env.reader.Get(ctx, client.ObjectKey{Namespace: "team-a", Name: naming.QueueTask("shop")}, &q); err != nil {
+		t.Fatal(err)
+	}
+	started := metav1.NewTime(time.Date(2026, 11, 26, 9, 12, 0, 0, time.UTC))
+	q.Status.Autopilot.Round = &aiv1.LooseRound{Number: 3, StartedAt: started, Finished: 2, CostUSD: "1.2000", StartCostUSD: "4.0000"}
+	q.Status.Prompts = []aiv1.Prompt{
+		{ID: "Q1", State: aiv1.PromptAnswered, Question: "Old?", Source: aiv1.PromptSource{Kind: aiv1.PromptAssessment, IssueIID: 49}},
+		{ID: "Q2", State: aiv1.PromptOpen, Question: "Retry #51?", Source: aiv1.PromptSource{Kind: aiv1.PromptAssessment, IssueIID: 51}},
+	}
+	if err := env.reader.Update(ctx, &q); err != nil {
+		t.Fatal(err)
+	}
+	if err := env.reader.Create(ctx, &aiv1.AgentTask{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: "shop-pilot-queue"},
+		Spec:       aiv1.AgentTaskSpec{ProjectRef: "shop", Type: aiv1.TaskTypeCoordinate, QueueTask: q.Name},
+		Status: aiv1.AgentTaskStatus{Run: aiv1.RunStatus{CostUSD: "5.4000"},
+			Pilot: &aiv1.PilotStatus{Proposals: []aiv1.PilotProposal{{ID: 7, Summary: "retry the failed job of #51"}}}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var v LooseIssues
+	if code := env.get(t, shopLoose, &v); code != http.StatusOK {
+		t.Fatalf("GET: %d", code)
+	}
+	if len(v.Problems) != 1 {
+		t.Fatalf("problems %+v", v.Problems)
+	}
+	if f := v.Problems[0]; f.IID != 51 || f.Issue.Title != "Runner timeout" || f.Issue.URL != env.server.cfg.GitLab.URL+"/acme/shop/-/issues/51" ||
+		f.MergeRequest != nil || len(f.Blocked) != 0 {
+		t.Errorf("problem %+v", f)
+	}
+	if v.PilotTask != "shop-pilot-queue" || len(v.Proposals) != 1 || v.Proposals[0].ID != 7 {
+		t.Errorf("pilot %q proposals %+v", v.PilotTask, v.Proposals)
+	}
+	if len(v.Prompts) != 1 || v.Prompts[0].ID != "Q2" || !v.Prompts[0].CanAnswer || v.Prompts[0].Target.Task != "shop-pilot-queue" {
+		t.Errorf("prompts %+v", v.Prompts)
+	}
+	// The pilot spent 1.40 since the round started, more than recorded.
+	want := LooseRoundView{Number: 3, Finished: 2, RoundIssues: 5, RoundHours: 24, CostUSD: "1.40"}
+	if r := v.Round; r == nil || !r.StartedAt.Equal(&started) || (LooseRoundView{Number: r.Number, Finished: r.Finished,
+		RoundIssues: r.RoundIssues, RoundHours: r.RoundHours, CostUSD: r.CostUSD}) != want {
+		t.Errorf("round %+v, want %+v", v.Round, want)
+	}
+}
+
+func TestLooseRound(t *testing.T) {
+	zero := int32(0)
+	ap := &aiv1.AgentProject{Spec: aiv1.AgentProjectSpec{LooseIssues: aiv1.LooseIssuesSpec{
+		Pilot: aiv1.LooseIssuesPilotSpec{RoundIssues: &zero, RoundHours: &zero}}}}
+	q := &aiv1.AgentTask{Status: aiv1.AgentTaskStatus{Autopilot: &aiv1.AutopilotStatus{}}}
+	if r := looseRound(ap, q, nil); r != nil {
+		t.Errorf("before the first round: %+v", r)
+	}
+	q.Status.Autopilot.Round = &aiv1.LooseRound{Number: 1, CostUSD: "0.5"}
+	if r := looseRound(ap, q, nil); r == nil || r.RoundIssues != 0 || r.RoundHours != 0 || r.CostUSD != "0.50" {
+		t.Errorf("limits off, no pilot: %+v", r)
 	}
 }

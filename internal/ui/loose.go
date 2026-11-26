@@ -10,6 +10,7 @@ import (
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
+	"github.com/jonathanwiemers/ai-operator/internal/problem"
 )
 
 // looseIssuePages caps the issues without a milestone the view reads: 5
@@ -34,6 +35,31 @@ type LooseIssues struct {
 	OwnerSubjects []string `json:"ownerSubjects"`
 	// QueueTask is the Queue task's name, the chat route's target.
 	QueueTask string `json:"queueTask,omitempty"`
+	// Problems are the facts of the queue's issues with an open problem
+	// (problem.IIDs), by IID.
+	Problems []problem.Facts `json:"problems"`
+	// Prompts are the Queue task's questions to its owners, newest first,
+	// answered through PilotTask.
+	Prompts []PromptView `json:"prompts"`
+	// Proposals are the queue pilot's open proposals.
+	Proposals []ProposalView `json:"proposals"`
+	// PilotTask is the queue's pilot (its Coordinate task), the composer's
+	// target; empty without one. Take says whether the caller may write to it.
+	PilotTask string `json:"pilotTask,omitempty"`
+	// Round is the pilot's current round, absent before the first.
+	Round *LooseRoundView `json:"round,omitempty"`
+}
+
+// LooseRoundView is the current round of the queue's pilot. RoundIssues and
+// RoundHours are the project's limits, 0 for none.
+type LooseRoundView struct {
+	Number      int32       `json:"number"`
+	StartedAt   metav1.Time `json:"startedAt"`
+	Finished    int32       `json:"finished"`
+	RoundIssues int32       `json:"roundIssues"`
+	RoundHours  int32       `json:"roundHours"`
+	// CostUSD is what the pilot spent in the round, for display (2 decimals).
+	CostUSD string `json:"costUSD"`
 }
 
 // LooseQueue is the state of the loose issues queue.
@@ -81,7 +107,8 @@ func (s *Server) looseIssues(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	out := LooseIssues{Items: []LooseItem{}, Issues: []LooseIssue{}, OwnerSubjects: []string{}}
+	out := LooseIssues{Items: []LooseItem{}, Issues: []LooseIssue{}, OwnerSubjects: []string{},
+		Problems: []problem.Facts{}, Prompts: []PromptView{}, Proposals: []ProposalView{}}
 	if !ap.Spec.LooseIssues.Enabled {
 		writeJSON(w, http.StatusOK, out)
 		return
@@ -128,6 +155,19 @@ func (s *Server) looseIssues(w http.ResponseWriter, r *http.Request) {
 				inQueue[it.IID] = it.State == aiv1.AutopilotItemPending || it.State == aiv1.AutopilotItemActive || it.Hold != nil
 			}
 		}
+		out.Problems = queueProblems(projectWeb(ap), queue, tasks, out.Items)
+		pilot := queuePilot(tasks, queue.Name)
+		if pilot != nil {
+			out.PilotTask = pilot.Name
+			if ps := pilot.Status.Pilot; ps != nil {
+				for _, pr := range ps.Proposals {
+					out.Proposals = append(out.Proposals, ProposalView{ID: pr.ID, Summary: pr.Summary, PostedAt: pr.PostedAt})
+				}
+			}
+		}
+		out.Prompts = slices.DeleteFunc(promptViews(queue, out.PilotTask, p.Username, out.Take),
+			func(v PromptView) bool { return v.State.Closed() })
+		out.Round = looseRound(ap, queue, pilot)
 	}
 	for _, is := range issues {
 		labels := is.Labels
@@ -164,4 +204,46 @@ func looseItems(ap *aiv1.AgentProject, tasks []aiv1.AgentTask, items []aiv1.Auto
 		out = append(out, v)
 	}
 	return out
+}
+
+// queueProblems are the facts of the Queue task qt's problems from its
+// implement tasks and the queue's item views (their titles): no GitLab calls.
+// The queue has no plan, so no issue is blocked on another.
+func queueProblems(web string, qt *aiv1.AgentTask, tasks []aiv1.AgentTask, items []LooseItem) []problem.Facts {
+	out, titles, open := []problem.Facts{}, map[int64]string{}, map[int64]bool{}
+	for _, it := range items {
+		titles[it.IID], open[it.IID] = it.Title, it.State == aiv1.AutopilotItemPending || it.State == aiv1.AutopilotItemActive
+	}
+	for _, iid := range problem.IIDs(qt) {
+		is := problem.IssueFacts{IID: iid, Title: titles[iid], URL: fmt.Sprintf("%sissues/%d", web, iid)}
+		out = append(out, problem.Build(is, issueTask(tasks, iid), nil, open))
+	}
+	return out
+}
+
+// queuePilot is the pilot of the Queue task named queue, nil without one.
+func queuePilot(tasks []aiv1.AgentTask, queue string) *aiv1.AgentTask {
+	for i := range tasks {
+		if t := &tasks[i]; t.Spec.Type == aiv1.TaskTypeCoordinate && t.Spec.QueueTask == queue {
+			return t
+		}
+	}
+	return nil
+}
+
+// looseRound is the view of qt's current round, nil before the first. Its
+// cost is the round's recorded spend, or what the pilot spent since the
+// round started when that is more (the record lags the pilot's runs).
+func looseRound(ap *aiv1.AgentProject, qt, pilot *aiv1.AgentTask) *LooseRoundView {
+	st := qt.Status.Autopilot
+	if st == nil || st.Round == nil {
+		return nil
+	}
+	r, limits := st.Round, ap.Spec.LooseIssues.Pilot
+	cost := aiv1.CostOf(r.CostUSD)
+	if pilot != nil {
+		cost = max(cost, aiv1.CostOf(pilot.Status.Run.CostUSD)-aiv1.CostOf(r.StartCostUSD))
+	}
+	return &LooseRoundView{Number: r.Number, StartedAt: r.StartedAt, Finished: r.Finished, RoundIssues: limits.Issues(),
+		RoundHours: int32(limits.Duration() / time.Hour), CostUSD: aiv1.ShowCost(cost)}
 }

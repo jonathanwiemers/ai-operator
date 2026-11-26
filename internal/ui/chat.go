@@ -21,14 +21,15 @@ const maxChatBody = 16 << 10
 var chatKinds = map[string]bool{"message": true, "interrupt": true, "command": true}
 
 // notPilotChat answers a message or interrupt posted to a task other than a
-// milestone's pilot: the pilot is the only chat on milestones.
-const notPilotChat = "talk to the pilot in the milestone's Cockpit"
+// pilot: the pilots are the only chat on milestones and the loose issues
+// queue.
+const notPilotChat = "talk to the pilot in the milestone's Cockpit or on the Loose issues tab"
 
 // takesChat reports whether task takes chat messages and interrupts: only a
-// milestone's pilot task does. Every task takes commands (the restart button,
-// the pause and problem cards).
+// pilot task does, a milestone's or the loose issues queue's. Every task
+// takes commands (the restart button, the pause and problem cards).
 func takesChat(task *aiv1.AgentTask) bool {
-	return task.Spec.Type == aiv1.TaskTypeCoordinate && task.Spec.Milestone != nil
+	return task.Spec.Type == aiv1.TaskTypeCoordinate && (task.Spec.Milestone != nil || task.Spec.QueueTask != "")
 }
 
 // chatRequest is a message posted from the Desk composer.

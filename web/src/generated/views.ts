@@ -610,6 +610,44 @@ export interface LooseIssues {
    * QueueTask is the Queue task's name, the chat route's target.
    */
   queueTask?: string;
+  /**
+   * Problems are the facts of the queue's issues with an open problem
+   * (problem.IIDs), by IID.
+   */
+  problems: problem.Facts[];
+  /**
+   * Prompts are the Queue task's questions to its owners, newest first,
+   * answered through PilotTask.
+   */
+  prompts: PromptView[];
+  /**
+   * Proposals are the queue pilot's open proposals.
+   */
+  proposals: ProposalView[];
+  /**
+   * PilotTask is the queue's pilot (its Coordinate task), the composer's
+   * target; empty without one. Take says whether the caller may write to it.
+   */
+  pilotTask?: string;
+  /**
+   * Round is the pilot's current round, absent before the first.
+   */
+  round?: LooseRoundView;
+}
+/**
+ * LooseRoundView is the current round of the queue's pilot. RoundIssues and
+ * RoundHours are the project's limits, 0 for none.
+ */
+export interface LooseRoundView {
+  number: number /* int32 */;
+  startedAt: string;
+  finished: number /* int32 */;
+  roundIssues: number /* int32 */;
+  roundHours: number /* int32 */;
+  /**
+   * CostUSD is what the pilot spent in the round, for display (2 decimals).
+   */
+  costUSD: string;
 }
 /**
  * LooseQueue is the state of the loose issues queue.
@@ -2285,6 +2323,11 @@ export interface InboxItem {
    * milestone may run on, lifted by "resume #IssueIID".
    */
   hold?: boolean;
+  /**
+   * Queue: the item is the loose issues queue's (its Queue task or its
+   * pilot); the web opens the Loose issues tab for it.
+   */
+  queue?: boolean;
   /**
    * Key identifies the item, stable across loads (inboxKey).
    */

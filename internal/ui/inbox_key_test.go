@@ -88,3 +88,67 @@ func TestInboxOfSetsKeys(t *testing.T) {
 		}
 	}
 }
+
+// TestInboxOfQueueProblem checks a held queue issue: one problem item with
+// the queue flag and an empty milestone part in its key, its assessment
+// prompt folded in; the queue pilot's proposal carries the flag too, a
+// milestone's problem does not.
+func TestInboxOfQueueProblem(t *testing.T) {
+	since := metav1.NewTime(time.Now().Add(-time.Hour).Truncate(time.Second))
+	ap := &aiv1.AgentProject{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "orbit"}}
+	assess := aiv1.Prompt{ID: "Q1", State: aiv1.PromptOpen, Question: "Retry #421?", PostedAt: &since,
+		Source: aiv1.PromptSource{Kind: aiv1.PromptAssessment, IssueIID: 421}}
+	tasks := []aiv1.AgentTask{
+		{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "orbit-queue"},
+			Spec: aiv1.AgentTaskSpec{ProjectRef: "orbit", Type: aiv1.TaskTypeQueue},
+			Status: aiv1.AgentTaskStatus{Prompts: []aiv1.Prompt{assess}, Autopilot: &aiv1.AutopilotStatus{Items: []aiv1.AutopilotItem{
+				{IID: 421, State: aiv1.AutopilotItemActive, Hold: &aiv1.ItemHold{Kind: aiv1.PauseStuck, Reason: "CI stays red", Since: since}},
+				{IID: 422, State: aiv1.AutopilotItemPending},
+			}}}},
+		{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "orbit-421-flaky"},
+			Spec: aiv1.AgentTaskSpec{ProjectRef: "orbit", Type: aiv1.TaskTypeImplement, Issue: &aiv1.IssueRef{IID: 421, Title: "Flaky helm-lint"}}},
+		{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "orbit-pilot-queue"},
+			Spec:   aiv1.AgentTaskSpec{ProjectRef: "orbit", Type: aiv1.TaskTypeCoordinate, QueueTask: "orbit-queue"},
+			Status: aiv1.AgentTaskStatus{Pilot: &aiv1.PilotStatus{Proposals: []aiv1.PilotProposal{{ID: 3, Summary: "retry #421", PostedAt: &since}}}}},
+		{ObjectMeta: metav1.ObjectMeta{Namespace: "agents", Name: "spec"},
+			Spec:   aiv1.AgentTaskSpec{ProjectRef: "orbit", Type: aiv1.TaskTypeSpec, Milestone: &aiv1.MilestoneRef{IID: 5, Title: "Poker"}},
+			Status: aiv1.AgentTaskStatus{Prompts: []aiv1.Prompt{{ID: "Q2", State: aiv1.PromptOpen, Source: aiv1.PromptSource{Kind: aiv1.PromptAssessment, IssueIID: 7}}}}},
+	}
+	byKey := map[string]InboxItem{}
+	for _, it := range inboxOf(map[string]*aiv1.AgentProject{"agents/orbit": ap}, tasks, time.Now()) {
+		if _, dup := byKey[it.Key]; dup {
+			t.Errorf("duplicate key %q", it.Key)
+		}
+		byKey[it.Key] = it
+	}
+	if len(byKey) != 3 {
+		t.Fatalf("want the queue problem, the proposal and the milestone problem: %+v", byKey)
+	}
+	p, ok := byKey["agents/orbit/problem//421/stuck"]
+	if !ok || !p.Queue || p.Notify != "problem" || p.Title != "Flaky helm-lint" || !p.Hold || p.MilestoneIID != 0 ||
+		p.Reason != "held (stuck): CI stays red" || p.At == nil || !p.At.Equal(since.Time) {
+		t.Errorf("queue problem %+v", p)
+	}
+	if pr, ok := byKey["agents/orbit/proposal//3"]; !ok || !pr.Queue || pr.Notify != "proposal" {
+		t.Errorf("queue pilot's proposal %+v", pr)
+	}
+	if m, ok := byKey["agents/orbit/problem/5/7/open"]; !ok || m.Queue {
+		t.Errorf("milestone problem %+v", m)
+	}
+}
+
+func TestProblemItemsQueue(t *testing.T) {
+	q := &aiv1.AgentTask{Spec: aiv1.AgentTaskSpec{Type: aiv1.TaskTypeQueue}}
+	if got := problemItems(InboxItem{}, q, nil, time.Now()); got != nil {
+		t.Errorf("a queue without autopilot status: %+v", got)
+	}
+	q.Status.Autopilot = &aiv1.AutopilotStatus{Phase: aiv1.AutopilotOff}
+	if got := problemItems(InboxItem{}, q, nil, time.Now()); got != nil {
+		t.Errorf("an off queue: %+v", got)
+	}
+	q.Status.Autopilot = &aiv1.AutopilotStatus{Phase: aiv1.AutopilotPaused, PausedReason: "main is red"}
+	got := problemItems(InboxItem{}, q, nil, time.Now())
+	if len(got) != 1 || got[0].IssueIID != 0 || got[0].Title != "Loose issues" {
+		t.Errorf("a paused queue: %+v", got)
+	}
+}
