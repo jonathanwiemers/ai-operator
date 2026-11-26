@@ -148,6 +148,22 @@ func TestParse(t *testing.T) {
 		{`{"cmd":"draft","followUps":[1],"usd":"4"}`, Command{}, "draft takes no usd"},
 		{`{"cmd":"retry","followUps":[1]}`, Command{}, "retry takes no followUps"},
 		{`{"cmd":"retry","followUps":[]}`, Command{}, "retry takes no followUps"},
+		{`{"cmd":"take","issues":[350,421]}`, Command{Cmd: "take", Issues: []int64{350, 421}}, ""},
+		{`{"cmd":"Take","issues":[421,350,421]}`, Command{Cmd: "take", Issues: []int64{421, 350}}, ""},
+		{`{"cmd":"take","issues":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]}`,
+			Command{Cmd: "take", Issues: []int64{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20}}, ""},
+		{`{"cmd":"take","issues":[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21]}`, Command{}, "take needs 1 to 20 issues"},
+		{`{"cmd":"take"}`, Command{}, "take needs 1 to 20 issues"},
+		{`{"cmd":"take","issues":[]}`, Command{}, "take needs 1 to 20 issues"},
+		{`{"cmd":"take","issues":[3,0]}`, Command{}, "0 is not an issue > 0"},
+		{`{"cmd":"take","issues":[3,-1]}`, Command{}, "-1 is not an issue > 0"},
+		{`{"cmd":"take","issues":[3],"issue":4}`, Command{}, "take takes only issues"},
+		{`{"cmd":"take","issues":[3],"sha":"5a0e000"}`, Command{}, "take takes no sha"},
+		{`{"cmd":"skip","issue":3,"issues":[3]}`, Command{}, "skip takes no issues"},
+		{`{"cmd":"drop","issue":46}`, Command{Cmd: "drop", Issue: 46}, ""},
+		{`{"cmd":"drop"}`, Command{}, "drop needs issue > 0"},
+		{`{"cmd":"drop","issue":46,"proposal":1}`, Command{}, "drop takes only issue"},
+		{`{"cmd":"drop","issues":[46]}`, Command{}, "drop takes no issues"},
 	} {
 		got, err := Parse(tc.body)
 		if tc.wantErr != "" {
@@ -231,6 +247,17 @@ func TestImplementOnlyAndRouting(t *testing.T) {
 	for _, cmd := range []string{"retry", "pause", "accept", "draft"} {
 		if (Command{Cmd: cmd}).RestartCmd() {
 			t.Errorf("%s should not be RestartCmd", cmd)
+		}
+	}
+
+	for _, cmd := range []string{"take", "drop"} {
+		if c := (Command{Cmd: cmd}); !c.Queue() || c.ImplementOnly() || c.Autopilot() || c.ProposalOnly() || c.PromptCmd() || c.RestartCmd() {
+			t.Errorf("%s should be Queue only", cmd)
+		}
+	}
+	for _, cmd := range []string{"pause", "resume", "skip", "merge", "restart"} {
+		if (Command{Cmd: cmd}).Queue() {
+			t.Errorf("%s should not be Queue", cmd)
 		}
 	}
 

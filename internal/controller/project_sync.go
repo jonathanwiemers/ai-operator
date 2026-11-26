@@ -453,7 +453,7 @@ func (ph pilotPhase) run(ctx context.Context) {
 	}
 
 	// Commands on watched issues the operator does not act on get a reply.
-	r.syncCommandReplies(ctx, gl, project, spec, autopilots, started)
+	r.syncCommandReplies(ctx, gl, project, spec, autopilots, ph.queueTask, started)
 }
 
 // cleanupPhase deletes the tasks not in keep, switching off the autopilots

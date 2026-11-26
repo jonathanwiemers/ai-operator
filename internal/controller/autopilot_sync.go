@@ -44,31 +44,42 @@ func (r *AgentProjectReconciler) syncAutopilot(ctx context.Context, gl gitlab.AP
 	if serr := a.save(ctx); err == nil {
 		err = serr
 	}
-	// Desk answers after the status: the verbs are idempotent, so a restart
-	// between the two writes applies a verb again and answers once. Re-get
-	// so a status patch response cannot wipe the Spec fields.
-	if err == nil && a.chatMark > 0 {
-		var fresh aiv1.AgentTask
-		if err = r.Get(ctx, client.ObjectKeyFromObject(st), &fresh); err == nil {
-			// Appended to the fresh list: chatreply may have dropped
-			// answered ones meanwhile.
-			fresh.Spec.Source.ChatAnswers = append(fresh.Spec.Source.ChatAnswers, a.chatAnswers...)
-			fresh.Spec.Source.LastChatCommandID = a.chatMark
-			if n := len(fresh.Spec.Source.ChatAnswers); n > maxChatAnswers {
-				fresh.Spec.Source.ChatAnswers = append([]aiv1.ChatReply(nil), fresh.Spec.Source.ChatAnswers[n-maxChatAnswers:]...)
-			}
-			err = r.Update(ctx, &fresh)
-			if err == nil {
-				st.Spec.Source.ChatAnswers = fresh.Spec.Source.ChatAnswers
-				st.Spec.Source.LastChatCommandID = fresh.Spec.Source.LastChatCommandID
-			}
-		}
+	if err == nil {
+		err = r.writeChatAnswers(ctx, st, a.chatMark, a.chatAnswers)
 	}
 	if err == nil && !st.Spec.Autopilot {
 		// Turned off by this sync: verbs that came too late are answered.
 		err = r.refuseChatCommands(ctx, st, "The autopilot is off for this milestone.")
 	}
 	return err
+}
+
+// writeChatAnswers writes the Desk answers of an autopilot poll to st and
+// moves its LastChatCommandID to mark (0: nothing to write), after the
+// status save: the verbs are idempotent, so a restart between the two writes
+// applies a verb again and answers once. It re-gets st so a status patch
+// response cannot wipe the Spec fields.
+func (r *AgentProjectReconciler) writeChatAnswers(ctx context.Context, st *aiv1.AgentTask, mark int64, answers []aiv1.ChatReply) error {
+	if mark == 0 {
+		return nil
+	}
+	var fresh aiv1.AgentTask
+	if err := r.Get(ctx, client.ObjectKeyFromObject(st), &fresh); err != nil {
+		return err
+	}
+	// Appended to the fresh list: chatreply may have dropped answered ones
+	// meanwhile.
+	fresh.Spec.Source.ChatAnswers = append(fresh.Spec.Source.ChatAnswers, answers...)
+	fresh.Spec.Source.LastChatCommandID = mark
+	if n := len(fresh.Spec.Source.ChatAnswers); n > maxChatAnswers {
+		fresh.Spec.Source.ChatAnswers = append([]aiv1.ChatReply(nil), fresh.Spec.Source.ChatAnswers[n-maxChatAnswers:]...)
+	}
+	if err := r.Update(ctx, &fresh); err != nil {
+		return err
+	}
+	st.Spec.Source.ChatAnswers = fresh.Spec.Source.ChatAnswers
+	st.Spec.Source.LastChatCommandID = fresh.Spec.Source.LastChatCommandID
+	return nil
 }
 
 // refuseChatCommands answers the Desk commands of task newer than its

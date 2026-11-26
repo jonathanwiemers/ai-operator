@@ -91,6 +91,12 @@ func (r *AgentProjectReconciler) syncLoose(ctx context.Context, gl gitlab.API, g
 	if serr := a.save(ctx); err == nil {
 		err = serr
 	}
+	if err == nil {
+		err = r.writeChatAnswers(ctx, qt, a.chatMark, a.chatAnswers)
+	}
+	if err == nil && !spec.LooseIssues.Enabled {
+		err = r.refuseChatCommands(ctx, qt, "The loose issues queue is off (`looseIssues.enabled` is false).")
+	}
 	return err
 }
 
@@ -102,6 +108,12 @@ func (a *autopilot) syncQueue(ctx context.Context) error {
 	a.ap.MaxParallel = a.spec.LooseIssues.Parallel()
 	a.ap.Items = pruneFinished(a.ap.Items, maxLooseFinished)
 	if err := a.ensureTracking(ctx); err != nil {
+		return err
+	}
+	if err := a.looseCommands(ctx); err != nil {
+		return err
+	}
+	if err := a.looseChatCommands(ctx); err != nil {
 		return err
 	}
 	return a.updateTracking(ctx)
@@ -169,8 +181,7 @@ func finishedAt(it aiv1.AutopilotItem) int64 {
 }
 
 // newestFinished returns the indices of the newest n finished items, newest
-// first; of the same time the later item first. By index: an issue taken
-// again after it left is in the list twice.
+// first; of the same time the later item first.
 func newestFinished(items []aiv1.AutopilotItem, n int) []int {
 	var done []int
 	for i, it := range items {

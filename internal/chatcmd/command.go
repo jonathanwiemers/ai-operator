@@ -18,13 +18,16 @@ var modelRE = regexp.MustCompile(`^[A-Za-z0-9._:/@-]{1,64}$`)
 
 // Command is a structured Desk chat command body.
 type Command struct {
-	Cmd      string `json:"cmd"`
-	Engine   string `json:"engine,omitempty"`
-	Model    string `json:"model,omitempty"`
-	Effort   string `json:"effort,omitempty"`
-	Default  bool   `json:"default,omitempty"`
-	Issue    int64  `json:"issue,omitempty"`
-	Proposal int64  `json:"proposal,omitempty"`
+	Cmd     string `json:"cmd"`
+	Engine  string `json:"engine,omitempty"`
+	Model   string `json:"model,omitempty"`
+	Effort  string `json:"effort,omitempty"`
+	Default bool   `json:"default,omitempty"`
+	Issue   int64  `json:"issue,omitempty"`
+	// Issues are the issues a take puts into the loose issues queue (1 to
+	// MaxTake), deduplicated in the given order by Parse.
+	Issues   []int64 `json:"issues,omitempty"`
+	Proposal int64   `json:"proposal,omitempty"`
 	// SHA is the head a merge is for.
 	SHA string `json:"sha,omitempty"`
 	// Prompt ("Q3") is the prompt an answer is for, with either the chosen
@@ -106,6 +109,9 @@ func Parse(body string) (Command, error) {
 	if c.FollowUps != nil && c.Cmd != "draft" {
 		return Command{}, fmt.Errorf("%s takes no followUps", c.Cmd)
 	}
+	if c.Issues != nil && c.Cmd != "take" {
+		return Command{}, fmt.Errorf("%s takes no issues", c.Cmd)
+	}
 	if c.Parallel != 0 && c.Cmd != "parallel" {
 		return Command{}, fmt.Errorf("%s takes no parallel", c.Cmd)
 	}
@@ -143,12 +149,16 @@ func Parse(body string) (Command, error) {
 		if err := c.parseEffort(); err != nil {
 			return Command{}, err
 		}
-	case "skip":
+	case "skip", "drop":
 		if c.Issue <= 0 {
-			return Command{}, fmt.Errorf("skip needs issue > 0")
+			return Command{}, fmt.Errorf("%s needs issue > 0", c.Cmd)
 		}
 		if c.Engine != "" || c.Model != "" || c.Effort != "" || c.Default || c.Proposal != 0 {
-			return Command{}, fmt.Errorf("skip takes only issue")
+			return Command{}, fmt.Errorf("%s takes only issue", c.Cmd)
+		}
+	case "take":
+		if err := c.parseTake(); err != nil {
+			return Command{}, err
 		}
 	case "merge":
 		if c.Issue <= 0 || !shaRE.MatchString(c.SHA) {

@@ -28,7 +28,7 @@ import (
 // window. Errors are logged; a transient one keeps the window, so the next
 // poll tries again.
 func (r *AgentProjectReconciler) syncCommandReplies(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
-	autopilots map[int64]*aiv1.AgentTask, started time.Time) {
+	autopilots map[int64]*aiv1.AgentTask, queue *aiv1.AgentTask, started time.Time) {
 	cr := repliesStatus(project)
 	if cr.Since == nil {
 		// Start watching now; comments written before are history.
@@ -67,6 +67,10 @@ func (r *AgentProjectReconciler) syncCommandReplies(ctx context.Context, gl gitl
 		if ap := st.Status.Autopilot; ap != nil {
 			delete(watched, ap.TrackingIssueIID)
 		}
+	}
+	// The loose issues queue's tracking issue takes its own commands.
+	if queue != nil && queue.Status.Autopilot != nil {
+		delete(watched, queue.Status.Autopilot.TrackingIssueIID)
 	}
 	r.replyUnhandled(ctx, gl, project, spec, watched, autopilots, failed)
 	if !keep {
