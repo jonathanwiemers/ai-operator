@@ -44,7 +44,7 @@ func (r *Runner) assessEvents(ctx context.Context, gl gitlab.API, task *aiv1.Age
 		var body string
 		switch left := pilotLeft(spec, task, out); {
 		case left < 0.01:
-			body = fmt.Sprintf("The pilot's budget for this milestone ($%s, `pilot.maxBudgetUSD`) is used up, so there is no assessment.", spec.Pilot.MaxBudgetUSD)
+			body = pilotBudgetSpent(spec, task, "there is no assessment")
 		default:
 			var facts string
 			if factsOf != nil {

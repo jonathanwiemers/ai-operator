@@ -138,6 +138,12 @@ func (r *Runner) chatTurn(ctx context.Context, task *aiv1.AgentTask, project *ai
 	if err != nil {
 		return err
 	}
+	// A turn to the queue's pilot in a new round starts fresh, too.
+	if st.enterRound(task) {
+		if err := r.saveState(st); err != nil {
+			return err
+		}
+	}
 
 	role, roleName, system, tools, readOnly := chatRole(task, spec, st)
 	// Spec/Coordinate stay read-only; Implement is writable only with a branch.

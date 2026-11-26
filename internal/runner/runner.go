@@ -214,6 +214,9 @@ type state struct {
 	// PilotRefined are the pilot's last refined answers
 	// ("prompt/message@request").
 	PilotRefined []string `json:"pilotRefined,omitempty"`
+	// PilotRound is the round of the queue's pilot its sessions belong to;
+	// a new round drops them (enterRound).
+	PilotRound int32 `json:"pilotRound,omitempty"`
 	// ChatInFlight is the chat turn being sent (or last attempted), so a
 	// restart can resend it with the stored session.
 	ChatInFlight *chatInFlight `json:"chatInFlight,omitempty"`

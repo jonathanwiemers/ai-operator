@@ -48,6 +48,20 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 		return r.runFollowUpDraft(ctx, task, spec)
 	}
 	out := &Outcome{Result: aiv1.RunResultSucceeded, Summary: "no message to answer"}
+	var noteErr error
+	if queue {
+		// The note ends a round in its session, a new round drops it after.
+		st, err := r.loadState()
+		if err != nil {
+			return out, err
+		}
+		noteErr = r.runRoundNote(ctx, gl, task, project, spec, out, &st)
+		if st.enterRound(task) {
+			if err := r.saveState(st); err != nil {
+				return out, fmt.Errorf("saving the pilot's new round: %w", err)
+			}
+		}
+	}
 	var msgs []aiv1.PilotMessage
 	for _, m := range task.Spec.Source.PilotMessages {
 		if m.Request > task.Status.Run.ObservedRunRequest && m.Request <= task.Spec.RunRequest {
@@ -67,7 +81,7 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 		}
 	}
 	if len(msgs)+len(events)+len(refines) == 0 {
-		return out, nil
+		return out, noteErr
 	}
 	st, err := r.loadState()
 	if err != nil {
@@ -80,7 +94,7 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 	}
 	if len(msgs)+len(events) == 0 {
 		out.Summary = fmt.Sprintf("refined %d answers", len(refines))
-		return out, refineErr
+		return out, cmp.Or(refineErr, noteErr)
 	}
 	what, readState := "milestone", r.pilotState
 	if queue {
@@ -104,14 +118,14 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 	s.done(fmt.Sprintf("%d bytes", len(state)))
 	role := spec.Agents.Pilot
 	// A turn that failed does not hold up the others; the run reports it.
-	failed := refineErr
+	failed := cmp.Or(refineErr, noteErr)
 	for _, m := range msgs {
 		// Answered before the run was cut off or deferred.
 		if slices.Contains(st.PilotAnswered, m.NoteID) {
 			continue
 		}
 		left := pilotLeft(spec, task, out)
-		reply := fmt.Sprintf("The pilot's budget for this milestone ($%s, `pilot.maxBudgetUSD`) is used up, so it does not answer any more.", spec.Pilot.MaxBudgetUSD)
+		reply := pilotBudgetSpent(spec, task, "it does not answer any more")
 		if left >= 0.01 {
 			inv := roleInvocation(role, pilotSystem(task), readOnlyTools, pilotSchema, true)
 			inv.Role, inv.Kind = "pilot", aiv1.CallKindPilot
@@ -173,9 +187,13 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 }
 
 // pilotLeft is what one turn of the pilot may spend: the rest of its
-// budget, at most the role's own cap.
+// budget, at most the role's own cap. The queue's pilot has its budget per
+// round: what it spent before the round does not count.
 func pilotLeft(spec aiv1.AgentProjectSpec, task *aiv1.AgentTask, out *Outcome) float64 {
 	left := aiv1.BudgetLeft(spec.Pilot.MaxBudgetUSD, task.Status.Run.CostUSD, out.CostUSD)
+	if rd := pilotRound(task); rd != nil {
+		left += aiv1.CostOf(rd.StartCostUSD)
+	}
 	if turnCap := aiv1.CostOf(spec.Agents.Pilot.MaxBudgetUSD); turnCap > 0 {
 		left = min(left, turnCap)
 	}
