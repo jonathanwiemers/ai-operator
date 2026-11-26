@@ -10,8 +10,10 @@ import (
 	"fmt"
 	"io"
 	"maps"
+	"mime/multipart"
 	"net"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"regexp"
 	"runtime"
@@ -89,6 +91,11 @@ type API interface {
 	// TestProjectHook makes GitLab send the hook a test delivery of trigger
 	// (push_events, issues_events, milestone_events, ...).
 	TestProjectHook(ctx context.Context, project string, id int64, trigger string) error
+	// UploadFile stores a file in the project's uploads (not retried after a
+	// server error); DownloadUpload reads one, failing with ErrTooLarge past
+	// max bytes.
+	UploadFile(ctx context.Context, project, name string, content []byte) (Upload, error)
+	DownloadUpload(ctx context.Context, project, secret, filename string, max int64) ([]byte, error)
 }
 
 // Client implements API against the GitLab REST API v4.
@@ -303,7 +310,16 @@ type request struct {
 	method, url, path string
 	payload           []byte
 	safe, graphql     bool
+	// contentType is the payload's Content-Type, application/json when empty.
+	contentType string
+	// maxBody, when positive, makes the request raw: the body is not decoded
+	// and more than maxBody bytes of a 2xx answer fail with ErrTooLarge.
+	maxBody int64
 }
+
+// ErrTooLarge is returned by DownloadUpload when the file is larger than
+// the caller's limit.
+var ErrTooLarge = errors.New("gitlab: download exceeds the size limit")
 
 // call sends r, retrying as retryWait says, and decodes a 2xx body into out.
 func (c *Client) call(ctx context.Context, r request, out any) (*http.Response, error) {
@@ -313,7 +329,7 @@ func (c *Client) call(ctx context.Context, r request, out any) (*http.Response, 
 			c.graphql.Add(1)
 		}
 		c.countOp(r.graphql)
-		resp, data, err := c.send(ctx, method, r.url, r.payload)
+		resp, data, err := c.send(ctx, r)
 		if err == nil && (resp.StatusCode < 200 || resp.StatusCode > 299) {
 			msg := string(data)
 			if len(msg) > 512 {
@@ -339,6 +355,12 @@ func (c *Client) call(ctx context.Context, r request, out any) (*http.Response, 
 			c.retries.Add(1)
 			continue
 		}
+		if r.maxBody > 0 {
+			if rb, ok := out.(*[]byte); ok {
+				*rb = data
+			}
+			return resp, nil
+		}
 		if out != nil && len(data) > 0 {
 			if err := json.Unmarshal(data, out); err != nil {
 				return resp, fmt.Errorf("gitlab: decoding %s %s: %w", method, path, err)
@@ -349,18 +371,22 @@ func (c *Client) call(ctx context.Context, r request, out any) (*http.Response, 
 }
 
 // send makes one attempt and reads the response body.
-func (c *Client) send(ctx context.Context, method, u string, payload []byte) (*http.Response, []byte, error) {
+func (c *Client) send(ctx context.Context, r request) (*http.Response, []byte, error) {
 	var rdr io.Reader
-	if payload != nil {
-		rdr = bytes.NewReader(payload)
+	if r.payload != nil {
+		rdr = bytes.NewReader(r.payload)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, u, rdr)
+	req, err := http.NewRequestWithContext(ctx, r.method, r.url, rdr)
 	if err != nil {
 		return nil, nil, err
 	}
 	c.auth(req)
-	if payload != nil {
-		req.Header.Set("Content-Type", "application/json")
+	if r.payload != nil {
+		ct := r.contentType
+		if ct == "" {
+			ct = "application/json"
+		}
+		req.Header.Set("Content-Type", ct)
 	}
 	c.requests.Add(1)
 	resp, err := c.http.Do(req)
@@ -368,9 +394,16 @@ func (c *Client) send(ctx context.Context, method, u string, payload []byte) (*h
 		return nil, nil, err
 	}
 	defer resp.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 16<<20))
+	limit := int64(16 << 20)
+	if r.maxBody > 0 {
+		limit = r.maxBody + 1
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, limit))
 	if err != nil {
 		return resp, nil, err
+	}
+	if r.maxBody > 0 && resp.StatusCode >= 200 && resp.StatusCode <= 299 && int64(len(data)) > r.maxBody {
+		return resp, nil, ErrTooLarge
 	}
 	return resp, data, nil
 }
@@ -423,6 +456,46 @@ func (c *Client) FindUser(ctx context.Context, username string) (*User, error) {
 		return nil, nil
 	}
 	return &users[0], nil
+}
+
+// UploadFile uploads content as the file name to the project's uploads. It
+// is a write: a server error is not retried, as the upload may have been
+// stored.
+func (c *Client) UploadFile(ctx context.Context, project, name string, content []byte) (Upload, error) {
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	h := textproto.MIMEHeader{}
+	h.Set("Content-Disposition", fmt.Sprintf(`form-data; name="file"; filename="%s"`, quoteEscaper.Replace(name)))
+	h.Set("Content-Type", "application/octet-stream")
+	part, err := mw.CreatePart(h)
+	if err != nil {
+		return Upload{}, err
+	}
+	if _, err := part.Write(content); err != nil {
+		return Upload{}, err
+	}
+	if err := mw.Close(); err != nil {
+		return Upload{}, err
+	}
+	path := projectPath(project) + "/uploads"
+	var up Upload
+	_, err = c.call(ctx, request{method: http.MethodPost, url: c.baseURL + path, path: path, payload: buf.Bytes(), contentType: mw.FormDataContentType()}, &up)
+	return up, err
+}
+
+var quoteEscaper = strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\r", "", "\n", "")
+
+// DownloadUpload reads an upload of the project. It fails with ErrTooLarge
+// when the file is larger than max bytes. A missing file is an *Error with
+// status 404. The secret stays out of errors.
+func (c *Client) DownloadUpload(ctx context.Context, project, secret, filename string, max int64) ([]byte, error) {
+	if max <= 0 {
+		return nil, errors.New("gitlab: DownloadUpload needs a positive limit")
+	}
+	path := projectPath(project) + "/uploads/" + url.PathEscape(secret) + "/" + url.PathEscape(filename)
+	var data []byte
+	_, err := c.call(ctx, request{method: http.MethodGet, url: c.baseURL + path, path: projectPath(project) + "/uploads/…", safe: true, maxBody: max}, &data)
+	return data, err
 }
 
 func (c *Client) GetProject(ctx context.Context, project string) (*Project, error) {

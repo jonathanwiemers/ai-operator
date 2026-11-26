@@ -45,8 +45,10 @@ type Fake struct {
 	// RetryError makes RetryPipeline fail.
 	RetryError error
 	nextID     int64
-	lastIID    int64
-	Clock      time.Time
+	// uploads holds the files of UploadFile, by project, then secret/name.
+	uploads map[string]map[string][]byte
+	lastIID int64
+	Clock   time.Time
 	// IssueUpdates records the options of every UpdateIssue call, oldest first.
 	IssueUpdates []gitlab.UpdateIssueOptions
 	// MergeErrors makes MergeMergeRequest of an MR fail.

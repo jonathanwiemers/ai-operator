@@ -248,3 +248,11 @@ type Commit struct {
 	// it was merged.
 	CommittedDate *time.Time `json:"committed_date,omitempty"`
 }
+
+// Upload is GitLab's answer to a file upload: the link to put into text.
+type Upload struct {
+	Alt      string `json:"alt"`
+	URL      string `json:"url"`
+	FullPath string `json:"full_path"`
+	Markdown string `json:"markdown"`
+}
