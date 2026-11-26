@@ -17,8 +17,9 @@ import (
 // out, once.
 func (a *autopilot) pause(ctx context.Context, kind aiv1.PauseKind, iid int64, reason string) error {
 	// Above a limit of 1, a problem of one queue item holds it; a milestone
-	// pause already over it goes on as one.
-	if it := a.item(iid); iid != 0 && it != nil && it != a.ap.MainRedFix && it.State == aiv1.AutopilotItemActive && kind.ItemKind() && a.holdsItems() &&
+	// pause already over it goes on as one. In the loose issues queue every
+	// problem of an item holds only that item.
+	if it := a.item(iid); iid != 0 && it != nil && it != a.ap.MainRedFix && it.State == aiv1.AutopilotItemActive && (kind.ItemKind() || a.loose) && a.holdsItems() &&
 		(a.ap.Phase != aiv1.AutopilotPaused || a.ap.PausedFor != iid) {
 		return a.hold(ctx, it, kind, reason)
 	}
@@ -49,8 +50,9 @@ func (a *autopilot) pause(ctx context.Context, kind aiv1.PauseKind, iid int64, r
 }
 
 // holdsItems: issue problems hold the issue rather than pause the milestone,
-// above a limit of 1 (at 1 a hold would free the only slot).
-func (a *autopilot) holdsItems() bool { return a.maxParallel() > 1 }
+// above a limit of 1 (at 1 a hold would free the only slot). The loose issues
+// queue always holds: its issues are unrelated, and a held one keeps its slot.
+func (a *autopilot) holdsItems() bool { return a.loose || a.maxParallel() > 1 }
 
 // hold holds it for a problem of kind: it is not driven, leaves the landing
 // lane and frees its slot, the other issues go on. It says why and the ways

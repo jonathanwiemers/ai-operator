@@ -247,7 +247,9 @@ func (a *autopilot) merged(ctx context.Context, it *aiv1.AutopilotItem, mr *gitl
 		a.countMergedLines(ctx, it, mr.IID)
 	}
 	a.log.Info("autopilot merged", "issue", it.IID, "mr", it.MergeRequestIID, "sha", it.MergedSHA)
-	a.releaseDue(it)
+	if !a.loose { // the loose issues queue plans no releases
+		a.releaseDue(it)
+	}
 	return nil
 }
 

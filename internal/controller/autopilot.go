@@ -177,8 +177,12 @@ func (a *autopilot) off(ctx context.Context) error {
 }
 
 // maxParallel is the effective parallel-issue limit for this milestone:
-// the description's `/agent parallel N` when set, else the project's.
+// the description's `/agent parallel N` when set, else the project's. The
+// loose issues queue has its own, looseIssues.maxParallel.
 func (a *autopilot) maxParallel() int32 {
+	if a.loose {
+		return a.spec.LooseIssues.Parallel()
+	}
 	if a.st.Spec.MaxParallel > 0 {
 		return a.st.Spec.MaxParallel
 	}
@@ -289,6 +293,10 @@ func (a *autopilot) step(ctx context.Context) error {
 	if a.ap.Phase != phase || a.active() < before || a.st.RunPending() {
 		return nil // paused; or being planned again, pick from the new plan
 	}
+	if a.loose {
+		// Unrelated issues: all held is no stuck pause, they wait for an owner.
+		return a.pickLoose(ctx)
+	}
 	for range len(a.ap.Items) + 1 {
 		running := a.running()
 		if running >= int(a.maxParallel()) {
@@ -363,8 +371,12 @@ func (a *autopilot) active() int {
 
 // running counts the issues that hold a slot: the active items but the held
 // ones and the landing one, which counts too at a limit of 1 (one issue at a
-// time).
+// time). In the loose issues queue every active item holds one, held or
+// landing: it never runs more than maxParallel issues.
 func (a *autopilot) running() int {
+	if a.loose {
+		return a.active()
+	}
 	n := 0
 	for _, it := range a.ap.Items {
 		if it.State == aiv1.AutopilotItemActive && it.Hold == nil && (it.IID != a.ap.Landing || a.maxParallel() <= 1) {

@@ -218,6 +218,9 @@ func (a *autopilot) takeOne(ctx context.Context, iid int64, by string, at time.T
 	}
 	// Taken again after it merged or left: a new item, at the end.
 	a.ap.Items = append(slices.DeleteFunc(a.ap.Items, func(x aiv1.AutopilotItem) bool { return x.IID == iid }), it)
+	if a.issues != nil {
+		a.issues[iid] = *is // read before the poll's leave and step
+	}
 	a.log.Info("issue taken into the loose issues queue", "issue", iid, "by", by, "state", it.State)
 	return "", nil
 }

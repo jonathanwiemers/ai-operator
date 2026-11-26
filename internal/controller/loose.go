@@ -25,12 +25,7 @@ const maxLooseFinished = 50
 // on again reopens the same issue; one without is deleted by the cleanup.
 func (p *projectPoll) syncQueueTask(ctx context.Context) error {
 	name := naming.QueueTask(p.project.Name)
-	var task *aiv1.AgentTask
-	for i := range p.tasks.Items {
-		if t := &p.tasks.Items[i]; t.Spec.Type == aiv1.TaskTypeQueue && t.Name == name {
-			task = t
-		}
-	}
+	task := p.findQueueTask()
 	loose := p.spec.LooseIssues
 	if !loose.Enabled {
 		if task != nil && task.Status.Autopilot != nil && task.Status.Autopilot.TrackingIssueIID != 0 {
@@ -67,6 +62,38 @@ func (p *projectPoll) syncQueueTask(ctx context.Context) error {
 	return nil
 }
 
+// findQueueTask is the project's Queue task among the poll's tasks, nil if
+// there is none.
+func (p *projectPoll) findQueueTask() *aiv1.AgentTask {
+	name := naming.QueueTask(p.project.Name)
+	for i := range p.tasks.Items {
+		if t := &p.tasks.Items[i]; t.Spec.Type == aiv1.TaskTypeQueue && t.Name == name {
+			return t
+		}
+	}
+	return nil
+}
+
+// queueItem is the pending, active or held item of issue iid in the loose
+// issues queue, with the Queue task; nil while the queue is off or the issue
+// is not in it. The issue phases run before syncQueueTask, so it looks the
+// task up itself.
+func (p *projectPoll) queueItem(iid int64) (*aiv1.AgentTask, *aiv1.AutopilotItem) {
+	qt := p.queueTask
+	if qt == nil {
+		qt = p.findQueueTask()
+	}
+	if !p.spec.LooseIssues.Enabled || qt == nil || qt.Status.Autopilot == nil {
+		return nil, nil
+	}
+	for i := range qt.Status.Autopilot.Items {
+		if it := &qt.Status.Autopilot.Items[i]; it.IID == iid && !finished(*it) {
+			return qt, it
+		}
+	}
+	return nil, nil
+}
+
 // syncLoose drives the loose issues queue of qt, one step per poll, and
 // switches it off once spec.looseIssues is disabled. It never takes a
 // milestone path: no planning, releases, settling or closing a milestone.
@@ -100,13 +127,19 @@ func (r *AgentProjectReconciler) syncLoose(ctx context.Context, gl gitlab.API, g
 	return err
 }
 
-// syncQueue is one poll of the loose issues queue: its tracking issue.
+// syncQueue is one poll of the loose issues queue: its issues, the owners'
+// commands, the items that leave, the holds that end by themselves, then the
+// milestone's merge gate for the active items and the start of pending ones,
+// and the tracking issue.
 func (a *autopilot) syncQueue(ctx context.Context) error {
 	if a.ap.Phase == aiv1.AutopilotOff || a.ap.Phase == "" {
 		a.ap.Phase = aiv1.AutopilotRunning
 	}
 	a.ap.MaxParallel = a.spec.LooseIssues.Parallel()
 	a.ap.Items = pruneFinished(a.ap.Items, maxLooseFinished)
+	if err := a.loadQueueIssues(ctx); err != nil {
+		return err
+	}
 	if err := a.ensureTracking(ctx); err != nil {
 		return err
 	}
@@ -115,6 +148,17 @@ func (a *autopilot) syncQueue(ctx context.Context) error {
 	}
 	if err := a.looseChatCommands(ctx); err != nil {
 		return err
+	}
+	if err := a.leaveQueue(ctx); err != nil {
+		return err
+	}
+	if err := a.resumeHolds(ctx); err != nil {
+		return err
+	}
+	if a.ap.Phase == aiv1.AutopilotRunning {
+		if err := a.step(ctx); err != nil {
+			return err
+		}
 	}
 	return a.updateTracking(ctx)
 }

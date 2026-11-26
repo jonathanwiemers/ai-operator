@@ -80,7 +80,7 @@ func TestLooseTakeOneAndSeveral(t *testing.T) {
 	if !strings.Contains(reply, "Taken into the loose issues queue: #350, #421.") || strings.Contains(reply, "Not taken") {
 		t.Fatalf("one reply lists both: %q", reply)
 	}
-	e.wantItems("taken in order", "350:Pending", "421:Pending")
+	e.wantItems("taken in order, the first starts", "350:Active", "421:Pending")
 	for iid, pos := range map[int64]int{350: 1, 421: 2} {
 		want := fmt.Sprintf("🛠️ Taken into the loose issues queue by @bob (position %d).", pos)
 		if got := botComments(e, iid); len(got) != 1 || got[0] != want {
@@ -91,17 +91,18 @@ func TestLooseTakeOneAndSeveral(t *testing.T) {
 	if it.TakenBy != "@bob" || it.TakenAt == nil {
 		t.Fatalf("taken by and at: %+v", it)
 	}
-	if d := e.gl.Issues[tracking].Description; !strings.Contains(d, "1. #350\n2. #421\n") {
+	if d := e.gl.Issues[tracking].Description; !strings.Contains(d, "### Pending\n\n1. #421\n") || !strings.Contains(d, "- #350") {
 		t.Fatalf("the tracking issue lists the pending issues:\n%s", d)
 	}
 
-	// An issue in work is active at once; the next pending one is third.
+	// An issue in work is active at once, beyond maxParallel; the next
+	// pending one is second, counted at the take.
 	e.sayLoose(tracking, bob, "/agent take 46, 128")
-	e.wantItems("in work is active", "350:Pending", "421:Pending", "46:Active", "128:Pending")
+	e.wantItems("in work is active", "350:Active", "421:Pending", "46:Active", "128:Pending")
 	if got := botComments(e, 46); len(got) != 1 || got[0] != "🛠️ Taken into the loose issues queue by @bob (active)." {
 		t.Fatalf("#46: %q", got)
 	}
-	if got := botComments(e, 128); len(got) != 1 || !strings.Contains(got[0], "(position 3)") {
+	if got := botComments(e, 128); len(got) != 1 || !strings.Contains(got[0], "(position 2)") {
 		t.Fatalf("#128: %q", got)
 	}
 	if !e.gl.Issues[46].HasLabel("agent::working") {
@@ -129,7 +130,7 @@ func TestLooseTakeRefusals(t *testing.T) {
 			t.Fatalf("reply %q, want it to contain %q", reply, want)
 		}
 	}
-	e.wantItems("only the fine one joins", "8:Pending", "9:Pending")
+	e.wantItems("only the fine one joins", "8:Active", "9:Pending")
 	for _, iid := range []int64{5, 6, 7} {
 		if got := botComments(e, iid); len(got) != 0 {
 			t.Fatalf("a refused issue gets no note: #%d %q", iid, got)
@@ -158,7 +159,7 @@ func TestLooseTakeOperatorIssueWithoutTrackingMarker(t *testing.T) {
 	e.gl.AddIssue(13, "Follow-up", "ai-generated")
 	e.gl.AddIssue(14, "Pasted marker").Description = marker.TrackingIssue
 	e.sayLoose(tracking, bob, "/agent take #13 #14")
-	e.wantItems("both join", "13:Pending", "14:Pending")
+	e.wantItems("both join", "13:Active", "14:Pending")
 }
 
 func TestLooseTakeAgainAfterLeaving(t *testing.T) {
@@ -167,13 +168,14 @@ func TestLooseTakeAgainAfterLeaving(t *testing.T) {
 	e.gl.AddIssue(21, "Twenty-one")
 	e.sayLoose(tracking, bob, "/agent take #20 #21")
 	e.say(tracking, bob, "/agent drop #20")
-	e.wantItems("dropped", "20:Left", "21:Pending")
+	e.wantItems("dropped, the next starts", "20:Left", "21:Active")
+	e.gl.Issues[20].Labels = nil // a human took it out of the flow again
 	e.sayLoose(tracking, bob, "/agent take #20")
-	e.wantItems("taken again at the end, reset", "21:Pending", "20:Pending")
+	e.wantItems("taken again at the end, reset", "21:Active", "20:Pending")
 	if it := e.queue().Status.Autopilot.Items[1]; it.LeftReason != "" || it.LeftAt != nil {
 		t.Fatalf("a fresh item: %+v", it)
 	}
-	if got := botComments(e, 20); len(got) != 2 || !strings.Contains(got[1], "(position 2)") {
+	if got := botComments(e, 20); len(got) != 2 || !strings.Contains(got[1], "(position 1)") {
 		t.Fatalf("#20 is commented again with its new position: %q", got)
 	}
 }
@@ -185,13 +187,13 @@ func TestLooseTakeRetryCommentsOnce(t *testing.T) {
 	e.gl.NoteErrors = map[int64]error{31: &gitlab.Error{StatusCode: 500, Method: "POST", Path: "notes"}}
 	n := e.gl.AddNote(tracking, bob, "/agent take #30 #31")
 	e.reconcileFailing()
-	e.wantItems("the first is in, the failed one not", "30:Pending")
+	e.wantItems("the failed take starts nothing", "30:Pending")
 	if len(botComments(e, tracking)) != 0 {
 		t.Fatal("no reply before the command went through")
 	}
 	delete(e.gl.NoteErrors, 31)
 	e.reconcile()
-	e.wantItems("the retry adds the second", "30:Pending", "31:Pending")
+	e.wantItems("the retry adds the second", "30:Active", "31:Pending")
 	if got := botComments(e, 30); len(got) != 1 {
 		t.Fatalf("#30 is commented once: %q", got)
 	}
@@ -291,16 +293,16 @@ func TestLooseDeskCommands(t *testing.T) {
 	if got := chatAnswer(*e.queue(), 1); got != "Taken into the loose issues queue: #350, #421. Not taken: #5 is closed." {
 		t.Fatalf("Desk take: %q", got)
 	}
-	e.wantItems("taken from the Desk", "350:Pending", "421:Pending")
+	e.wantItems("taken from the Desk", "350:Active", "421:Pending")
 	if got := botComments(e, 421); len(got) != 1 || got[0] != "🛠️ Taken into the loose issues queue by alice via the Desk (position 2)." {
 		t.Fatalf("#421: %q", got)
 	}
 
 	e.sendCommand(queueTaskName, 2, "alice@example.com", `{"cmd":"drop","issue":350}`)
-	if got := chatAnswer(*e.queue(), 2); got != "#350 left the queue: dropped by alice via the Desk." {
+	if got := chatAnswer(*e.queue(), 2); got != "#350 left the queue: dropped by alice via the Desk; continues in the manual flow." {
 		t.Fatalf("Desk drop: %q", got)
 	}
-	e.wantItems("dropped from the Desk", "350:Left", "421:Pending")
+	e.wantItems("dropped from the Desk, the next starts", "350:Left", "421:Active")
 
 	e.sendCommand(queueTaskName, 3, "mallory@example.com", `{"cmd":"take","issues":[5]}`)
 	e.sendCommand(queueTaskName, 4, "alice@example.com", `{"cmd":"pause"}`)

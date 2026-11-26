@@ -276,7 +276,8 @@ func (a *autopilot) budgetPaused() bool {
 // and a resume clears it.
 func budgetStopped(st *aiv1.AgentTask, iid int64) bool {
 	ap := st.Status.Autopilot
-	if !st.Spec.Autopilot || ap == nil {
+	// The loose issues queue's Queue task runs without spec.autopilot.
+	if !st.Spec.Autopilot && st.Spec.Type != aiv1.TaskTypeQueue || ap == nil {
 		return false
 	}
 	if b := ap.Budget; ap.Phase == aiv1.AutopilotDone && b != nil && b.SpentUSD != "" && aiv1.BudgetLeft(b.LimitUSD, b.SpentUSD, 0) <= 0 {

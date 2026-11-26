@@ -203,6 +203,10 @@ func (p *projectPoll) listIssues(ctx context.Context) error {
 			// owner) has no milestone, nor may a flaky one.
 			mh := project.Status.MainHealth
 			autoFix := mh != nil && (mh.AutoFixIssueIID == is.IID || mh.IssueIID == is.IID) || flakyLatch(mh, is.IID) != nil
+			// Nor has an issue of the loose issues queue.
+			if _, it := p.queueItem(is.IID); it != nil && is.Milestone == nil {
+				autoFix = true
+			}
 			if p.titleRE != nil && !autoFix && (is.Milestone == nil || !p.titleRE.MatchString(is.Milestone.Title)) {
 				continue
 			}
@@ -294,7 +298,21 @@ func (ph issuePhases) implement(ctx context.Context, is gitlab.Issue) (*aiv1.Age
 	if autopilot && is.Milestone != nil {
 		ap = ph.autopilots[is.Milestone.IID]
 	}
-	task, mr, err := ph.r.syncImplementTask(ctx, ph.gl, ph.gate, ph.project, ph.spec, is, ph.byIssue[is.IID], autopilot, pause, budgetStop, is.IID == ph.urgentIssue, ms, ph.owners(description), notify.MilestoneOwnerSubjects(description, ph.prefix), ap)
+	owners, subjects := ph.owners(description), notify.MilestoneOwnerSubjects(description, ph.prefix)
+	if qt, it := ph.queueItem(is.IID); is.Milestone == nil && it != nil && it.State == aiv1.AutopilotItemActive {
+		// Started by the loose issues queue, which merges it: its owners, and
+		// its hold (or the queue's pause) as the pause. Dropped, it is manual.
+		autopilot, ap = true, qt
+		owners, subjects = qt.Spec.Owners, qt.Spec.OwnerSubjects
+		budgetStop = budgetStopped(qt, is.IID)
+		switch q := qt.Status.Autopilot; {
+		case it.Hold != nil:
+			pause = it.Hold.Reason
+		case q.Phase == aiv1.AutopilotPaused:
+			pause = q.PausedReason
+		}
+	}
+	task, mr, err := ph.r.syncImplementTask(ctx, ph.gl, ph.gate, ph.project, ph.spec, is, ph.byIssue[is.IID], autopilot, pause, budgetStop, is.IID == ph.urgentIssue, ms, owners, subjects, ap)
 	if err != nil {
 		// Keep the existing task, so the cleanup below does not delete
 		// it and the autopilot still sees it.
