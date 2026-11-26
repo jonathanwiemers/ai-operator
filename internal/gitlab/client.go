@@ -554,7 +554,14 @@ func (c *Client) CreateMilestone(ctx context.Context, project string, opts Creat
 	return &m, err
 }
 
+// ErrMilestoneFilter is returned by ListIssues when Milestone and
+// NoMilestone are both set.
+var ErrMilestoneFilter = errors.New("gitlab: ListIssuesOptions sets both Milestone and NoMilestone")
+
 func (c *Client) ListIssues(ctx context.Context, project string, opts ListIssuesOptions) ([]Issue, error) {
+	if opts.NoMilestone && opts.Milestone != "" {
+		return nil, ErrMilestoneFilter
+	}
 	q := url.Values{}
 	state := opts.State
 	if state == "" {
@@ -566,6 +573,13 @@ func (c *Client) ListIssues(ctx context.Context, project string, opts ListIssues
 	}
 	if opts.Milestone != "" {
 		q.Set("milestone", opts.Milestone)
+	}
+	if opts.NoMilestone {
+		q.Set("milestone", "None")
+	}
+	if opts.NewestFirst {
+		q.Set("order_by", "created_at")
+		q.Set("sort", "desc")
 	}
 	if opts.UpdatedAfter != nil {
 		q.Set("updated_after", opts.UpdatedAfter.UTC().Format(time.RFC3339))

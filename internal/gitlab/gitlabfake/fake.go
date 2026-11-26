@@ -382,6 +382,9 @@ func (f *Fake) CreateMilestone(_ context.Context, _ string, opts gitlab.CreateMi
 }
 
 func (f *Fake) ListIssues(_ context.Context, _ string, opts gitlab.ListIssuesOptions) ([]gitlab.Issue, error) {
+	if opts.NoMilestone && opts.Milestone != "" {
+		return nil, gitlab.ErrMilestoneFilter
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	state := opts.State
@@ -394,6 +397,9 @@ func (f *Fake) ListIssues(_ context.Context, _ string, opts gitlab.ListIssuesOpt
 			continue
 		}
 		if opts.Milestone != "" && (is.Milestone == nil || is.Milestone.Title != opts.Milestone) {
+			continue
+		}
+		if opts.NoMilestone && is.Milestone != nil {
 			continue
 		}
 		if opts.UpdatedAfter != nil && (is.UpdatedAt == nil || !is.UpdatedAt.After(*opts.UpdatedAfter)) {
@@ -410,6 +416,13 @@ func (f *Fake) ListIssues(_ context.Context, _ string, opts gitlab.ListIssuesOpt
 		}
 	}
 	slices.SortFunc(out, func(a, b gitlab.Issue) int { return int(a.IID - b.IID) })
+	if opts.NewestFirst {
+		// IIDs grow with creation time.
+		slices.Reverse(out)
+	}
+	if opts.MaxPages > 0 && len(out) > opts.MaxPages*100 {
+		out = out[:opts.MaxPages*100]
+	}
 	return out, nil
 }
 

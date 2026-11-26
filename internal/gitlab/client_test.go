@@ -73,6 +73,31 @@ func TestListIssuesUpdatedAfter(t *testing.T) {
 	}
 }
 
+func TestListIssuesNoMilestoneNewestFirst(t *testing.T) {
+	var got url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.URL.Query()
+		_ = json.NewEncoder(w).Encode([]Issue{})
+	}))
+	defer srv.Close()
+	c := New(srv.URL, "tok")
+	if _, err := c.ListIssues(context.Background(), "group/app", ListIssuesOptions{NoMilestone: true, NewestFirst: true}); err != nil {
+		t.Fatal(err)
+	}
+	for k, want := range map[string]string{"milestone": "None", "order_by": "created_at", "sort": "desc", "state": "opened"} {
+		if got.Get(k) != want {
+			t.Errorf("%s = %q, want %q", k, got.Get(k), want)
+		}
+	}
+	got = nil
+	if _, err := c.ListIssues(context.Background(), "group/app", ListIssuesOptions{NoMilestone: true, Milestone: "M1"}); !errors.Is(err, ErrMilestoneFilter) {
+		t.Fatalf("both filters: err = %v", err)
+	}
+	if got != nil {
+		t.Error("both filters still sent a request")
+	}
+}
+
 func TestUpdateIssueSendsLabelDeltas(t *testing.T) {
 	var body map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

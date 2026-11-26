@@ -576,6 +576,81 @@ export interface IssueView extends MilestoneIssueRow {
 }
 
 //////////
+// source: loose.go
+
+/**
+ * LooseIssues is GET .../loose-issues: the project's loose issues queue
+ * and the open issues without a milestone an owner may take into it.
+ * Titles are data, rendered as text.
+ */
+export interface LooseIssues {
+  /**
+   * Queue is nil while the project has no Queue task.
+   */
+  queue?: LooseQueue | null;
+  /**
+   * Items are the queue's issues, in queue order.
+   */
+  items: LooseItem[];
+  /**
+   * Issues are the open issues without a milestone, newest first, at most
+   * 500.
+   */
+  issues: LooseIssue[];
+  /**
+   * Take: the caller may take and drop issues (Desk command messages on
+   * QueueTask): one of OwnerSubjects, with chat.
+   */
+  take: boolean;
+  /**
+   * OwnerSubjects are the Desk logins who may act on the queue.
+   */
+  ownerSubjects: string[];
+  /**
+   * QueueTask is the Queue task's name, the chat route's target.
+   */
+  queueTask?: string;
+}
+/**
+ * LooseQueue is the state of the loose issues queue.
+ */
+export interface LooseQueue {
+  phase: aiv1.AutopilotPhase;
+  pausedReason?: string;
+  maxParallel: number /* int32 */;
+}
+/**
+ * LooseItem is one issue of the queue. HeadSHA is the implement task's
+ * pushed head, what "/agent merge #N <sha>" names.
+ */
+export interface LooseItem {
+  iid: number /* int64 */;
+  title: string;
+  webURL: string;
+  state: aiv1.AutopilotItemState;
+  holdReason?: string;
+  leftReason?: string;
+  mergeRequestIID?: number /* int64 */;
+  mergeRequestURL?: string;
+  mergedAt?: string;
+  task?: string;
+  headSHA?: string;
+}
+/**
+ * LooseIssue is an open GitLab issue without a milestone. InQueue: it is a
+ * pending, active or held item of the queue.
+ */
+export interface LooseIssue {
+  iid: number /* int64 */;
+  title: string;
+  labels: string[];
+  author: string;
+  updatedAt?: string;
+  webURL: string;
+  inQueue: boolean;
+}
+
+//////////
 // source: metrics.go
 
 /**
@@ -2473,6 +2548,10 @@ export interface ProjectDetail extends ProjectSummary {
    */
   queue: QueueEntry[];
   queueCommands: boolean;
+  /**
+   * LooseIssues: spec.looseIssues.enabled, the Loose issues tab is shown.
+   */
+  looseIssues: boolean;
   /**
    * Finishing are the done milestones still open on GitLab, oldest first.
    */

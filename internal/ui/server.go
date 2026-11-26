@@ -174,6 +174,7 @@ func (s *Server) routes() []route {
 		{"GET /api/v1/projects", s.authed(s.projects)},
 		{"GET /api/v1/projectsets", s.authed(s.projectSets)},
 		{"GET /api/v1/projects/{namespace}/{name}", s.authed(s.project)},
+		{"GET /api/v1/projects/{namespace}/{name}/loose-issues", s.authed(s.looseIssues)},
 		{"GET /api/v1/projects/{namespace}/{name}/tasks/{task}", s.authed(s.task)},
 		{"GET /api/v1/milestones", s.authed(s.milestones)},
 		{"GET /api/v1/search", s.authed(s.search)},

@@ -15,6 +15,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/naming"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 	"github.com/jonathanwiemers/ai-operator/internal/research/storetest"
 )
@@ -230,6 +231,13 @@ func TestPostChat(t *testing.T) {
 	t.Run("kinds by task", func(t *testing.T) {
 		env := login(t, "chatters")
 		impl := "/api/v1/projects/team-a/shop/tasks/shop-42-add-paypal/chat"
+		queue := "/api/v1/projects/team-a/shop/tasks/" + naming.QueueTask("shop") + "/chat"
+		if err := env.reader.Create(t.Context(), &aiv1.AgentTask{
+			ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: naming.QueueTask("shop")},
+			Spec:       aiv1.AgentTaskSpec{ProjectRef: "shop", Type: aiv1.TaskTypeQueue},
+		}); err != nil {
+			t.Fatal(err)
+		}
 		restart := `{"cmd":"restart"}`
 		for _, tc := range []struct {
 			path, kind, body string
@@ -241,6 +249,9 @@ func TestPostChat(t *testing.T) {
 			{impl, "message", "hello", http.StatusForbidden},
 			{impl, "interrupt", "stop", http.StatusForbidden},
 			{impl, "command", restart, http.StatusCreated},
+			// The loose issues queue takes Desk commands, not chat.
+			{queue, "message", "hello", http.StatusForbidden},
+			{queue, "command", restart, http.StatusCreated},
 		} {
 			code, errBody := env.postChatErr(t, tc.path, map[string]any{
 				"body": tc.body, "kind": tc.kind, "clientKey": tc.path + tc.kind,

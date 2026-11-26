@@ -151,6 +151,8 @@ type ProjectDetail struct {
 	// Queue is in run order; queueCommands: Desk chat on the project.
 	Queue         []QueueEntry `json:"queue"`
 	QueueCommands bool         `json:"queueCommands"`
+	// LooseIssues: spec.looseIssues.enabled, the Loose issues tab is shown.
+	LooseIssues bool `json:"looseIssues"`
 	// Finishing are the done milestones still open on GitLab, oldest first.
 	Finishing []FinishingEntry `json:"finishing"`
 }
@@ -341,7 +343,8 @@ func summarize(p *aiv1.AgentProject, tasks []aiv1.AgentTask, now time.Time) Proj
 
 // detail groups the tasks of p by milestone.
 func detail(p *aiv1.AgentProject, tasks []aiv1.AgentTask, now time.Time) ProjectDetail {
-	d := ProjectDetail{ProjectSummary: summarize(p, tasks, now), Milestones: []Milestone{}, Unplanned: []Task{}}
+	d := ProjectDetail{ProjectSummary: summarize(p, tasks, now), Milestones: []Milestone{}, Unplanned: []Task{},
+		LooseIssues: p.Spec.LooseIssues.Enabled}
 	gl := d.GitLab
 	byIID := map[int64]*Milestone{}
 	costs := map[int64]float64{}

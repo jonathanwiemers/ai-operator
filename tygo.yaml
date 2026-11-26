@@ -104,6 +104,7 @@ packages:
       - followup.go
       - gitlab.go
       - issue.go
+      - loose.go
       - metrics.go
       - metrics_code.go
       - metrics_flow.go

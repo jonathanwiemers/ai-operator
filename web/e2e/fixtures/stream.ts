@@ -142,6 +142,7 @@ export const shopDetail: ProjectDetail = {
     },
   ],
   queueCommands: true,
+  looseIssues: false,
   // A done milestone held by an open issue, follow-ups and a companion.
   finishing: [
     {

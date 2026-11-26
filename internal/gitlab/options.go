@@ -62,6 +62,13 @@ type ListIssuesOptions struct {
 	State string
 	// Milestone title.
 	Milestone string
+	// NoMilestone only returns issues without a milestone (GitLab's
+	// milestone=None). It cannot be combined with Milestone: ListIssues
+	// returns ErrMilestoneFilter when both are set.
+	NoMilestone bool
+	// NewestFirst orders the issues by creation time, newest first
+	// (order_by=created_at&sort=desc), so MaxPages keeps the newest.
+	NewestFirst bool
 	// UpdatedAfter only returns issues updated after this time.
 	UpdatedAfter *time.Time
 	// MaxPages caps the pages of 100 issues read, so the requests; 0 reads

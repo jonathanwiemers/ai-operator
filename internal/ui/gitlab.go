@@ -289,14 +289,20 @@ type ThreadResponse struct {
 	Parts []ThreadPart `json:"parts"`
 }
 
-// targets are the issue, merge request and tracking issue of a task, which
-// the thread shows and a comment may go to.
-func targets(ap *aiv1.AgentProject, t *aiv1.AgentTask) []ThreadPart {
+// projectWeb is the project's GitLab web URL with a trailing "/-/", which
+// "issues/N" and "merge_requests/N" complete.
+func projectWeb(ap *aiv1.AgentProject) string {
 	web := strings.TrimSuffix(ap.Spec.GitLab.URL, "/")
 	if web == "" {
 		web = "https://gitlab.com"
 	}
-	web += "/" + ap.Spec.GitLab.Project + "/-/"
+	return web + "/" + ap.Spec.GitLab.Project + "/-/"
+}
+
+// targets are the issue, merge request and tracking issue of a task, which
+// the thread shows and a comment may go to.
+func targets(ap *aiv1.AgentProject, t *aiv1.AgentTask) []ThreadPart {
+	web := projectWeb(ap)
 	var out []ThreadPart
 	if t.Spec.Issue != nil {
 		out = append(out, ThreadPart{Target: "issue", IID: t.Spec.Issue.IID, WebURL: fmt.Sprintf("%sissues/%d", web, t.Spec.Issue.IID)})
