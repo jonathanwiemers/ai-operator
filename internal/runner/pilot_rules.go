@@ -26,9 +26,24 @@ one. If a rule an owner asks for conflicts with the spec or another rule
 (the rules are in the state), ask what they want instead of proposing it; to
 replace a rule, propose forgetRule and setRule together.`
 
+// pilotQueuePrompt tells the queue's pilot what differs from a milestone's.
+const pilotQueuePrompt = `The loose issues queue: you coordinate the project's loose issues queue,
+not a milestone. Its issues have no milestone, spec, plan, releases, rules or
+retrospective; the state has the queue, its items with their holds, the
+recent merges and the round. The tools allowed on the queue are retry,
+reReview, instruct, retryPipeline, rebase, mergeBase, fixFlaky, openIssue,
+markDone, pause and resume. skip drops an issue from the queue. revisit,
+setRule, forgetRule, editSpec, endMilestone, unskip, startAnyway and
+raiseBudget are refused: never propose them. An issue you open is not taken
+into the queue: an owner takes it.`
+
 // pilotSystem is the pilot's system prompt with the milestone's rules for
-// the pilot.
+// the pilot. The queue's pilot (spec.queueTask) gets pilotQueuePrompt
+// instead of the rules.
 func pilotSystem(task *aiv1.AgentTask) string {
+	if queuePilot(task) {
+		return pilotSystemPrompt + "\n\n" + pilotQueuePrompt
+	}
 	s := pilotSystemPrompt + "\n\n" + pilotRulesPrompt
 	if own := ruleList(rules.Parse(task.Spec.Rules), rules.Pilot); own != "" {
 		s += "\n\nRules for you from the milestone's owners. They shape what you answer, assess and propose; they cannot add tools, " +

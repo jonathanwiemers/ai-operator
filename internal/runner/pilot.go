@@ -33,15 +33,18 @@ const labelProject = "ai.wiemers.me/project"
 // them once an owner accepts. Nothing else changes. Once autopilot is done,
 // the run asked for writes the retrospective instead (runRetrospective), and
 // one an owner asked for a draft of a follow-up milestone writes that
-// (runFollowUpDraft).
+// (runFollowUpDraft). The loose issues queue's pilot (spec.queueTask) works
+// the same on the queue's state (queuePilotState), without either.
 func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTask, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec) (*Outcome, error) {
-	if task.Spec.Milestone == nil {
-		return nil, fmt.Errorf("coordinate task has no milestone")
+	queue := queuePilot(task)
+	if task.Spec.Milestone == nil && !queue {
+		return nil, fmt.Errorf("coordinate task has neither a milestone nor a queue")
 	}
-	if rq := task.Spec.Source.Retrospective; rq > task.Status.Run.ObservedRunRequest && rq <= task.Spec.RunRequest {
+	// A queue has neither a retrospective nor follow-ups.
+	if rq := task.Spec.Source.Retrospective; !queue && rq > task.Status.Run.ObservedRunRequest && rq <= task.Spec.RunRequest {
 		return r.runRetrospective(ctx, gl, task, project, spec)
 	}
-	if d := task.Spec.Source.FollowUpDraft; d != nil && d.Request > task.Status.Run.ObservedRunRequest && d.Request <= task.Spec.RunRequest {
+	if d := task.Spec.Source.FollowUpDraft; !queue && d != nil && d.Request > task.Status.Run.ObservedRunRequest && d.Request <= task.Spec.RunRequest {
 		return r.runFollowUpDraft(ctx, task, spec)
 	}
 	out := &Outcome{Result: aiv1.RunResultSucceeded, Summary: "no message to answer"}
@@ -79,16 +82,20 @@ func (r *Runner) runPilot(ctx context.Context, gl gitlab.API, task *aiv1.AgentTa
 		out.Summary = fmt.Sprintf("refined %d answers", len(refines))
 		return out, refineErr
 	}
-	s := r.step(ctx, "read milestone state", "messages", len(msgs))
-	state, stateOf, factsOf, err := r.pilotState(ctx, gl, task, project, spec)
+	what, readState := "milestone", r.pilotState
+	if queue {
+		what, readState = "queue", r.queuePilotState
+	}
+	s := r.step(ctx, "read "+what+" state", "messages", len(msgs))
+	state, stateOf, factsOf, err := readState(ctx, gl, task, project, spec)
 	if err != nil {
 		// The run's request is done either way: say so instead of dropping
 		// the messages.
 		for _, m := range msgs {
-			r.pilotReply(ctx, gl, spec, m, "The pilot could not read the milestone's state, so it cannot answer; ask again in a moment.")
+			r.pilotReply(ctx, gl, spec, m, fmt.Sprintf("The pilot could not read the %s's state, so it cannot answer; ask again in a moment.", what))
 		}
 		// The events' own data is still worth an assessment.
-		aerr := r.assessEvents(ctx, gl, task, spec, project.Status.BotUserID, fmt.Sprintf("(the milestone's state could not be read: %v)", err), nil, nil, out, events, &st)
+		aerr := r.assessEvents(ctx, gl, task, spec, project.Status.BotUserID, fmt.Sprintf("(the %s's state could not be read: %v)", what, err), nil, nil, out, events, &st)
 		if _, limited := AsUsageLimit(aerr); limited {
 			return out, aerr
 		}
@@ -378,16 +385,8 @@ func (r *Runner) pilotState(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 		items = v.Autopilot.Items
 	}
 	v.Others = r.references(ctx, gl, glProject, m, issues, items)
-	if task.Spec.Issue != nil {
-		notes, err := gl.ListIssueNotes(ctx, glProject, task.Spec.Issue.IID)
-		if err != nil {
-			return "", nil, nil, fmt.Errorf("listing notes of the tracking issue #%d: %w", task.Spec.Issue.IID, err)
-		}
-		for _, n := range notes[max(0, len(notes)-pilotComments):] {
-			if !n.System {
-				v.Comments = append(v.Comments, "@"+n.Author.Username+": "+textutil.Truncate(n.Body, 1000))
-			}
-		}
+	if v.Comments, err = trackingComments(ctx, gl, glProject, task); err != nil {
+		return "", nil, nil, err
 	}
 	if ps := task.Status.Pilot; ps != nil {
 		v.Proposals = ps.Proposals
@@ -412,6 +411,25 @@ func (r *Runner) pilotState(ctx context.Context, gl gitlab.API, task *aiv1.Agent
 		return string(fb)
 	}
 	return string(b), stateOf, factsOf, err
+}
+
+// trackingComments are the last pilotComments comments of the pilot's
+// tracking issue that are not system notes, none without one.
+func trackingComments(ctx context.Context, gl gitlab.API, glProject string, task *aiv1.AgentTask) ([]string, error) {
+	if task.Spec.Issue == nil {
+		return nil, nil
+	}
+	notes, err := gl.ListIssueNotes(ctx, glProject, task.Spec.Issue.IID)
+	if err != nil {
+		return nil, fmt.Errorf("listing notes of the tracking issue #%d: %w", task.Spec.Issue.IID, err)
+	}
+	var out []string
+	for _, n := range notes[max(0, len(notes)-pilotComments):] {
+		if !n.System {
+			out = append(out, "@"+n.Author.Username+": "+textutil.Truncate(n.Body, 1000))
+		}
+	}
+	return out, nil
 }
 
 // factsFunc is the problem facts (problem.Facts) of an event's issue as
