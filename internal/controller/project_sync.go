@@ -48,6 +48,8 @@ type projectPoll struct {
 	mainRed, urgentIssue int64
 	// The loose issues queue's task, if the project keeps one.
 	queueTask *aiv1.AgentTask
+	// The comments on its tracking issue syncLoose read, for its pilot.
+	queueNotes []gitlab.Note
 
 	// The agent-labelled issues of the poll.
 	issues    map[int64]gitlab.Issue
@@ -422,7 +424,8 @@ func (ph autopilotPhase) run(ctx context.Context) {
 		ph.errs = append(ph.errs, fmt.Errorf("loose issues queue task: %w", err))
 	}
 	if qt := ph.queueTask; qt != nil {
-		if err := r.syncLoose(ctx, gl, gate, project, spec, qt, implTasks, ph.issues); err != nil {
+		var err error
+		if ph.queueNotes, err = r.syncLoose(ctx, gl, gate, project, spec, qt, implTasks, ph.issues); err != nil {
 			ph.errs = append(ph.errs, fmt.Errorf("loose issues queue: %w", err))
 		}
 	}
@@ -454,6 +457,11 @@ func (ph pilotPhase) run(ctx context.Context) {
 	}
 	if err := r.syncPilots(ctx, gl, project, spec, specTasks, lane, ph.queueTask, pilots, keep, issues, implTasks); err != nil {
 		ph.errs = append(ph.errs, err)
+	}
+	if qt := ph.queueTask; qt != nil {
+		if err := r.syncQueuePilot(ctx, gl, project, spec, qt, ph.findQueuePilot(), ph.queueNotes, keep, issues, implTasks); err != nil {
+			ph.errs = append(ph.errs, err)
+		}
 	}
 	// The prompts' GitLab comments, once answers have their outcome.
 	for _, st := range specTasks {

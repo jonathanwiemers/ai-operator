@@ -98,9 +98,10 @@ func (p *projectPoll) queueItem(iid int64) (*aiv1.AgentTask, *aiv1.AutopilotItem
 // switches it off once spec.looseIssues is disabled. It never takes a
 // milestone path: no planning, releases, settling or closing a milestone.
 // tasks and issues are the poll's implement tasks and agent-labelled issues
-// by IID.
+// by IID. It returns the tracking issue's comments it read, for the queue's
+// pilot; nil when it read none.
 func (r *AgentProjectReconciler) syncLoose(ctx context.Context, gl gitlab.API, gate *commandGate, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
-	qt *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, issues map[int64]gitlab.Issue) error {
+	qt *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, issues map[int64]gitlab.Issue) ([]gitlab.Note, error) {
 	ap := &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning}
 	if qt.Status.Autopilot != nil {
 		ap = qt.Status.Autopilot.DeepCopy()
@@ -124,7 +125,7 @@ func (r *AgentProjectReconciler) syncLoose(ctx context.Context, gl gitlab.API, g
 	if err == nil && !spec.LooseIssues.Enabled {
 		err = r.refuseChatCommands(ctx, qt, "The loose issues queue is off (`looseIssues.enabled` is false).")
 	}
-	return err
+	return a.notes, err
 }
 
 // syncQueue is one poll of the loose issues queue: its issues, the owners'

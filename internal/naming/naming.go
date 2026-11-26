@@ -77,6 +77,12 @@ func QueueTask(project string) string {
 	return truncate(Slug(project) + "-loose-issues")
 }
 
+// QueuePilotTask names the pilot task (and pod) of a project's loose issues
+// queue.
+func QueuePilotTask(project string) string {
+	return truncate(Slug(project) + "-loose-issues-pilot")
+}
+
 // ImplementTask names the implementation task (and pod) of an issue.
 func ImplementTask(project string, issueIID int64, issueTitle string) string {
 	return join(fmt.Sprintf("%s-%d", Slug(project), issueIID), issueTitle)

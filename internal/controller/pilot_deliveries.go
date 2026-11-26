@@ -29,7 +29,7 @@ func (r *AgentProjectReconciler) reportDeliveries(ctx context.Context, gl gitlab
 	reported := map[int64][]string{}
 	for _, iid := range slices.Sorted(maps.Keys(tasks)) {
 		t := tasks[iid]
-		if t.Spec.Milestone == nil || t.Spec.Milestone.IID != st.Spec.Milestone.IID {
+		if !taskInPilotScope(st, t) {
 			continue
 		}
 		for _, m := range t.Spec.Source.OwnerMessages {

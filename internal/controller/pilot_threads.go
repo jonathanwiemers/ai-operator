@@ -81,7 +81,7 @@ func (r *AgentProjectReconciler) threadAnswers(ctx context.Context, gl gitlab.AP
 // accepted proposal does (runAccepted), and the reply says where it goes.
 func (r *AgentProjectReconciler) tell(ctx context.Context, project *aiv1.AgentProject,
 	st, coord *aiv1.AgentTask, n pilotNote, iid int64, text string) (string, error) {
-	tasks, err := r.issueTasks(ctx, project, st.Spec.Milestone.IID)
+	tasks, err := r.pilotTasks(ctx, project, st)
 	if err != nil {
 		return "", err
 	}

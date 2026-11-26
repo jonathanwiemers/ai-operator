@@ -53,7 +53,7 @@ func (r *AgentProjectReconciler) answerPrompt(ctx context.Context, project *aiv1
 	o := p.Option(cmd.Option)
 	var tasks map[int64]*aiv1.AgentTask
 	if len(o.Actions) > 0 || p.Source.Kind == aiv1.PromptProposal {
-		if tasks, err = r.issueTasks(ctx, project, st.Spec.Milestone.IID); err != nil {
+		if tasks, err = r.pilotTasks(ctx, project, st); err != nil {
 			return "", false, err
 		}
 	}

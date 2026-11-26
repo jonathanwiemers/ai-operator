@@ -22,6 +22,8 @@ func validAction(a aiv1.PilotAction, st *aiv1.AgentTask, tasks map[int64]*aiv1.A
 	ap := st.Status.Autopilot
 	running := queueRunning(st)
 	switch {
+	case st.Spec.Type == aiv1.TaskTypeQueue:
+		return errors.New("actions need a milestone")
 	case !slices.Contains(pilotTools, a.Tool) && !slices.Contains(ownerTools, a.Tool):
 		return fmt.Errorf("`%s` is not a tool of the pilot; merging, closing and pushing are not available", inertLine(a.Tool, 40))
 	case a.Tool == "raiseBudget":

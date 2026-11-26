@@ -557,7 +557,7 @@ func TestStallEvidenceOf(t *testing.T) {
 	st := &aiv1.AgentTask{Spec: aiv1.AgentTaskSpec{Milestone: &aiv1.MilestoneRef{IID: 3}}}
 	coord := &aiv1.AgentTask{Spec: aiv1.AgentTaskSpec{Milestone: &aiv1.MilestoneRef{IID: 3}}}
 
-	got := e.r.stallEvidenceOf(e.ctx, e.gl, spec, coord, issues, tasks)
+	got := e.r.stallEvidenceOf(e.ctx, e.gl, spec, st, coord, issues, tasks)
 	want := stallEvidence{PodPhase: "Running", Restarts: 3, LastTermination: "OOMKilled", RunnerLog: "step started 18 push\n",
 		AgentLog: "wrote bundle\n", RemoteHead: "0badc0ffee11"}
 	if len(got) != 1 || got[7] != want {
@@ -580,7 +580,7 @@ func TestStallEvidenceOf(t *testing.T) {
 	// The pilot has this stall: no reads.
 	logs.tails, e.gl.BranchGets = 0, nil
 	coord.Status.Pilot = &aiv1.PilotStatus{Events: []string{evs[i].Key}}
-	if got := e.r.stallEvidenceOf(e.ctx, e.gl, spec, coord, issues, tasks); len(got) != 0 || logs.tails != 0 || len(e.gl.BranchGets) != 0 {
+	if got := e.r.stallEvidenceOf(e.ctx, e.gl, spec, st, coord, issues, tasks); len(got) != 0 || logs.tails != 0 || len(e.gl.BranchGets) != 0 {
 		t.Errorf("a known stall is not read again: %+v, %d tails, branches %v", got, logs.tails, e.gl.BranchGets)
 	}
 
@@ -588,7 +588,7 @@ func TestStallEvidenceOf(t *testing.T) {
 	coord.Status.Pilot = nil
 	logs.tailErr = map[string]error{AgentContainer: errors.New("container not found")}
 	delete(e.gl.BranchHeads, "agent/7-x")
-	got = e.r.stallEvidenceOf(e.ctx, e.gl, spec, coord, issues, tasks)
+	got = e.r.stallEvidenceOf(e.ctx, e.gl, spec, st, coord, issues, tasks)
 	if ev := got[7]; ev.AgentLog != "" || ev.RunnerLog == "" || ev.RemoteHead != "" || ev.PodPhase != "Running" {
 		t.Errorf("failed reads leave their part empty: %+v", ev)
 	}
@@ -600,7 +600,7 @@ func TestStallEvidenceOf(t *testing.T) {
 
 	// Without a log source the pod and branch are still read.
 	e.r.Logs = nil
-	if got := e.r.stallEvidenceOf(e.ctx, e.gl, spec, coord, issues, tasks); got[7].PodPhase != "Running" || got[7].RunnerLog != "" {
+	if got := e.r.stallEvidenceOf(e.ctx, e.gl, spec, st, coord, issues, tasks); got[7].PodPhase != "Running" || got[7].RunnerLog != "" {
 		t.Errorf("no log source: %+v", got)
 	}
 }

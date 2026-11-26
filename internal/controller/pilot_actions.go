@@ -93,7 +93,7 @@ func (r *AgentProjectReconciler) postProposals(ctx context.Context, gl gitlab.AP
 	if len(ps.Proposed)+len(extra) == 0 {
 		return "", nil
 	}
-	tasks, err := r.issueTasks(ctx, project, st.Spec.Milestone.IID)
+	tasks, err := r.pilotTasks(ctx, project, st)
 	if err != nil {
 		return "", err
 	}
@@ -525,7 +525,7 @@ func (r *AgentProjectReconciler) answerProposal(ctx context.Context, project *ai
 	if !authorized && len(p.OwnerIDs) > 0 && !slices.Contains(p.OwnerIDs, byID) {
 		return "", nil
 	}
-	tasks, err := r.issueTasks(ctx, project, st.Spec.Milestone.IID)
+	tasks, err := r.pilotTasks(ctx, project, st)
 	if err != nil {
 		return "", err
 	}
@@ -592,7 +592,7 @@ func (r *AgentProjectReconciler) runAccepted(ctx context.Context, gl gitlab.API,
 	if ps == nil || len(ps.Accepted) == 0 {
 		return nil
 	}
-	tasks, err := r.issueTasks(ctx, project, st.Spec.Milestone.IID)
+	tasks, err := r.pilotTasks(ctx, project, st)
 	if err != nil {
 		return err
 	}

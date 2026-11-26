@@ -22,7 +22,8 @@ import (
 // The pilot also speaks first: the operator wakes it for the events of its
 // milestone, once per event key. A new head or a new reason is a new key.
 
-// pilotEvents lists the events of a milestone that hold now: an autopilot
+// pilotEvents lists the events in the scope of st (a milestone, or the loose
+// issues queue of a Queue task; inPilotScope) that hold now: an autopilot
 // pause, a held issue, an issue that needs input or is blocked by infra or quota, and on
 // the main-red lane (lane: the autopilot milestone that drives the main-red
 // issue) a red or flaky default branch, so the owners get one prompt for it;
@@ -45,7 +46,7 @@ func pilotEvents(spec aiv1.AgentProjectSpec, mh *aiv1.MainHealthStatus, st *aiv1
 	// the pause's text. A milestone whose planning never ran (it waits for
 	// its turn) has nothing to assess and does not stall: its pause wakes
 	// nobody, and the owners can still talk to the pilot.
-	if ap := st.Status.Autopilot; ap != nil && ap.Phase == aiv1.AutopilotPaused && !specNeverRan(st) {
+	if ap := st.Status.Autopilot; ap != nil && ap.Phase == aiv1.AutopilotPaused && (st.Spec.Type == aiv1.TaskTypeQueue || !specNeverRan(st)) {
 		kind := "stuck"
 		if ap.PausedFor == 0 {
 			kind = "pause-" + hashString(ap.PausedReason)
@@ -91,7 +92,7 @@ func pilotEvents(spec aiv1.AgentProjectSpec, mh *aiv1.MainHealthStatus, st *aiv1
 	}
 	for iid, t := range tasks {
 		is, ok := issues[iid]
-		if !ok || is.Milestone == nil || is.Milestone.IID != st.Spec.Milestone.IID {
+		if !ok || !inPilotScope(st, is) {
 			continue
 		}
 		if t.Spec.Type == aiv1.TaskTypeImplement {
@@ -199,17 +200,18 @@ func runStalledEvent(iid int64, t *aiv1.AgentTask, ev stallEvidence, now time.Ti
 	return aiv1.PilotEvent{Key: fmt.Sprintf("%s%d/%d", aiv1.RunStalledEventPrefix, iid, c.LastTransitionTime.Unix()), IssueIID: iid, Text: text}, true
 }
 
-// stallEvidenceOf reads the evidence for the run-stalled events of coord's
-// milestone that coord was not handed yet: the pod (named after the task),
-// the ends of the runner and agent logs and the branch head on GitLab. A
-// read that fails leaves its part empty; other tasks cost no reads.
-func (r *AgentProjectReconciler) stallEvidenceOf(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, coord *aiv1.AgentTask,
+// stallEvidenceOf reads the evidence for the run-stalled events in the scope
+// of st (inPilotScope) that its pilot coord was not handed yet: the pod
+// (named after the task), the ends of the runner and agent logs and the
+// branch head on GitLab. A read that fails leaves its part empty; other
+// tasks cost no reads.
+func (r *AgentProjectReconciler) stallEvidenceOf(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, st, coord *aiv1.AgentTask,
 	issues map[int64]gitlab.Issue, tasks map[int64]*aiv1.AgentTask) map[int64]stallEvidence {
 	out := map[int64]stallEvidence{}
 	for iid, t := range tasks {
 		is, ok := issues[iid]
 		ev, stalled := runStalledEvent(iid, t, stallEvidence{}, r.now())
-		if !stalled || t.Spec.Type != aiv1.TaskTypeImplement || !ok || is.Milestone == nil || is.Milestone.IID != coord.Spec.Milestone.IID ||
+		if !stalled || t.Spec.Type != aiv1.TaskTypeImplement || !ok || !inPilotScope(st, is) ||
 			coord.Status.Pilot != nil && slices.Contains(coord.Status.Pilot.Events, ev.Key) {
 			continue
 		}

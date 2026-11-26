@@ -99,6 +99,13 @@ func (r *AgentProjectReconciler) pilotIssueNotes(ctx context.Context, gl gitlab.
 		return nil
 	}
 	st, coord, err := r.milestoneTasks(ctx, project, is.Milestone)
+	owners := task.Spec.Owners
+	if err == nil && is.Milestone == nil {
+		// An item of the loose issues queue: its pilot, and its owners.
+		if st, coord, err = r.queuePilotTasks(ctx, project, spec, is.IID); st != nil {
+			owners = st.Spec.Owners
+		}
+	}
 	if err == nil && letters {
 		err = r.promptThreadAnswers(ctx, gl, project, spec, st, coord, is.IID, false, trackingIssue(st, coord), since, issueNotes)
 	}
@@ -106,7 +113,7 @@ func (r *AgentProjectReconciler) pilotIssueNotes(ctx context.Context, gl gitlab.
 		err = r.promptThreadAnswers(ctx, gl, project, spec, st, coord, mr.IID, true, trackingIssue(st, coord), since, mrNotes)
 	}
 	if err == nil && len(notes) > 0 {
-		err = r.routePilot(ctx, gl, project, spec, st, coord, task.Spec.Owners, notes)
+		err = r.routePilot(ctx, gl, project, spec, st, coord, owners, notes)
 	}
 	if err != nil {
 		log.FromContext(ctx).Info("could not hand comments to the pilot", "issue", is.IID, "error", err.Error())
@@ -193,7 +200,9 @@ func (r *AgentProjectReconciler) milestoneTasks(ctx context.Context, project *ai
 
 // routePilot hands the owners' messages to the pilot and answers the others
 // itself: no planned milestone, no owner, no pilot yet, or "/pilot
-// coordinate", which starts one. Others get one reply per comment.
+// coordinate", which starts one. Others get one reply per comment. On the
+// loose issues queue (st a Queue task) "coordinate" names the tracking
+// issue, and standing rules are refused.
 func (r *AgentProjectReconciler) routePilot(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
 	st, coord *aiv1.AgentTask, owners []string, notes []pilotNote) error {
 	prefix := spec.Workflow.PilotPrefix
@@ -216,6 +225,10 @@ func (r *AgentProjectReconciler) routePilot(ctx context.Context, gl gitlab.API, 
 		var reply string
 		var err error
 		done := autopilotDone(st)
+		queue, what := st != nil && st.Spec.Type == aiv1.TaskTypeQueue, "this milestone"
+		if queue {
+			what = "the loose issues queue"
+		}
 		switch tracking := trackingIssue(st, coord); {
 		case st == nil:
 			reply = "There is no pilot here: this issue is not in a planned milestone."
@@ -224,9 +237,11 @@ func (r *AgentProjectReconciler) routePilot(ctx context.Context, gl gitlab.API, 
 		// A milestone without owners gets answers only, which is all the
 		// pilot does yet.
 		case !owner && len(owners) > 0:
-			reply = "Only the owners of this milestone can instruct me."
+			reply = fmt.Sprintf("Only the owners of %s can instruct me.", what)
 		case coordinate && tracking != 0:
-			reply = fmt.Sprintf("The pilot of this milestone listens on #%d.", tracking)
+			reply = fmt.Sprintf("The pilot of %s listens on #%d.", what, tracking)
+		case coordinate && queue:
+			reply = "The pilot of the loose issues queue listens on its tracking issue."
 		case coordinate && st.Spec.Autopilot:
 			reply = "The pilot of this milestone starts with the autopilot's tracking issue."
 		case coordinate && len(owners) == 0:
@@ -236,10 +251,14 @@ func (r *AgentProjectReconciler) routePilot(ctx context.Context, gl gitlab.API, 
 				return err
 			}
 			reply = fmt.Sprintf("The pilot of this milestone listens on #%d now: comment `%s …` there or here.", coord.Spec.Issue.IID, prefix)
+		case queue && (list || forget):
+			reply = "Standing rules are not on the loose issues queue: they belong to a milestone."
+		case coord == nil && queue:
+			reply = "The pilot of the loose issues queue starts with the next poll: ask again then."
 		case coord == nil:
 			reply = fmt.Sprintf("This milestone has no pilot yet: comment `%s coordinate` to start one.", prefix)
 		case (answer || tell || stop || goOn || forget) && !owner:
-			reply = "This milestone has no owners, so the pilot takes no actions."
+			reply = fmt.Sprintf("%s has no owners, so the pilot takes no actions.", strings.ToUpper(what[:1])+what[1:])
 		case stop || goOn:
 			reply, err = r.switchAutonomy(ctx, spec, coord, n.Author.Username, stop)
 		case answer:
@@ -424,7 +443,7 @@ func (r *AgentProjectReconciler) syncPilots(ctx context.Context, gl gitlab.API, 
 			// Desk accept/reject before runAccepted, like GitLab yes/no in
 			// pilotTracking above.
 			if err = r.applyPilotChatCommands(ctx, gl, project, spec, st, coord); err == nil {
-				stalls := r.stallEvidenceOf(ctx, gl, spec, coord, issues, tasks)
+				stalls := r.stallEvidenceOf(ctx, gl, spec, st, coord, issues, tasks)
 				err = r.wakePilot(ctx, coord, pilotEvents(spec, project.Status.MainHealth, st, issues, tasks, st == lane, stalls, r.now()))
 			}
 			if err == nil {

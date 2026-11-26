@@ -47,6 +47,13 @@ func TestTaskNames(t *testing.T) {
 	if got := QueueTask(strings.Repeat("p", 70)); len(got) > MaxNameLength {
 		t.Errorf("QueueTask too long: %d %q", len(got), got)
 	}
+	if got := QueuePilotTask("Shop"); got != "shop-loose-issues-pilot" {
+		t.Errorf("QueuePilotTask = %q", got)
+	}
+	long = strings.Repeat("p", 70)
+	if got := QueuePilotTask(long); len(got) > MaxNameLength || got == QueueTask(long) {
+		t.Errorf("QueuePilotTask too long or not distinct: %d %q", len(got), got)
+	}
 }
 
 func TestWorkspaceAndBranch(t *testing.T) {

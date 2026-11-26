@@ -50,7 +50,7 @@ func (r *AgentProjectReconciler) consumeRefined(ctx context.Context, gl gitlab.A
 		case i >= 0:
 			var err error
 			if tasks == nil {
-				if tasks, err = r.issueTasks(ctx, project, st.Spec.Milestone.IID); err != nil {
+				if tasks, err = r.pilotTasks(ctx, project, st); err != nil {
 					return err
 				}
 			}
