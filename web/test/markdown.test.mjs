@@ -192,3 +192,23 @@ test('inline: links inside a row render no anchor', async () => {
   assert.equal((html.match(/<a\b/g) ?? []).length, 1)
   assert.match(html, /see MR/)
 })
+
+test('uploads rewrites upload links to the Desk route, nothing else', async () => {
+  const sec = '0123456789abcdef0123456789abcdef'
+  const src = `![shot](/uploads/${sec}/a.png) and [b](https://a.example/x) and [c](/other)`
+  const rewrite = (href) => (href.startsWith('/uploads/') ? `/api/v1/up${href.slice('/uploads'.length)}` : undefined)
+  const plain = await renderToString(createSSRApp({ render: () => h('div', renderMarkdown(src, link)) }))
+  assert.match(plain, /<p>!shot and <a href="https:\/\/a.example\/x"/)
+  const html = await renderToString(createSSRApp({ render: () => h('div', renderMarkdown(src, link, 0, Date.now(), rewrite)) }))
+  assert.match(html, new RegExp(`<p><a href="/api/v1/up/${sec}/a.png" rel="noopener noreferrer nofollow">shot</a> and <a href="https://a.example/x"`))
+  assert.match(html, /and c<\/p>/)
+})
+
+test('uploads drops only an unescaped image marker', async () => {
+  const sec = '0123456789abcdef0123456789abcdef'
+  const rewrite = (href) => (href.startsWith('/uploads/') ? '/r' : undefined)
+  const html = await renderToString(
+    createSSRApp({ render: () => h('div', renderMarkdown(`Look! [a](/uploads/${sec}/a.log) wow\\![b](/uploads/${sec}/b.log)`, link, 0, Date.now(), rewrite)) }),
+  )
+  assert.match(html, /<p>Look! <a href="\/r"[^>]*>a<\/a> wow!<a href="\/r"/)
+})

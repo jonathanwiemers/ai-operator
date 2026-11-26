@@ -24,6 +24,8 @@ import { toneText } from '../badgeTone'
 import { pageHeaderUi } from '../pageHeader'
 import RouteTabs from '../ui/RouteTabs.vue'
 import type { PlanView } from '../generated/views'
+import type { PlanUploads } from '../attachments'
+import { loadPlanUploads } from '../planUpload'
 import NotFound from './NotFound.vue'
 
 const props = defineProps<{ namespace: string; name: string; plan: string }>()
@@ -39,6 +41,13 @@ const pane = computed(() => planPaneTab(tab.value))
 const paneClass = (id: PlanPaneTab) => ({ 'max-tablet:hidden': tab.value !== id, 'tablet:hidden': pane.value !== id })
 const owner = computed(() => !!view.value?.permissions.steer)
 const wizard = ref(false)
+// How the chat and the drafts show upload links; loaded once per project.
+const uploads = ref<PlanUploads>()
+async function loadUploads() {
+  const { namespace, name } = props
+  const u = await loadPlanUploads(namespace, name, window.location.pathname + window.location.search)
+  if (namespace === props.namespace && name === props.name) uploads.value = u
+}
 // Why the plan waits for its project or failed, below the header.
 const status = computed(() => (view.value ? planStatusMessage(view.value) : null))
 
@@ -75,12 +84,14 @@ let timer: number | undefined
 watch(
   () => [props.namespace, props.name, props.plan],
   () => {
-    [view.value, notFound.value] = [null, false]
+    [view.value, notFound.value, uploads.value] = [null, false, undefined]
     void load()
+    void loadUploads()
   },
 )
 onMounted(() => {
   void load()
+  void loadUploads()
   timer = window.setInterval(() => {
     if (document.visibilityState !== 'hidden') void load()
   }, 5000)
@@ -122,12 +133,12 @@ onUnmounted(() => window.clearInterval(timer))
       <div class="grid gap-4 tablet:grid-cols-2">
         <PlanChat :class="{ 'max-tablet:hidden': tab !== 'chat' }" :namespace="namespace" :name="name" :plan="plan"
           :can-post="owner" :phase="view.phase" :spend-u-s-d="view.spendUSD" :budget-u-s-d="view.budgetUSD" :decisions="view.decisions ?? []"
-          :drafts="view.drafts" />
+          :drafts="view.drafts" :uploads="uploads" />
         <div class="flex min-w-0 flex-col" :class="{ 'max-tablet:hidden': tab === 'chat' }">
           <RouteTabs class="mb-3 w-fit max-tablet:hidden" :tabs="planPaneTabs" :active="pane" :to="tabTo" label="Plan pane"
             :badges="{ decisions: view.decisionsPending }" />
           <PlanDraft :class="paneClass('draft')" :namespace="namespace" :name="name" :plan="plan"
-            :view="view" :can-edit="owner && view.phase !== 'Created'" @view="(v) => (view = v)" @created="load">
+            :view="view" :uploads="uploads" :can-edit="owner && view.phase !== 'Created'" @view="(v) => (view = v)" @created="load">
             <template #actions><PlanWizardButton :decisions="view.decisions ?? []" :phase="view.phase" @open="wizard = true" /></template>
           </PlanDraft>
           <PlanDecisions :class="paneClass('decisions')" :namespace="namespace" :name="name" :plan="plan"

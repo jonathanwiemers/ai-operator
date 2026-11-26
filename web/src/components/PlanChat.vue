@@ -5,7 +5,7 @@ import UButton from '@nuxt/ui/components/Button.vue'
 import { alertColor } from '../badgeTone'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { chatPostError } from '../api'
-import { bodyTooLong, uploadAll, withAttachments } from '../attachments'
+import { bodyTooLong, uploadAll, withAttachments, type PlanUploads } from '../attachments'
 import { getGitLabStatus, getMilestones, getPlanChat, LoginRequiredError, postPlanChat } from '../client'
 import { uploadPlanFile } from '../planUpload'
 import type { MilestoneRow, PlanDraftView } from '../generated/views'
@@ -34,6 +34,8 @@ const props = defineProps<{
   decisions?: PlanDecision[]
   // The plan's drafts, offered by the composer's % menu with the milestones.
   drafts?: PlanDraftView[]
+  // How messages show their attachments (Plan.vue), once loaded.
+  uploads?: PlanUploads
 }>()
 
 // The project's milestones for the % menu, loaded once when the composer
@@ -174,7 +176,7 @@ onUnmounted(() => window.clearInterval(timer))
     <UAlert v-if="error" :color="alertColor('danger')" variant="subtle" :description="error" />
     <DeskChat label="Plan chat" replier="Planner" :messages="shown" :waiting="!!waiting" empty="No messages yet.">
       <template #content="{ message }">
-        <ChatTurn v-if="message.metadata.chat" :message="message.metadata.chat" :decisions="decisions" />
+        <ChatTurn v-if="message.metadata.chat" :message="message.metadata.chat" :decisions="decisions" :attachments="uploads ?? { namespace, name }" />
       </template>
       <template #bar>
         <div v-if="waiting" class="flex items-center" data-chat-status>

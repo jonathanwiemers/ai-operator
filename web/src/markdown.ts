@@ -12,6 +12,15 @@ import { localTimeNodes } from './localTimeNodes.ts'
 // LinkFn renders a link to a safe http(s) URL.
 export type LinkFn = (href: string, label: VNodeChild[]) => VNodeChild
 
+// UploadRewrite answers the Desk route of a link's destination when it is
+// an upload of the plan's project (attachments.ts), else undefined. Such a
+// link gets the relative route instead of the safe http(s) URL.
+export type UploadRewrite = (href: string) => string | undefined
+
+// Linker is a LinkFn that may carry the rewrite to inline through every
+// block renderer.
+type Linker = LinkFn & { uploads?: UploadRewrite }
+
 // renderMarkdown's headingLevel is the level of a "#" heading; deeper ones
 // follow it, clamped at h6. Without one (0), a heading is a bold paragraph:
 // user text never adds a second h1 or skips a level in the page's outline.
@@ -35,8 +44,9 @@ const detailsRe = /^ {0,3}<details(\s+open)?\s*>/i
 const detailsTagRe = /<(\/?)details(?:\s+open)?\s*>/gi
 const taskRe = /^\[([ xX])\](?:[ \t]+|$)/
 
-export function renderMarkdown(src: string, link: LinkFn, headingLevel = 0, now = Date.now()): VNode[] {
-  return blocks(src.replace(/\r\n?/g, '\n').split('\n'), link, now, headingLevel, 0)
+export function renderMarkdown(src: string, link: LinkFn, headingLevel = 0, now = Date.now(), uploads?: UploadRewrite): VNode[] {
+  const linker: Linker = uploads ? Object.assign((href: string, label: VNodeChild[]) => link(href, label), { uploads }) : link
+  return blocks(src.replace(/\r\n?/g, '\n').split('\n'), linker, now, headingLevel, 0)
 }
 
 // renderInline renders src as one line for rows that are links already:
@@ -343,7 +353,7 @@ function tagAt(s: string, i: number, link: LinkFn | null, now: number, depth: nu
 
 // inline renders emphasis, strong, strikethrough, code spans, inline tags,
 // entities and links; the rest is text.
-function inline(s: string, link: LinkFn | null, now: number, depth: number): VNodeChild[] {
+function inline(s: string, link: Linker | null, now: number, depth: number): VNodeChild[] {
   const out: VNodeChild[] = []
   let text = ''
   const flush = () => {
@@ -375,9 +385,13 @@ function inline(s: string, link: LinkFn | null, now: number, depth: number): VNo
     if (ch === '[' && link && depth < maxDepth) {
       const l = linkAt(s, i)
       if (l) {
+        const upload = link.uploads?.(l.href)
+        // An uploaded image's "!" goes with it: the link shows no image.
+        // Only the marker itself: a "!" right before "[" that is not escaped.
+        if (upload && s[i - 1] === '!' && s[i - 2] !== '\\' && text.endsWith('!')) text = text.slice(0, -1)
         flush()
         const label = inline(l.label, null, now, depth + 1)
-        const href = safeURL(l.href)
+        const href = upload ?? safeURL(l.href)
         if (href) out.push(link(href, label))
         else out.push(...label)
         i = l.end

@@ -6,7 +6,8 @@ import { alertColor } from '../badgeTone'
 // agent's newer draft offered as a diff while the owner has unsaved edits,
 // Remove and Move left / right, and Create milestone on the next draft only.
 // A created draft is read-only, with its milestone's link.
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { uploadRewrite, type PlanUploads } from '../attachments'
 import { deletePlanDraft, orderPlanDrafts, savePlanDraft } from '../client'
 import { DraftConflict, draftLabel, keepMine, movedKeys, onServerDraft, readDraftEdit, takeAgent, writeDraftEdit, type DiffLine } from '../planDraft'
 import UButton from '@nuxt/ui/components/Button.vue'
@@ -18,7 +19,10 @@ import type { PlanDraftView, PlanView } from '../generated/views'
 const props = defineProps<{
   namespace: string; name: string; plan: string; view: PlanView; draft: PlanDraftView
   title: string; canEdit: boolean; canCreate: boolean; canLeft: boolean; canRight: boolean
+  // Upload links of the plan's project link to the Desk route.
+  uploads?: PlanUploads
 }>()
+const rewrite = computed(() => (props.uploads ? uploadRewrite(props.uploads) : undefined))
 // create asks PlanDraft.vue for the create dialog of the saved draft: the
 // dialog lives there, outside the tabs, so it stays open when this tab goes
 // (key 0 saved as a new draft, or the next draft moving on).
@@ -115,6 +119,6 @@ function remove() {
     <UTextarea v-if="canEdit && mode === 'edit'" :model-value="editor.text" :rows="20" autoresize spellcheck="true"
       :ui="{ root: 'w-full', base: 'font-mono text-base/5 tablet:text-[13px]/5' }" aria-label="Draft"
       @update:model-value="(t: string) => (editor = { ...editor, text: t, dirty: true })" />
-    <Markdown v-else :text="(canEdit ? editor.text : draft.draft) || 'No draft yet.'" />
+    <Markdown v-else :uploads="rewrite" :text="(canEdit ? editor.text : draft.draft) || 'No draft yet.'" />
   </div>
 </template>

@@ -9,16 +9,18 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Page } from '@playwright/test'
 import { answer, now } from './fixtures'
+import { ago } from './fixtures/clock'
 import { features } from './fixtures/session'
 import { journeyAt } from './journey'
 
 const planPath = '/projects/team-a/tools-foo/plans/plan-wait'
 const uploadPath = '/projects/team-a/tools-foo/plans/uploads'
 
-async function open(page: Page, baseURL: string | undefined, opts: { uploadStatus?: number } = {}) {
+async function open(page: Page, baseURL: string | undefined, opts: { uploadStatus?: number; sent?: boolean; connected?: boolean } = {}) {
   const problems: string[] = []
   const uploads: string[] = []
   const posts: { body: string }[] = []
+  const fileGets: string[] = []
   const origin = new URL(baseURL ?? '').origin
   await page.setViewportSize({ width: 1280, height: 800 })
   await page.clock.setFixedTime(now)
@@ -37,6 +39,14 @@ async function open(page: Page, baseURL: string | undefined, opts: { uploadStatu
       const md = `${name.endsWith('.png') ? '!' : ''}[${name}](/uploads/${secret}/${name})`
       return r.fulfill({ status: 201, json: { name, size: 10, contentType: 'image/png', url: `/uploads/${secret}/${name}`, markdown: md } })
     }
+    if (opts.sent && req.method() === 'GET') {
+      if (p === `${planPath}/chat`) return r.fulfill({ status: 200, json: { messages: [sentMessage] } })
+      if (p === planPath) return r.fulfill({ status: 200, json: { ...(answer(p, url.searchParams) as object), drafts: [sentDraft] } })
+      if (p.startsWith(`${uploadPath}/`)) {
+        fileGets.push(p.slice(uploadPath.length + 1))
+        return r.fulfill({ status: 200, contentType: 'image/png', body: png })
+      }
+    }
     if (req.method() === 'POST' && p === `${planPath}/chat`) {
       posts.push(req.postDataJSON())
       return r.fulfill({ status: 200, json: { id: 1 } })
@@ -44,7 +54,7 @@ async function open(page: Page, baseURL: string | undefined, opts: { uploadStatu
     if (p === '/features') return r.fulfill({ status: 200, json: { features: [...features.features, { name: 'plans' }] } })
     // The % menu's milestones, loaded when the text first has the focus.
     if (p === '/milestones') return r.fulfill({ status: 200, json: { milestones: [] } })
-    if (p === '/gitlab') return r.fulfill({ status: 200, json: { connected: false, login: '/oauth2/gitlab/login' } })
+    if (p === '/gitlab') return r.fulfill({ status: 200, json: { connected: !!opts.connected, login: '/oauth2/gitlab/login' } })
     const body = answer(p, url.searchParams)
     if (req.method() !== 'GET' || body === undefined) {
       problems.push(`${req.method()} ${url.pathname}`)
@@ -54,8 +64,25 @@ async function open(page: Page, baseURL: string | undefined, opts: { uploadStatu
   })
   await page.goto(planPath)
   await expect(composer(page).getByRole('combobox', { name: 'Message' })).toBeVisible()
-  return { problems, uploads, posts }
+  return { problems, uploads, posts, fileGets }
 }
+
+// A sent message with a screenshot and a .log, and a draft that links the
+// screenshot (R7): GitLab's relative links, as the upload returns them.
+const shot = `/uploads/${'a'.repeat(32)}/shot.png`
+const log = `/uploads/${'b'.repeat(32)}/build.log`
+const sentMessage = {
+  id: 7,
+  at: ago(2),
+  role: 'user',
+  kind: 'message',
+  authorName: 'Ada',
+  state: 'answered',
+  body: `The header overlaps the tabs\n![shot.png](${shot})\n[build.log](${log})`,
+}
+const sentDraft = { key: 1, title: 'Header', revision: 1, draft: `# Header\n\nSee [the screenshot](${shot}) and [GitLab](https://gitlab.example.com).` }
+// A 1×1 transparent PNG.
+const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64')
 
 // The plan chat's text is the % menu's combobox (Composer's references),
 // named Message.
@@ -146,5 +173,41 @@ test('without a connected GitLab, Send with a file posts nothing and offers to c
   await expect(composer(page).getByRole('combobox', { name: 'Message' })).toHaveValue('See the screenshot')
   expect(uploads).toEqual(['pasted-1.png'])
   expect(posts).toEqual([])
+  expect(problems).toEqual([])
+})
+
+test('a sent message shows its screenshot as a thumbnail and the log as a chip; the draft links the file@1280', journeyAt(1280), async ({ page, baseURL }) => {
+  const { problems, fileGets } = await open(page, baseURL, { sent: true, connected: true })
+  const turn = page.locator('main [data-plan-chat] [data-chat-turn="7"]')
+  await expect(turn).toContainText('The header overlaps the tabs')
+  await expect(turn).not.toContainText('/uploads/')
+  const route = `/api/v1${uploadPath}`
+  const thumb = turn.locator('[data-attachment-image]')
+  await expect(thumb).toHaveAttribute('href', `${route}/${'a'.repeat(32)}/shot.png`)
+  await expect(thumb).toHaveAttribute('target', '_blank')
+  await expect(thumb.getByRole('img', { name: 'shot.png' })).toHaveJSProperty('naturalWidth', 1)
+  const chip = turn.getByRole('link', { name: 'build.log' })
+  await expect(chip).toHaveAttribute('href', `${route}/${'b'.repeat(32)}/build.log`)
+  await expect(chip).toHaveAttribute('target', '_blank')
+  expect(fileGets.length).toBeGreaterThan(0)
+  expect(fileGets.filter((f) => !f.endsWith('/shot.png'))).toEqual([])
+
+  const draft = page.locator('main .md', { hasText: 'See the screenshot' })
+  await expect(draft.getByRole('link', { name: 'the screenshot' })).toHaveAttribute('href', `${route}/${'a'.repeat(32)}/shot.png`)
+  await expect(draft.getByRole('link', { name: 'GitLab' })).toHaveAttribute('href', 'https://gitlab.example.com/')
+
+  const { violations } = await new AxeBuilder({ page }).include('main').withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze()
+  expect(violations.map((v) => v.id)).toEqual([])
+  expect(problems).toEqual([])
+})
+
+test('without a connected GitLab the attachments are chips that say to connect@1280', async ({ page, baseURL }) => {
+  const { problems, fileGets } = await open(page, baseURL, { sent: true })
+  const turn = page.locator('main [data-plan-chat] [data-chat-turn="7"]')
+  const locked = turn.locator('[data-attachment-locked]')
+  await expect(locked).toHaveText(['shot.png: Connect GitLab to view', 'build.log: Connect GitLab to view'])
+  await expect(locked.first()).toHaveAttribute('href', /^\/oauth2\/gitlab\/login\?return=/)
+  await expect(turn.getByRole('img')).toHaveCount(0)
+  expect(fileGets).toEqual([])
   expect(problems).toEqual([])
 })

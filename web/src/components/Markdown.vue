@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { h } from 'vue'
-import { renderInline, renderMarkdown } from '../markdown'
+import { renderInline, renderMarkdown, type UploadRewrite } from '../markdown'
 import ExtLink from './ExtLink.vue'
 
 // Agent and human text rendered by markdown.ts: no HTML string, links only
@@ -9,15 +9,24 @@ import ExtLink from './ExtLink.vue'
 // label). variant picks the block spacing: note for chat, events and prompts,
 // doc for research results and retrospectives. headingLevel: the level of a
 // "#" heading (research reports); without it headings are bold paragraphs.
+// uploads (plan drafts): upload links of the plan's project point at the
+// Desk route, a relative link that opens in a new tab.
 const props = withDefaults(
-  defineProps<{ text: string; mode?: 'block' | 'inline'; variant?: 'note' | 'doc'; headingLevel?: number }>(),
+  defineProps<{ text: string; mode?: 'block' | 'inline'; variant?: 'note' | 'doc'; headingLevel?: number; uploads?: UploadRewrite }>(),
   { mode: 'block', variant: 'note' },
 )
 
 const Rendered = () =>
   props.mode === 'inline'
     ? renderInline(props.text)
-    : renderMarkdown(props.text, (href, label) => h(ExtLink, { href, nofollow: true }, () => label), props.headingLevel)
+    : renderMarkdown(
+        props.text,
+        (href, label) =>
+          href.startsWith('/') ? h('a', { href, target: '_blank', rel: 'noopener' }, label) : h(ExtLink, { href, nofollow: true }, () => label),
+        props.headingLevel,
+        Date.now(),
+        props.uploads,
+      )
 </script>
 
 <template>

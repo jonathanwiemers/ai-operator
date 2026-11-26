@@ -11,8 +11,9 @@ import PlanCreateAllDialog from './PlanCreateAllDialog.vue'
 import PlanCreateDialog from './PlanCreateDialog.vue'
 import PlanDraftTab from './PlanDraftTab.vue'
 import type { PlanDraftView, PlanView } from '../generated/views'
+import type { PlanUploads } from '../attachments'
 
-const props = defineProps<{ namespace: string; name: string; plan: string; view: PlanView; canEdit: boolean }>()
+const props = defineProps<{ namespace: string; name: string; plan: string; view: PlanView; canEdit: boolean; uploads?: PlanUploads }>()
 const emit = defineEmits<{ view: [PlanView]; created: [] }>()
 const empty: PlanDraftView = { key: 0, title: '', draft: '', revision: 0 }
 const drafts = computed(() => (props.view.drafts.length ? props.view.drafts : [empty]))
@@ -49,7 +50,7 @@ const creatingAll = ref(false)
   <div class="card flex flex-col gap-2 px-4 py-3.5" data-plan-draft>
     <UTabs v-model="active" :items="items" variant="link" size="sm" aria-label="Drafts" :ui="{ list: 'overflow-x-auto' }">
       <template #draft="{ item }">
-        <PlanDraftTab :namespace="namespace" :name="name" :plan="plan" :view="view" :draft="item.draft" :title="title(item.draft)"
+        <PlanDraftTab :namespace="namespace" :name="name" :plan="plan" :view="view" :uploads="uploads" :draft="item.draft" :title="title(item.draft)"
           :can-edit="canEdit && !draftLocked(item.draft)" :can-create="canEdit && next?.key === item.draft.key"
           :can-left="canMove(drafts, item.draft.key, -1)" :can-right="canMove(drafts, item.draft.key, 1)"
           @view="(v) => emit('view', v)" @create="openCreate" @edited="edits++">

@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import UButton from '@nuxt/ui/components/Button.vue'
+import { computed } from 'vue'
+import { splitAttachments, uploadHref, type PlanUploads } from '../attachments'
 import { chatAuthorLabel as authorLabel, chatStateLabel as stateLabel, commandLabel } from '../chatState'
 import type { PlanDecision } from '../generated/api'
 import type { ChatMessage } from '../types'
@@ -11,11 +14,22 @@ import RelTime from './RelTime.vue'
 // ChatTurn is one Desk chat message inside DeskChat's bubble (TaskChat,
 // PlanChat): who and when, the state of an owner's message with its reason,
 // a command as its label, a plan chat's decision answers, else the text.
-defineProps<{
+// With attachments (plan chat), the upload links of the plan's project
+// leave the text and show below it: images as thumbnails, other files as
+// chips, both opening the Desk route in a new tab; a viewer without a
+// connected GitLab gets chips that say to connect it.
+const props = defineProps<{
   message: ChatMessage
   // The plan's current decisions, for the answers block (plan chat only).
   decisions?: PlanDecision[]
+  attachments?: PlanUploads
 }>()
+const split = computed(() => {
+  const a = props.attachments
+  if (!a || !props.message.body) return { text: props.message.body, files: [] }
+  return splitAttachments(props.message.body, a.project, (l) => uploadHref(a.namespace, a.name, l))
+})
+const locked = computed(() => props.attachments?.connected === false)
 </script>
 
 <template>
@@ -37,7 +51,18 @@ defineProps<{
       :decisions="decisions ?? []"
       :body="message.body"
     />
-    <Markdown v-else-if="message.body" :text="message.body" />
+    <Markdown v-else-if="split.text" :text="split.text" />
+    <div v-if="split.files.length && message.kind !== 'command'" class="flex flex-wrap items-end gap-2" data-chat-attachments>
+      <template v-for="f in split.files" :key="f.href">
+        <UButton v-if="locked" :href="attachments?.connect" :disabled="!attachments?.connect" color="neutral" variant="outline" size="sm"
+          icon="i-lucide-lock" :label="`${f.name}: Connect GitLab to view`" data-attachment-locked />
+        <a v-else-if="f.image && attachments?.connected" :href="f.href" target="_blank" rel="noopener" class="block rounded-(--radius-sm)" data-attachment-image>
+          <img :src="f.href" :alt="f.name" loading="lazy" class="block max-h-40 min-h-12 min-w-12 max-w-full rounded object-contain-(--radius-sm) border border-(--border)" />
+        </a>
+        <UButton v-else :href="f.href" target="_blank" rel="noopener" color="neutral" variant="outline" size="sm"
+          icon="i-lucide-paperclip" :label="f.name" data-attachment-file />
+      </template>
+    </div>
     <!-- Every state's reason is text, not the badge's title: a title cannot be read on touch. -->
     <p
       v-if="message.role === 'user' && message.state && message.reason"
