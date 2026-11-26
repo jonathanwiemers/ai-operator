@@ -50,7 +50,8 @@ func (s *Server) issue(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		found := false
-		for _, row := range issueRows(st, byIssue, now) {
+		spec := ap.Spec.WithDefaults()
+		for _, row := range issueRows(&spec, st, byIssue, now) {
 			if row.IID == issue {
 				v.MilestoneIssueRow, found = row, true
 			}

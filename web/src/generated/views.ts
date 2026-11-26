@@ -1025,6 +1025,23 @@ export interface MilestoneIssueRow {
    * or AlreadyReleased decision that contains it.
    */
   version?: string;
+  /**
+   * Tier is the planner's tier of the issue; absent without one.
+   */
+  tier?: TierView;
+}
+/**
+ * TierView is the planner's tier (profile) of an issue, with the engine,
+ * model and effort of the project's profile of that name. They are absent
+ * when the project no longer has the profile; effort is absent off claude.
+ * Why is the planner's reason, untrusted text.
+ */
+export interface TierView {
+  profile: string;
+  engine?: string;
+  model?: string;
+  effort?: string;
+  why?: string;
 }
 /**
  * IssueFiguresView is an issue's time and spend: wallSec from its first run

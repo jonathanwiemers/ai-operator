@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import UAlert from '@nuxt/ui/components/Alert.vue'
+import Badge from '../components/Badge.vue'
 import { alertColor } from '../badgeTone'
 import { computed, watchEffect } from 'vue'
 import { setCrumbNames } from '../crumbNames'
 import { costTooltip } from '../format'
 import { getMilestoneIssue, getTask } from '../client'
 import { useResource } from '../live'
-import { issueStateTone, issueTime, rowCost, rowTokens } from '../milestoneRows'
+import { issueStateTone, issueTime, rowCost, rowTokens, tierLabel } from '../milestoneRows'
 import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
 import HeaderActions from '../components/HeaderActions.vue'
 import IssueStream from '../components/IssueStream.vue'
@@ -86,6 +87,13 @@ const actions = computed(() => {
         </template>
         <template #title>
           <span class="me-2 font-mono font-normal text-(--text-3)">#{{ v.iid }}</span>{{ v.title || `Issue #${v.iid}` }}
+        </template>
+        <!-- The planner's tier and its reason (untrusted text). -->
+        <template v-if="v.tier" #description>
+          <span class="flex flex-wrap items-center gap-x-2 gap-y-1" data-issue-tier>
+            <Badge class="tabular-nums" data-tier><span class="sr-only">Tier </span>{{ tierLabel(v.tier) }}</Badge>
+            <span v-if="v.tier.why" class="[overflow-wrap:anywhere]">{{ v.tier.why }}</span>
+          </span>
         </template>
         <template #links><HeaderActions :actions="actions" /></template>
       </UPageHeader>

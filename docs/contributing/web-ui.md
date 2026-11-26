@@ -399,6 +399,12 @@ build, so the CI `web` job enforces it. It prints
   (row selection, hover and the loading bar) go into the global stylesheet
   (about 0.3 kB). The milestone requires `UTable` for both tables. The cap
   rose to 143.9 kB and the raise was reported on its merge request.
+- 2026-11-26, the tier badge on the Issues table and the issue page (#868,
+  R4 of the four tiers milestone): 143.907 kB, 7 bytes over the cap (main
+  measured 143.898). The badge and its label load lazily with those routes
+  and add no chunk; the overshoot is the entry's preload map, whose chunk
+  hashes changed and compress 9 bytes worse. The cap rose to 144.0 kB and
+  the raise was reported on its merge request.
 - The cap only drops. A change that breaks it is reported, not answered by
   raising it.
 

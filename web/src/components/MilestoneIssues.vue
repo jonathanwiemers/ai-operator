@@ -2,6 +2,7 @@
 import UDashboardToolbar from '@nuxt/ui/components/DashboardToolbar.vue'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UTabs from '@nuxt/ui/components/Tabs.vue'
+import UTooltip from '@nuxt/ui/components/Tooltip.vue'
 import { computed, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { hasFeature } from '../api'
@@ -15,7 +16,7 @@ import { costTooltip } from '../format'
 import { issuesView } from '../timeline'
 import { mergedLabel, mergedTooltip, writtenLabel } from '../lines'
 import { queueDone, waitingForTurn } from '../milestoneQueue'
-import { issueProgress, issueStateTone, issueTime, progressPct, rowCost, rowTokens } from '../milestoneRows'
+import { issueProgress, issueStateTone, issueTime, progressPct, rowCost, rowTokens, tierLabel } from '../milestoneRows'
 import {
   interleaveReleases,
   releaseBy,
@@ -218,6 +219,15 @@ const viewHead = `${headText} gap-2`
               >
                 {{ row.issue.version }}
               </Badge>
+              <!-- The planner's tier; its reason (untrusted text) is the
+                   tooltip and, as a tooltip is not reachable by keyboard,
+                   also screen-reader text in the badge. -->
+              <UTooltip v-if="row.issue.tier" :text="row.issue.tier.why" :disabled="!row.issue.tier.why">
+                <Badge class="self-center tabular-nums" data-tier>
+                  <span><span class="sr-only">Tier </span>{{ tierLabel(row.issue.tier) }}</span>
+                  <span v-if="row.issue.tier.why" class="sr-only">: {{ row.issue.tier.why }}</span>
+                </Badge>
+              </UTooltip>
             </span>
           </span>
           <span class="flex min-w-0 basis-full flex-wrap items-center gap-x-3 gap-y-1.5 desktop:contents" role="none">

@@ -1,5 +1,5 @@
 import { cost, durationShort, plural, tokenCount, type Tone } from './format.ts'
-import type { MilestoneIssueRow, MilestoneProgress, MilestoneRow, MilestoneState, QueueItem } from './types'
+import type { MilestoneIssueRow, MilestoneProgress, MilestoneRow, MilestoneState, QueueItem, TierView } from './types'
 
 // The dashboard's and the project page's milestone rows (decision 5).
 
@@ -174,4 +174,12 @@ export function issueTime(
   const f = row.figures
   if (!f || (k === 'wallSec' && f.wallSec <= 0)) return '—'
   return durationShort(f[k])
+}
+
+// tierLabel is an issue's planned tier as its badge reads: the tier, the
+// model and the effort, "balanced · claude-sonnet-5-5 · high". A tier the
+// project no longer has shows its name only; off claude there is no effort.
+// The model is its ID, cursor's auto "cursor auto", as in the Spend tab.
+export function tierLabel(t: TierView): string {
+  return [t.profile, t.model === 'auto' ? 'cursor auto' : (t.model ?? ''), t.effort ?? ''].filter(Boolean).join(' · ')
 }

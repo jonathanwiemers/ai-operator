@@ -15,7 +15,17 @@ import {
   rowTokens,
   sortInProgress,
   stateTone,
+  tierLabel,
 } from '../src/milestoneRows.ts'
+
+test('tierLabel: tier, model and effort; no effort off claude; name only without the profile', () => {
+  assert.equal(
+    tierLabel({ profile: 'balanced', engine: 'claude', model: 'claude-sonnet-5-5', effort: 'high', why: 'x' }),
+    'balanced · claude-sonnet-5-5 · high',
+  )
+  assert.equal(tierLabel({ profile: 'fast', engine: 'cursor', model: 'auto' }), 'fast · cursor auto')
+  assert.equal(tierLabel({ profile: 'gone', why: 'Old tier.' }), 'gone')
+})
 
 const row = (iid, state, needsYou = false) => ({ namespace: 'ns', project: 'p', iid, state, needsYou })
 

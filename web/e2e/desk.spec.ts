@@ -2690,6 +2690,15 @@ test.describe('bottom bar', () => {
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
   })
 
+  test('the issue page shows the tier and its reason as text@375', async ({ page, baseURL }) => {
+    const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
+    await open(page, baseURL, routes.find((r) => r.name === 'issue')!, problems)
+    const tier = page.locator('main [data-issue-tier]')
+    await expect(tier.locator('[data-tier]')).toHaveText('Tier balanced · claude-sonnet-5-5 · high')
+    await expect(tier).toContainText('New logic in one package with <b>some</b> edge cases.')
+    expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
+  })
+
   test('hides while the pilot composer has the focus@375', async ({ page, baseURL }, testInfo) => {
     const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
     await open(page, baseURL, pilotRoute, problems)
@@ -3630,6 +3639,12 @@ test.describe('milestone issues', () => {
       await expect(issue(280).locator('[data-written]')).toContainText('+412/−96')
       await expect(issue(281).locator('[data-merged]')).toContainText('—')
       await expect(issue(280).locator('[data-merged]')).toBeVisible()
+      // The planner's tier as a badge, its reason as text in the accessible
+      // name (and the tooltip), never as HTML; no badge without a tier.
+      const tier = issue(281).locator('[data-tier]')
+      await expect(tier).toContainText('balanced · claude-sonnet-5-5 · high')
+      await expect(tier).toContainText('New logic in one package with <b>some</b> edge cases.')
+      await expect(issue(280).locator('[data-tier]')).toHaveCount(0)
 
       const layout = await table.evaluate((t) => {
         const box = (e: Element) => e.getBoundingClientRect()

@@ -84,6 +84,36 @@ type MilestoneIssueRow struct {
 	// Version is the one the issue shipped in: that of the first Released
 	// or AlreadyReleased decision that contains it.
 	Version string `json:"version,omitempty"`
+	// Tier is the planner's tier of the issue; absent without one.
+	Tier *TierView `json:"tier,omitempty"`
+}
+
+// TierView is the planner's tier (profile) of an issue, with the engine,
+// model and effort of the project's profile of that name. They are absent
+// when the project no longer has the profile; effort is absent off claude.
+// Why is the planner's reason, untrusted text.
+type TierView struct {
+	Profile string `json:"profile"`
+	Engine  string `json:"engine,omitempty"`
+	Model   string `json:"model,omitempty"`
+	Effort  string `json:"effort,omitempty"`
+	Why     string `json:"why,omitempty"`
+}
+
+// tierView is the tier of the planned issue pi in the defaulted spec, nil
+// when the planner picked none.
+func tierView(spec *aiv1.AgentProjectSpec, pi *aiv1.PlannedIssue) *TierView {
+	if pi.Profile == "" {
+		return nil
+	}
+	t := &TierView{Profile: pi.Profile, Why: pi.ProfileWhy}
+	if p, ok := spec.Profile(pi.Profile); ok {
+		t.Engine, t.Model = string(p.Engine), p.Model
+		if p.Engine == aiv1.EngineClaude {
+			t.Effort = p.Effort
+		}
+	}
+	return t
 }
 
 // IssueFiguresView is an issue's time and spend: wallSec from its first run
@@ -125,13 +155,18 @@ func (s *Server) milestoneDetailStore() milestoneDetailReader {
 }
 
 // issueRows are the issues of the snapshot of the spec task st, with their
-// implement tasks from byIssue and the versions of its release decisions.
-func issueRows(st *aiv1.AgentTask, byIssue map[int64]string, now time.Time) []MilestoneIssueRow {
+// implement tasks from byIssue, their planned tiers from the profiles of
+// the defaulted spec and the versions of its release decisions.
+func issueRows(spec *aiv1.AgentProjectSpec, st *aiv1.AgentTask, byIssue map[int64]string, now time.Time) []MilestoneIssueRow {
 	rows := []MilestoneIssueRow{}
+	tiers := map[int64]*TierView{}
+	for i := range st.Status.Plan {
+		tiers[st.Status.Plan[i].IID] = tierView(spec, &st.Status.Plan[i])
+	}
 	snap, _ := history.Snapshot(st, "", now)
 	for _, is := range snap.Issues {
 		rows = append(rows, MilestoneIssueRow{IID: is.IID, Title: is.Title, State: is.State,
-			MergeRequestIID: is.MergeRequestIID, MergeRequestURL: is.MergeRequestURL, Task: byIssue[is.IID]})
+			MergeRequestIID: is.MergeRequestIID, MergeRequestURL: is.MergeRequestURL, Task: byIssue[is.IID], Tier: tiers[is.IID]})
 	}
 	setIssueVersions(rows, liveReleases(st))
 	return rows
@@ -586,7 +621,8 @@ func milestoneView(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st, coord *aiv1
 		}
 	}
 	sortTasks(v.Tasks)
-	v.Issues, v.Releases = issueRows(st, byIssue, now), liveReleases(st)
+	spec := p.Spec.WithDefaults()
+	v.Issues, v.Releases = issueRows(&spec, st, byIssue, now), liveReleases(st)
 	v.Problems = milestoneProblems(web, st, tasks, v.Issues)
 	v.Companions = milestoneCompanions(p, tasks, ms.IID)
 	v.Cost = tasksCost(cost)

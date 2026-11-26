@@ -265,6 +265,14 @@ export const paymentsMilestone: MilestoneView = {
       task: refunds.name,
       // Not merged yet: no merged lines (unmeasured).
       figures: figures('3.42', 640_000, 1290, 16, 24, [182, 24]),
+      // The planner's tier, with its reason as untrusted text.
+      tier: {
+        profile: 'balanced',
+        engine: 'claude',
+        model: 'claude-sonnet-5-5',
+        effort: 'high',
+        why: 'New logic in one package with <b>some</b> edge cases.',
+      },
     },
     { iid: 282, title: 'Partial captures for split shipments', state: 'pending', task: 'shop-282-implement' },
     { iid: 283, title: 'Switch the payment provider per country', state: 'pending' },
