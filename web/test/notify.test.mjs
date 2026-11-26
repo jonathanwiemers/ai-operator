@@ -40,7 +40,7 @@ test('notifyCategories: the dialog order, the event categories need history', as
   const { notifyCategories } = await import('../src/notifyCategories.ts')
   assert.deepEqual(
     notifyCategories.map((c) => c.label),
-    ['Problems', 'Questions', 'Proposals', 'Companions ready', 'Budget warnings', 'Milestone started', 'Milestone done', 'Releases', 'Plans ready', 'Failed or blocked tasks'],
+    ['Problems', 'Questions', 'Proposals', 'Companions ready', 'Budget warnings', 'Plans ready', 'Milestone started', 'Milestone done', 'Releases', 'Failed or blocked tasks'],
   )
   assert.deepEqual(new Set(notifyCategories.map((c) => c.category)), new Set(Object.keys(defaults)))
   assert.deepEqual(notifyCategories.filter((c) => c.history).map((c) => c.category), ['milestoneStarted', 'milestoneDone', 'release'])

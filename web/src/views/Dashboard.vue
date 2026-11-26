@@ -46,7 +46,7 @@ watch(
 // The Timeline loads in its own chunk, out of the initial bundle (D667-P1).
 const OverviewTimeline = defineAsyncComponent(() => import('../components/OverviewTimeline.vue'))
 const overview = useResource(() => getOverview, ['project', 'task'])
-const inbox = useResource(() => getInbox, ['project', 'task'])
+const inbox = useResource(() => getInbox, ['project', 'task', 'plan'])
 const now = useNow()
 const counts = computed(() => (overview.data.value ? overviewNowAndNext(overview.data.value.working, now.value).counts : null))
 const nowStrip = computed(() => (counts.value ? nowStripText(counts.value) : 'Now & next'))

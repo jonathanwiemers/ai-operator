@@ -1371,6 +1371,17 @@ without scoped CSS.
   utilities: on phones the title and *Open* (a `UButton` link, 44 px high)
   share the first line and where it paused wraps below; the reason and the
   *Way out* line open on a tap like the Inbox's reasons.
+- Ready plans (kind `plan`, category `plan`) are per principal: the
+  `inbox` handler and `pushCandidates` build them, when the chat login is
+  configured (`ChatEnabled()`), from the AgentPlans of the projects the
+  principal can view whose `status.answeredFor` is the principal's
+  `Username`, and append them after the task items of `inboxOf`. They are
+  not counted in the Overview's Needs you or on milestone rows. The UI
+  server's informers publish `plan` change events, which reload the Inbox
+  (`App.vue`, the Inbox page and the Overview) and wake the push sender. The row reads *Plan ready ·
+  <title>* and links to the plan page (route `plans`); its reason, the
+  start of the agent's reply, is untrusted and shown as plain text, not
+  markdown. `e2e/plan-ready.spec.ts` checks the row, its link and axe.
 
 The e2e cases `inbox rows …` at 375 and 1280 px check the rows' and
 links' heights, that no `title` holds the list's text, that a clipped

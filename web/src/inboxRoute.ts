@@ -29,6 +29,7 @@ export type InboxRoute =
   | MilestoneRoute
   | ProblemRoute
   | LooseRoute
+  | { name: 'plans'; params: { namespace: string; name: string; plan: string } }
   | { name: 'stream-project'; params: { namespace: string; name: string } }
 
 // pinnedAnchor is the hash of the Cockpit's pinned cards (Cockpit.vue).
@@ -45,9 +46,11 @@ export const pinnedAnchor = '#pinned'
 // (looseAnchor in looseIssues.ts). A ready companion
 // opens its home task, without one its milestone. An issue's budget warning
 // opens its implement task, where the issue's budget is raised (chat
-// `budget <usd>`), without one its milestone.
+// `budget <usd>`), without one its milestone. A ready plan opens its plan
+// page.
 export function inboxRoute(item: InboxItem): InboxRoute {
   const base = { namespace: item.namespace, name: item.project }
+  if (item.kind === 'plan' && item.plan) return { name: 'plans', params: { ...base, plan: item.plan } }
   const promptHash = item.promptID ? `#prompt-${item.promptID}` : undefined
   // An agent's question sits on its task page, the others in the milestone.
   if (item.kind === 'prompt' && item.reason === 'needsInput' && item.task) return { name: 'task', params: { ...base, task: item.task }, hash: promptHash }

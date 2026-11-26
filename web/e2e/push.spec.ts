@@ -105,7 +105,7 @@ async function openNotifications(page: Page, state: string) {
 }
 
 const subscription = (endpoint: string) => ({ endpoint, keys: { p256dh: 'BPk', auth: 'c2Vj' } })
-const defaults = ['problem', 'question', 'proposal', 'companion', 'budget', 'milestoneStarted', 'milestoneDone', 'release']
+const defaults = ['problem', 'question', 'proposal', 'companion', 'budget', 'milestoneStarted', 'milestoneDone', 'release', 'plan']
 
 test('push on subscribes and PUTs, a category PUTs again, off unsubscribes and DELETEs@1280', async ({ page, baseURL }) => {
   const { problems, sent, log } = await open(page, baseURL)

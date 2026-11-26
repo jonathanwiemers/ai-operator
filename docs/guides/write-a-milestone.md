@@ -23,7 +23,7 @@ issues:
 2. Pick the project, write what you want to plan, for example "Add a CSV
    export to the Metrics page", add a title if you like, and click
    **Start plan**. The plan opens with your message first in the chat, and
-   the agent answers it.
+   the agent answers it. Each finished turn [notifies you](notifications.md#when-a-plan-agent-answers-you) and shows the plan as *Plan ready* in your Inbox until your next message.
 3. Go on in the chat on the left. The agent writes the draft on the right,
    and you can edit the draft yourself with *Edit* and *Save*. The next chat
    turn sees your edit.

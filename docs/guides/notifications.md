@@ -43,6 +43,22 @@ disabled, with the line "Needs the history database".
 
 Only events after you opened the tab notify, never older ones.
 
+### When a plan agent answers you
+
+You send a message in a [plan](write-a-milestone.md#draft-it-in-the-desk)
+and close the Desk. When the agent has answered, you get **Plan ready ·
+<plan title>** with the start of its answer. If the turn did not finish,
+the text says why, for example "The turn did not finish: usage limit until
+…".
+
+1. Open the account menu and choose **Notifications**.
+2. Check that *Plans ready* is on. Turn it off to keep plans quiet on this
+   device.
+
+The plan also shows as *Plan ready* in your Inbox until you send your next
+message, create all its milestones, or delete it. Only you get it, as the
+sender of the message the agent answered. Other owners of the project don't.
+
 ## When the browser blocks them
 
 If you once refused the permission, the dialog shows *Notifications in this
@@ -61,6 +77,7 @@ place as its Inbox row:
 - a problem, pause, question or proposal opens its card in the milestone's
   [Cockpit](../concepts/glossary.md#cockpit);
 - a task opens the task page;
+- a ready plan opens the plan;
 - a milestone or release notification opens the milestone.
 
 If a Desk window is open, the click brings that window forward and opens
@@ -139,3 +156,5 @@ icon, as [above](#on-an-iphone-or-ipad).
 - [Steer from the Desk](steer-from-the-desk.md#on-a-phone): the Desk on a
   phone.
 - [When autopilot pauses](pauses.md): what to do when a problem notifies.
+- [Write a milestone](write-a-milestone.md#draft-it-in-the-desk): plan a
+  milestone with an agent in the Desk.

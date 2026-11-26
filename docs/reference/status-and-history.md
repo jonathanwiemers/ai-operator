@@ -194,6 +194,25 @@ Only the first milestone starts new issues. Change the order with
 [`/agent move`](commands.md#on-the-tracking-issue), not by editing the
 status.
 
+## AgentPlan status
+
+An AgentPlan is a [plan](../concepts/glossary.md#plan-draft) of the Desk.
+After each finished turn of its agent, the runner records whose message the
+turn answered:
+
+```yaml
+status:
+  phase: Ready
+  answeredFor: jo
+```
+
+| Field | Meaning |
+|-------|---------|
+| `status.answeredFor` | The Desk username whose message the last finished turn answered, also when the turn failed or was interrupted. An interrupted turn keeps the author of the message it was working on. Empty on plans whose last turn finished before the field existed. |
+
+Only this user gets the plan's [Plans ready](notifications.md#ready-plans)
+Inbox item and notification. An empty field raises neither.
+
 ## History events
 
 The operator writes history events to the research database, one row per

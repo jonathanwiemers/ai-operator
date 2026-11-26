@@ -18,9 +18,9 @@ export const notifyCategories: readonly NotifyCategoryInfo[] = [
   { category: 'proposal', label: 'Proposals', description: 'A proposal that waits for your answer.' },
   { category: 'companion', label: 'Companions ready', description: 'A companion merge request ready to merge.' },
   { category: 'budget', label: 'Budget warnings', description: 'An issue or milestone near its budget.' },
+  { category: 'plan', label: 'Plans ready', description: 'A plan agent answered your message.' },
   { category: 'milestoneStarted', label: 'Milestone started', description: "A milestone's issues are planned.", history: true },
   { category: 'milestoneDone', label: 'Milestone done', description: "A milestone's autopilot is done.", history: true },
   { category: 'release', label: 'Releases', description: 'A release is published or fails.', history: true },
-  { category: 'plan', label: 'Plans ready', description: 'A plan agent answered your message.' },
   { category: 'failed', label: 'Failed or blocked tasks', description: 'A task failed or is blocked.' },
 ]

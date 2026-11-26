@@ -228,3 +228,35 @@ test('texts of pauses, holds, proposals, questions, tasks, companions and budget
     body: "Cart totals\n80 % of the issue's budget of $20.00 spent",
   })
 })
+
+const plan = (over = {}) => ({
+  namespace: 'team',
+  project: 'shop',
+  kind: 'plan',
+  plan: 'shop-plan-x7k2',
+  title: 'Checkout v2',
+  reason: 'Here is a first draft with three issues.',
+  at: '2026-11-21T12:58:00Z',
+  key: 'team/shop/plan/shop-plan-x7k2/m-4',
+  notify: 'plan',
+  ...over,
+})
+
+test('plan texts: an answer, a turn that did not finish, a missing title', () => {
+  assert.deepEqual(notificationText(plan()), { title: 'Plan ready · Checkout v2', body: 'Here is a first draft with three issues.' })
+  assert.deepEqual(notificationText(plan({ reason: 'The turn did not finish: usage limit until 2026-11-21 15:00 UTC' })), {
+    title: 'Plan ready · Checkout v2',
+    body: 'The turn did not finish: usage limit until 2026-11-21 15:00 UTC',
+  })
+  assert.deepEqual(notificationText(plan({ title: '' })).title, 'Plan ready · Untitled plan')
+})
+
+test('a ready plan notifies once with its category on, never with it off', () => {
+  const items = [plan(), problem(12)]
+  assert.deepEqual(newNotifications(new Set(), items, all), items)
+  assert.deepEqual(newNotifications(new Set(), items, only('problem')), [items[1]])
+  assert.deepEqual(newNotifications(seenKeys(items), items, all), [])
+  // The next turn has a key of its own.
+  const next = plan({ key: 'team/shop/plan/shop-plan-x7k2/m-5' })
+  assert.deepEqual(newNotifications(seenKeys(items), [next], all), [next])
+})

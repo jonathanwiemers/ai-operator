@@ -37,6 +37,7 @@ The order is the order of the Notifications dialog.
 | *Proposals* | on | A pilot proposal that waits for your answer. | `Proposal P4 · <project>` |
 | *Companions ready* | on | A [companion](../concepts/glossary.md#companion-repository) merge request ready for you to merge. | `Companion ready to merge · <project>` |
 | *Budget warnings* | on | An issue that spent 80 % of its [budget](../concepts/glossary.md#budget). | `Budget at 80 % · #712 · <project>` |
+| *Plans ready* | on | A plan agent finished a turn that answered your message, also a turn that failed or was interrupted. Only you, the sender, get it. See [Ready plans](#ready-plans). | `Plan ready · <plan title>` |
 | *Milestone started* | on | A `milestone.started` event: the planner split the milestone into issues. Needs the history database. | `Milestone started · <project>` |
 | *Milestone done* | on | An `autopilot` event with phase `Done`. Needs the history database. | `Milestone done · <project>` |
 | *Releases* | on | A `release.ended` event with state `Released` or `Failed`. Needs the history database. | `Released <version> · <project>`, `Release failed · <project>` |
@@ -51,6 +52,25 @@ The order is the order of the Notifications dialog.
 - An Inbox item notifies once while it stays in the Inbox. When it leaves
   and comes back, it notifies again. A problem keeps its identity when its
   reason text changes.
+
+## Ready plans
+
+A ready plan is an Inbox item of the `plan` category. A
+[plan](../concepts/glossary.md#plan-draft) agent raises it each time it
+finishes a turn, for the user whose message the turn answered
+([`status.answeredFor`](status-and-history.md#agentplan-status)). Other
+users who can view the project see neither the item nor a notification.
+
+- The title is `Plan ready · <plan title>`, or `Plan ready · Untitled plan`
+  without a title.
+- The body is the first line of the agent's reply, at most 140 characters.
+  A turn that failed or was interrupted has `The turn did not finish:
+  <error>` instead.
+- The item stays until you send your next message, all drafts have their
+  milestones, or the plan is deleted. Each turn notifies once.
+- Ready plans need the plan chat, which needs the research database.
+- Turns that finished before the upgrade that added ready plans never
+  notify.
 
 ## The history database
 

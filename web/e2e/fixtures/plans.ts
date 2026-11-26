@@ -1,4 +1,4 @@
-import type { ChatPage, PlanListItem, PlanOverview, PlanView } from '../../src/generated/views'
+import type { ChatPage, InboxItem, PlanListItem, PlanOverview, PlanView } from '../../src/generated/views'
 import { ago } from './clock'
 
 // GET /api/v1/plans?project=team-a/shop: one plan per kind of row, with a
@@ -89,3 +89,17 @@ const waitingPlan: PlanView = {
 }
 const waitingChat: ChatPage = { messages: [] }
 export const planAPI: Record<string, unknown> = { [waitPath]: waitingPlan, [`${waitPath}/chat`]: waitingChat }
+
+// An Inbox item of a ready plan: plan-wait's agent answered jo's message.
+// The reply's first line is untrusted and renders as text.
+export const planReady: InboxItem = {
+  namespace: 'team-a',
+  project: 'tools-foo',
+  kind: 'plan',
+  plan: 'plan-wait',
+  title: 'CSV export on the Metrics page',
+  reason: 'Here is a first draft with **three** issues.',
+  at: ago(2),
+  key: 'team-a/tools-foo/plan/plan-wait/m-2',
+  notify: 'plan',
+}

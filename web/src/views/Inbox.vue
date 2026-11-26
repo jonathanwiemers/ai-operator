@@ -19,7 +19,7 @@ import { useResource } from '../live'
 import { pageHeaderUi, toolbarUi } from '../pageHeader'
 import { notify, notifyActive, openNotifyDialog, refreshPermission } from '../notify'
 
-const { data, error, loading } = useResource(() => getInbox, ['project', 'task'])
+const { data, error, loading } = useResource(() => getInbox, ['project', 'task', 'plan'])
 
 // The Open | Handled switch lives in ?view=handled; no parameter is Open.
 // A local switch (decision 8): UTabs pills; a pick is a new history

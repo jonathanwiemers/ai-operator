@@ -221,6 +221,7 @@ test('Notifications in the account menu: turn them on, pick a category, it survi
   await expect(main).toHaveAttribute('aria-checked', 'false')
   await expect(failed).toHaveAttribute('aria-checked', 'false')
   await expect(dialog.getByRole('switch', { name: 'Problems' })).toHaveAttribute('aria-checked', 'true')
+  await expect(dialog.getByRole('switch', { name: 'Plans ready' })).toHaveAttribute('aria-checked', 'true')
   for (const name of eventCategories) await expect(dialog.getByRole('switch', { name })).toBeEnabled()
   await main.focus()
   await page.keyboard.press('Space')

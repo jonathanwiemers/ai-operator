@@ -48,6 +48,15 @@ const reason = 'muted min-w-0 text-[13px] [&[role=button]]:relative [&[role=butt
         <Truncated :lines="2" :class="reason"><Markdown mode="inline" :text="item.reason" /></Truncated>
         <span class="faint text-xs"><RelTime :time="item.at" /></span>
       </div>
+      <!-- A ready plan: the reason is the start of the agent's reply, untrusted, shown as plain text. -->
+      <div v-else-if="item.kind === 'plan'" :class="row">
+        <span class="font-semibold break-words">{{ item.project }}</span>
+        <span class="min-w-0 break-words">
+          <RouterLink :to="inboxRoute(item)" :class="cover"><b>Plan ready</b> · {{ item.title || 'Untitled plan' }}</RouterLink>
+        </span>
+        <Truncated :lines="2" :class="reason" :text="item.reason" />
+        <span class="faint text-xs"><RelTime :time="item.at" /></span>
+      </div>
       <div v-else :class="row">
         <span class="font-semibold break-words">{{ item.project }}</span>
         <span class="min-w-0 break-words">

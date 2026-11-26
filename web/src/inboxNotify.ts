@@ -78,6 +78,10 @@ export function notificationText(item: InboxItem): NotificationText {
         title: `Budget at 80 % · #${item.issueIID} · ${item.project}`,
         body: [item.title, item.reason].filter(Boolean).join('\n'),
       }
+    case 'plan':
+      // A plan agent's finished turn: the reason is the start of its reply,
+      // or why the turn did not finish.
+      return { title: `Plan ready · ${item.title || 'Untitled plan'}`, body: item.reason }
     default: {
       // A task that needs input, or one that failed or is blocked (the
       // failed category).

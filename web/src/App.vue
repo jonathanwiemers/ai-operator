@@ -260,7 +260,7 @@ watch(
   () => live.version,
   () => {
     if (session.loginRequired) return
-    if (!live.kinds || live.kinds.some((k) => k === 'project' || k === 'task' || k === 'research')) {
+    if (!live.kinds || live.kinds.some((k) => k === 'project' || k === 'task' || k === 'research' || k === 'plan')) {
       void loadRail()
     }
     if (!live.kinds || live.kinds.includes('task')) pollEvents()

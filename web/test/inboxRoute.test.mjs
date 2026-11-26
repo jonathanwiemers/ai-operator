@@ -130,3 +130,10 @@ test("inboxRoute: the queue's problems, prompts and proposals open the Loose iss
     hash: '#prompt-Q1',
   })
 })
+
+test('inboxRoute: a ready plan opens its plan page', () => {
+  assert.deepEqual(inboxRoute(item('plan', { plan: 'shop-plan-x7k2' })), {
+    name: 'plans',
+    params: { namespace: 'team', name: 'shop', plan: 'shop-plan-x7k2' },
+  })
+})
