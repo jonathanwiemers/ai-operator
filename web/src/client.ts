@@ -110,13 +110,17 @@ async function get<T>(path: string): Promise<T> {
   return (await resp.json()) as T
 }
 
-// Exported for closeHoldingIssue.ts (Finishing; keeps the initial chunk small).
+// Exported for closeHoldingIssue.ts (Finishing) and planUpload.ts (plan
+// chat attachments): it keeps the initial chunk small.
+// A FormData body (a file upload) goes as multipart, with the Content-Type
+// the browser sets; the server's cross-origin check needs no header.
 export async function post<T>(path: string, body: unknown): Promise<T> {
+  const form = body instanceof FormData
   const resp = await fetch(path.startsWith('/oauth2/') ? path : `/api/v1${path}`, {
     method: 'POST',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    headers: { Accept: 'application/json', ...(!form && { 'Content-Type': 'application/json' }) },
     credentials: 'same-origin',
-    body: JSON.stringify(body),
+    body: form ? body : JSON.stringify(body),
   })
   if (resp.status === 401) loginRequired()
   const data = (await resp.json().catch(() => ({}))) as { error?: string; field?: string }

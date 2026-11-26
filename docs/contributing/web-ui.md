@@ -380,6 +380,14 @@ build, so the CI `web` job enforces it. It prints
   `push.ts` takes the routes as an argument: importing `client.ts` there
   split Vue's reactivity into an initial chunk of its own (+1.1 kB). The
   cap rose to 143.1 kB and the raise was reported on its merge request.
+- 2026-11-26, attachments in the plan chat (#835, R6 of the plan
+  attachments milestone): 143.13 kB, up from 143.07 kB. The picker, the
+  upload call (`planUpload.ts`) and the checks are lazy with the plan chat;
+  the `i-lucide-paperclip` icon is in the bundled icon set of the entry
+  chunk (about 0.06 kB), and `post` sends a `FormData` body as multipart.
+  Dropping `useFileUpload` for an input made off the page, the chip icons
+  and new utility classes saved 0.1 kB. The cap rose to 143.2 kB and the
+  raise was reported on its merge request.
 - The cap only drops. A change that breaks it is reported, not answered by
   raising it.
 
@@ -1123,6 +1131,24 @@ sessionStorage until a 2xx, and the text survives a sign-in.
   line, Escape or a click outside closes it, and the number of options is
   announced. `PlanChat` loads the milestones (`state=all`) the first time
   the composer gets the focus.
+- `v-model:attachments` (a `File[]`, the plan chat only) adds files to a
+  message. Unbound, nothing renders and paste, drop and Send are as
+  before. Bound, `AttachmentPicker.vue` shows next to Send: the paperclip
+  (`aria-label="Attach files"`), a chip per file with its name, size and
+  a *Remove <name>* button, and the refusals of `checkFiles`
+  (`src/attachments.ts`: the types, 10 MiB and 5 files, copied from Go's
+  `internal/attachments` and checked by its `web_test.go`). Pasted files
+  (`clipboardData.files`; a text paste is left alone) and files dropped on
+  the box (a dashed drop state) go to the picker's `add`, and screenshots
+  without a name become `pasted-<n>.png`. Added, removed and refused files
+  are announced. Send works with files and blank text, and `send` carries
+  `files`. The file dialog's `<input type="file">` is made in script and
+  never put in the markup, as Nuxt UI's `useFileUpload` does without an
+  input ref, so it is no raw control. The caller uploads on Send
+  (`uploadAll`, then `withAttachments`; `PlanChat` through
+  `src/planUpload.ts`), posts nothing when an upload fails, keeps the
+  chips and the text, and offers *Connect GitLab* on a 409. The picker is
+  built to be reused for the New plan page's first message.
 - The chat's draft helpers (`chatDraftKey`, `readChatDraft`,
   `writeChatDraft`) and command builders (`modelCommand`, `skipCommand`)
   are in `src/chatState.ts`; `useChatSend` keeps the draft and its

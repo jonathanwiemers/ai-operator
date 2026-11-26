@@ -18,6 +18,8 @@ import {
 } from '../stream'
 import { announce } from '../ui/useAnnounce'
 import { useKeyboardInset } from '../ui/useKeyboardInset'
+import { pastedFiles } from '../attachments'
+import AttachmentPicker from './AttachmentPicker.vue'
 
 // Composer is the one text box of the Desk (docs/contributing/web-ui.md, "Composer"): the
 // task's and a plan's chat (mode chat, TaskChat and PlanChat) and the stream's notes (mode note,
@@ -30,6 +32,8 @@ export interface ComposerSend {
   kind: 'message' | 'interrupt'
   body: string
   target: NoteTarget | null
+  // files: the attached files, when v-model:attachments is bound.
+  files?: File[]
 }
 
 const props = defineProps<{
@@ -56,6 +60,10 @@ const props = defineProps<{
 }>()
 const body = defineModel<string>({ required: true })
 const target = defineModel<NoteTarget | null>('target', { default: null })
+// attachments: the files of the message (a plan chat's). Unbound
+// (undefined), there is no paperclip, paste and drop take no files, and the
+// composer is as it was.
+const attachments = defineModel<File[]>('attachments')
 const emit = defineEmits<{ send: [payload: ComposerSend] }>()
 
 useKeyboardInset()
@@ -89,10 +97,40 @@ watch(
 
 function send(kind: ComposerSend['kind'] = 'message') {
   if (props.busy || props.disabled) return
-  if (kind === 'message' && !body.value.trim()) return
+  if (kind === 'message' && !body.value.trim() && !attachments.value?.length) return
   refAt.value = null
-  emit('send', { kind, body: body.value, target: target.value })
+  emit('send', { kind, body: body.value, target: target.value, ...(attachments.value ? { files: attachments.value } : {}) })
 }
+
+// Pasted and dropped files go to the picker, only where attachments are
+// bound; a paste without files stays a text paste.
+const picker = useTemplateRef<InstanceType<typeof AttachmentPicker>>('picker')
+let pasted = 0
+function onPaste(ev: ClipboardEvent) {
+  const list = [...(ev.clipboardData?.files ?? [])]
+  if (!attachments.value || props.disabled || !list.length) return
+  ev.preventDefault()
+  const named = pastedFiles(list, pasted + 1)
+  pasted += named.filter((f, i) => f !== list[i]).length
+  picker.value?.add(named)
+}
+const dragging = ref(false)
+const hasFiles = (ev: DragEvent) => !!ev.dataTransfer?.types.includes('Files')
+function onDragover(ev: DragEvent) {
+  if (!attachments.value || props.disabled || !hasFiles(ev)) return
+  ev.preventDefault()
+  dragging.value = true
+}
+function onDragleave(ev: DragEvent) {
+  if (!box.value?.contains(ev.relatedTarget as Node | null)) dragging.value = false
+}
+function onDrop(ev: DragEvent) {
+  dragging.value = false
+  if (!attachments.value || props.disabled || !hasFiles(ev)) return
+  ev.preventDefault()
+  picker.value?.add([...(ev.dataTransfer?.files ?? [])])
+}
+const canSend = computed(() => !!body.value.trim() || !!attachments.value?.length)
 
 // The % menu (references), a listbox the text points into with
 // aria-activedescendant: refAt is the typed "%query", refActive the option
@@ -219,6 +257,11 @@ const refAttrs = computed(() =>
       <div
         ref="box"
         class="relative rounded-xl border border-(--border-strong) bg-(--surface) shadow-(--shadow) focus-within:border-(--focus) focus-within:ring-3 focus-within:ring-(--focus)/20"
+        :class="dragging && 'border-dashed bg-(--surface-2)'"
+        :data-dragging="dragging || undefined"
+        @dragover="onDragover"
+        @dragleave="onDragleave"
+        @drop="onDrop"
       >
         <UTextarea
           v-model="body"
@@ -237,8 +280,10 @@ const refAttrs = computed(() =>
           @keyup="onKeyup"
           @keydown.meta.enter="send()"
           @keydown.ctrl.enter="send()"
+          @paste="onPaste"
         />
-        <div class="flex items-center gap-2 pt-1.5 pr-2 pb-2" :class="mode === 'note' ? 'pl-2.5' : 'pl-3.5'">
+        <div class="flex items-center gap-2 pt-1.5 pr-2 pb-2" :class="[mode === 'note' ? 'pl-2.5' : 'pl-3.5', attachments && 'flex-wrap']">
+          <AttachmentPicker v-if="attachments" ref="picker" v-model="attachments" :disabled="disabled" />
           <UButton
             v-if="targets"
             color="neutral"
@@ -266,7 +311,7 @@ const refAttrs = computed(() =>
             color="primary"
             class="justify-center"
             :label="busy ? '…' : 'Send'"
-            :disabled="busy || disabled || !body.trim()"
+            :disabled="busy || disabled || !canSend"
             @mousedown.prevent
             @click="send()"
           />

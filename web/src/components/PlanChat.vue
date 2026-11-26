@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { errorMessage } from '../format'
 import UAlert from '@nuxt/ui/components/Alert.vue'
+import UButton from '@nuxt/ui/components/Button.vue'
 import { alertColor } from '../badgeTone'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { chatPostError } from '../api'
-import { getMilestones, getPlanChat, LoginRequiredError, postPlanChat } from '../client'
+import { bodyTooLong, uploadAll, withAttachments } from '../attachments'
+import { getGitLabStatus, getMilestones, getPlanChat, LoginRequiredError, postPlanChat } from '../client'
+import { uploadPlanFile } from '../planUpload'
 import type { MilestoneRow, PlanDraftView } from '../generated/views'
 import type { RefItemSource } from '../stream'
 import * as cs from '../chatState'
@@ -79,29 +82,74 @@ async function load() {
 const body = ref('')
 const sending = ref(false)
 const sendError = ref('')
+// The message's files (chips) until a post succeeds, and the link to
+// connect GitLab after an upload answered 409.
+const files = ref<File[]>([])
+const connectUrl = ref('')
 keepThroughSignIn(() => `plan-chat:${key()}`, body)
 const draftKey = () => cs.planChatDraftKey(props.namespace, props.name, props.plan)
 // Text kept through a sign-in (newer) wins over a failed send's draft.
 function restore(switched: boolean) {
-  if (switched) [messages.value, body.value, sendError.value] = [[], '', '']
+  if (switched) [messages.value, body.value, sendError.value, files.value, connectUrl.value] = [[], '', '', [], '']
   body.value ||= cs.readChatDraft(draftKey())?.body ?? ''
   void load()
 }
 
+// showConnect offers the link to connect GitLab (as the stream's note
+// composer builds it), when the user has none connected.
+async function showConnect() {
+  try {
+    const st = await getGitLabStatus()
+    if (!st.connected && st.login) connectUrl.value = `${st.login}?return=${encodeURIComponent(window.location.pathname + window.location.search)}`
+  } catch {
+    // The error line already says to connect GitLab.
+  }
+}
+
+// postBody uploads the files one by one and answers the message with
+// their lines, or sets the error and answers null: nothing is posted, and
+// the text and the chips stay (Decision 2). A text over the limit uploads
+// nothing.
+async function postBody(text: string, attached: File[], dk: string, ns: string, name: string): Promise<string | null> {
+  if (!attached.length) return text
+  if (bodyTooLong(text)) {
+    sendError.value = 'The message is larger than 16 KiB.'
+    return null
+  }
+  const up = await uploadAll(attached, (f) => uploadPlanFile(ns, name, f))
+  if ('error' in up) {
+    if (dk === draftKey()) sendError.value = up.error
+    if (up.status === 409 && dk === draftKey()) void showConnect()
+    return null
+  }
+  const full = withAttachments(text, up.markdown)
+  if (!bodyTooLong(full)) return full
+  if (dk === draftKey()) sendError.value = 'The message with its attachment links is larger than 16 KiB.'
+  return null
+}
+
 async function onSend(s: ComposerSend) {
+  const attached = s.kind === 'message' ? (s.files ?? []) : []
   const text = cs.chatPostBody(s.kind, s.body)
-  if (sending.value || !text) return
+  if (sending.value || (!text && !attached.length)) return
   const dk = draftKey()
   const old = cs.readChatDraft(dk)
   const clientKey = old?.kind === s.kind ? old.clientKey : crypto.randomUUID()
   cs.writeChatDraft(dk, { body: s.body, clientKey, kind: s.kind })
   sending.value = true
   sendError.value = ''
+  connectUrl.value = ''
+  // The plan the message was written on, should another open during the uploads.
+  const { namespace, name, plan } = props
   try {
-    await postPlanChat(props.namespace, props.name, props.plan, { body: text, clientKey, kind: s.kind })
+    const posted = await postBody(text, attached, dk, namespace, name)
+    if (posted === null) return
+    await postPlanChat(namespace, name, plan, { body: posted, clientKey, kind: s.kind })
     cs.writeChatDraft(dk, null)
     if (dk !== draftKey()) return
     body.value = ''
+    // Files attached while the uploads ran stay for the next message.
+    files.value = files.value.filter((f) => !attached.includes(f))
     void load()
   } catch (e) {
     if (dk === draftKey()) sendError.value = chatPostError(e)
@@ -137,6 +185,7 @@ onUnmounted(() => window.clearInterval(timer))
         <Composer
           v-if="canPost"
           v-model="body"
+          v-model:attachments="files"
           mode="chat"
           placeholder="Tell the agent what the milestone should do…"
           hint="Enter+Ctrl/Cmd to send"
@@ -148,7 +197,13 @@ onUnmounted(() => window.clearInterval(timer))
           :references="references"
           @focusin="loadMilestones"
           @send="onSend"
-        />
+        >
+          <template #controls>
+            <div v-if="connectUrl" class="mb-2 flex justify-end">
+              <UButton :href="connectUrl" color="primary" size="sm" label="Connect GitLab" />
+            </div>
+          </template>
+        </Composer>
       </template>
     </DeskChat>
   </div>
