@@ -799,6 +799,29 @@ milestones, issues and comments.
   failed download is reported in its `Result` and never stops the rest. No
   reason, log line or error holds file content or a secret.
 
+**Attachments in the checkout.** The spec and implement runs
+(`internal/runner`) find the upload links of the milestone description
+(planner) or of the issue, the milestone and the comments the prompt
+includes (implementer), and fetch them with `attachments.Fetch` and the bot
+token into `attachments/` of the exchange directory. The agent call
+`Attachments(ctx, src)` (HTTP route `attachments`), next to `PlanContext`,
+checks the path, replaces `<checkout>/.attachments/` with a copy and adds
+`/.attachments/` to `.git/info/exclude` once, so `CommitStep` and
+`Checkpoint` never commit it. An empty `src` removes the folder: a prompt
+without links leaves no stale files and no section. Companion trees get no
+copy.
+
+- *One folder per call.* A resumed prompt (new comments only) and its full
+  fallback share the folder, since the runner builds the prompt first and
+  the call serves whichever prompt is sent.
+- *Steps.* A fresh step session re-fetches only when the handed-over texts
+  hold new links; otherwise the folder stays.
+- *Order and caps.* Comments are taken newest first by note ID, then the
+  issue, then the milestone, under the caps of the reference page.
+- *Prompt.* `## Attachments` lists each link with its path or `Fetch`'s own
+  reason, and marks the files untrusted. The system-prompt sentences are
+  constants, so a prompt without links is unchanged.
+
 ## Token economy
 
 * **Right-sized models.** Strong models only for planning and for issues

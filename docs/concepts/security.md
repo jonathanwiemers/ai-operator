@@ -219,6 +219,20 @@ notifications to your devices while no Desk tab is open.
   Kubernetes Secret, so the Desk's account needs no write access to Secrets.
 - **Logs.** The server logs counts, never endpoints or keys.
 
+## Attachments
+
+The planner and the implementer see files linked in the milestone, the
+issue and comments (see
+[Screenshots and files](../guides/write-a-milestone.md#screenshots-and-files)).
+The runner fetches a link only when it is an upload of the agent's own
+project: a relative `/uploads/…` in a Markdown link, or an absolute link of
+the project's own URL or of `/-/project/<id>/uploads/`. It uses the bot
+token. It fetches nothing else: no other project, no other host, no
+repository file. Limits: [Plan attachments](../reference/plan-attachments.md).
+
+The files land only in the agent's checkout, in a folder git ignores, so
+they are never committed. The prompt marks them as untrusted data.
+
 ## Research runs
 
 Researches read web pages, which may carry instructions too. A research pod

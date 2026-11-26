@@ -73,7 +73,8 @@ the routes and the limits in
 ## Non-goals
 
 - The planner and implementers reading attachments from milestones, issues
-  and comments (the next milestone).
+  and comments (the next milestone; see
+  [Milestone part 2](#milestone-part-2-planner-and-implementers)).
 - Attachments in task chats, the pilot, research or GitLab note composers.
 - Deleting uploads, resizing images, other file types, private files until
   the milestone exists, and inline images in the draft tab.
@@ -128,3 +129,38 @@ Collected from the milestone's merge requests, as their commits record them
   to [Attach files to a plan](../guides/attach-files-to-a-plan.md). The
   defaults are still stated once, in the reference; the Desk API page lists
   the two routes and links to it.
+
+## Milestone part 2: planner and implementers
+
+The follow-up milestone, "Planner and implementers see the screenshots linked
+in milestones, issues and comments", reuses `internal/attachments`.
+
+- **Goal.** The planner gets the uploads linked in the milestone description.
+  The implementer gets those of the issue, the milestone and the issue and
+  merge request comments, on a fresh, a resumed and a fresh step prompt. Both
+  get them in `<checkout>/.attachments/`, kept out of git.
+- **Requirements.** R1 the `Attachments` agent call and route; R2 the
+  planner; R3 the implementer; R4 the docs.
+- **Non-goals.** Reviewers, the describer, the conflict resolver, the pilot
+  and research get no attachments; companion trees get no copy; no files
+  outside the project's uploads.
+- **Acceptance.** A milestone screenshot is listed in the planner's prompt;
+  the issue's implementer lists it and the merge request holds no
+  `.attachments/` file; a resumed run lists only new files; links of other
+  projects or hosts are not fetched; a deleted upload is named "not fetched"
+  and the run goes on.
+
+### Steering log
+
+- **One folder per call.** One `.attachments/` serves the resumed prompt and
+  its full fallback.
+- **Comment order.** Comments are ordered by note ID, so newest first is
+  stable.
+- **Steps.** A fresh step session re-fetches only when new links appear.
+- **Reasons.** The section uses `Fetch`'s own reasons.
+- **Prompts.** The system-prompt sentences are constants, so a prompt
+  without links stays byte-for-byte as before.
+- **Docs (D841-P1, D841-P2).** The limits are linked to
+  [Plan attachments](../reference/plan-attachments.md), not restated, and
+  this part extends this file instead of adding a spec.
+- **Follow-ups.** None opened.

@@ -35,8 +35,7 @@ The operator then creates the milestone in GitLab with your GitLab login.
 A plan has its own budget; the chart values are in the
 [chart README](../../charts/ai-operator/README.md#plan).
 
-To show the agent a screenshot or a log, [attach files](attach-files-to-a-plan.md)
-to the message.
+To show the agent a screenshot or log, [attach files](attach-files-to-a-plan.md).
 
 ### Pick the project
 
@@ -333,11 +332,18 @@ any more.
 Changing `owners`, `owner-subjects`, a rule, the budget or `parallel` does
 not plan again. The spec text and `repo` lines do.
 
-The operator never rewrites your spec on its own. It writes into the
-description only when an owner asked for it: the pilot's
+The operator rewrites your spec only when an owner asked for it: the pilot's
 [spec changes and rules](pilot.md#spec-changes-through-the-pilot) after
 an owner's `yes`, a `parallel N` command, or a budget raise an owner picked
 in a prompt.
+
+## Screenshots and files
+
+Files you attach to the milestone description, an issue or a comment reach
+the [planner](../concepts/glossary.md#planner) and the implementer, which
+copies a needed link into each issue. Only uploads of this project count; a
+missing file is named in the prompt and the run goes on. Reviewers do not
+see them. Limits: [Plan attachments](../reference/plan-attachments.md).
 
 ## When planning fails
 
