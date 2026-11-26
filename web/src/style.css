@@ -351,13 +351,20 @@
 
   /* What Tailwind's preflight gives the elements Nuxt UI renders (they
      carry data-slot), without resetting the views' own elements. After the
-     rules above, so a kit link does not take the link colour. */
+     rules above, so a kit link does not take the link colour. Lists rendered
+     by Nuxt UI lose their markers, while the views' own lists and .md lists
+     are untouched. */
   [data-slot],
   [data-slot]::before,
   [data-slot]::after {
     margin: 0;
     padding: 0;
     border: 0 solid;
+  }
+
+  ul[data-slot],
+  ol[data-slot] {
+    list-style: none;
   }
 
   a[data-slot] {

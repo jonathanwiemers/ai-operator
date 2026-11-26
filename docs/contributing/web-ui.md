@@ -874,7 +874,8 @@ tabs live in `?tab=` (`web/src/streamTabs.ts`), so they can be shared,
 reloaded and opened in a new tab. RouteTabs renders `UNavigationMenu`
 horizontal with `highlight` and `color="neutral"`: each tab is a link, the
 active one underlined and with `aria-current="page"`, in a `<nav>` with a
-border line under the row. Switches inside a tab (pills, filters) are level
+border line under the row. The `<ul data-slot="list">` gets no markers from
+the base reset in `style.css`, which applies to every Nuxt UI list. Switches inside a tab (pills, filters) are level
 2 and never look like this row.
 
 All tabs link to the same path and differ only in `?tab=`, and vue-router's
