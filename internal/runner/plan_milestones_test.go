@@ -226,10 +226,10 @@ func TestPlanMilestonesRewritten(t *testing.T) {
 	}
 }
 
-func TestPlanExcludeOnce(t *testing.T) {
+func TestGitExcludeOnce(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, ".git", "info", "exclude")
-	if err := planExclude(dir); err != nil {
+	if err := gitExclude(dir, planContextDir); err != nil {
 		t.Fatal(err)
 	}
 	if b, _ := os.ReadFile(path); string(b) != "/.plan-context/\n" {
@@ -237,7 +237,7 @@ func TestPlanExcludeOnce(t *testing.T) {
 	}
 	_ = os.WriteFile(path, []byte("*.log"), 0o644)
 	for range 2 {
-		if err := planExclude(dir); err != nil {
+		if err := gitExclude(dir, planContextDir); err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -303,3 +303,16 @@ func (c *AgentClient) PlanContext(ctx context.Context, src string) error {
 	}
 	return remoteErr(resp.Error)
 }
+
+// attachmentsRequest names the folder Attachments copies; empty removes it.
+type attachmentsRequest struct {
+	Src string `json:"src"`
+}
+
+func (c *AgentClient) Attachments(ctx context.Context, src string) error {
+	var resp errorResponse
+	if err := c.call(ctx, "attachments", attachmentsRequest{Src: src}, &resp); err != nil {
+		return err
+	}
+	return remoteErr(resp.Error)
+}

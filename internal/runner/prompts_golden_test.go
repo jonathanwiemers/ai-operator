@@ -14,7 +14,7 @@ import (
 // these hashes (sha256 of the prompt).
 func TestSystemPromptsAreUnchanged(t *testing.T) {
 	for name, tc := range map[string]struct{ prompt, sha string }{
-		"spec":       {specSystemPrompt, "5572ea727d8ec0d0cfd1277e4a6d2c9e7dcf0f6feb676def02dee2ad8dd37544"},
+		"spec":       {specSystemPrompt, "a4096347111255fbbb25c6dd4bc15e43a7587addbca271b4876fceaf2b994578"},
 		"implement":  {implementSystemPrompt, "8fd4977e803db331e4f19625382c5289e23f8bedbfc52097e1dbbdb1e8affa5c"},
 		"bugbot":     {bugbotSystemPrompt, "22853472d19cf325d2ba58ec9d5f8d5b7c1b43ef8ecf5d81b74305a116105e50"},
 		"security":   {securitySystemPrompt, "9251740c21e1e3f4f12d08efbd0a08f133ad8520a515d0478c92de5631de1f69"},

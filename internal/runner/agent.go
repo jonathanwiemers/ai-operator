@@ -62,6 +62,10 @@ type Agent interface {
 	// PlanContext replaces the home checkout's .plan-context folder with a
 	// copy of src, a directory inside the exchange directory.
 	PlanContext(ctx context.Context, src string) error
+	// Attachments replaces the home checkout's .attachments folder with a
+	// copy of src, a directory inside the exchange directory. An empty src
+	// removes the folder.
+	Attachments(ctx context.Context, src string) error
 	// Message writes a user message into the running stream-input call
 	// (Invocation.StreamInput) and says whether its replay showed up; an
 	// error without such a call.
@@ -472,19 +476,38 @@ func (a *LocalAgent) Checkpoint(ctx context.Context, req CheckpointRequest) (Che
 }
 
 // PlanContext copies the folder the runner wrote: the exchange is another
-// volume, so a rename would fail. git status does not show it (planExclude).
+// volume, so a rename would fail. git status does not show it (gitExclude).
 func (a *LocalAgent) PlanContext(_ context.Context, src string) error {
+	return a.copyIn(src, planContextDir)
+}
+
+// attachmentsDir is the folder in the home checkout the files linked in a
+// prompt are copied to, kept out of git (gitExclude).
+const attachmentsDir = ".attachments"
+
+// Attachments copies the files the runner fetched like PlanContext; an
+// empty src only removes the folder.
+func (a *LocalAgent) Attachments(_ context.Context, src string) error {
+	if src == "" {
+		return os.RemoveAll(filepath.Join(a.Workspace.Dir, attachmentsDir))
+	}
+	return a.copyIn(src, attachmentsDir)
+}
+
+// copyIn replaces the folder name at the root of the home checkout with a
+// copy of src, a directory inside the exchange, and keeps it out of git.
+func (a *LocalAgent) copyIn(src, name string) error {
 	if err := a.checkPath(src); err != nil {
 		return err
 	}
-	dst := filepath.Join(a.Workspace.Dir, planContextDir)
+	dst := filepath.Join(a.Workspace.Dir, name)
 	if err := os.RemoveAll(dst); err != nil {
 		return err
 	}
 	if err := os.CopyFS(dst, os.DirFS(src)); err != nil {
 		return err
 	}
-	return planExclude(a.Workspace.Dir)
+	return gitExclude(a.Workspace.Dir, name)
 }
 
 func (a *LocalAgent) checkPath(path string) error {
@@ -826,6 +849,14 @@ func (s *AgentServer) Handler() http.Handler {
 			return reply{errorResponse{Error: err.Error()}, err, nil}
 		}
 		err := s.Agent.PlanContext(ctx, req.Src)
+		return reply{errorResponse{Error: errString(err)}, err, []any{"src", req.Src}}
+	})
+	handle("attachments", func(ctx context.Context, body []byte) reply {
+		var req attachmentsRequest
+		if err := json.Unmarshal(body, &req); err != nil {
+			return reply{errorResponse{Error: err.Error()}, err, nil}
+		}
+		err := s.Agent.Attachments(ctx, req.Src)
 		return reply{errorResponse{Error: errString(err)}, err, []any{"src", req.Src}}
 	})
 	handle("session/open", func(ctx context.Context, body []byte) reply {

@@ -112,6 +112,7 @@ func (a *chatAgent) CloseSession(context.Context) error {
 func (a *chatAgent) RemoteRefs(context.Context, string) (map[string]string, error) { return nil, nil }
 func (a *chatAgent) Prepare(context.Context, PrepareRequest) error                 { return nil }
 func (a *chatAgent) PlanContext(context.Context, string) error                     { return nil }
+func (a *chatAgent) Attachments(context.Context, string) error                     { return nil }
 func (a *chatAgent) Message(context.Context, MessageRequest) (MessageResult, error) {
 	return MessageResult{}, errNoStreamCall
 }

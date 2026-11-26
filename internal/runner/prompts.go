@@ -48,6 +48,8 @@ How to plan:
   implementation plan (files and functions to change), acceptance criteria and
   a test plan. Markdown, no top-level heading. Do not repeat the whole
   milestone spec.
+- When the prompt lists attachments, copy an attachment's link, as written,
+  into the description of each issue whose implementer needs to see it.
 - Pick the agent profile that should implement each sub-issue from the
   profiles listed in the prompt. Cheaper profiles are for work you are
   confident is simple; when in doubt pick the stronger one.

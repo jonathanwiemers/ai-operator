@@ -82,6 +82,16 @@ func (r *Runner) runSpec(ctx context.Context, gl gitlab.API, task *aiv1.AgentTas
 	inv.Role, inv.Kind = "spec", aiv1.CallKindSpec
 	inv.Resume = st.session("spec", role.Engine)
 	prompt := buildSpecPrompt(milestone, existing, spec.Agents.Profiles, spec.MaxMRLines(), task.Status.Run.RunCount > 0)
+	// Without links the agent only removes a folder of an earlier run.
+	links := attachmentLinks(planAttachmentProject(proj), milestone.Description)
+	if len(links) == 0 {
+		r.handAttachments(ctx, gl, glProject, nil)
+	} else {
+		s = r.step(ctx, "fetch attachments", "links", len(links))
+		atts := r.handAttachments(ctx, gl, glProject, links)
+		s.done(fmt.Sprintf("%d of %d fetched", fetchedCount(atts), len(atts)), "fetched", fetchedCount(atts))
+		prompt += "\n" + renderAttachments("The files linked in the milestone description, in order of appearance.", atts)
+	}
 	// Only a milestone with companion repositories changes the prompt.
 	targets := planTargets(task, spec)
 	if len(targets) > 0 {
