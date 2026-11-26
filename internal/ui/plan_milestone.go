@@ -30,7 +30,8 @@ const draftCreating = -1
 // a plan without drafts. Drafts are created in list order only. The draft is
 // claimed first (its IID set to draftCreating under optimistic locking), so
 // one request wins; a GitLab failure restores it. The plan's phase becomes
-// Created with its last draft.
+// Created with its last draft. Then the earlier milestones that name the
+// draft by its quoted title get its %IID (fillPendingRefs).
 func (s *Server) createPlanMilestone(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Key         int64  `json:"key"`
@@ -136,7 +137,8 @@ func (s *Server) createPlanMilestone(w http.ResponseWriter, r *http.Request) {
 	}
 	s.log.Info("audit", "action", "plan.milestone", "user", user, "gitlabUser", tok.Username,
 		"namespace", pl.Namespace, "name", pl.Name, "project", ap.Name, "key", key, "created", m.IID)
-	writeJSON(w, http.StatusCreated, FollowUpMilestoneView{IID: m.IID, WebURL: url})
+	filled := s.fillPendingRefs(ctx, gl, ap, pl, tok, user, key, m.IID)
+	writeJSON(w, http.StatusCreated, PlanMilestoneView{IID: m.IID, WebURL: url, FilledIn: filled})
 }
 
 // settleDraft reads pl again and, while its draft key is still claimed,

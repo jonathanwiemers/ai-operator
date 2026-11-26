@@ -480,7 +480,8 @@ func TestPlanMilestoneForwardRef(t *testing.T) {
 	}
 }
 
-// Draft 1 naming draft 2 and draft 2 naming draft 1 create in list order.
+// Draft 1 naming draft 2 and draft 2 naming draft 1 create in list order,
+// and draft 1's milestone then names %2.
 func TestPlanMilestoneMutualRefs(t *testing.T) {
 	env, fake := planSteerer(t)
 	withThreeDrafts(t, env, "see %draft-2", "see %draft-1")
@@ -490,7 +491,8 @@ func TestPlanMilestoneMutualRefs(t *testing.T) {
 		}
 	}
 	pl := env.getPlan(t, "shop-plan-new")
-	if d := pl.Status.Drafts; d[0].Draft != `see "Draft"` || len(d[0].PendingRefs) != 1 || d[1].Draft != "see %1" || d[1].PendingRefs != nil ||
+	if d := pl.Status.Drafts; d[0].Draft != "see %2" || d[0].PendingRefs != nil || d[1].Draft != "see %1" || d[1].PendingRefs != nil ||
+		!strings.HasPrefix(fake.Milestones[0].Description, "see %2\n") ||
 		!strings.HasPrefix(fake.Milestones[1].Description, "see %1\n") || pl.Status.Phase != aiv1.AgentPlanCreated {
 		t.Errorf("status %+v", pl.Status)
 	}

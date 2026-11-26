@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"net/http"
+	"slices"
 	"testing"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
@@ -141,6 +142,11 @@ const newDrafts = shopPlans + "/shop-plan-new/drafts"
 func TestRemovePlanDraft(t *testing.T) {
 	env := planWriterEnv(t, "leads")
 	withDrafts(t, env)
+	pl := env.getPlan(t, "shop-plan-new")
+	pl.Status.Drafts[0].PendingRefs = []aiv1.PlanDraftRef{{Key: 2, Text: `"Two"`}, {Key: 4, Text: `"Four"`}}
+	if err := env.reader.Status().Update(context.Background(), pl); err != nil {
+		t.Fatal(err)
+	}
 	var out map[string]any
 	if code := env.send(t, http.MethodDelete, newDrafts+"/1", nil, &out); code != http.StatusConflict || out["error"] != "the draft is created as %41 and read-only" {
 		t.Errorf("created: %d %v", code, out)
@@ -154,11 +160,15 @@ func TestRemovePlanDraft(t *testing.T) {
 	if code := env.send(t, http.MethodDelete, newDrafts+"/2", nil, &v); code != http.StatusOK || len(v.Drafts) != 2 || v.Drafts[1].Key != 4 || v.Phase != aiv1.AgentPlanIdle {
 		t.Fatalf("remove 2: %d %+v", code, v)
 	}
+	// The pending refs to a removed draft go with it.
+	if refs := env.getPlan(t, "shop-plan-new").Status.Drafts[0].PendingRefs; !slices.Equal(refs, []aiv1.PlanDraftRef{{Key: 4, Text: `"Four"`}}) {
+		t.Errorf("pending refs after removing 2: %v", refs)
+	}
 	// Removing the last uncreated draft finishes the plan.
 	if code := env.send(t, http.MethodDelete, newDrafts+"/4", nil, &v); code != http.StatusOK || len(v.Drafts) != 1 || v.Phase != aiv1.AgentPlanCreated {
 		t.Fatalf("remove 4: %d %+v", code, v)
 	}
-	if s := env.getPlan(t, "shop-plan-new").Status; len(s.Drafts) != 1 || s.DraftSeq != 4 || s.Phase != aiv1.AgentPlanCreated {
+	if s := env.getPlan(t, "shop-plan-new").Status; len(s.Drafts) != 1 || s.DraftSeq != 4 || s.Phase != aiv1.AgentPlanCreated || s.Drafts[0].PendingRefs != nil {
 		t.Errorf("status: %+v", s)
 	}
 	if code := env.send(t, http.MethodDelete, newDrafts+"/1", nil, nil); code != http.StatusConflict {

@@ -1400,6 +1400,34 @@ export interface PlanSignOffView {
 }
 
 //////////
+// source: plan_refs.go
+
+/**
+ * PlanMilestoneView is the milestone created from a plan's draft, with what
+ * became of the references earlier drafts' milestones make to it.
+ */
+export interface PlanMilestoneView {
+  iid: number /* int64 */;
+  webURL: string;
+  /**
+   * FilledIn has one entry per earlier milestone that named this draft by
+   * its quoted title; empty when none did.
+   */
+  filledIn: PlanRefFillView[];
+}
+/**
+ * PlanRefFillView is what became of one earlier draft's reference to the
+ * created draft: Key and IID are the earlier draft and its milestone. State
+ * is "filled" (its quoted title became the %IID) or "skipped", with Reason.
+ */
+export interface PlanRefFillView {
+  key: number /* int64 */;
+  iid: number /* int64 */;
+  state: string;
+  reason?: string;
+}
+
+//////////
 // source: plan_uploads.go
 
 /**

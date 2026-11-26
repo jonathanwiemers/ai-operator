@@ -114,6 +114,7 @@ packages:
       - overview.go
       - pause_exits.go
       - plan_decisions.go
+      - plan_refs.go
       - plan_uploads.go
       - plans.go
       - plans_all.go

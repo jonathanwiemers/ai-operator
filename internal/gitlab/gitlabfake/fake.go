@@ -85,6 +85,8 @@ type Fake struct {
 	CreateIssueError error
 	// CreateMilestoneError makes CreateMilestone fail.
 	CreateMilestoneError error
+	// UpdateMilestoneError makes UpdateMilestoneDescription fail.
+	UpdateMilestoneError error
 	// CreateErrorsAfterWrite makes the next CreateIssue calls create the
 	// issue and then fail with these errors, one per call, oldest first.
 	CreateErrorsAfterWrite []error
@@ -336,6 +338,9 @@ func (f *Fake) GetMilestoneByIID(_ context.Context, _ string, iid int64) (*gitla
 func (f *Fake) UpdateMilestoneDescription(_ context.Context, _ string, id int64, description string) (*gitlab.Milestone, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.UpdateMilestoneError != nil {
+		return nil, f.UpdateMilestoneError
+	}
 	for i := range f.Milestones {
 		if f.Milestones[i].ID == id {
 			f.Milestones[i].Description = description

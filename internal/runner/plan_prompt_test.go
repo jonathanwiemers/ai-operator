@@ -165,6 +165,24 @@ func TestPlanPromptHouseRules(t *testing.T) {
 	}
 }
 
+// The system prompt prefers references to earlier drafts and says how a
+// reference to a later one is written (Decision 6).
+func TestPlanSystemPromptDraftRefs(t *testing.T) {
+	got := strings.Join(strings.Fields(planSystemPrompt), " ")
+	for _, want := range []string{
+		"Refer to an earlier draft with %draft-N where you can; it becomes the milestone's %IID when it is created.",
+		"A reference to a later draft is written as its title in quotes until that draft is created; " +
+			"the Desk then fills in its %IID while the earlier milestone waits for its turn.",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the system prompt lacks %q", want)
+		}
+	}
+	if strings.Contains(got, "while it is not created") {
+		t.Error("the old draft-reference sentence is still there")
+	}
+}
+
 // planList is a list of locked decisions D1 to Dn at version 1, each
 // recommending "Rail" of "Rail", "Footer" and "Header".
 func planList(n int) []aiv1.PlanDecision {

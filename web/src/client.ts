@@ -32,6 +32,7 @@ import type {
   OverviewView,
   PlanOverview,
   PlanDecisionHistoryView,
+  PlanMilestoneView,
   PlanView,
   ProjectDetail,
   ProjectSetSummary,
@@ -447,7 +448,7 @@ export function createPlanMilestone(
   name: string,
   plan: string,
   body: { key: number; title: string; description: string; spec: boolean; autopilot: boolean },
-): Promise<FollowUpMilestoneView> {
+): Promise<PlanMilestoneView> {
   return post(`${planPath(namespace, name, plan)}/milestone`, body)
 }
 // getEstimate: a plan's draft (key, the next to create without) or a milestone.

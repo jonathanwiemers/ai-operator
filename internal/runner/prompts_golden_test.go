@@ -24,7 +24,7 @@ func TestSystemPromptsAreUnchanged(t *testing.T) {
 		"describe":   {describeSystemPrompt, "602fe49622e80041a3e0bdce43c8d88040b51583e796d07f8c57a7b062c6bb0e"},
 		"research":   {researchSystemPrompt, "e8ded9ce76bf4b15b38ebdb9313e158d4d72d26489446bd76f3f40b762b44bea"},
 		"draft":      {draftSystemPrompt, "60e6df7e59924c3e7325284788a9196f6021accb7320bd31fe40ba0060366402"},
-		"plan":       {planSystemPrompt, "15011a8e8f63ddb7cd80eeaa0aae97e28c1657b6a9f0c87fdc83e333fd0ebd0a"},
+		"plan":       {planSystemPrompt, "5e6d83b8a7801c27eed896371ca4e6a82daa7e00bfc2ba4c13a9f8aa5b47d256"},
 	} {
 		sum := sha256.Sum256([]byte(tc.prompt))
 		if got := hex.EncodeToString(sum[:]); got != tc.sha {

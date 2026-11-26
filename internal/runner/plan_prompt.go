@@ -77,9 +77,12 @@ Answer every turn with:
   turn lists them with their keys. Return only the drafts you changed, each
   with its key, its title and its full text; key 0 adds a new draft. A draft
   you leave out stays as it is; return none while you have no draft yet.
-  Created drafts are read-only: their milestones exist. Write %draft-N to
-  refer to draft N of this plan while it is not created; it becomes the
-  milestone's %IID when it is. Only the owner removes or reorders drafts.
+  Created drafts are read-only: their milestones exist. Refer to an earlier
+  draft with %draft-N where you can; it becomes the milestone's %IID when it
+  is created. A reference to a later draft is written as its title in quotes
+  until that draft is created; the Desk then fills in its %IID while the
+  earlier milestone waits for its turn. Only the owner removes or reorders
+  drafts.
 - title: the plan's title when the turn asks for one, else empty. At most 80
   characters of plain words, no ticket numbers, in the style of a milestone
   title.

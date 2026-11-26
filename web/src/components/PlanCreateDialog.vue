@@ -15,7 +15,7 @@ import UInput from '@nuxt/ui/components/Input.vue'
 import USwitch from '@nuxt/ui/components/Switch.vue'
 import UTextarea from '@nuxt/ui/components/Textarea.vue'
 import ExtLink from './ExtLink.vue'
-import type { FollowUpMilestoneView } from '../generated/views'
+import type { PlanMilestoneView } from '../generated/views'
 import { useBackClose } from '../ui/useBackClose'
 
 const UModal = defineAsyncComponent(() => import('@nuxt/ui/components/Modal.vue'))
@@ -25,7 +25,7 @@ const warning = computed(() => createWarning(props.pending ?? 0))
 const emit = defineEmits<{ created: [] }>()
 const open = defineModel<boolean>('open', { required: true })
 const [title, text, spec, autopilot, estimate, error, busy] = [ref(''), ref(''), ref(true), ref(true), ref(''), ref(''), ref(false)]
-const created = ref<FollowUpMilestoneView | null>(null)
+const created = ref<PlanMilestoneView | null>(null)
 useBackClose(open)
 watch(open, async (o) => {
   if (!o) return

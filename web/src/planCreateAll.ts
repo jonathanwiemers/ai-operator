@@ -3,7 +3,7 @@
 // server creates only the first uncreated draft, so the loop stops at the
 // first error: the later drafts would get 409 anyway.
 import { errorMessage } from './format.ts'
-import type { FollowUpMilestoneView, PlanDraftView } from './generated/views'
+import type { PlanDraftView, PlanMilestoneView } from './generated/views'
 
 type Draft = Pick<PlanDraftView, 'key' | 'createdMilestoneIID'>
 
@@ -18,7 +18,7 @@ export const uncreated = <T extends Draft>(drafts: T[]): T[] => drafts.filter((d
 
 // createAll calls create for each uncreated draft in order, each after the
 // previous one has finished, and stops at the first error.
-export async function createAll<T extends Draft>(drafts: T[], create: (d: T) => Promise<FollowUpMilestoneView>): Promise<CreateAllResult> {
+export async function createAll<T extends Draft>(drafts: T[], create: (d: T) => Promise<PlanMilestoneView>): Promise<CreateAllResult> {
   const todo = uncreated(drafts)
   const r: CreateAllResult = { created: [], skipped: [] }
   for (const [i, d] of todo.entries()) {

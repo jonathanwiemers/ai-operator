@@ -11,8 +11,9 @@ import (
 )
 
 // removePlanDraft removes the plan's uncreated draft {key}: 404 for an
-// unknown key, 409 for a created draft. When every remaining draft is
-// created, the plan's phase becomes Created.
+// unknown key, 409 for a created draft. The pending refs of the other drafts
+// to it go too. When every remaining draft is created, the plan's phase
+// becomes Created.
 func (s *Server) removePlanDraft(w http.ResponseWriter, r *http.Request) {
 	pl, ok := s.ownPlan(w, r, 0, nil)
 	if !ok {
@@ -32,6 +33,7 @@ func (s *Server) removePlanDraft(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, draftReadOnly(st.Drafts[i]))
 	default:
 		st.Drafts = slices.Delete(st.Drafts, i, i+1)
+		dropDraftRefs(st.Drafts, key) // the quoted title stays in GitLab
 		if pl.AllDraftsCreated() {
 			st.Phase = aiv1.AgentPlanCreated
 		}
