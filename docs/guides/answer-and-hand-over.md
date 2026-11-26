@@ -120,7 +120,7 @@ user is assigned if the issue has no assignee. An issue needs no milestone,
 unless the project sets `milestones.titlePattern` (see
 [`spec.milestones`](../reference/agentproject.md#specmilestones)).
 
-Every label and what moves it is in [Labels](../reference/labels.md). What
+To have the operator merge such an issue too, take it into the [loose issues queue](loose-issues.md). Every label and what moves it is in [Labels](../reference/labels.md). What
 happens next is in [While the agent works](while-the-agent-works.md).
 
 ## Next

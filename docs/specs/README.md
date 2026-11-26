@@ -42,6 +42,7 @@ git history does; otherwise "no milestone".
 9. [Runs that hang get noticed and restarted](run-watchdog.spec.md) — Notice hung runs, restart them and escalate when that fails. Milestone: %23 Runs that hang get noticed and restarted.
 10. [Autopilot works on several issues of a milestone at once](parallel-issues.spec.md) — Independent issues of one milestone run in parallel up to a limit. Milestone: Autopilot works on several issues of a milestone at once.
 11. [Owners reach a running implementer through the pilot, mid-run](pilot-mid-run-messages.spec.md) — An owner's words reach a running implementer by stream input on claude or stop and resume, or its next run, without Accept and delivered once; built with the Cockpit, closed with restart and delivery-text tests. Milestone: Owners reach a running implementer through the pilot, mid-run.
+12. [Loose issues: a project queue that runs and merges the issues you pick, without a milestone](loose-issues-queue.spec.md) — A `Queue` task per project that takes open issues without a milestone on an owner's say, runs them up to `looseIssues.maxParallel` and merges them through the milestone gate, with its own owners, holds, a freeze, and flaky fixes. Milestone: Loose issues: a project queue that runs and merges the issues you pick, without a milestone.
 
 ## Web UI (the Desk)
 

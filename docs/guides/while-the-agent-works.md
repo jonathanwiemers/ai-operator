@@ -287,7 +287,7 @@ once:
 - or with `mainHealth.autoFixFlaky: true`, the second time the job flakes,
   also without a pilot.
 
-The issue joins a milestone and runs like any of its issues. Its task is
+The issue joins a milestone and runs like any of its issues; with the [loose issues queue](loose-issues.md#flaky-issues) on, it joins the queue. Its task is
 to make the test deterministic; a quarantine needs an owner's `yes`. Only a
 flaky issue the operator opened and did not get edited is handed over.
 

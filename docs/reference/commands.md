@@ -204,6 +204,33 @@ Other replies are ignored without an answer. A new milestone can also take
 follow-ups over with the line `/agent followup-of` (see
 [below](#in-the-milestone-description)).
 
+## On the loose issues tracking issue
+
+The [loose issues queue](../concepts/glossary.md#loose-issues-queue) has its
+own tracking issue, `🤖 Loose issues`, without a milestone. Only the queue's
+`owners` may command it. In the Desk, the **Loose issues** tab does the same.
+See [Loose issues](../guides/loose-issues.md).
+
+| Command | Effect |
+|---------|--------|
+| `/agent take #350 #421` | Take up to 20 open issues without a milestone into the queue, in this order. Each gets the comment "Taken into the loose issues queue by @you (position 3)."; an issue already in work becomes active at once. One reply names every refusal. |
+| `/agent drop #350` | Take a pending, active or held issue off. A pending one is gone; an active one finishes its run and stays in `agent::review` for a human. |
+| `/agent pause`, `/agent resume` | Stop starting and merging, or go on. |
+| `/agent resume #350` | Lift the hold of #350 only. |
+| `/agent merge #350 <sha>`, `/agent rebase #350`, `/agent mergeBase #350` | As on a milestone's [tracking issue](#on-the-tracking-issue). |
+| anything else | Answered "not on the loose issues queue". `move`, `release`, `endMilestone` and `parallel` are not queue commands: `maxParallel` is set in the AgentProject. |
+
+A take refuses an issue that:
+
+- is closed;
+- is in a milestone (`is in milestone "…"`);
+- is a tracking issue of the operator;
+- is the main-red issue;
+- is in the queue already.
+
+A comment from anyone else is answered "Only the owners of the loose issues
+queue can give it commands."
+
 ## To the pilot
 
 The [pilot](../concepts/glossary.md#pilot) watches an autopilot milestone.

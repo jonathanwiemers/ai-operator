@@ -2316,6 +2316,42 @@ stateDiagram-v2
   issue; if the milestone is no longer planned at all, this happens before
   the spec task is deleted.
 
+### Loose issues queue
+
+`spec.looseIssues` adds a second autopilot lane for open issues without a
+milestone. The reconciler keeps one AgentTask of type `Queue` per project
+(`naming.QueueTask`, `<project>-loose-issues`) while it is enabled; the task
+has no pod and no milestone, and keeps its state in `status.autopilot`. Its
+`owners` and `ownerSubjects` come from `looseIssues`, the owners falling back
+to `notify.users`. Switched off, the task stays in phase `Off` so the same
+tracking issue reopens on the next switch on.
+
+It is the milestone engine with a `loose` flag, not a second engine
+(`syncLoose`, `syncQueue`). What it reuses of the autopilot:
+
+- **The gate, drive and merge**: an item merges through the milestone's merge
+  gate (CI green, review clean, no pending run, no foreign push), including
+  `/agent merge`, `rebase` and `mergeBase`.
+- **Holds**: a problem holds only its own item, whatever `maxParallel` is.
+  Budgets (`issueBudget`) hold per item; the queue has no budget of its own.
+- **Tracking**: the tracking issue `🤖 Loose issues` is created without a
+  milestone and rendered by `renderLoose`; commands are read from its notes
+  and, as Desk `command` messages, from the Queue task's chat.
+- **Starting**: `pickLoose` sets `agent::ready` as `pick` does.
+
+What it skips: planning, dependency order, releases, closing a milestone, the
+retrospective and settling. Items start first taken, first started. Two rails
+are its own (`looseFreeze`, `looseCompanionHold`): a red default branch with
+`freezeAutopilot` starts and merges nothing, and an issue with a companion
+repository is held ("companion repositories need a milestone").
+
+An item leaves (state `Left`, with `leftReason`) when it is merged, closed,
+moved into a milestone or dropped. Dropping an active item leaves its labels,
+so its run ends in `agent::review`. The status keeps the newest 50 finished
+items. `handOverFlaky` appends a flaky issue to the queue while it is on.
+The read route is `GET …/loose-issues` (`internal/ui`); there is no write
+route besides the chat route.
+
 ### Revisiting after the merge
 
 A decision of a closed issue has no runner left to change it, so the operator

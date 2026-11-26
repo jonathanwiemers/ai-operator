@@ -117,6 +117,22 @@ status:
   stopped call and the resumed call are both in `status.run.calls`, and
   the run's cost sums them.
 
+## The loose issues queue
+
+The [loose issues queue](../concepts/glossary.md#loose-issues-queue) is one AgentTask of `type: Queue` per project, named `<project>-loose-issues`. It runs no pod. Its `status.autopilot` holds the items, with `phase`, `maxParallel` and `frozenAt` while the queue is frozen.
+
+```yaml
+status:
+  autopilot:
+    phase: Running
+    items:
+      - {iid: 350, state: Merged, mergeRequestIID: 34}
+      - {iid: 421, state: Active, takenBy: "@alice"}
+      - {iid: 46, state: Left, leftReason: "dropped by @alice; continues in the manual flow"}
+```
+
+`state` is `Pending`, `Active` (with `hold` while held), `Merged` or `Left`. A `Left` item has `leftReason` and `leftAt`: The queue keeps the newest 50 finished items. Switched off, its phase is `Off`.
+
 ## `milestoneOrder`
 
 The project's [run order](../concepts/glossary.md#run-order): the iids of

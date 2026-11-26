@@ -11,9 +11,8 @@ The reference is split into four pages:
 - **AgentProject** (this page): GitLab, milestones, autopilot, house rules,
   workflow and releases, notifications, the pilot, budgets, webhooks,
   cross-repo changes and the other fields.
-- **[Agents and models](agents-and-models.md)**: `spec.agents`, the roles,
-  subagents, the read gate, models and effort per issue, profiles,
-  experiments, fallbacks and engines.
+- **[Agents and models](agents-and-models.md)**: `spec.agents`, roles, the
+  read gate, models, effort, profiles, experiments, fallbacks and engines.
 - **[Lifecycle and CI](lifecycle-and-ci.md)**: `spec.lifecycle`, `spec.ci`,
   `spec.checkpoint` and `spec.mainHealth`.
 - **[Agent image](agent-image.md)**: the image the agents run in, and the
@@ -144,14 +143,6 @@ merge request pays a fixed cycle of CI, review and rebase, so a larger
 budget means fewer, larger merge requests and faster milestones. A
 milestone's own Constraints win over these.
 
-```yaml
-spec:
-  houseRules:
-    maxMRLines: 300
-    constraints:
-      - "Run `make generate manifests` after changing API types; CI fails on stale files."
-```
-
 | Field | Meaning | Default |
 |-------|---------|---------|
 | `maxMRLines` | Size budget of one merge request in production lines. Tests, generated files and docs do not count. `0` states no budget. | `300` |
@@ -258,10 +249,21 @@ and asks for reviews. See [Owners and pings](../guides/owners-and-pings.md).
 | `events` | Which situations mention them: `failed`, `needsInput`, `ciFailed`, `review` (not on autopilot), `autopilotPaused`, `autopilotDone`, `mainRed`, `blocked`. | all |
 | `requestReview` | When an issue reaches review (not on autopilot), make the users the reviewers of its merge request, unless it has some. | `true` |
 
-The users must be members of the project to be notified. Accepting or
-rejecting the pilot's proposals in the Desk needs the milestone line
-`/agent owner-subjects alice@example.com bob` (the Desk's user names);
-there is no project-wide fallback for it.
+The users must be members of the project to be notified. The pilot's
+proposals in the Desk need the milestone line `/agent owner-subjects …`;
+there is no project-wide fallback.
+
+## `spec.looseIssues`
+
+The [loose issues queue](../concepts/glossary.md#loose-issues-queue) merges
+issues without a milestone that owners take: [Loose issues](../guides/loose-issues.md).
+
+| Field | Meaning | Default |
+|-------|---------|---------|
+| `enabled` | Turn the queue on. | `false` |
+| `owners` | GitLab usernames the queue mentions and who may command it. | `notify.users` |
+| `ownerSubjects` | Desk logins that may take issues and answer questions. No fallback. | none |
+| `maxParallel` | Issues that run at the same time, 1 to 10. | `1` |
 
 ## `spec.pilot`
 
@@ -393,8 +395,6 @@ path segment and `**` across segments, like the `include` of an
 
 ## Next
 
-- [Agents and models](agents-and-models.md): who does the work, on which
-  model.
-- [Lifecycle and CI](lifecycle-and-ci.md): pods, retries, CI and the
-  default branch.
+- [Agents and models](agents-and-models.md): who does the work.
+- [Lifecycle and CI](lifecycle-and-ci.md): pods, retries, CI, branch health.
 - [Commands](commands.md): the milestone lines that override these fields.

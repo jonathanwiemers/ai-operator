@@ -30,6 +30,7 @@ watch [budgets and spend](guides/budgets-and-spend.md), try
 [cost levers](guides/cost-levers.md), ship
 [releases](guides/releases.md), make
 [cross-repo changes](guides/cross-repo-changes.md),
+[loose issues](guides/loose-issues.md) without a milestone,
 [watch from Kubernetes](guides/watch-from-kubernetes.md), cover a group with
 [project sets](guides/project-sets.md), run
 [research](guides/research.md) and [upgrade](guides/upgrade.md) to a new

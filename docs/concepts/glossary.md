@@ -1,8 +1,7 @@
 # Glossary
 
-The terms the docs use, in alphabetical order, one or two sentences each.
-Other pages link a term here the first time they use it. Each entry links the
-page that explains it.
+The terms the docs use, in alphabetical order. Other pages link a term here
+the first time they use it. Each entry links the page that explains it.
 
 ### Agent container
 
@@ -99,13 +98,11 @@ and the Desk's Metrics page compares the arms' cost per written line. See
 
 ### Hold
 
-When an autopilot milestone's parallel limit is above 1, a problem of one
-issue (red CI, a failed run, blocking findings) holds only that issue, even
-if it is the only one running, and the issues that can still start go on.
-If every running issue is held and nothing else can start, the milestone
-[pauses](#pause) as `stuck`. A hold ends by itself once the cause is gone,
-or with `/agent resume #N`; see
-[When autopilot pauses](../guides/pauses.md#pause-or-hold).
+With a parallel limit above 1, a problem of one issue (red CI, a failed run,
+blocking findings) holds only that issue and the others go on. If every
+running issue is held and nothing can start, the milestone [pauses](#pause)
+as `stuck`. A hold ends when the cause is gone, or with `/agent resume #N`;
+see [When autopilot pauses](../guides/pauses.md#pause-or-hold).
 
 ### Implementer
 
@@ -118,6 +115,12 @@ On an autopilot milestone, merge requests that passed the
 [merge gate](#merge-gate) land one at a time: rebased when needed, checked
 by CI on that head and merged, in the order they became ready. See
 [Several issues at once](../guides/autopilot.md#several-issues-at-once).
+
+### Loose issues queue
+
+A project queue for open issues without a milestone. Owners take issues in
+the Desk or with `/agent take #N`, and the operator merges them through the
+[merge gate](#merge-gate). See [Loose issues](../guides/loose-issues.md).
 
 ### Marker line
 
@@ -176,13 +179,10 @@ under the header opens it. See
 ### Pause
 
 Autopilot stops the whole milestone: nothing new starts until the pause
-ends. Each pause has a kind with its ways out, which the Desk shows on a
-pause card. Some kinds always pause the milestone, for example `budget`,
-`mainRed` or `stuck`; problems of one issue, such as `ciRed` or `stalled`,
-only [hold](#hold) that issue when the milestone's parallel limit is above
-1, and pause the milestone when the limit is 1. See
-[When autopilot pauses](../guides/pauses.md), with every kind and its ways
-out.
+ends. Each pause has a kind with its ways out, shown on a pause card. Some
+kinds, such as `budget`, `mainRed` or `stuck`, always pause the milestone;
+others, such as `ciRed`, only [hold](#hold) the issue when the parallel limit
+is above 1. See [When autopilot pauses](../guides/pauses.md).
 
 ### Pilot
 
@@ -397,4 +397,3 @@ effort; [merged lines](#merged-lines) measure the outcome. See
 - [How it works](how-it-works.md): the terms in context, from spec to
   release.
 - [Roles](roles.md): the agents behind the terms.
-- [Concepts](README.md): all concept pages.

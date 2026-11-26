@@ -119,7 +119,7 @@ red, autopilot merges nothing. See [Main health](../guides/while-the-agent-works
 | `retryCanceled` | Retry a canceled pipeline once when its commit has no successful pipeline and no newer pipeline replaced it. Canceled again, the operator comments on the `ci::main-red` issue if one is open, else on a `ci::main-canceled` issue, which freezes nothing. | `true` |
 | `issue` | Open the `ci::main-red` issue, one `ci::flaky` issue per flaky job, and the `ci::main-canceled` issue. Off, a pipeline canceled twice is only logged. | `true` |
 | `freezeAutopilot` | Autopilot merges nothing while the branch is red: the issue at the merge gate is blocked (`main-red`), and autopilot goes on once the branch is green. A status not checked for 3 intervals does not freeze. | `true` |
-| `autoFixFlaky` | Hand a `ci::flaky` issue to the agent the second time the job flakes, once: into the active autopilot milestone with the lowest number, else without a milestone. Off, only the pilot hands one over. | `false` |
+| `autoFixFlaky` | Hand a `ci::flaky` issue to the agent the second time the job flakes, once: into the [loose issues queue](../guides/loose-issues.md#flaky-issues) when `looseIssues.enabled`, else into the active autopilot milestone with the lowest number, else without a milestone. Off, only the pilot hands one over. | `false` |
 | `autoFix` | Hand the `ci::main-red` issue to the agent, once per red episode. On autopilot the frozen milestone merges the fix; otherwise a human merges it. | `false` |
 
 The token needs the same rights as for `spec.ci`, and must be able to

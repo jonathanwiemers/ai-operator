@@ -62,6 +62,8 @@ In the order you need them for a milestone:
     removed from manifests and Helm values.
 23. [Attach files to a plan](attach-files-to-a-plan.md): screenshots, PDFs and
     logs in a plan message, and where the files live.
+24. [Loose issues](loose-issues.md): a queue that runs and merges the issues
+    you pick without a milestone, what holds them and how flaky fixes join.
 
 ## Next
 
