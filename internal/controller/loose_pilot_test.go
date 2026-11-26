@@ -152,10 +152,11 @@ func TestQueuePilotScope(t *testing.T) {
 	}
 }
 
-func TestQueuePilotRefusesActions(t *testing.T) {
+func TestQueuePilotRunsAnAcceptedAction(t *testing.T) {
 	e, tracking := newLooseRunEnv(t, 0)
 	e.reconcile()
 	e.reconcile()
+	request := e.tasks()[e.taskOf(350)].Spec.RunRequest
 	e.patchStatus(queuePilotName, func(s *aiv1.AgentTaskStatus) {
 		s.Pilot = &aiv1.PilotStatus{Accepted: []aiv1.PilotProposal{{ID: 1, Summary: "retry #350", AcceptedBy: "bob",
 			Actions: []aiv1.PilotAction{{Tool: "retry", IssueIID: 350}}}}}
@@ -164,8 +165,13 @@ func TestQueuePilotRefusesActions(t *testing.T) {
 	if ps := e.queuePilot().Status.Pilot; ps == nil || len(ps.Accepted) != 0 {
 		t.Fatalf("the accepted proposal is handled once: %+v", ps)
 	}
-	if !slices.ContainsFunc(e.gl.IssueNotes[tracking], func(n gitlab.Note) bool { return strings.Contains(n.Body, "actions need a milestone") }) {
-		t.Fatalf("the refusal is on the tracking issue: %+v", e.gl.IssueNotes[tracking])
+	if got := e.tasks()[e.taskOf(350)].Spec.RunRequest; got != request+1 {
+		t.Fatalf("the retry of a queue issue runs: request %d → %d", request, got)
+	}
+	if !slices.ContainsFunc(e.gl.IssueNotes[tracking], func(n gitlab.Note) bool {
+		return strings.Contains(n.Body, "Proposal P1 accepted by `@bob`") && strings.Contains(n.Body, "**retry** #350") && !strings.Contains(n.Body, "not run")
+	}) {
+		t.Fatalf("the outcome is on the tracking issue: %+v", e.gl.IssueNotes[tracking])
 	}
 }
 

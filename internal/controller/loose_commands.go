@@ -71,6 +71,41 @@ func (a *autopilot) looseCommands(ctx context.Context) error {
 		}
 		a.ap.LastCommandNoteID = n.ID
 	}
+	return a.loosePilotCommands(ctx)
+}
+
+// loosePilotCommands applies the queue commands of the proposals the queue's
+// pilot ran (queueCommand) newer than LastPilotCommand, as a milestone's
+// commands does: by the pilot, or the owner who accepted. skip is a drop, an
+// owner's `/agent drop`; pause is the queue's, resume the queue's or one held
+// item's. An answer that is no log of its own goes on the tracking issue.
+func (a *autopilot) loosePilotCommands(ctx context.Context) error {
+	ps := a.st.Status.Pilot
+	if ps == nil {
+		return nil
+	}
+	for _, c := range ps.Commands {
+		if c.Seq <= a.ap.LastPilotCommand {
+			continue
+		}
+		word, arg := strings.ToLower(c.Action.Tool), fmt.Sprintf("#%d", c.Action.IssueIID)
+		if word == "skip" {
+			word = "drop"
+		}
+		if word == "pause" || c.Action.IssueIID == 0 {
+			arg = ""
+		}
+		reply, logged, err := a.looseCommand(ctx, word, []string{arg}, pilotBy(c.Owner), a.r.now())
+		if err != nil {
+			return err
+		}
+		if !logged {
+			if err := a.comment(ctx, "🤖 "+reply); err != nil {
+				return err
+			}
+		}
+		a.ap.LastPilotCommand = c.Seq
+	}
 	return nil
 }
 

@@ -161,7 +161,8 @@ func (r *AgentProjectReconciler) validOptions(ctx context.Context, gl gitlab.API
 func checkOption(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
 	st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, opened []string, o *aiv1.PromptOption, fromModel bool) ([]string, error) {
 	o.Actions = forgetFirst(slices.Clone(o.Actions))
-	if len(o.Actions) > 0 && (st == nil || st.Spec.Milestone == nil) {
+	// The loose issues queue's actions are its pilot's (validQueueAction).
+	if len(o.Actions) > 0 && (st == nil || st.Spec.Milestone == nil && st.Spec.Type != aiv1.TaskTypeQueue) {
 		return []string{"actions need a milestone"}, errors.New("actions need a milestone")
 	}
 	mine := slices.Clone(opened)

@@ -150,6 +150,9 @@ func auditNote(spec aiv1.AgentProjectSpec, coord *aiv1.AgentTask, tasks map[int6
 			c.Count = 0
 		}
 		what := "the milestone"
+		if coord.Spec.QueueTask != "" {
+			what = "the loose issues queue"
+		}
 		if key != "0" {
 			what = "#" + key
 		}

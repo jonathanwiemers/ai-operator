@@ -21,10 +21,14 @@ import (
 func validAction(a aiv1.PilotAction, st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, opened []string) error {
 	ap := st.Status.Autopilot
 	running := queueRunning(st)
+	known := slices.Contains(pilotTools, a.Tool) || slices.Contains(ownerTools, a.Tool)
+	if known && st.Spec.Type == aiv1.TaskTypeQueue {
+		if next, err := validQueueAction(a, st); !next {
+			return err
+		}
+	}
 	switch {
-	case st.Spec.Type == aiv1.TaskTypeQueue:
-		return errors.New("actions need a milestone")
-	case !slices.Contains(pilotTools, a.Tool) && !slices.Contains(ownerTools, a.Tool):
+	case !known:
 		return fmt.Errorf("`%s` is not a tool of the pilot; merging, closing and pushing are not available", inertLine(a.Tool, 40))
 	case a.Tool == "raiseBudget":
 		return validRaise(a, st)
@@ -74,6 +78,8 @@ func validAction(a aiv1.PilotAction, st *aiv1.AgentTask, tasks map[int64]*aiv1.A
 	}
 	t := tasks[a.IssueIID]
 	switch {
+	case t == nil && st.Spec.Type == aiv1.TaskTypeQueue:
+		return fmt.Errorf("#%d of the loose issues queue has no task yet", a.IssueIID)
 	case t == nil:
 		return fmt.Errorf("#%d is not an issue of this milestone with a task", a.IssueIID)
 	case a.Tool == "reReview" && t.Status.Run.PushedSHA == "":
@@ -89,6 +95,61 @@ func validAction(a aiv1.PilotAction, st *aiv1.AgentTask, tasks map[int64]*aiv1.A
 		return fmt.Errorf("the run of #%d was interrupted %d times, another restart fails it; an owner can still `restart` it", a.IssueIID, t.Status.Run.Interruptions)
 	}
 	return nil
+}
+
+// queueRefused are the pilot's tools that are not on the loose issues queue,
+// with the reason the reply shows: they belong to a milestone.
+var queueRefused = map[string]string{
+	"revisit":      "it has no decisions to revisit",
+	"setRule":      "standing rules are not on the queue",
+	"forgetRule":   "standing rules are not on the queue",
+	"editSpec":     "it has no spec to edit",
+	"endMilestone": "it is no milestone and does not end",
+	"unskip":       "a skipped issue leaves the queue, and an owner takes it again",
+	"startAnyway":  "its issues have no dependencies",
+	"raiseBudget":  "the pilot's budget counts per round",
+}
+
+// validQueueAction checks a known tool of the pilot of the loose issues queue
+// (Queue task qt): the refused tools, the queue's own commands and the scope,
+// its pending, active or held items. next: validAction checks the rest as on
+// a milestone (openIssue, fixFlaky, retryPipeline and the tools on a task).
+func validQueueAction(a aiv1.PilotAction, qt *aiv1.AgentTask) (next bool, err error) {
+	ap := qt.Status.Autopilot
+	if why := queueRefused[a.Tool]; why != "" {
+		return false, fmt.Errorf("`%s` is not on the loose issues queue: %s", a.Tool, why)
+	}
+	switch {
+	case a.Tool == "openIssue" || a.Tool == "fixFlaky" || a.Tool == "retryPipeline":
+		return true, nil
+	case ap == nil || ap.Phase == aiv1.AutopilotOff:
+		return false, errors.New("the loose issues queue is off")
+	case a.Tool == "pause" && ap.Phase == aiv1.AutopilotPaused:
+		return false, errors.New("the loose issues queue is paused already")
+	case a.Tool == "pause", a.Tool == "resume" && a.IssueIID == 0 && ap.Phase == aiv1.AutopilotPaused:
+		return false, nil // the whole queue
+	case a.Tool == "resume" && a.IssueIID == 0:
+		return false, errors.New("the loose issues queue is not paused")
+	case !queueHas(qt, a.IssueIID):
+		return false, fmt.Errorf("#%d is not in the loose issues queue", a.IssueIID)
+	}
+	switch a.Tool {
+	case "resume":
+		if heldItem(ap, a.IssueIID) == nil && (ap.Phase != aiv1.AutopilotPaused || ap.PausedFor != a.IssueIID) {
+			return false, fmt.Errorf("#%d is not held", a.IssueIID)
+		}
+	case "rebase", "mergeBase":
+		return false, activeMR(ap, a.IssueIID)
+	case "markDone":
+		// Never an active one: that would pass the merge gate by.
+		if it := ap.Items[slices.IndexFunc(ap.Items, func(it aiv1.AutopilotItem) bool { return it.IID == a.IssueIID && !finished(it) })]; it.State != aiv1.AutopilotItemPending {
+			return false, fmt.Errorf("#%d is %s; only a pending issue can be marked done", a.IssueIID, strings.ToLower(string(it.State)))
+		}
+	case "skip": // a drop (loosePilotCommands)
+	default:
+		return true, nil
+	}
+	return false, nil
 }
 
 // activeMR refuses rebase and mergeBase on anything but the active issue of
@@ -149,7 +210,8 @@ func validWayOut(a aiv1.PilotAction, st *aiv1.AgentTask) error {
 }
 
 // checkOpenIssue refuses an issue that is closed, gone or no longer in the
-// milestone of st.
+// milestone of st; for a Queue task st, one that got a milestone or is no
+// pending, active or held item of its queue.
 func checkOpenIssue(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask, iid int64) error {
 	is, err := gl.GetIssue(ctx, spec.GitLab.Project, iid)
 	switch {
@@ -159,6 +221,10 @@ func checkOpenIssue(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSp
 		return fmt.Errorf("getting issue #%d: %w", iid, err)
 	case is.State != "opened":
 		return fmt.Errorf("#%d is closed", iid)
+	case st.Spec.Type == aiv1.TaskTypeQueue:
+		if is.Milestone != nil || !queueHas(st, iid) {
+			return fmt.Errorf("#%d is not in the loose issues queue", iid)
+		}
 	case is.Milestone == nil || st.Spec.Milestone == nil || is.Milestone.ID != st.Spec.Milestone.ID:
 		return fmt.Errorf("#%d is not in this milestone", iid)
 	}

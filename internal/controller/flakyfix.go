@@ -207,7 +207,7 @@ func looseQueue(spec aiv1.AgentProjectSpec, qt *aiv1.AgentTask) (*aiv1.AgentTask
 // flakyMilestone is the milestone a flaky issue handed over by spec task st
 // (nil: none) goes into: none while the loose issues queue takes them.
 func flakyMilestone(spec aiv1.AgentProjectSpec, st *aiv1.AgentTask) int64 {
-	if st == nil || spec.LooseIssues.Enabled {
+	if st == nil || spec.LooseIssues.Enabled || st.Spec.Milestone == nil {
 		return 0
 	}
 	return st.Spec.Milestone.IID

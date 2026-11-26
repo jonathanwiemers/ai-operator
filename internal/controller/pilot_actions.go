@@ -614,7 +614,7 @@ func (r *AgentProjectReconciler) runAccepted(ctx context.Context, gl gitlab.API,
 				errs[i][j] = errors.New("the pilot proposes now (`/pilot stop` or `pilot.autonomy`)")
 			} else if errs[i][j] == nil && a.Tool == "openIssue" {
 				opened = append(opened, titleKey(a.Title))
-			} else if errs[i][j] == nil && (a.Tool == "unskip" || a.Tool == "markDone") {
+			} else if errs[i][j] == nil && (a.Tool == "unskip" || a.Tool == "markDone" || queueIssue(st, a)) {
 				errs[i][j] = checkOpenIssue(ctx, gl, spec, st, a.IssueIID)
 			}
 		}
@@ -746,7 +746,7 @@ func (r *AgentProjectReconciler) runAction(ctx context.Context, gl gitlab.API, p
 		if by != "" {
 			takenBy = "@" + by
 		}
-		return "", r.handOverFlaky(ctx, gl, spec, mh, st, loose, is, fmt.Sprintf("the pilot of milestone %q, %s", inertLine(st.Spec.Milestone.Title, 100), how), takenBy, by != "")
+		return "", r.handOverFlaky(ctx, gl, spec, mh, st, loose, is, fmt.Sprintf("the pilot of %s, %s", pilotOf(st), how), takenBy, by != "")
 	case "retryPipeline":
 		// Checked again: the branch may be green or have a newer pipeline.
 		if err := checkRetryPipeline(project.Status.MainHealth, a.PipelineID); err != nil {
@@ -772,13 +772,21 @@ func (r *AgentProjectReconciler) runAction(ctx context.Context, gl gitlab.API, p
 		_, err = gl.UpdateMilestoneDescription(ctx, spec.GitLab.Project, st.Spec.Milestone.ID, desc)
 		return "", err
 	case "openIssue":
-		_, err := gl.CreateIssue(ctx, spec.GitLab.Project, gitlab.CreateIssueOptions{
+		of := "the loose issues queue"
+		if st.Spec.Type != aiv1.TaskTypeQueue {
+			of = inertLine(st.Spec.Milestone.Title, 200)
+		}
+		is, err := gl.CreateIssue(ctx, spec.GitLab.Project, gitlab.CreateIssueOptions{
 			Title: inertLine(a.Title, 200),
 			Description: fmt.Sprintf("%s\n\n_Opened by the pilot of %s (%s)._\n\n<!-- ai-operator:pilot-issue=%s -->",
-				notify.Inert(a.Note), inertLine(st.Spec.Milestone.Title, 200), how, titleKey(a.Title)),
+				notify.Inert(a.Note), of, how, titleKey(a.Title)),
 			Labels: spec.Workflow.GeneratedLabel,
 		})
-		return "", err
+		if err != nil || st.Spec.Type != aiv1.TaskTypeQueue {
+			return "", err
+		}
+		// Not taken on its own: the owners decide what the queue works on.
+		return fmt.Sprintf("opened #%d, not in the queue; an owner takes it with `%s take #%d`", is.IID, spec.Workflow.CommandPrefix, is.IID), nil
 	}
 	running := false
 	// On a fresh copy, tried again on a conflict: the task changes as it runs.
@@ -831,10 +839,27 @@ func (r *AgentProjectReconciler) runAction(ctx context.Context, gl gitlab.API, p
 	return fmt.Sprintf("queued for #%d's next run", a.IssueIID), nil
 }
 
-// markDone closes issue a.IssueIID of the milestone of st as done (the done
-// label, the active labels removed) at an owner's answer (how), with the
-// pilot's reason on the issue. Autopilot then counts it as done by hand
-// (doneByHand): merged, so the issues that wait for it can start.
+// queueIssue reports whether action a of the pilot of Queue task st is on
+// one of its issues, checked in GitLab before it runs (checkOpenIssue); a
+// pause is the whole queue's.
+func queueIssue(st *aiv1.AgentTask, a aiv1.PilotAction) bool {
+	return st.Spec.Type == aiv1.TaskTypeQueue && a.IssueIID != 0 && a.Tool != "fixFlaky" && a.Tool != "pause"
+}
+
+// pilotOf names what the pilot of st steers: the milestone of spec task st,
+// or the loose issues queue of a Queue task.
+func pilotOf(st *aiv1.AgentTask) string {
+	if st.Spec.Type == aiv1.TaskTypeQueue {
+		return "the loose issues queue"
+	}
+	return fmt.Sprintf("milestone %q", inertLine(st.Spec.Milestone.Title, 100))
+}
+
+// markDone closes issue a.IssueIID of the milestone (or loose issues queue)
+// of st as done (the done label, the active labels removed) at an owner's
+// answer (how), with the pilot's reason on the issue. Autopilot then counts
+// it as done by hand (doneByHand): merged, so the issues that wait for it can
+// start.
 func markDone(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask, how string, a aiv1.PilotAction) error {
 	wf := spec.Workflow
 	// The reason first, so the issue never closes without it; an accepted
@@ -843,8 +868,7 @@ func markDone(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, st
 	if strings.TrimSpace(a.Note) != "" {
 		reason = inertLine(a.Note, 2000)
 	}
-	body := fmt.Sprintf("✅ Closed as done by the pilot of milestone %q (%s), not merged by autopilot: %s",
-		inertLine(st.Spec.Milestone.Title, 100), how, reason)
+	body := fmt.Sprintf("✅ Closed as done by the pilot of %s (%s), not merged by autopilot: %s", pilotOf(st), how, reason)
 	if _, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, a.IssueIID, body); err != nil {
 		return fmt.Errorf("commenting on #%d: %w", a.IssueIID, err)
 	}
@@ -891,7 +915,10 @@ func (r *AgentProjectReconciler) queueCommand(ctx context.Context, st *aiv1.Agen
 		if rs := t.Status.Revisits; rs != nil {
 			done = rs.LastPilotCommand
 		}
-		if ap := t.Status.Autopilot; ap != nil {
+		switch ap := t.Status.Autopilot; {
+		case ap != nil && t.Spec.Type == aiv1.TaskTypeQueue:
+			done = ap.LastPilotCommand // the queue has no revisits
+		case ap != nil:
 			done = min(done, ap.LastPilotCommand)
 		}
 		cmds = slices.DeleteFunc(cmds, func(x aiv1.PilotCommand) bool { return x.Seq <= done && x.Seq != c.Seq-1 })
