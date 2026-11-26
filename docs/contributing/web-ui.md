@@ -1048,18 +1048,29 @@ Tailwind utilities, from the pure layout module `web/src/timeline.ts`
   and milestones get `--chart-1` … `--chart-6`, then `--chart-other`.
   `nowPct` places the now line (null outside the window); `ticks` labels
   whole hours (`HH:00`) up to 36 h and local midnights beyond.
-- **Look.** Segments are absolutely placed spans: running `tone-progress`,
-  waiting `tone-muted`, held `tone-warning` (on the Overview the milestone's
-  chart colour, mixed 40/12/25 %). A diamond marks the merge
-  (`tone-success-fg`) or the skip (`tone-muted-fg`). The legend lists the
-  segment kinds, or the milestones (`legendTitle`: `%5 Parser`), then
-  *Merged* and *Skipped*. Light and dark come from the tokens.
+- **Look.** Segments are absolutely placed spans with `data-segment` of
+  five kinds (`segmentKey`, in key order): running, review, CI, waiting
+  and held. The fill is the kind's tone bg on the Issues tab (`progress`,
+  `info`, `neutral`, `muted`, `warning`), and on the Overview the
+  milestone's chart colour mixed into `--surface` (40 % running, review and
+  CI, 12 % waiting, 25 % held). On both, the 3 px bottom stripe is the
+  kind's token, `--segment-running|review|ci|waiting|held` in `style.css`:
+  aliases of those tones' fgs, each at 3:1 on `--surface` in light and dark
+  (`web/test/contrast.test.mjs`). Waiting also gets a 45° hatch, a
+  `repeating-linear-gradient` in `--segment-waiting` at 30 % over its fill,
+  set inline so it adds nothing to the global stylesheet. A diamond marks
+  the merge (`tone-success-fg`) or the skip (`tone-muted-fg`). The key lists
+  the milestones first on the Overview (`legendTitle`: `%5 Parser`), then
+  the five kinds with their stripe (and the hatch), then *Merged* and
+  *Skipped*.
 - **Phones.** The label column is `sticky left-0` (112 px, 224 px from
   tablet), and the track has `min-w-[40rem]` inside an `overflow-x-auto`
   box, so at 375 px the axis scrolls sideways under fixed labels.
 - **Accessibility.** A bar is a `RouterLink` to `deskURL`, its `aria-label`
-  and `title` from `barName` ("#42 Add parser, running 12 min, merged
-  14:05"; the Overview adds ", in %5"). A bar without a link is a `span`
+  and `title` from `barName`: each kind's time above zero in key order,
+  then the end ("#42 Add parser, running 12 min, review 4 min, CI 18 min,
+  waiting 6 min, merged 14:05", or "in CI since 14:05" while open; the
+  Overview adds ", in %5"). A bar without a link is a `span`
   with `role="img"`. Each line is a labelled `<ul>`.
 - **Live.** The hosts (`MilestoneTimeline.vue`, `OverviewTimeline.vue`,
   each a lazy `defineAsyncComponent`) reload with `useResource` on `task`
@@ -1068,7 +1079,8 @@ Tailwind utilities, from the pure layout module `web/src/timeline.ts`
 
 The e2e cases in `web/e2e/timeline.spec.ts` and
 `web/e2e/overview-timeline.spec.ts` cover the switch, the bars and their
-links, packing, the windows, the no-history case and the axe check.
+links, the five kinds with their stripe tokens and the hatch, the key,
+packing, the windows, the no-history case and the axe check.
 
 ### Composer
 

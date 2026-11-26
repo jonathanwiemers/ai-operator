@@ -6,14 +6,14 @@
 // HTML and CSS only: nothing in Nuxt UI draws a time axis, and a canvas
 // cannot be reached by keyboard.
 import type { ChartToken } from '../chartData'
-import type { LegendEntry, SegmentLayout, Tick, TimelineBarItem, TimelineGroupItem } from '../timeline'
+import { segmentKey, type LegendEntry, type SegmentLayout, type Tick, type TimelineBarItem, type TimelineGroupItem } from '../timeline'
 
 defineProps<{
   groups: TimelineGroupItem[]
   ticks: Tick[]
   nowPct: number | null
-  // legend: the milestones by colour (the Overview); without it a key of
-  // the segment tones shows.
+  // legend: the milestones by colour (the Overview), shown first in the
+  // key, before the segment kinds (D830-P3).
   legend?: Pick<LegendEntry, 'key' | 'title' | 'token'>[]
 }>()
 
@@ -22,30 +22,34 @@ defineProps<{
 // ending at now.
 const labelCol = 'sticky left-0 z-10 w-28 shrink-0 bg-(--surface) tablet:w-56'
 const trackBox = 'relative mr-10 flex-1'
+// The Issues tab's fill: the kind's tone bg. The stripe is the kind's
+// --segment-* token on both views (stripe below).
 const tone: Record<SegmentLayout['kind'], string> = {
-  running: 'border-(--tone-progress-fg) bg-(--tone-progress-bg)',
-  review: 'border-(--tone-info-fg) bg-(--tone-info-bg)',
-  ci: 'border-(--tone-neutral-fg) bg-(--tone-neutral-bg)',
-  waiting: 'border-(--tone-muted-fg) bg-(--tone-muted-bg)',
-  held: 'border-(--tone-warning-fg) bg-(--tone-warning-bg)',
+  running: 'bg-(--tone-progress-bg)',
+  review: 'bg-(--tone-info-bg)',
+  ci: 'bg-(--tone-neutral-bg)',
+  waiting: 'bg-(--tone-muted-bg)',
+  held: 'bg-(--tone-warning-bg)',
 }
 // On the Overview a segment takes its milestone's colour, stronger while
-// running, mixed into the surface so the label keeps its contrast.
+// working, mixed into the surface so the label keeps its contrast.
 const mix: Record<SegmentLayout['kind'], number> = { running: 40, review: 40, ci: 40, held: 25, waiting: 12 }
-const keyItems = [
-  { kind: 'running', label: 'Running' },
-  { kind: 'waiting', label: 'Waiting' },
-  { kind: 'held', label: 'Held' },
-] as const
+// Waiting is hatched over its fill, so it reads as part of the bar and not
+// as a gap (D830-P2). Inline, so it adds nothing to the global stylesheet.
+const hatch = 'repeating-linear-gradient(45deg, color-mix(in srgb, var(--segment-waiting) 30%, transparent) 0 2px, transparent 2px 6px)'
+
+function stripe(kind: SegmentLayout['kind']) {
+  return { borderColor: `var(--segment-${kind})`, backgroundImage: kind === 'waiting' ? hatch : undefined }
+}
 
 function barStyle(b: TimelineBarItem) {
   return { left: `${b.bar.left}%`, width: `${b.bar.width}%` }
 }
 
 function segStyle(s: SegmentLayout, token?: ChartToken) {
-  const at = { left: `${s.left}%`, width: `${s.width}%` }
+  const at = { left: `${s.left}%`, width: `${s.width}%`, ...stripe(s.kind) }
   if (!token) return at
-  return { ...at, borderColor: `var(${token})`, background: `color-mix(in srgb, var(${token}) ${mix[s.kind]}%, var(--surface))` }
+  return { ...at, backgroundColor: `color-mix(in srgb, var(${token}) ${mix[s.kind]}%, var(--surface))` }
 }
 </script>
 
@@ -143,16 +147,12 @@ function segStyle(s: SegmentLayout, token?: ChartToken) {
       :class="legend?.length ? 'order-first mb-2' : 'mt-2'"
       data-timeline-key
     >
-      <template v-if="legend?.length">
-        <li v-for="l in legend" :key="l.key" class="flex items-center gap-1.5">
-          <span class="size-2.5 rounded-sm" :style="{ background: `var(${l.token})` }" aria-hidden="true" />{{ l.title }}
-        </li>
-      </template>
-      <template v-else>
-        <li v-for="k in keyItems" :key="k.kind" class="flex items-center gap-1.5">
-          <span class="h-2.5 w-4 rounded-sm border-b-[3px]" :class="tone[k.kind]" aria-hidden="true" />{{ k.label }}
-        </li>
-      </template>
+      <li v-for="l in legend" :key="l.key" class="flex items-center gap-1.5" data-legend>
+        <span class="size-2.5 rounded-sm" :style="{ background: `var(${l.token})` }" aria-hidden="true" />{{ l.title }}
+      </li>
+      <li v-for="k in segmentKey" :key="k.kind" class="flex items-center gap-1.5" :data-key="k.kind">
+        <span class="h-2.5 w-4 rounded-sm border-b-[3px]" :class="tone[k.kind]" :style="stripe(k.kind)" aria-hidden="true" />{{ k.label }}
+      </li>
       <li class="flex items-center gap-1.5">
         <span class="size-2 rotate-45 bg-(--tone-success-fg)" aria-hidden="true" />Merged
       </li>

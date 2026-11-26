@@ -89,24 +89,44 @@ shows one row per issue, grouped by [wave](../concepts/glossary.md#wave),
 on a time axis:
 
 ```
-W1  #11 Add parser    ████▒▒▒▒▒▒◆
-    #12 Add lexer      ███▒▒▒▒◆
-W2  #13 Wire it up              ██▒▒░░░░███▒◆      │ now
+W1  #11 Add parser    ███▓▓▒▒▒▒//◆
+    #12 Add lexer      ██▓▒▒▒//◆
+W2  #13 Wire it up              ██▓▒▒░░░░███▓▒◆      │ now
 ```
 
-Each bar is the issue's life, from its first run:
+Each bar is the issue's life, from its first run to its merge, its skip or
+now. Every part of it has one of five kinds:
 
-- **running** (strong colour): an agent run worked on it;
-- **waiting** (pale): it waited for CI, a review or a free slot;
-- **held** (warning colour): it was [held](../concepts/glossary.md#hold);
-- a **diamond** marks the merge (green) or the skip (grey).
+- **running**: an agent run worked on it, the implementer or a fix run;
+- **review**: the reviewers read its merge request;
+- **CI**: a pipeline of its merge request ran, also one started by a
+  rebase without a new push;
+- **waiting**: everything else, for example the wait for its merge turn, a
+  usage limit or a full queue;
+- **held**: it was [held](../concepts/glossary.md#hold).
+
+A **diamond** marks the merge (green) or the skip (grey).
+
+Each kind has its own fill and a thin stripe in its own colour along the
+bottom of the bar. You tell the kinds apart by the stripe, in light and in
+dark mode. Waiting also has a diagonal hatch, so it reads as part of the
+bar and not as a gap. No part of a bar is blank.
+
+Where two kinds meet, one wins: review, then running, then CI, then held,
+then waiting. The reviewers work inside a run, so their time shows as
+review. A pipeline that runs while the issue is held shows as CI.
 
 An issue still open ends at the line that marks now. Issues that ran side
-by side sit side by side. The legend under the timeline names the colours.
+by side sit side by side. The key under the timeline names the five kinds,
+*Merged* and *Skipped*.
 
-Each bar is a link to the issue's page. A screen reader reads it as, for
-example, "#42 Add parser, running 12 min, merged 14:05". On a phone the
-issue names stay on the left and the time axis scrolls sideways.
+Each bar is a link to the issue's page. When you hover it, or a screen
+reader reaches it, you get the split, for example "#42 Add parser, running
+15 min, review 5 min, CI 15 min, waiting 10 min, merged 14:05". A kind with
+no time is left out. An open issue ends with what it does now: "running
+now", "in review since 14:05", "in CI since 14:05", "waiting since 14:05"
+or "held since 14:05". On a phone the issue names stay on the left and the
+time axis scrolls sideways.
 
 *Lanes* is the queue by lane, as before: *Running*, *Landing*, *Ready to
 land*, *Waiting*, *Held* and *Done*. Your choice is part of the address
@@ -116,21 +136,31 @@ The timeline needs the research database. Without it the tab shows
 *Lanes* and no switch. Holds are drawn from the operator version that
 records them; older issues show no held segments.
 
+A review shows once its reviewer is done; while the reviewers still work,
+that time shows as running. Issues from before the release that added
+review and CI time still get their review segments. Their CI time runs
+from their push to their CI result, and a pipeline started by a rebase
+shows as waiting there.
+
 ## The Overview timeline
 
 The *Overview* has a *Timeline* tab (`/?tab=timeline`). It shows one
 row per project you may see:
 
 ```
-6 h | 24 h | 7 d          ■ %5 Checkout  ■ %9 Docs  ◆ Merged  ◆ Skipped
+6 h | 24 h | 7 d
+■ %5 Checkout  ■ %9 Docs  ▁ Running  ▁ Review  ▁ CI  ▁ Waiting  ▁ Held  ◆ Merged  ◆ Skipped
 
 shop   #340 ███▒▒◆   #341 ██▒▒▒▒▒◆
             #342  ████▒▒▒◆
 docs                #12 ██▒◆                      │ now
 ```
 
-- Each bar is one issue, labelled `#iid` and coloured by its milestone.
-  The legend lists the milestones in view.
+- Each bar is one issue, labelled `#iid` and filled with its milestone's
+  colour. The key lists the milestones in view first.
+- The stripe along a bar's bottom shows the five kinds, in the same
+  colours as on the *Issues* tab. Waiting has its hatch here too. The key
+  names the kinds after the milestones.
 - When bars of one project overlap, the row grows another line, so no bar
   hides another.
 - Pick the window: *6 h*, *24 h* or *7 d*. It is part of the address

@@ -78,22 +78,57 @@ test('one row per project, bars on lines that do not overlap, legend and colours
   // #4 ran three days ago: outside the 24 h window.
   await expect(bar(page, `team-b/${longProject}`, 3, 4)).toHaveCount(0)
 
+  // The milestone legend first, then the segment kinds (D830-P3).
   const legend = section(page).locator('[data-timeline-key] li')
-  await expect(legend).toHaveText(['%14 Payment providers', '%15 Refunds', '%3 Search', 'Merged', 'Skipped'])
+  await expect(legend).toHaveText([
+    '%14 Payment providers',
+    '%15 Refunds',
+    '%3 Search',
+    'Running',
+    'Review',
+    'CI',
+    'Waiting',
+    'Held',
+    'Merged',
+    'Skipped',
+  ])
 
-  // A bar's running segment takes its milestone's colour; the legend's
-  // swatch shows the same colour.
-  const colour = (iid: number, ms: number, project = 'team-a/shop') =>
+  // A bar's running segment is filled with its milestone's colour mixed
+  // into the surface: the same for one milestone, another for the next.
+  const fill = (iid: number, ms: number, project = 'team-a/shop') =>
     bar(page, project, ms, iid)
       .locator('[data-segment="running"]')
       .first()
-      .evaluate((el) => getComputedStyle(el).borderBottomColor)
-  const swatch = (n: number) => legend.nth(n).locator('span').evaluate((el) => getComputedStyle(el).backgroundColor)
-  expect(await colour(11, 14)).toBe(await colour(12, 14))
-  expect(await colour(11, 14)).toBe(await swatch(0))
-  expect(await colour(20, 15)).toBe(await swatch(1))
-  expect(await colour(7, 3, `team-b/${longProject}`)).toBe(await swatch(2))
-  expect(await colour(11, 14)).not.toBe(await colour(20, 15))
+      .evaluate((el) => getComputedStyle(el).backgroundColor)
+  expect(await fill(11, 14)).toBe(await fill(12, 14))
+  expect(await fill(11, 14)).not.toBe(await fill(20, 15))
+  expect(await fill(20, 15)).not.toBe(await fill(7, 3, `team-b/${longProject}`))
+  expect(problems).toEqual([])
+})
+
+test('the stripes take the segment tokens, not the milestone colour; waiting is hatched@1280', async ({ page, baseURL }) => {
+  const { problems } = await open(page, baseURL)
+  // The timeline is lazy: wait for its rows before counting segments.
+  await expect(rows(page)).toHaveCount(2)
+  await expect(bar(page, 'team-a/shop', 14, 11)).toBeVisible()
+  const token = (name: string) =>
+    page.evaluate((name) => {
+      const probe = document.createElement('span')
+      probe.style.color = `var(${name})`
+      document.body.append(probe)
+      const c = getComputedStyle(probe).color
+      probe.remove()
+      return c
+    }, name)
+  for (const kind of ['running', 'review', 'ci', 'waiting', 'held']) {
+    const segs = section(page).locator(`[data-segment="${kind}"]`)
+    expect(await segs.count(), `a ${kind} segment`).toBeGreaterThan(0)
+    const want = await token(`--segment-${kind}`)
+    for (const c of await segs.evaluateAll((els) => els.map((el) => getComputedStyle(el).borderBottomColor))) expect(c, `${kind} stripe`).toBe(want)
+  }
+  const waiting = section(page).locator('[data-segment="waiting"]').first()
+  expect(await waiting.evaluate((el) => getComputedStyle(el).backgroundImage)).toContain('repeating-linear-gradient')
+  await expect(bar(page, 'team-a/shop', 14, 11)).toHaveAttribute('aria-label', /^#11 .*, running 40 min, review 5 min, CI 15 min, waiting 40 min, merged .*, in %14$/)
   expect(problems).toEqual([])
 })
 

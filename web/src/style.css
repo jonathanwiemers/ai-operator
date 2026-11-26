@@ -56,6 +56,15 @@
   --tone-danger-bg: #fde4e1;
   --tone-danger-fg: #b3261e;
 
+  /* The timeline's segment stripes (docs/contributing/web-ui.md, "UI kit"),
+     aliases of the tone fgs; .dark changes the tones, so they follow. Each
+     keeps 3:1 on --surface (test/contrast.test.mjs). */
+  --segment-running: var(--tone-progress-fg);
+  --segment-review: var(--tone-info-fg);
+  --segment-ci: var(--tone-neutral-fg);
+  --segment-waiting: var(--tone-muted-fg);
+  --segment-held: var(--tone-warning-fg);
+
   /* Chart series (docs/contributing/web-ui.md, "UI kit"): six slots plus Other, assigned per
      key by chartData.ts's colorSlots. Checked on --surface for every pair,
      not only neighbours, since any two slots can meet in a stack; each

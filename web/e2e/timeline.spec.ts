@@ -128,6 +128,53 @@ test('bars: waves, overlap, segments, markers and links@1280', async ({ page, ba
   await expect(page).toHaveURL(new RegExp(`${issuePath(13)}$`))
 })
 
+// token is the computed colour of a CSS custom property on the page.
+const token = (page: Page, name: string) =>
+  page.evaluate((name) => {
+    const probe = document.createElement('span')
+    probe.style.color = `var(${name})`
+    document.body.append(probe)
+    const c = getComputedStyle(probe).color
+    probe.remove()
+    return c
+  }, name)
+
+for (const colorScheme of ['light', 'dark'] as const) {
+  test(`five segment kinds: in order, striped by token, waiting hatched, all in the key (${colorScheme})@1280`, async ({ page, baseURL }) => {
+    const problems = await open(page, baseURL, { colorScheme })
+    // #11: running, then its review, CI and the wait, up to the merge marker.
+    const b11 = bar(page, 11)
+    await expect(b11.locator('[data-segment]')).toHaveCount(4)
+    const kinds = await b11.locator('[data-segment]').evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset.segment))
+    expect(kinds).toEqual(['running', 'review', 'ci', 'waiting'])
+    await expect(b11).toHaveAttribute('aria-label', /^#11 Add the card provider, running 40 min, review 5 min, CI 15 min, waiting 40 min, merged /)
+    await expect(bar(page, 13)).toHaveAttribute('aria-label', /^#13 .*, running 40 min, CI 10 min, waiting 30 min, merged /)
+
+    // No blank part: the segments cover the bar from its start to the marker.
+    const span = await b11.evaluate((el) => {
+      const r = el.getBoundingClientRect()
+      const segs = [...el.querySelectorAll('[data-segment]')].map((s) => s.getBoundingClientRect())
+      return { gaps: segs.slice(1).map((s, i) => s.left - segs[i]!.right), first: segs[0]!.left - r.left, last: r.right - segs.at(-1)!.right }
+    })
+    for (const g of [...span.gaps, span.first, span.last]) expect(Math.abs(g)).toBeLessThan(1)
+
+    for (const kind of ['running', 'review', 'ci', 'waiting', 'held']) {
+      const seg = timeline(page).locator(`[data-segment="${kind}"]`).first()
+      await expect(seg).toHaveCount(1)
+      expect(await seg.evaluate((el) => getComputedStyle(el).borderBottomColor), `${kind} stripe`).toBe(await token(page, `--segment-${kind}`))
+      const image = await seg.evaluate((el) => getComputedStyle(el).backgroundImage)
+      if (kind === 'waiting') expect(image).toContain('repeating-linear-gradient')
+      else expect(image).toBe('none')
+    }
+
+    const key = page.locator('main [data-timeline-key] li')
+    await expect(key).toHaveText(['Running', 'Review', 'CI', 'Waiting', 'Held', 'Merged', 'Skipped'])
+    const swatch = page.locator('main [data-timeline-key] [data-key="waiting"] span')
+    expect(await swatch.evaluate((el) => getComputedStyle(el).backgroundImage)).toContain('repeating-linear-gradient')
+    expect(problems).toEqual([])
+  })
+}
+
 test('at 375 px the labels stay while the axis scrolls@375', async ({ page, baseURL }) => {
   const problems = await open(page, baseURL, { width: 375 })
   const scroller = timeline(page)

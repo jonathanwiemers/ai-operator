@@ -135,10 +135,36 @@ export function ticks(from: number, to: number): Tick[] {
   return out
 }
 
-// runningMs is the union of a row's running segments, open ones up to now.
-function runningMs(row: Pick<TimelineRow, 'segments'>, now: number): number {
+type SegmentKind = TimelineSegmentView['kind']
+
+// SegmentToken is a segment kind's stripe colour in style.css.
+type SegmentToken = `--segment-${SegmentKind}`
+
+// segmentKey is the timeline's key of segment kinds, in the order of the
+// key and of a bar's accessible name (Goal 4 of "Desk timeline: review and
+// CI time on every issue bar"): label in the key, word in the name, token
+// of the stripe.
+export const segmentKey: { kind: SegmentKind; label: string; word: string; token: SegmentToken }[] = [
+  { kind: 'running', label: 'Running', word: 'running', token: '--segment-running' },
+  { kind: 'review', label: 'Review', word: 'review', token: '--segment-review' },
+  { kind: 'ci', label: 'CI', word: 'CI', token: '--segment-ci' },
+  { kind: 'waiting', label: 'Waiting', word: 'waiting', token: '--segment-waiting' },
+  { kind: 'held', label: 'Held', word: 'held', token: '--segment-held' },
+]
+
+// openWords is how a bar's name ends while its last segment is open.
+const openWords: Record<SegmentKind, string> = {
+  running: 'running',
+  review: 'in review',
+  ci: 'in CI',
+  waiting: 'waiting',
+  held: 'held',
+}
+
+// kindMs is the union of a row's segments of one kind, open ones up to now.
+function kindMs(row: Pick<TimelineRow, 'segments'>, kind: SegmentKind, now: number): number {
   const spans = (row.segments ?? [])
-    .filter((s) => s.kind === 'running')
+    .filter((s) => s.kind === kind)
     .map((s) => [ms(s.start), ms(s.end) ?? now] as const)
     .filter((s): s is readonly [number, number] => s[0] !== null)
     .sort((x, y) => x[0] - y[0])
@@ -151,17 +177,21 @@ function runningMs(row: Pick<TimelineRow, 'segments'>, now: number): number {
   return total
 }
 
-// barName is a bar's accessible name (Decision 5, D665-P3): "#42 Add
-// parser, running 12 min, merged 14:05", with ", in %5" on the Overview.
+// barName is a bar's accessible name (Decision 5, D665-P3, D830-P4): "#42
+// Add parser, running 12 min, review 4 min, CI 18 min, waiting 6 min,
+// merged 14:05" (each kind above zero), "in CI since 14:05" or "running
+// now" while open, with ", in %5" on the Overview.
 export function barName(row: TimelineRow, now: number, opts: { milestone?: boolean } = {}): string {
   const parts = [row.issueTitle ? `#${row.issueIID} ${row.issueTitle}` : `#${row.issueIID}`]
-  const run = runningMs(row, now)
-  if (run > 0) parts.push(`running ${duration(run)}`)
+  for (const k of segmentKey) {
+    const t = kindMs(row, k.kind, now)
+    if (t > 0) parts.push(`${k.word} ${duration(t)}`)
+  }
   const open = (row.segments ?? []).filter((s) => !s.end).at(-1)
   if (row.mergedAt) parts.push(`merged ${clockTime(row.mergedAt, now)}`)
   else if (row.skippedAt) parts.push(`skipped ${clockTime(row.skippedAt, now)}`)
   else if (open?.kind === 'running') parts.push('running now')
-  else if (open) parts.push(`${open.kind} since ${clockTime(open.start, now)}`)
+  else if (open) parts.push(`${openWords[open.kind]} since ${clockTime(open.start, now)}`)
   if (opts.milestone && row.milestoneIID > 0) parts.push(`in %${row.milestoneIID}`)
   return parts.join(', ')
 }

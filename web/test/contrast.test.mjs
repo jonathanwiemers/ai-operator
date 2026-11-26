@@ -70,6 +70,7 @@ const color = (vars, name) => resolve(vars, `var(${name})`)
 
 const texts = ['--text', '--text-2', '--text-3']
 const surfaces = ['--bg', '--surface', '--surface-2']
+const segments = ['--segment-running', '--segment-review', '--segment-ci', '--segment-waiting', '--segment-held']
 const charts = ['--chart-1', '--chart-2', '--chart-3', '--chart-4', '--chart-5', '--chart-6', '--chart-other']
 
 test('the helpers measure known pairs', () => {
@@ -106,6 +107,13 @@ for (const [mode, vars] of Object.entries(modes)) {
     for (const c of charts) {
       const r = contrast(color(vars, c), color(vars, '--surface'))
       assert.ok(r >= 3, `${c} on --surface: ${r.toFixed(2)}:1`)
+    }
+  })
+
+  test(`${mode}: each timeline segment stripe reaches 3:1 on --surface`, () => {
+    for (const s of segments) {
+      const r = contrast(color(vars, s), color(vars, '--surface'))
+      assert.ok(r >= 3, `${s} on --surface: ${r.toFixed(2)}:1`)
     }
   })
 

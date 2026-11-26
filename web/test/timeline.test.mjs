@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { clockTime } from '../src/format.ts'
-import { barLayout, barName, gapPct, issuesView, legendTitle, milestoneGroups, milestoneLayout, nowPct, overviewGroups, overviewLayout, overviewWindow, pack, ticks, windowRange } from '../src/timeline.ts'
+import { barLayout, barName, gapPct, issuesView, legendTitle, milestoneGroups, milestoneLayout, nowPct, overviewGroups, overviewLayout, overviewWindow, pack, segmentKey, ticks, windowRange } from '../src/timeline.ts'
 
 process.env.TZ = 'UTC'
 
@@ -131,16 +131,59 @@ test('barName: merged, skipped, running, held and waiting issues', () => {
     ],
     mergedAt: at(30),
   })
-  assert.equal(barName(merged, now), `#42 Add parser, running 12 min, merged ${clockTime(at(30), now)}`)
-  assert.equal(barName(merged, now, { milestone: true }), `#42 Add parser, running 12 min, merged ${clockTime(at(30), now)}, in %5`)
+  assert.equal(barName(merged, now), `#42 Add parser, running 12 min, waiting 18 min, merged ${clockTime(at(30), now)}`)
+  assert.equal(barName(merged, now, { milestone: true }), `#42 Add parser, running 12 min, waiting 18 min, merged ${clockTime(at(30), now)}, in %5`)
   const skipped = row({ issueTitle: '', segments: [], skippedAt: at(40), milestoneIID: 0 })
   assert.equal(barName(skipped, now, { milestone: true }), `#42, skipped ${clockTime(at(40), now)}`)
   const running = row({ segments: [{ kind: 'running', start: new Date(now - 20 * 60000).toISOString() }] })
   assert.equal(barName(running, now), '#42 Add parser, running 20 min, running now')
   const held = row({ segments: [{ kind: 'running', start: at(0), end: at(3) }, { kind: 'held', start: at(3) }] })
-  assert.equal(barName(held, now), `#42 Add parser, running 3 min, held since ${clockTime(at(3), now)}`)
+  assert.equal(barName(held, now), `#42 Add parser, running 3 min, held 4 h 57 min, held since ${clockTime(at(3), now)}`)
   const waiting = row({ segments: [{ kind: 'running', start: at(0), end: at(3) }, { kind: 'waiting', start: at(3) }] })
-  assert.equal(barName(waiting, now), `#42 Add parser, running 3 min, waiting since ${clockTime(at(3), now)}`)
+  assert.equal(barName(waiting, now), `#42 Add parser, running 3 min, waiting 4 h 57 min, waiting since ${clockTime(at(3), now)}`)
+})
+
+test('barName: the split by kind in key order, each kind counted once', () => {
+  const now = t0 + 5 * H
+  const merged = row({
+    segments: [
+      { kind: 'running', start: at(0), end: at(15) },
+      { kind: 'review', start: at(15), end: at(18) },
+      { kind: 'review', start: at(16), end: at(20) },
+      { kind: 'ci', start: at(20), end: at(35) },
+      { kind: 'held', start: at(35), end: at(38) },
+      { kind: 'waiting', start: at(38), end: at(48) },
+    ],
+    mergedAt: at(48),
+  })
+  assert.equal(
+    barName(merged, now),
+    `#42 Add parser, running 15 min, review 5 min, CI 15 min, waiting 10 min, held 3 min, merged ${clockTime(at(48), now)}`,
+  )
+  assert.equal(
+    barName(merged, now, { milestone: true }),
+    `#42 Add parser, running 15 min, review 5 min, CI 15 min, waiting 10 min, held 3 min, merged ${clockTime(at(48), now)}, in %5`,
+  )
+  const noReview = row({ segments: [{ kind: 'running', start: at(0), end: at(10) }, { kind: 'ci', start: at(10), end: at(20) }], skippedAt: at(20) })
+  assert.equal(barName(noReview, now), `#42 Add parser, running 10 min, CI 10 min, skipped ${clockTime(at(20), now)}`)
+})
+
+test('barName: an issue open in review or in CI says so', () => {
+  const now = t0 + 30 * 60000
+  const inReview = row({ segments: [{ kind: 'running', start: at(0), end: at(20) }, { kind: 'review', start: at(20) }] })
+  assert.equal(barName(inReview, now), `#42 Add parser, running 20 min, review 10 min, in review since ${clockTime(at(20), now)}`)
+  const inCI = row({ segments: [{ kind: 'running', start: at(0), end: at(25) }, { kind: 'ci', start: at(25) }] })
+  assert.equal(barName(inCI, now), `#42 Add parser, running 25 min, CI 5 min, in CI since ${clockTime(at(25), now)}`)
+})
+
+test('segmentKey: the five kinds in order with their tokens', () => {
+  assert.deepEqual(segmentKey.map((k) => [k.kind, k.label, k.token]), [
+    ['running', 'Running', '--segment-running'],
+    ['review', 'Review', '--segment-review'],
+    ['ci', 'CI', '--segment-ci'],
+    ['waiting', 'Waiting', '--segment-waiting'],
+    ['held', 'Held', '--segment-held'],
+  ])
 })
 
 test('milestoneLayout: groups by wave, wave 0 last without a heading, API order inside', () => {
