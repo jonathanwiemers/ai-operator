@@ -368,11 +368,25 @@ closed." A closed milestone is no longer planned, so `create` no longer
 works. Open a late follow-up by hand, use the Desk, or reopen the milestone,
 which brings autopilot back.
 
+## On the loose issues queue
+
+The [loose issues queue](loose-issues.md#the-queues-pilot) has a pilot of
+its own, which works in [rounds](../concepts/glossary.md#round). It uses
+the tools above, without the milestone ones:
+
+- **Allowed:** retry, reReview, instruct, retryPipeline, rebase, mergeBase,
+  fixFlaky (into the queue), openIssue (not taken into the queue), markDone
+  for a pending issue, pause and resume. A skip drops the issue.
+- **Refused, with the reason:** revisit, setRule, forgetRule, editSpec,
+  endMilestone, unskip, startAnyway and raiseBudget. It has no spec, standing
+  rules or retrospective.
+
 ## What it costs
 
 The pilot runs on its own light model
 ([`agents.pilot`](../reference/agents-and-models.md#roles)), in its own pod,
-outside the queue of runs. Its spend has a cap per milestone,
+outside the queue of runs. Its spend has a cap per milestone, and per round
+on the loose issues queue,
 [`pilot.maxBudgetUSD`](../reference/agentproject.md#specpilot). Once that is
 spent, it answers that the budget is used up, without a model call, and an
 assessment only says what happened. Comments of people who are not owners

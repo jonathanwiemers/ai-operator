@@ -218,7 +218,7 @@ See [Loose issues](../guides/loose-issues.md).
 | `/agent pause`, `/agent resume` | Stop starting and merging, or go on. |
 | `/agent resume #350` | Lift the hold of #350 only. |
 | `/agent merge #350 <sha>`, `/agent rebase #350`, `/agent mergeBase #350` | As on a milestone's [tracking issue](#on-the-tracking-issue). |
-| anything else | Answered "not on the loose issues queue". `move`, `release`, `endMilestone` and `parallel` are not queue commands: `maxParallel` is set in the AgentProject. |
+| anything else | Answered "`skip` is not on the loose issues queue." with the word you wrote, in the Desk chat too. `move`, `release`, `endMilestone`, `parallel` and `skip` are not queue commands: `maxParallel` is set in the AgentProject, and `drop` takes an issue off. |
 
 A take refuses an issue that:
 
@@ -259,6 +259,25 @@ When the pilot manages the milestone, it runs some actions on its own
 within limits, such as `rebase #12` and `mergeBase #12`. It never unskips,
 starts anyway or closes an issue on its own: those are options of its
 prompts and run only on an owner's answer.
+
+### The queue's pilot
+
+The [loose issues queue](../concepts/glossary.md#loose-issues-queue) has its
+own pilot. Write `/pilot …` on the `🤖 Loose issues` issue or on an issue in
+the queue; only the queue's `owners` may instruct it. `/pilot <question>`,
+`tell #N: <words>`, `stop`, `go` and `yes`/`no` work as above. The rest
+answers in queue words:
+
+| Comment or proposal | Answer |
+|---------------------|--------|
+| `/pilot rules`, `/pilot forget R2` | "Standing rules are not on the loose issues queue: they belong to a milestone." |
+| `/pilot coordinate` | "The pilot of the loose issues queue listens on #7.", with the tracking issue's number. It starts no other pilot. |
+| revisit, setRule, forgetRule, editSpec, endMilestone, unskip, startAnyway, raiseBudget | Refused: "`revisit` is not on the loose issues queue: it has no decisions to revisit", each with its own reason. |
+| an issue outside the queue | "#12 is not in the loose issues queue". |
+
+While the pilot writes its [round](../concepts/glossary.md#round) note,
+comments to it wait for the next round. See
+[Loose issues](../guides/loose-issues.md#the-queues-pilot).
 
 ### Answers in a prompt's thread
 

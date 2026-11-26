@@ -19,8 +19,7 @@ which tokens, which models, how many runs at a time. Its fields are in the
 
 One variant of an [experiment](#experiment): a name and the implementer
 settings it changes, such as a fresh session per step, a lower effort or a
-[profile](#profile). An issue keeps its arm for every run. See
-[Cost levers](../guides/cost-levers.md#how-issues-get-their-arm).
+[profile](#profile). An issue keeps its arm for every run. See [Cost levers](../guides/cost-levers.md#how-issues-get-their-arm).
 
 ### Autopilot
 
@@ -32,10 +31,9 @@ planned, implemented, reviewed and merged issue by issue, with the
 
 ### Budget
 
-A spending cap in US dollars, for an issue or for a whole milestone (the
-`/agent budget <usd>` line). When it is spent, autopilot pauses and asks an
-owner whether to raise it; see
-[Budgets and spend](../guides/budgets-and-spend.md).
+A spending cap in US dollars, for an issue or a whole milestone (`/agent
+budget <usd>`). When it is spent, autopilot pauses and asks an owner whether
+to raise it; see [Budgets and spend](../guides/budgets-and-spend.md).
 
 ### Cockpit
 
@@ -186,9 +184,10 @@ is above 1. See [When autopilot pauses](../guides/pauses.md).
 
 ### Pilot
 
-The agent that watches a milestone for you: it answers your questions,
-fixes what it may on its own, asks the [owners](#owner) when it needs a
-decision, and writes the [retrospective](#retrospective). See
+The agent that watches a milestone, or the [loose issues queue](#loose-issues-queue)
+in [rounds](#round), for you: it answers your questions, fixes what it may
+on its own, asks the [owners](#owner) when it needs a decision, and writes
+a milestone's [retrospective](#retrospective). See
 [Roles](roles.md#pilot) and [The pilot](../guides/pilot.md).
 
 ### Plan draft
@@ -293,6 +292,12 @@ Asking to change a recorded [decision](#decision), in the Desk or with
 changes the code; after the merge the operator opens a follow-up issue. See
 [Decisions and Revisit](../guides/iterate-and-finish.md#decisions-and-revisit).
 
+### Round
+
+A stretch of the loose issues queue's [pilot](#pilot). It ends after a number
+of finished issues or hours; the next round starts a fresh session that knows
+the last one from its round note. See [Loose issues](../guides/loose-issues.md#rounds).
+
 ### Run
 
 One piece of agent work in a [task](#task): a planning run, an
@@ -327,10 +332,9 @@ project is [dormant](#dormant-project). See
 
 ### Settling
 
-The state of a milestone whose autopilot is done and whose retrospective is
-posted: it waits up to 7 days for follow-ups. The operator then reads only
-its tracking issue, at most every 15 minutes. See
-[Retrospective](#retrospective).
+A done autopilot milestone with its retrospective posted: it waits up to 7
+days for follow-ups, and the operator reads only its tracking issue, at most
+every 15 minutes. See [Retrospective](#retrospective).
 
 ### Sign-off
 
@@ -348,9 +352,8 @@ issues, and each issue gets a short spec of its own. See
 
 ### Sub-issue
 
-One of the issues the planner writes for a milestone, one per merge
-request, with its own short spec, acceptance criteria and dependencies. See
-[How it works](how-it-works.md#from-spec-to-merged-work).
+An issue the planner writes for a milestone, one per merge request, with its
+short spec, acceptance criteria and dependencies. See [How it works](how-it-works.md#from-spec-to-merged-work).
 
 ### Task
 
@@ -367,18 +370,17 @@ commands such as `/agent pause`, and is where the pilot posts. See
 
 ### Watchdog
 
-The operator's check for runs that hang: no output from the pod for a long
-time, or a pod that cannot start. The pilot can then restart the run, and an
-owner can with *Restart run* in the Desk. There is no `/agent` command for
-it, but the restart leaves a note on the issue; see
+The operator's check for runs that hang: no pod output for a long time, or
+a pod that cannot start. The pilot or an owner (*Restart run* in the Desk)
+restarts the run, which leaves a note on the issue; see
 [How it works](how-it-works.md#when-something-goes-wrong) and the
 [`stalled` pause](../guides/pauses.md#stalled).
 
 ### Wave
 
 A layer of the plan in the Desk: issues without dependencies are the first
-wave, and each later wave depends on an earlier one. Waves are for reading
-the plan only; an issue starts as soon as its own dependencies are merged.
+wave, each later wave depends on an earlier one. Waves are for reading only;
+an issue starts as soon as its own dependencies are merged.
 
 ### Writer
 
@@ -394,6 +396,5 @@ effort; [merged lines](#merged-lines) measure the outcome. See
 
 ## Next
 
-- [How it works](how-it-works.md): the terms in context, from spec to
-  release.
+- [How it works](how-it-works.md): the terms in context, from spec to release.
 - [Roles](roles.md): the agents behind the terms.

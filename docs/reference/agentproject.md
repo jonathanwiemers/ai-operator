@@ -249,9 +249,8 @@ and asks for reviews. See [Owners and pings](../guides/owners-and-pings.md).
 | `events` | Which situations mention them: `failed`, `needsInput`, `ciFailed`, `review` (not on autopilot), `autopilotPaused`, `autopilotDone`, `mainRed`, `blocked`. | all |
 | `requestReview` | When an issue reaches review (not on autopilot), make the users the reviewers of its merge request, unless it has some. | `true` |
 
-The users must be members of the project to be notified. The pilot's
-proposals in the Desk need the milestone line `/agent owner-subjects …`;
-there is no project-wide fallback.
+The users must be members of the project to be notified. The pilot's proposals
+in the Desk need the milestone line `/agent owner-subjects …`, with no fallback.
 
 ## `spec.looseIssues`
 
@@ -264,6 +263,8 @@ issues without a milestone that owners take: [Loose issues](../guides/loose-issu
 | `owners` | GitLab usernames the queue mentions and who may command it. | `notify.users` |
 | `ownerSubjects` | Desk logins that may take issues and answer questions. No fallback. | none |
 | `maxParallel` | Issues that run at the same time, 1 to 10. | `1` |
+| `pilot.roundIssues` | Finished queue issues (merged or left) that end a [round](../concepts/glossary.md#round) of the queue's pilot, 0 to 50. `0` switches this limit off. | `5` |
+| `pilot.roundHours` | Hours after its start that a round ends, 0 to 168, counted from the round's start, not a time of day. `0` switches this limit off; with both `0` the pilot keeps one session. | `24` |
 
 ## `spec.pilot`
 
@@ -274,13 +275,12 @@ Its model is `agents.pilot` (see [Roles](agents-and-models.md#roles)).
 | Field | Meaning | Default |
 |-------|---------|---------|
 | `mention` | A comment that starts with `@<bot>` talks to the pilot, like `/pilot`. | `true` |
-| `maxBudgetUSD` | What the pilot may spend per milestone, as a decimal string. When it is used up, the pilot says so and assessments only report what happened. Cursor reports no cost, so on cursor it never runs out. | `"20"` |
+| `maxBudgetUSD` | What the pilot may spend per milestone, as a decimal string. On the loose issues queue it caps each round: a new round starts with a fresh budget. When it is used up, the pilot says so and assessments only report what happened. Cursor reports no cost, so on cursor it never runs out. | `"20"` |
 | `autonomy` | `managed`: the pilot retries, re-reviews, instructs, opens issues, fixes flaky tests, retries pipelines and rebases on its own, within limits. `propose`: every action waits for an owner's `yes`. A set value applies to every milestone. | `managed` on autopilot, `propose` otherwise |
 | `maxInterventionsPerIssue` | The pilot's own actions per issue and head when it manages, at least 1. Past it, it proposes and pings the owners. | `2` |
 | `stuckAfter` | An autopilot pause that has not changed for this long is stuck: the pilot assesses it once and gives the owners options as a prompt. It never resumes the milestone on its own. | `30m` |
 
-An owner's `/pilot stop` lowers a milestone to `propose`, and `/pilot go`
-returns it to the configured value, never above it.
+An owner's `/pilot stop` lowers a milestone to `propose`; `/pilot go` returns it to the configured value.
 
 **Per milestone.** A milestone's rules (`/agent rule R<n>: switch
 <setting>=<value>`, see [Commands](commands.md#in-the-milestone-description))
@@ -291,9 +291,9 @@ Nothing else can be switched per milestone.
 ## `spec.budget`
 
 Budgets of autopilot work, from what its agent calls cost. They need the
-research database. The operator checks them between calls: a running call
-is never killed, but the run makes no further call once its budget is used
-up. See [Budgets and spend](../guides/budgets-and-spend.md).
+research database. The operator checks them between calls: a running call is
+never killed, but the run makes no further call once its budget is used up.
+See [Budgets and spend](../guides/budgets-and-spend.md).
 
 ```yaml
 spec:

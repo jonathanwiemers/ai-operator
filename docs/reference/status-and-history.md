@@ -133,6 +133,45 @@ status:
 
 `state` is `Pending`, `Active` (with `hold` while held), `Merged` or `Left`. A `Left` item has `leftReason` and `leftAt`: The queue keeps the newest 50 finished items. Switched off, its phase is `Off`.
 
+### The pilot's round
+
+The queue's [pilot](../concepts/glossary.md#pilot) works in
+[rounds](../concepts/glossary.md#round). The current one is
+`status.autopilot.round` on the Queue task:
+
+```yaml
+status:
+  autopilot:
+    round:
+      number: 3
+      startedAt: "2026-11-26T09:12:00Z"
+      finished: 2
+      costUSD: "1.40"
+      startCostUSD: "6.85"
+      note: "Merged #350 and #352. #421 is held for red CI: …"
+```
+
+| Field | Meaning |
+|-------|---------|
+| `number` | The round, from 1. |
+| `startedAt` | When the round started. |
+| `finished` | Queue issues merged or left since `startedAt`. |
+| `costUSD` | What the pilot spent in this round. |
+| `startCostUSD` | The pilot task's `status.run.costUSD` when the round started: the base of the round's budget. |
+| `note` | The previous round's note, at most 1500 characters. |
+| `noteRequest` | While the round ends: the pilot's run request for the note. Otherwise absent. |
+
+The pilot is one AgentTask of `type: Coordinate` per queue, named
+`<project>-loose-issues-pilot`. It has no milestone. These fields tie it to
+the queue and its rounds:
+
+| Field | Meaning |
+|-------|---------|
+| `spec.queueTask` | The name of the Queue task it pilots. Empty on a milestone's pilot. |
+| `spec.source.pilotRound` | The current round, copied from the Queue task: `number`, `startedAt`, `note` and `startCostUSD`. A new `number` starts a fresh session. |
+| `spec.source.roundNote` | The run request that asks for the note of the round that ends. |
+| `status.pilot.roundNote` | The answer, the newest only: `request`, `note`, or `failed` with why there is no note. Then the operator posts a note of the facts. |
+
 ## `milestoneOrder`
 
 The project's [run order](../concepts/glossary.md#run-order): the iids of

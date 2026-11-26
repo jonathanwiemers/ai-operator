@@ -2352,6 +2352,50 @@ items. `handOverFlaky` appends a flaky issue to the queue while it is on.
 The read route is `GET …/loose-issues` (`internal/ui`); there is no write
 route besides the chat route.
 
+#### The queue's pilot and its rounds
+
+The queue has one pilot: a Coordinate task tied to the Queue task by
+`spec.queueTask`, with the queue's owners, owner subjects and tracking
+issue. It is not one task per round: the round is
+`status.autopilot.round` on the Queue task (`syncRound`,
+`loose_round.go`), copied to the pilot's `spec.source.pilotRound` for the
+runner. A round ends at `looseIssues.pilot.roundIssues` finished items
+(merged or left since the round's start) or `roundHours` since its start;
+a limit of 0 is off. The reset runs in this order:
+
+1. **Count.** Each queue sync sets the round's `finished` and `costUSD`
+   (the pilot's cost since `startCostUSD`).
+2. **Wait.** At a limit the operator waits while a pilot call runs
+   (`observedRunRequest` behind `runRequest`). A round never ends in the
+   middle of a call.
+3. **Ask.** It bumps the pilot's `runRequest` and sets
+   `spec.source.roundNote` to it, and records the same number as the
+   round's `noteRequest`. Comments and Desk messages that reach the pilot
+   from now on wait for the next round ("comments wait for the next
+   round").
+4. **Note or facts.** The runner answers with one call in the round's own
+   session (`runRoundNote`): a note of at most 1500 characters in
+   `status.pilot.roundNote`, keyed by the request. A failed call, a usage
+   limit or a spent round budget records why there is no note. Then the
+   operator writes a facts-only note: what merged, left and is held, and
+   the spend.
+5. **Post.** "🧭 **Round N note**", the note and "Round N+1 started." go
+   on the tracking issue once, tagged `<!-- ai-operator:round-note=N -->`
+   so a retry after a lost status write does not post twice.
+6. **New round.** The operator starts round N+1 with the note, the current
+   cost as `startCostUSD` and a cleared `roundNote` request, and copies it
+   to `spec.source.pilotRound`.
+7. **Drop the session.** On the next call the runner sees a round number
+   other than the one in its state (`enterRound`), deletes the pilot's
+   sessions and starts without a resume. The first prompt carries the
+   note, the queue's state and the open prompts and proposals. The budget,
+   `pilot.maxBudgetUSD`, counts from `startCostUSD`, so it caps each round.
+
+Milestone pilots have no `pilotRound` and keep one session per milestone.
+The queue's pilot uses the milestone pilot's tools without the milestone
+ones (`queueRefused`, `validQueueAction`): `skip` drops the issue, and an
+issue it opens is not taken into the queue.
+
 ### Revisiting after the merge
 
 A decision of a closed issue has no runner left to change it, so the operator

@@ -64,4 +64,69 @@ tab · R9 docs.
   finished items.
 - Not done, as the milestone's non-goals say: a pilot for the queue, problem
   cards and Inbox items for holds, reordering and priorities, companion
-  repositories, releases and a retrospective for the queue.
+  repositories, releases and a retrospective for the queue. The pilot, the
+  problem cards and the Inbox items came with the next milestone, below.
+
+## The pilot: a pilot for the queue that starts fresh every day or every five issues
+
+The follow-up milestone "Loose issues: a pilot for the queue that starts
+fresh every day or every five issues" replaced Decision 4: the queue got a
+pilot that works in rounds.
+
+### Goal
+
+1. The queue's pilot looks into stuck queue issues, red CI and stalled runs,
+   answers the owners on the `🤖 Loose issues` issue (`/pilot …`) and in a
+   composer on the Loose issues tab, and acts under the same autonomy rules.
+2. It works in rounds. A round ends after 5 finished queue issues or 24
+   hours, and the next one starts with a fresh session that knows the last
+   one from a round note and the queue's state.
+3. A held queue issue or an open assessment is a problem card on the tab and
+   an Inbox item, so notifications reach it.
+4. The tab shows the round: number, start, finished issues and spend.
+
+### Decisions (locked)
+
+1. **Rounds: 5 issues or 24 hours**, `looseIssues.pilot.roundIssues` (0–50)
+   and `roundHours` (0–168), the first limit wins and 0 is off. Hours count
+   from the round's start. Rejected: a fixed time of day, and a reset after
+   every issue.
+2. **What carries over**: a round note of at most 1500 characters, posted on
+   the tracking issue, or a facts-only note when the call fails. The next
+   round gets the note, the queue's state and the open prompts and
+   proposals; the session is new.
+3. **A reset waits for a running call.**
+4. **The budget counts per round**: `pilot.maxBudgetUSD` caps each round.
+5. **The milestone pilot's tools, minus the milestone ones.** Allowed:
+   retry, reReview, instruct, retryPipeline, rebase, mergeBase, fixFlaky
+   (into the queue), openIssue (not taken into the queue), markDone, pause
+   and resume; skip becomes a drop. Refused: revisit, setRule, forgetRule,
+   editSpec, endMilestone, unskip, startAnyway and raiseBudget. Autonomy
+   follows `pilot.autonomy`, `managed` as on autopilot.
+6. **One pilot task per queue**, a Coordinate task with `spec.queueTask`;
+   rounds are a status (`status.autopilot.round`), not tasks.
+
+### Requirements
+
+R1 round settings and status · R2 the queue's pilot task, prompt and wake
+events · R3 actions on queue issues · R4 rounds · R5 problems and the Inbox
+· R6 the pilot on the Loose issues tab · R7 docs.
+
+### Steering log
+
+- No requirement was narrowed, so no follow-up issue was opened.
+- The docs landed in one merge request at the end (R7), as the plan decided.
+- The note is asked for with a run request of its own
+  (`spec.source.roundNote`, answered in `status.pilot.roundNote`). The
+  operator copies the round to the pilot as `spec.source.pilotRound`, and
+  the runner drops the session when that number changes.
+- Comments and messages that reach the pilot while it writes its note wait
+  for the next round.
+- markDone takes only a pending queue issue, never an active one, so the
+  merge gate is not passed by.
+- On the tracking issue, `skip` stays "not on the loose issues queue"; only
+  the pilot's skip becomes a drop.
+- The tracking issue's round line is in UTC and says "no time limit" when
+  `roundHours` is 0. The tab's line is in local time and leaves that out.
+- A hold and an assessment on the same issue are one card, with the prompts
+  inside it. The cards carry no kind label.

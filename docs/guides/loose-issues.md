@@ -3,8 +3,8 @@
 The loose issues queue runs and merges issues that have no milestone, beside
 your milestones. This page shows how to turn it on, how you take issues in
 the [Desk](../concepts/glossary.md#desk) and on GitLab, what holds an issue
-and what merges it, who may act, how flaky issues join, and how to switch it
-off.
+and what merges it, who may act, how flaky issues join, how the queue's
+pilot works in rounds, and how to switch it off.
 
 An issue without a milestone normally stops in `agent::review`, and a human
 merges it. With the [loose issues queue](../concepts/glossary.md#loose-issues-queue),
@@ -120,6 +120,86 @@ queue and not into a milestone. This covers `mainHealth.autoFixFlaky`, the
 its fix task, and its note says "in the loose issues queue". With the queue off
 nothing changes. See [Main health](while-the-agent-works.md#main-health).
 
+## The queue's pilot
+
+The queue has its own [pilot](pilot.md), like a milestone. It looks into
+stuck queue issues, red CI after the fix rounds, stalled runs and holds. It
+posts its assessment on the `🤖 Loose issues` issue and answers the queue's
+owners.
+
+**In the Desk.** The **Loose issues** tab shows a card per problem under
+*Needs you*: a held issue, the queue's pause, or an open assessment. Below
+the cards, type into *Message the queue's pilot…* and send with Ctrl+Enter
+(Cmd+Enter on a Mac). The pilot answers on its task page. Accept or reject
+its proposals on the tab. Only the queue's `ownerSubjects` may write; others
+read "Read-only: only the queue's owners can message the pilot."
+
+A held issue and an open assessment also reach your
+[Inbox](desk.md#inbox) as a problem, so the browser and push notifications
+for stuck issues reach them. The entry opens the tab with the card in view.
+
+**On GitLab.** Comment on the tracking issue or on a queue issue:
+
+```text
+/pilot why is #421 held?
+/pilot tell #421: use the existing retry helper
+/pilot stop
+```
+
+Only the queue's `owners` may instruct it. The commands are in
+[Commands](../reference/commands.md#the-queues-pilot).
+
+**What it may do.** It follows [`pilot.autonomy`](../reference/agentproject.md#specpilot),
+managing as on an autopilot milestone, and audits each action on the
+tracking issue. It may retry a run, ask for another review, instruct the
+implementer, retry the default branch's pipeline, rebase, merge the default
+branch in, hand a flaky test into the queue, open an issue, mark a pending
+issue done, and pause or resume. A skip drops the issue from the queue. An
+issue it opens is not taken: an owner takes it. Milestone tools such as
+revisiting a decision, standing rules or spec changes are refused with the
+reason.
+
+### Rounds
+
+The queue's pilot works in [rounds](../concepts/glossary.md#round). A round
+ends at the first of two limits: a number of finished queue issues (merged,
+closed or dropped), or hours since the round started. You set both in
+`looseIssues.pilot`:
+
+```yaml
+spec:
+  looseIssues:
+    enabled: true
+    owners: [alice]
+    ownerSubjects: [alice@example.com]
+    pilot:
+      roundIssues: 5
+      roundHours: 24
+```
+
+`0` switches a limit off. With both `0` the pilot keeps one session. The
+hours count from the round's start, not from a time of day.
+
+At the end of a round the pilot writes a round note of at most 1500
+characters: what merged, what is held and why, and the open threads. The
+tracking issue gets it as "🧭 **Round 2 note**" with "Round 3 started." If
+the pilot cannot write it, the operator posts the facts: what merged, left
+and is held, and what the pilot spent.
+
+**What carries over.** The next round starts a fresh session. It knows the
+last round only from the note, the queue's current state, and the open
+prompts and proposals, which stay open. Nothing else carries over.
+
+A round never ends in the middle of a pilot call: the running call finishes
+first. While the pilot writes its note, new messages wait for the next
+round. Its budget, [`pilot.maxBudgetUSD`](../reference/agentproject.md#specpilot),
+counts per round. When it is used up, the pilot says so until the next round
+starts.
+
+The tab and the tracking issue show the current round, for example
+"Round 3 · started 09:12 · 2 of 5 issues · $1.40". The tracking issue gives
+the time in UTC.
+
 ## Switch it off
 
 Set `looseIssues.enabled: false`. The operator drops the pending issues,
@@ -131,6 +211,7 @@ queue on again and the same tracking issue reopens.
 
 - [Run a milestone on autopilot](autopilot.md): the gate the queue reuses.
 - [When autopilot pauses](pauses.md): holds and how they end.
+- [The pilot](pilot.md): what a pilot does and how you talk to it.
 - [Answer and hand over](answer-and-hand-over.md): hand one issue over by
   label.
 - [AgentProject](../reference/agentproject.md#speclooseissues): the fields.
