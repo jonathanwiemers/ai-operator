@@ -15,6 +15,7 @@ import { answerToast, filterIssues, itemActions, itemReason, itemState, ownersNo
 import { useCommandSend } from '../useCommandSend'
 import Badge from './Badge.vue'
 import ExtLink from './ExtLink.vue'
+import LooseNeeds from './LooseNeeds.vue'
 import RelTime from './RelTime.vue'
 
 // LooseIssues: a project's Loose issues tab (R8 of "Loose issues"): the
@@ -90,6 +91,7 @@ const selectable = { enableRowSelection: (row: { original: LooseIssue }) => !row
     <div v-else-if="loading && !data" class="empty">Loading…</div>
     <template v-else-if="data">
       <p v-if="!take" class="m-0 text-(--text-2)" data-loose-owners>{{ ownersNote(data.ownerSubjects) }}</p>
+      <LooseNeeds :namespace="namespace" :name="name" :view="data" :take="!!data.take" @sent="reload" />
 
       <section class="grid min-w-0 gap-2" aria-labelledby="loose-queue">
         <h2 id="loose-queue" class="m-0 text-sm font-semibold">Queue</h2>

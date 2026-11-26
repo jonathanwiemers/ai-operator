@@ -7,12 +7,14 @@
 import AxeBuilder from '@axe-core/playwright'
 import { expect, test, type Page } from '@playwright/test'
 import { answer, now } from './fixtures'
-import { looseIssues, looseItems, looseOpenIssues } from './fixtures/loose'
+import { looseIssues, looseItems, looseOpenIssues, loosePilot } from './fixtures/loose'
+import { journeyAt } from './journey'
 import { shopDetail } from './fixtures/stream'
 import type { LooseIssues } from '../src/generated/views'
 
 const projectPath = '/projects/team-a/shop'
 const chatPath = `${projectPath}/tasks/shop-loose-issues/chat`
+const pilotChatPath = `${projectPath}/tasks/shop-loose-pilot/chat`
 
 // Server is what the fake API answers: the view, the Queue task's command
 // posts and the operator's reply to each (by post index).
@@ -21,11 +23,13 @@ interface Server {
   replies: string[]
   posts: string[]
   problems: string[]
+  // pilotPosts: the posts to the queue's pilot (its composer and cards).
+  pilotPosts: { body: string; kind?: string }[]
 }
 
-const server = (view: LooseIssues = looseIssues): Server => ({ view, replies: [], posts: [], problems: [] })
+const server = (view: LooseIssues = looseIssues): Server => ({ view, replies: [], posts: [], problems: [], pilotPosts: [] })
 
-async function open(page: Page, baseURL: string | undefined, s: Server, width = 1280) {
+async function open(page: Page, baseURL: string | undefined, s: Server, width = 1280, hash = '') {
   const origin = new URL(baseURL ?? '').origin
   await page.setViewportSize({ width, height: 900 })
   await page.clock.install({ time: now })
@@ -55,10 +59,15 @@ async function open(page: Page, baseURL: string | undefined, s: Server, width = 
     const url = new URL(req.url())
     const p = url.pathname.slice('/api/v1'.length)
     if (req.method() === 'POST' && p.endsWith('/warm')) return r.fulfill({ status: 204 })
+    if (p === pilotChatPath && req.method() === 'POST') {
+      s.pilotPosts.push(req.postDataJSON() as { body: string; kind?: string })
+      return r.fulfill({ status: 200, json: { id: 800 + s.pilotPosts.length } })
+    }
     if (p === chatPath && req.method() === 'POST') {
       s.posts.push((req.postDataJSON() as { body: string }).body)
       return r.fulfill({ status: 200, json: { id: 700 + s.posts.length } })
     }
+    if (p === pilotChatPath) return r.fulfill({ status: 200, json: { messages: [] } })
     if (p === chatPath) {
       const messages = s.replies.flatMap((body, i) => (body ? [{ id: 1701 + i, replyTo: 701 + i, body, author: 'operator' }] : []))
       return r.fulfill({ status: 200, json: { messages } })
@@ -77,7 +86,7 @@ async function open(page: Page, baseURL: string | undefined, s: Server, width = 
     }
     return r.fulfill({ status: 200, json: body })
   })
-  await page.goto(`${projectPath}?tab=loose`)
+  await page.goto(`${projectPath}?tab=loose${hash}`)
   await expect(queueRows(page)).toHaveCount(s.view.items.length)
 }
 
@@ -191,5 +200,97 @@ test('without the take permission no action shows and a note names who may act',
   await expect(takeButton(page)).toHaveCount(0)
   await expect(page.getByRole('checkbox')).toHaveCount(0)
   await expect(queueTable(page).getByRole('button', { name: /^Actions for/ })).toHaveCount(0)
+  expect(s.problems).toEqual([])
+})
+
+// R6 of "a pilot for the queue": #421's hold is a problem card on top,
+// with its facts and question, the pilot's proposal, the round line and
+// the composer to the queue's pilot.
+const problemCard = (page: Page, iid: number) => page.locator(`[data-loose-problem="${iid}"]`)
+
+// fitViewport makes the viewport tall enough that no scroll container
+// (the document or the tab's panel) overflows, a few rounds at most.
+async function fitViewport(page: Page, width: number) {
+  for (let i = 0; i < 4; i++) {
+    const extra = await page.evaluate(() =>
+      Math.max(
+        0,
+        ...[document.documentElement, ...document.querySelectorAll('*')]
+          .filter((e) => e === document.documentElement || /auto|scroll/.test(getComputedStyle(e).overflowY))
+          .map((e) => e.scrollHeight - e.clientHeight),
+      ),
+    )
+    if (extra <= 0) return
+    const height = page.viewportSize()?.height ?? 900
+    await page.setViewportSize({ width, height: height + extra + 120 })
+  }
+}
+
+for (const width of [375, 1280]) {
+  test(`the queue's pilot: #421's card, the round and a message to the pilot@${width}`, journeyAt(width), async ({ page, baseURL }) => {
+    const s = server(loosePilot)
+    await open(page, baseURL, s, width)
+    await expect(page.locator('[data-loose-round]')).toHaveText(/^Round 2 · started .+ · 1 of 5 issues · \$0\.85$/)
+    const card = problemCard(page, 421)
+    await expect(card).toHaveAttribute('id', 'loose-421')
+    await expect(card).toContainText('Runner timeout in the e2e job')
+    await expect(card.locator('[data-loose-cause]')).toHaveText('CI stays red after 3 fix rounds (job `e2e`).')
+    await expect(card.locator('[data-fact="pipeline"]')).toContainText('pipeline #7712 failed')
+    // Without a card of the queue's own, the top of the tab is its anchor.
+    await expect(page.locator('[data-loose-needs]')).toHaveAttribute('id', 'loose-0')
+    // On a phone the card's links are at least 24 px high and wide (target-size).
+    if (width < 760) {
+      const links = await card.locator('[data-problem-facts] a, a[href$="/issues/421"]').all()
+      expect(links.length).toBeGreaterThan(3)
+      for (const link of links) {
+        const box = await link.boundingBox()
+        expect(Math.min(box?.width ?? 0, box?.height ?? 0)).toBeGreaterThanOrEqual(24)
+      }
+    }
+    await expect(card.locator('#prompt-Q9')).toContainText('Retry the')
+    await expect(page.locator('#loose-P3')).toContainText('Rebase !905 onto main')
+
+    // A message goes to the queue pilot's chat.
+    const text = page.getByPlaceholder("Message the queue's pilot…")
+    await text.fill('Why is #421 held?')
+    await page.locator('[data-loose-composer]').getByRole('button', { name: 'Send' }).click()
+    await expect.poll(() => s.pilotPosts.map((p) => [p.kind, p.body])).toEqual([['message', 'Why is #421 held?']])
+    await expect(page.locator('[data-loose-sent]')).toBeVisible()
+    await expect(text).toHaveValue('')
+
+    // Accept sends the proposal command to the pilot.
+    await page.locator('#loose-P3').getByRole('button', { name: 'Accept' }).click()
+    await expect.poll(() => s.pilotPosts[1]).toMatchObject({ kind: 'command', body: '{"cmd":"accept","proposal":3}' })
+
+    // On a phone the fixed bottom bar covers what scrolled under it, which
+    // axe's target-size counts as obscured (as in project-cockpit.spec.ts).
+    // The tab scrolls in its panel, not the document: the viewport grows
+    // until no scroll container overflows, so nothing lies under the bar.
+    if (width < 760) await fitViewport(page, width)
+    const { violations } = await new AxeBuilder({ page })
+      .include('main')
+      .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
+      .disableRules(['color-contrast'])
+      .analyze()
+    expect(violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`)).toEqual([])
+    expect(s.problems).toEqual([])
+  })
+}
+
+test("an Inbox entry of #421's hold opens the tab with its card in view", journeyAt(1280), async ({ page, baseURL }) => {
+  const s = server(loosePilot)
+  // The route inboxRoute gives a queue problem of #421 (inboxRoute.test.mjs).
+  await open(page, baseURL, s, 1280, '#loose-421')
+  await expect(problemCard(page, 421)).toBeInViewport()
+  expect(s.problems).toEqual([])
+})
+
+test('without the take permission the pilot has no composer and no Accept', async ({ page, baseURL }) => {
+  const s = server({ ...loosePilot, take: false })
+  await open(page, baseURL, s)
+  await expect(problemCard(page, 421)).toBeVisible()
+  await expect(page.locator('[data-loose-pilot-hint]')).toHaveText("Read-only: only the queue's owners can message the pilot.")
+  await expect(page.getByPlaceholder("Message the queue's pilot…")).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Accept' })).toHaveCount(0)
   expect(s.problems).toEqual([])
 })

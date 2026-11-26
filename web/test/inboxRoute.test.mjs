@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { inboxRoute, milestoneRoute, pinnedAnchor } from '../src/inboxRoute.ts'
+import { looseAnchor } from '../src/looseIssues.ts'
 
 const item = (kind, over = {}) => ({ namespace: 'team', project: 'shop', kind, ...over })
 
@@ -107,4 +108,25 @@ test('inboxRoute: the Inbox rows and the notification click both route with it',
   const links = list.match(/:to="[^"]*"/g)
   assert.ok(links.length >= 3)
   for (const to of links) assert.equal(to, ':to="inboxRoute(item)"')
+})
+
+test("inboxRoute: the queue's problems, prompts and proposals open the Loose issues tab at their card", () => {
+  const tab = (hash) => ({ name: 'stream-project', params: { namespace: 'team', name: 'shop' }, query: { tab: 'loose' }, hash })
+  assert.equal(looseAnchor({ issue: 421 }), 'loose-421')
+  assert.equal(looseAnchor({ proposal: 3 }), 'loose-P3')
+  assert.deepEqual(inboxRoute(item('problem', { task: 'shop-queue', issueIID: 421, hold: true, queue: true })), tab('#loose-421'))
+  assert.deepEqual(inboxRoute(item('pause', { task: 'shop-queue', queue: true })), tab('#loose-0'))
+  assert.deepEqual(inboxRoute(item('pilotError', { task: 'shop-queue-pilot', queue: true })), tab('#loose-0'))
+  assert.deepEqual(inboxRoute(item('prompt', { task: 'shop-queue', issueIID: 421, promptID: 'Q4', reason: 'stuck', queue: true })), tab('#prompt-Q4'))
+  assert.deepEqual(inboxRoute(item('prompt', { task: 'shop-queue', issueIID: 421, reason: 'stuck', queue: true })), tab('#loose-421'))
+  assert.deepEqual(inboxRoute(item('proposal', { task: 'shop-queue-pilot', proposalID: 3, queue: true })), tab('#loose-P3'))
+  assert.deepEqual(inboxRoute(item('proposal', { task: 'shop-queue-pilot', queue: true })), tab('#loose-0'))
+  // The queue's own task needing a human opens the tab too.
+  assert.deepEqual(inboxRoute(item('task', { task: 'shop-queue-pilot', queue: true })), tab('#loose-0'))
+  // An agent's question stays on its task page.
+  assert.deepEqual(inboxRoute(item('prompt', { task: 'shop-impl-421', promptID: 'Q1', reason: 'needsInput', queue: true })), {
+    name: 'task',
+    params: { namespace: 'team', name: 'shop', task: 'shop-impl-421' },
+    hash: '#prompt-Q1',
+  })
 })

@@ -4,6 +4,7 @@
 // looseIssues off; loose-issues.spec.ts turns it on.
 import { ago } from './clock'
 import type { LooseIssue, LooseIssues, LooseItem } from '../../src/generated/views'
+import type { Facts } from '../../src/generated/problem'
 
 const web = 'https://gitlab.example.com/team-a/shop/-/'
 const issueURL = (iid: number) => `${web}issues/${iid}`
@@ -59,4 +60,50 @@ export const looseIssues: LooseIssues = {
   problems: [],
   prompts: [],
   proposals: [],
+}
+
+// loosePilot is the queue with its pilot (R6 of "a pilot for the queue"):
+// #421 held for red CI, with its problem facts and a question to the
+// owners, a proposal of the pilot, and round 2 of five issues.
+const facts421: Facts = {
+  iid: 421,
+  issue: { iid: 421, title: 'Runner timeout in the e2e job', url: issueURL(421) },
+  mergeRequest: { iid: 905, url: `${web}merge_requests/905` },
+  pipeline: { id: 7712, url: `${web}pipelines/7712`, status: 'failed', failedJobs: [{ name: 'e2e', url: `${web}jobs/9911` }] },
+}
+
+export const loosePilot: LooseIssues = {
+  ...looseIssues,
+  items: [
+    ...looseItems,
+    item(421, 'Runner timeout in the e2e job', 'Active', {
+      task: 'shop-421-implement',
+      headSHA: '7c3e1a2b4d5f',
+      holdReason: 'CI stays red after 3 fix rounds (job `e2e`).',
+      mergeRequestIID: 905,
+      mergeRequestURL: `${web}merge_requests/905`,
+    }),
+  ],
+  issues: looseOpenIssues.map((i) => (i.iid === 421 ? { ...i, inQueue: true } : i)),
+  problems: [facts421],
+  prompts: [
+    {
+      id: 'Q9',
+      kind: 'assessment',
+      question: 'Retry the `e2e` job of #421 once more, or drop the issue?',
+      options: [
+        { id: 'retry', label: 'Retry the job', actions: ['Retries job e2e'], recommended: true, fromAnswer: false },
+        { id: 'drop', label: 'Drop #421', actions: ['Drops #421 from the queue'], recommended: false, fromAnswer: false },
+      ],
+      allowFreeText: true,
+      state: 'open',
+      issueIID: 421,
+      postedAt: ago(12),
+      canAnswer: true,
+      target: { namespace: 'team-a', task: 'shop-loose-pilot' },
+    },
+  ],
+  proposals: [{ id: 3, summary: 'Rebase !905 onto main: the e2e image changed there.', postedAt: ago(8) }],
+  pilotTask: 'shop-loose-pilot',
+  round: { number: 2, startedAt: ago(150), finished: 1, roundIssues: 5, roundHours: 24, costUSD: '0.85' },
 }

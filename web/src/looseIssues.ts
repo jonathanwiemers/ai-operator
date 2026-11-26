@@ -1,11 +1,15 @@
 import type { ChatCommand } from './chatState'
-import type { Tone } from './format'
-import type { LooseIssue, LooseItem } from './generated/views'
+import { cost, plural, type Tone } from './format.ts'
+import type { Facts } from './generated/problem'
+import type { LooseIssue, LooseIssues, LooseItem, LooseRoundView, PromptView, ProposalView } from './generated/views'
 import type { CommandAnswer } from './pauseCard'
+import { problemCause } from './problemFacts.ts'
+import { splitPrompts } from './promptCard.ts'
 
 // The Loose issues tab (R8 of "Loose issues", LooseIssues.vue): the queue's
 // state badges and row actions, the selection of issues without a
-// milestone, the search and the command texts.
+// milestone, the search and the command texts; and the queue pilot's
+// problem cards and round line (R6 of "a pilot for the queue").
 
 // finished: the item left the queue, merged or not; it has no actions.
 function finished(it: Pick<LooseItem, 'state'>): boolean {
@@ -107,4 +111,76 @@ export function answerToast(a: CommandAnswer): { title: string; description?: st
       if (a.redacted) return { title: 'The operator answered', color: 'info' }
       return { title: 'The operator answered', description: a.text, color: /\bNot taken:/.test(a.text) ? 'warning' : 'info' }
   }
+}
+
+// roundLine is the pilot's round on the tab: "Round 3 · started 09:12 ·
+// 2 of 5 issues · $1.40". The start is local time, with the date when the
+// round did not start on now's day; a 0 issue limit is "no issue limit".
+// No round (before the first) is ''.
+export function roundLine(round: LooseRoundView | undefined, now: number): string {
+  if (!round) return ''
+  const t = new Date(round.startedAt)
+  const parts = [`Round ${round.number}`]
+  if (!Number.isNaN(t.getTime())) {
+    const n = new Date(now)
+    const clock = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' }).format(t)
+    const today = t.toDateString() === n.toDateString()
+    const year = t.getFullYear() === n.getFullYear() ? undefined : 'numeric'
+    const date = today ? '' : `${new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year }).format(t)}, `
+    parts.push(`started ${date}${clock}`)
+  }
+  const issues = round.roundIssues > 0 ? round.roundIssues : round.finished
+  const limit = round.roundIssues > 0 ? `${round.finished} of ${issues}` : `${issues}`
+  parts.push(`${limit} ${plural(issues, 'issue')}${round.roundIssues > 0 ? '' : ', no issue limit'}`)
+  parts.push(cost(round.costUSD))
+  return parts.join(' · ')
+}
+
+// QueueProblem is one problem card of the queue: an issue of the queue with
+// an open problem or open prompts (iid 0: the queue's own prompts).
+// cause: the run's cause, else the item's hold reason.
+export interface QueueProblem {
+  iid: number
+  title: string
+  url?: string
+  cause: string
+  facts?: Facts
+  prompts: PromptView[]
+}
+
+// queueNeeds groups the loose issues view into the tab's pinned cards: one
+// per issue with problem facts or an open prompt, the queue's own first,
+// then by IID; then the pilot's open proposals. count is both.
+export function queueNeeds(v: Pick<LooseIssues, 'problems' | 'prompts' | 'proposals' | 'items'>): {
+  problems: QueueProblem[]
+  proposals: ProposalView[]
+  count: number
+} {
+  const facts = v.problems ?? []
+  const open = splitPrompts(v.prompts).open
+  const iids = new Set([...facts.map((f) => f.iid), ...open.map((p) => p.issueIID ?? 0)])
+  const problems = [...iids]
+    .sort((a, b) => a - b)
+    .map((iid): QueueProblem => {
+      const f = facts.find((x) => x.iid === iid)
+      const item = iid ? v.items.find((x) => x.iid === iid) : undefined
+      const hold = item && !finished(item) ? (item.holdReason ?? '') : ''
+      return {
+        iid,
+        title: iid ? (f?.issue.title ?? item?.title ?? '') : 'The queue',
+        url: f?.issue.url ?? item?.webURL,
+        cause: problemCause(f) ?? hold,
+        facts: f,
+        prompts: open.filter((p) => (p.issueIID ?? 0) === iid),
+      }
+    })
+  const proposals = v.proposals ?? []
+  return { problems, proposals, count: problems.length + proposals.length }
+}
+
+// looseAnchor is the element id of a card on the Loose issues tab
+// (LooseNeeds.vue): an issue's problem card, the queue's own (iid 0) or a
+// proposal of the queue's pilot. inboxRoute links them by the same names.
+export function looseAnchor(card: { issue: number } | { proposal: number }): string {
+  return 'issue' in card ? `loose-${card.issue}` : `loose-P${card.proposal}`
 }

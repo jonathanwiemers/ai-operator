@@ -15,10 +15,20 @@ type ProblemRoute = {
   params: { namespace: string; name: string; iid: string; problem: string }
 }
 
+// LooseRoute is a project's Loose issues tab, with a queue card's anchor in
+// hash (looseAnchor).
+type LooseRoute = {
+  name: 'stream-project'
+  params: { namespace: string; name: string }
+  query: { tab: 'loose' }
+  hash: string
+}
+
 export type InboxRoute =
   | { name: 'task'; params: { namespace: string; name: string; task: string }; hash?: string }
   | MilestoneRoute
   | ProblemRoute
+  | LooseRoute
   | { name: 'stream-project'; params: { namespace: string; name: string } }
 
 // pinnedAnchor is the hash of the Cockpit's pinned cards (Cockpit.vue).
@@ -29,16 +39,22 @@ export const pinnedAnchor = '#pinned'
 // card open and in view (R17 of "Desk: the Cockpit"): pauses and problems
 // their problem thread, a milestone's prompts their card (#prompt-Q<n>, which
 // opens the prompt's problem thread), proposals their prompt's card or the
-// pinned cards. An agent's question opens its task page. A ready companion
+// pinned cards. An agent's question opens its task page. Every other entry
+// of the loose issues queue (queue) opens the project's Loose issues tab at
+// its card: a prompt's (#prompt-Q<n>), a proposal's, else its issue's
+// (looseAnchor in looseIssues.ts). A ready companion
 // opens its home task, without one its milestone. An issue's budget warning
 // opens its implement task, where the issue's budget is raised (chat
 // `budget <usd>`), without one its milestone.
 export function inboxRoute(item: InboxItem): InboxRoute {
   const base = { namespace: item.namespace, name: item.project }
   const promptHash = item.promptID ? `#prompt-${item.promptID}` : undefined
+  // An agent's question sits on its task page, the others in the milestone.
+  if (item.kind === 'prompt' && item.reason === 'needsInput' && item.task) return { name: 'task', params: { ...base, task: item.task }, hash: promptHash }
+  if (item.queue) {
+    return { name: 'stream-project', params: base, query: { tab: 'loose' }, hash: promptHash ?? `#loose-${item.proposalID ? `P${item.proposalID}` : item.issueIID ?? 0}` }
+  }
   if (item.kind === 'prompt') {
-    // An agent's question sits on its task page, the others in the milestone.
-    if (item.reason === 'needsInput' && item.task) return { name: 'task', params: { ...base, task: item.task }, hash: promptHash }
     if (item.milestoneIID && promptHash) return cockpit(base, item.milestoneIID, promptHash)
     if (item.milestoneIID) return problemThread(base, item.milestoneIID, item.issueIID)
     if (item.task) return { name: 'task', params: { ...base, task: item.task }, hash: promptHash }
