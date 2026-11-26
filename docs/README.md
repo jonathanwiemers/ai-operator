@@ -14,7 +14,7 @@ get [your first milestone](getting-started/first-milestone.md) planned.
 ## Guides
 
 **[guides/](guides/README.md)**: one task per page.
-[Write a milestone](guides/write-a-milestone.md),
+[Write a milestone](guides/write-a-milestone.md) and [attach files to a plan](guides/attach-files-to-a-plan.md),
 [answer and hand over](guides/answer-and-hand-over.md), follow it
 [while the agent works](guides/while-the-agent-works.md), name the
 [owners](guides/owners-and-pings.md),
@@ -47,7 +47,7 @@ release.
 [`AgentResearch` fields](reference/agentresearch.md), the
 [status fields and history events](reference/status-and-history.md), the
 [notification categories](reference/notifications.md) and the
-[Desk API](reference/desk-api.md) and [Push API](reference/push-api.md), for looking things up.
+[Desk API](reference/desk-api.md), its [plan attachments](reference/plan-attachments.md) and [Push API](reference/push-api.md), for looking things up.
 
 ## Concepts
 

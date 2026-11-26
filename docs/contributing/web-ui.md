@@ -1153,7 +1153,10 @@ sessionStorage until a 2xx, and the text survives a sign-in.
   (`uploadAll`, then `withAttachments`; `PlanChat` through
   `src/planUpload.ts`), posts nothing when an upload fails, keeps the
   chips and the text, and offers *Connect GitLab* on a 409. The picker is
-  built to be reused for the New plan page's first message.
+  used by the New plan page for its first message too (`PlanNew.vue`,
+  `src/planNewSubmit.ts`: upload, then post). It adds no UI kit entry: it
+  is built from `UButton` and a script-made file input. Behaviour is in the
+  [guide](../guides/attach-files-to-a-plan.md).
 - The chat's draft helpers (`chatDraftKey`, `readChatDraft`,
   `writeChatDraft`) and command builders (`modelCommand`, `skipCommand`)
   are in `src/chatState.ts`; `useChatSend` keeps the draft and its

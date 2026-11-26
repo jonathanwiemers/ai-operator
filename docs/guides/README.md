@@ -11,6 +11,7 @@ In the order you need them for a milestone:
 
 1. [Write a milestone](write-a-milestone.md): the spec, its marker lines,
    what the planner makes of it, and the order of the issues.
+
 2. [Answer and hand over](answer-and-hand-over.md): answer the agent's
    questions in the Desk or in GitLab, and hand an issue over by label.
 3. [While the agent works](while-the-agent-works.md): the draft merge
@@ -59,6 +60,8 @@ In the order you need them for a milestone:
     group, active and dormant projects, globs and the request budget.
 22. [Upgrade](upgrade.md): move to a new release, and what each release
     removed from manifests and Helm values.
+23. [Attach files to a plan](attach-files-to-a-plan.md): screenshots, PDFs and
+    logs in a plan message, and where the files live.
 
 ## Next
 

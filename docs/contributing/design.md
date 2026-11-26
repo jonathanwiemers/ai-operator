@@ -743,6 +743,62 @@ given back). The phase becomes `Created` with the last draft
 (`AllDraftsCreated`). **Create all** is a web loop over this endpoint
 (`web/src/planCreateAll.ts`); there is no batch endpoint.
 
+**Plan attachments.** A plan message may carry files: screenshots, PDFs and
+text files. The Desk keeps no file bytes. The flow:
+
+1. The browser holds the files as chips. On Send (or Start plan) it posts
+   each one to `POST …/plans/uploads` (`internal/ui/plan_uploads.go`) and
+   appends GitLab's returned Markdown, one line per file, to the message.
+   The route checks the type with `attachments.Allowed`, then uploads with
+   the owner's GitLab token (`writingGitLab`, so the per-user write rate
+   limit applies) through `gitlab.UploadFile`. An attachment is only a link
+   in the message text: there is no column, CRD field or view field.
+2. The Desk shows a message by splitting its body into text and the upload
+   links of the project (`web/src/attachments.ts`), and reads a file through
+   `GET …/plans/uploads/{secret}/{filename}` with the viewer's own token and
+   `gitlab.DownloadUpload`. The route serves the sniffed type, sandboxed,
+   with `nosniff`.
+3. Each plan turn, the runner (`internal/runner/plan_attachments.go`) finds
+   the project's upload links in the turn's messages and the plan's current
+   drafts, newest first, and calls `attachments.Fetch` with the project's
+   bot token. The files go to `.plan-context/attachments/` in the exchange
+   directory before `PlanContext` copies the folder into the checkout, so
+   the agent container needs no change.
+4. `buildPlanPrompt` adds a `## Attachments` section that maps each link to
+   its local path or to why it was not fetched, and calls the files
+   untrusted data. `planSystemPrompt` tells the agent to open them with
+   Read, to say in words what matters, and to embed a link in the draft
+   where it is needed. A fetch failure never fails the turn; the reason
+   goes into the section. No links, no section.
+
+**`internal/attachments`** holds everything the Desk and the runner share,
+imports only the standard library, and is reused unchanged by the milestone
+that lets the planner and implementers read screenshots linked in
+milestones, issues and comments.
+
+- *Types.* `Allowed(name, head)` accepts an extension of the list in
+  [Plan attachments](../reference/plan-attachments.md) only when
+  `http.DetectContentType` of the content agrees: an image or PDF sniffs as
+  its own type, a text file as `text/plain`. A `.png` that is a text file is
+  refused. `Refusal` words the reason for a user. The limits are constants
+  there; `web/src/attachments.ts` copies them and a Go test fails when the
+  copy drifts.
+- *Links.* `Find(text, project)` counts a link only when it is an upload of
+  the same project, in one of three forms: relative
+  `/uploads/<secret>/<file>`, `<gitlab>/<path>/uploads/<secret>/<file>`, or
+  `<gitlab>/-/project/<id>/uploads/<secret>/<file>`. The secret is 32 hex
+  characters. Links to other hosts or projects are ignored, because the
+  text is untrusted: a comment must not make the runner fetch an address of
+  its choice. The relative form counts only in Markdown links.
+- *Names.* `CleanName` keeps the base name, replaces what is outside
+  `[A-Za-z0-9._-]` with `_` and strips leading dots, so `../x.png` and
+  `%2e%2e` cannot leave the directory. `LocalName` prefixes the first 8
+  characters of the secret, so two uploads of `image.png` do not collide.
+- *Caps.* `Fetch` reads each file under the per-file cap, checks it with
+  `Allowed`, and stops taking files at the file and byte caps of a turn. One
+  failed download is reported in its `Result` and never stops the rest. No
+  reason, log line or error holds file content or a secret.
+
 ## Token economy
 
 * **Right-sized models.** Strong models only for planning and for issues

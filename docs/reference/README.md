@@ -36,3 +36,5 @@ here once, and the guides link to them. The Helm chart values are in the
     browsers show what.
 12. **[Push API](push-api.md)**: the three routes a device uses to subscribe to
     push notifications, with bodies and status codes.
+13. **[Plan attachments](plan-attachments.md)**: the two upload routes of a
+    plan message, the allowed types and the limits.

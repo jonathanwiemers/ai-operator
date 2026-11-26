@@ -35,6 +35,9 @@ The operator then creates the milestone in GitLab with your GitLab login.
 A plan has its own budget; the chart values are in the
 [chart README](../../charts/ai-operator/README.md#plan).
 
+To show the agent a screenshot or a log, [attach files](attach-files-to-a-plan.md)
+to the message.
+
 ### Pick the project
 
 The picker offers only projects you may steer, and you can type to search
@@ -385,6 +388,7 @@ plan does not list it, and even if the linked issue is in another project.
   marker line.
 - [Your first milestone](../getting-started/first-milestone.md): a short
   spec on autopilot, step by step.
+- [Attach files to a plan](attach-files-to-a-plan.md): screenshots, PDFs and logs in a plan message.
 - [Desk API](../reference/desk-api.md#plans): the plan endpoints, the
   drafts, the decisions history and the `decisions` field of the plan
   chat.

@@ -146,6 +146,8 @@ exists in GitLab.
 | `GET /api/v1/projects/{namespace}/{name}/plans/{plan}/chat` | The plan's chat. | see, Desk chat |
 | `GET /api/v1/projects/{namespace}/{name}/plans/{plan}/decisions` | The history of the plan's decisions: each decision's versions and sign-offs, newest first. | see, Desk chat |
 | `POST /api/v1/projects/{namespace}/{name}/plans/{plan}/chat` | Send the planner a message. | `steer`, Desk chat |
+| `POST /api/v1/projects/{namespace}/{name}/plans/uploads` | Upload one file to the project's GitLab uploads for a plan message. See [Plan attachments](plan-attachments.md). | `steer`, Desk chat, GitLab connected |
+| `GET /api/v1/projects/{namespace}/{name}/plans/uploads/{secret}/{filename}` | Read an uploaded file with your GitLab token. | see, Desk chat, GitLab connected |
 
 On plans, `steer` also needs you to be an owner subject
 of the project's milestones, when any of them names owner subjects.
