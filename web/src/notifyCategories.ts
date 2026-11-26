@@ -21,5 +21,6 @@ export const notifyCategories: readonly NotifyCategoryInfo[] = [
   { category: 'milestoneStarted', label: 'Milestone started', description: "A milestone's issues are planned.", history: true },
   { category: 'milestoneDone', label: 'Milestone done', description: "A milestone's autopilot is done.", history: true },
   { category: 'release', label: 'Releases', description: 'A release is published or fails.', history: true },
+  { category: 'plan', label: 'Plans ready', description: 'A plan agent answered your message.' },
   { category: 'failed', label: 'Failed or blocked tasks', description: 'A task failed or is blocked.' },
 ]

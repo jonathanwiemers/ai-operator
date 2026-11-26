@@ -61,7 +61,7 @@ func main() {
 	}
 	ctx := ctrl.SetupSignalHandler()
 	hub := ui.NewHub()
-	if err := ui.Watch(ctx, c, hub, cfg.Research.Enabled()); err != nil {
+	if err := ui.Watch(ctx, c, hub, cfg.Research.Enabled(), cfg.ChatEnabled()); err != nil {
 		log.Error(err, "unable to watch resources")
 		os.Exit(1)
 	}

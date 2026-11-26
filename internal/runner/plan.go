@@ -62,15 +62,19 @@ func (p *PlanRun) turn(ctx context.Context, plan *aiv1.AgentPlan, project *aiv1.
 	budget := plan.BudgetUSD(p.MaxBudgetUSD)
 	left := aiv1.BudgetLeft(budget, plan.Status.SpendUSD, 0)
 	if left <= 0 {
-		return p.answer(ctx, &st, func(*aiv1.AgentPlanStatus) []aiv1.ChatReply {
-			return []aiv1.ChatReply{{MessageID: msg.ID, At: metav1.Time{Time: p.now()},
+		return p.answer(ctx, &st, func(s *aiv1.AgentPlanStatus) []aiv1.ChatReply {
+			at := metav1.Time{Time: p.now()}
+			finishTurn(s, msg.Author, at)
+			return []aiv1.ChatReply{{MessageID: msg.ID, At: at,
 				Error: fmt.Sprintf("the plan's budget of $%s is used; raise it on the Desk", aiv1.ShowCost(aiv1.CostOf(budget)))}}
 		})
 	}
 	resend := st.ChatInFlight != nil && st.ChatInFlight.MessageID == msg.ID
 	if resend && st.ChatInFlight.Resent {
-		return p.answer(ctx, &st, func(*aiv1.AgentPlanStatus) []aiv1.ChatReply {
-			return []aiv1.ChatReply{{MessageID: msg.ID, At: metav1.Time{Time: p.now()}, Error: "interrupted by a restart"}}
+		return p.answer(ctx, &st, func(s *aiv1.AgentPlanStatus) []aiv1.ChatReply {
+			at := metav1.Time{Time: p.now()}
+			finishTurn(s, msg.Author, at)
+			return []aiv1.ChatReply{{MessageID: msg.ID, At: at, Error: "interrupted by a restart"}}
 		})
 	}
 	st.ChatInFlight = &chatInFlight{MessageID: msg.ID, Resent: resend}
@@ -135,10 +139,7 @@ func (p *PlanRun) turn(ctx context.Context, plan *aiv1.AgentPlan, project *aiv1.
 		if call != nil {
 			addPlanCall(s, *call)
 		}
-		s.Chat.LastTurnTime = &at
-		if s.Phase == aiv1.AgentPlanWorking {
-			s.Phase = aiv1.AgentPlanReady
-		}
+		finishTurn(s, msg.Author, at) // the turn's author, also when another user interrupted it
 		return append([]aiv1.ChatReply{{MessageID: msg.ID, Text: text, At: at, Error: errStr}}, also...)
 	})
 }
@@ -210,6 +211,16 @@ func (p *PlanRun) watchInterrupt(ctx context.Context, current int64, stop <-chan
 		case <-p.wake:
 		case <-time.After(2 * time.Second):
 		}
+	}
+}
+
+// finishTurn records a finished turn that answered author's message at at:
+// its time, whom it answered, and a Working plan is Ready again. answer has
+// set s.Chat.
+func finishTurn(s *aiv1.AgentPlanStatus, author string, at metav1.Time) {
+	s.Chat.LastTurnTime, s.AnsweredFor = &at, author
+	if s.Phase == aiv1.AgentPlanWorking {
+		s.Phase = aiv1.AgentPlanReady
 	}
 }
 

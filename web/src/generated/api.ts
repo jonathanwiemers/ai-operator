@@ -197,6 +197,12 @@ export interface AgentPlanStatus {
    * +kubebuilder:validation:Minimum=0
    */
   decisionSeq?: number /* int32 */;
+  /**
+   * AnsweredFor is the Desk username whose message the last finished turn
+   * answered.
+   * +optional
+   */
+  answeredFor?: string;
 }
 /**
  * PlanDraft is one milestone draft of a plan.

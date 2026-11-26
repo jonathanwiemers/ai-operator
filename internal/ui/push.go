@@ -133,7 +133,7 @@ func (s *Server) pushInfo(w http.ResponseWriter, r *http.Request) {
 // pushCategories are the categories a device may pick, as in the Desk's
 // notification settings; all but failed are on by default.
 var pushCategories = []string{"problem", "question", "proposal", "companion", "budget", "failed",
-	"milestoneStarted", "milestoneDone", "release"}
+	"milestoneStarted", "milestoneDone", "release", "plan"}
 
 func defaultPushCategories() []string {
 	return slices.DeleteFunc(slices.Clone(pushCategories), func(c string) bool { return c == "failed" })

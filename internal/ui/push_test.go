@@ -446,6 +446,12 @@ func TestPutPushSubscription(t *testing.T) {
 	if got := pushes.subscriptions()[0].Categories; !slices.Equal(got, []string{"failed", "release"}) {
 		t.Errorf("categories %v, want [failed release]", got)
 	}
+	if code, body := put(pushBody(ep, `["plan"]`)); code != http.StatusNoContent || !slices.Equal(pushes.subscriptions()[0].Categories, []string{"plan"}) {
+		t.Errorf("PUT with plan: %d %s, categories %v", code, body, pushes.subscriptions()[0].Categories)
+	}
+	if !slices.Contains(defaultPushCategories(), "plan") {
+		t.Errorf("plan is not on by default: %v", defaultPushCategories())
+	}
 	if code, body := put(pushBody(ep, `[]`)); code != http.StatusNoContent || len(pushes.subscriptions()[0].Categories) != 0 {
 		t.Errorf("PUT with no categories: %d %s, categories %v", code, body, pushes.subscriptions()[0].Categories)
 	}

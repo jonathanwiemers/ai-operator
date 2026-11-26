@@ -71,8 +71,12 @@ func (s *Server) pushCandidates(ctx context.Context, st pushStore, p Principal, 
 	if err != nil {
 		return nil, err
 	}
+	plans, err := s.viewablePlans(ctx)
+	if err != nil {
+		return nil, err
+	}
 	var out []pushCandidate
-	for _, it := range inboxOf(visible, tasks, now) {
+	for _, it := range append(inboxOf(visible, tasks, now), planInboxOf(visible, plans, p.Username)...) {
 		if it.Notify != "" {
 			out = append(out, pushCandidate{Key: it.Key, Category: it.Notify, Item: &it})
 		}

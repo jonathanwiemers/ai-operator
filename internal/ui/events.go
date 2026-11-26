@@ -14,15 +14,18 @@ import (
 // Event tells the browser that a resource changed. It carries no content:
 // the browser fetches what it shows again, through the access checks.
 type Event struct {
-	Kind      string `json:"kind"` // project, task or research
+	Kind      string `json:"kind"` // project, task, research or plan
 	Namespace string `json:"namespace"`
 	Name      string `json:"name"`
-	// Project is the project of a project or task, empty for a research.
+	// Project is the project of a project, task or plan, empty for a research.
 	Project string `json:"project"`
 }
 
 // EventResearch is the kind of an AgentResearch's events.
 const EventResearch = "research"
+
+// EventPlan is the kind of an AgentPlan's events.
+const EventPlan = "plan"
 
 // Hub fans out change events to the open event streams.
 type Hub struct {
@@ -71,11 +74,15 @@ func (h *Hub) Publish(e Event) {
 }
 
 // Watch publishes every change of AgentProjects and AgentTasks in the cache,
-// and with research of AgentResearches (without, the UI may not read them).
-func Watch(ctx context.Context, informers cache.Informers, hub *Hub, research bool) error {
+// with research of AgentResearches (without, the UI may not read them) and
+// with plans of AgentPlans (they need the chat login).
+func Watch(ctx context.Context, informers cache.Informers, hub *Hub, research, plans bool) error {
 	objs := []client.Object{&aiv1.AgentProject{}, &aiv1.AgentTask{}}
 	if research {
 		objs = append(objs, &aiv1.AgentResearch{})
+	}
+	if plans {
+		objs = append(objs, &aiv1.AgentPlan{})
 	}
 	for _, obj := range objs {
 		inf, err := informers.GetInformer(ctx, obj)
@@ -109,6 +116,8 @@ func eventOf(o any) (Event, bool) {
 		return Event{Kind: "task", Namespace: v.Namespace, Name: v.Name, Project: v.Spec.ProjectRef}, true
 	case *aiv1.AgentResearch:
 		return Event{Kind: EventResearch, Namespace: v.Namespace, Name: v.Name}, true
+	case *aiv1.AgentPlan:
+		return Event{Kind: EventPlan, Namespace: v.Namespace, Name: v.Name, Project: v.Spec.ProjectRef}, true
 	}
 	return Event{}, false
 }

@@ -2313,8 +2313,12 @@ export interface HistoryResponse {
 export interface InboxItem {
   namespace: string;
   project: string;
-  kind: 'task' | 'problem' | 'proposal' | 'pause' | 'prompt' | 'pilotError' | 'companionReady' | 'budgetWarning';
+  kind: 'task' | 'problem' | 'proposal' | 'pause' | 'prompt' | 'pilotError' | 'companionReady' | 'budgetWarning' | 'plan';
   task?: string;
+  /**
+   * Plan is the ready plan's name (kind plan).
+   */
+  plan?: string;
   issueIID?: number /* int64 */;
   milestoneIID?: number /* int64 */;
   proposalID?: number /* int64 */;
@@ -2353,7 +2357,7 @@ export interface InboxItem {
    * Notify is the item's notification category, empty for none
    * (notifyCategory).
    */
-  notify?: 'problem' | 'question' | 'proposal' | 'companion' | 'budget' | 'failed';
+  notify?: 'problem' | 'question' | 'proposal' | 'companion' | 'budget' | 'failed' | 'plan';
 }
 /**
  * InboxResponse is GET /api/v1/inbox.

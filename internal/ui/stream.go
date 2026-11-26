@@ -516,10 +516,12 @@ func (t *HistoryTotals) add(d store.Day) {
 
 // InboxItem is something that needs a human now.
 type InboxItem struct {
-	Namespace    string `json:"namespace"`
-	Project      string `json:"project"`
-	Kind         string `json:"kind" tstype:"'task' | 'problem' | 'proposal' | 'pause' | 'prompt' | 'pilotError' | 'companionReady' | 'budgetWarning'"`
-	Task         string `json:"task,omitempty"`
+	Namespace string `json:"namespace"`
+	Project   string `json:"project"`
+	Kind      string `json:"kind" tstype:"'task' | 'problem' | 'proposal' | 'pause' | 'prompt' | 'pilotError' | 'companionReady' | 'budgetWarning' | 'plan'"`
+	Task      string `json:"task,omitempty"`
+	// Plan is the ready plan's name (kind plan).
+	Plan         string `json:"plan,omitempty"`
 	IssueIID     int64  `json:"issueIID,omitempty"`
 	MilestoneIID int64  `json:"milestoneIID,omitempty"`
 	ProposalID   int64  `json:"proposalID,omitempty"`
@@ -544,7 +546,7 @@ type InboxItem struct {
 	Key string `json:"key"`
 	// Notify is the item's notification category, empty for none
 	// (notifyCategory).
-	Notify string `json:"notify,omitempty" tstype:"'problem' | 'question' | 'proposal' | 'companion' | 'budget' | 'failed'"`
+	Notify string `json:"notify,omitempty" tstype:"'problem' | 'question' | 'proposal' | 'companion' | 'budget' | 'failed' | 'plan'"`
 }
 
 // InboxResponse is GET /api/v1/inbox.
@@ -581,13 +583,20 @@ type HandledItem struct {
 // with questions, failed or blocked, the pilots' open proposals and paused
 // autopilots. It comes from the live state, not the history.
 func (s *Server) inbox(w http.ResponseWriter, r *http.Request) {
-	visible, tasks, err := s.viewableInbox(r.Context(), principalOf(r))
+	p := principalOf(r)
+	visible, tasks, err := s.viewableInbox(r.Context(), p)
+	if err != nil {
+		s.internalError(w, err)
+		return
+	}
+	plans, err := s.viewablePlans(r.Context())
 	if err != nil {
 		s.internalError(w, err)
 		return
 	}
 	now := time.Now()
-	writeJSON(w, http.StatusOK, InboxResponse{Items: inboxOf(visible, tasks, now), Handled: handledOf(visible, tasks, now)})
+	items := append(inboxOf(visible, tasks, now), planInboxOf(visible, plans, p.Username)...)
+	writeJSON(w, http.StatusOK, InboxResponse{Items: items, Handled: handledOf(visible, tasks, now)})
 }
 
 // inboxTitleMax cuts a prompt's question in the Inbox.

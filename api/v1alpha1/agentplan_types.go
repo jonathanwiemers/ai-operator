@@ -126,6 +126,10 @@ type AgentPlanStatus struct {
 	// +optional
 	// +kubebuilder:validation:Minimum=0
 	DecisionSeq int32 `json:"decisionSeq,omitempty"`
+	// AnsweredFor is the Desk username whose message the last finished turn
+	// answered.
+	// +optional
+	AnsweredFor string `json:"answeredFor,omitempty"`
 }
 
 // PlanDraft is one milestone draft of a plan.

@@ -49,9 +49,10 @@ func defaultPushTiming() pushTiming {
 }
 
 // RunPushSender sends push notifications until ctx ends. A cycle runs only
-// once synced reports the cache synced, with push on and the lock held.
+// once synced reports the cache synced, with push on and the lock held. It
+// wakes on project, task and plan changes, and on its interval.
 func (s *Server) RunPushSender(ctx context.Context, synced func() bool) {
-	changes, cancel := s.hub.Subscribe(func(e Event) bool { return e.Kind == "project" || e.Kind == "task" })
+	changes, cancel := s.hub.Subscribe(func(e Event) bool { return e.Kind == "project" || e.Kind == "task" || e.Kind == EventPlan })
 	defer cancel()
 	tick := time.NewTicker(s.pushTiming.interval)
 	defer tick.Stop()

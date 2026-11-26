@@ -18,6 +18,7 @@ export type NotifyCategory =
   | 'milestoneStarted'
   | 'milestoneDone'
   | 'release'
+  | 'plan'
 
 type Categories = Record<NotifyCategory, boolean>
 
@@ -32,6 +33,7 @@ const defaults: Categories = {
   milestoneStarted: true,
   milestoneDone: true,
   release: true,
+  plan: true,
   failed: false,
 }
 
