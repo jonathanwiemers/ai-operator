@@ -501,9 +501,12 @@ func (f *Fake) UpdateIssue(_ context.Context, _ string, iid int64, opts gitlab.U
 			is.Assignees = append(is.Assignees, u)
 		}
 	}
-	if opts.StateEvent == "close" {
+	switch opts.StateEvent {
+	case "close":
 		is.State = "closed"
 		is.ClosedAt = f.tick()
+	case "reopen":
+		is.State, is.ClosedAt = "opened", nil
 	}
 	for _, m := range f.Milestones {
 		if opts.MilestoneID != 0 && m.ID == opts.MilestoneID {

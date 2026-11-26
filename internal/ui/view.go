@@ -349,7 +349,12 @@ func detail(p *aiv1.AgentProject, tasks []aiv1.AgentTask, now time.Time) Project
 		t := &tasks[i]
 		v := taskView(t, p, now)
 		ms := t.Spec.Milestone
-		if ms == nil {
+		switch {
+		case t.Spec.Type == aiv1.TaskTypeQueue:
+			// The loose issues queue is no task to work on: it gets its own
+			// tab, not a card on the Unplanned board.
+			continue
+		case ms == nil:
 			d.Unplanned = append(d.Unplanned, v)
 			continue
 		}

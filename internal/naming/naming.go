@@ -72,6 +72,11 @@ func CoordinateTask(project string, milestoneIID int64, milestoneTitle string) s
 	return join(fmt.Sprintf("%s-pilot-m%d", Slug(project), milestoneIID), milestoneTitle)
 }
 
+// QueueTask names the loose issues Queue task of a project. No pod runs for it.
+func QueueTask(project string) string {
+	return truncate(Slug(project) + "-loose-issues")
+}
+
 // ImplementTask names the implementation task (and pod) of an issue.
 func ImplementTask(project string, issueIID int64, issueTitle string) string {
 	return join(fmt.Sprintf("%s-%d", Slug(project), issueIID), issueTitle)

@@ -46,6 +46,8 @@ type projectPoll struct {
 	// The autopilot that drives the main-red issue, if any.
 	lane                 *aiv1.AgentTask
 	mainRed, urgentIssue int64
+	// The loose issues queue's task, if the project keeps one.
+	queueTask *aiv1.AgentTask
 
 	// The agent-labelled issues of the poll.
 	issues    map[int64]gitlab.Issue
@@ -394,6 +396,15 @@ func (ph autopilotPhase) run(ctx context.Context) {
 		}
 		if err := r.syncAutopilot(ctx, gl, gate, project, spec, st, implTasks, pilots[st.Spec.Milestone.IID], st == lane, ahead[st.Spec.Milestone.IID], byMilestone); err != nil {
 			ph.errs = append(ph.errs, fmt.Errorf("autopilot of milestone %q: %w", st.Spec.Milestone.Title, err))
+		}
+	}
+	// The loose issues queue, beside the milestones.
+	if err := ph.syncQueueTask(ctx); err != nil {
+		ph.errs = append(ph.errs, fmt.Errorf("loose issues queue task: %w", err))
+	}
+	if qt := ph.queueTask; qt != nil {
+		if err := r.syncLoose(ctx, gl, gate, project, spec, qt, implTasks, ph.issues); err != nil {
+			ph.errs = append(ph.errs, fmt.Errorf("loose issues queue: %w", err))
 		}
 	}
 	// Without the autopilot only a restart reaches a Spec task.

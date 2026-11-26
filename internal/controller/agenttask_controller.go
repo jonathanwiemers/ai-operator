@@ -153,7 +153,9 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	// without a run: the pilot answers at once while a problem is open.
 	warmUntil := task.WarmUntil(lc.ChatIdleTimeout.Duration)
 	warm := now.Before(warmUntil)
-	needsPod := pending && !budgetWait || hasChat
+	// The loose issues queue's task only holds state: no pod ever runs for it,
+	// also not for a chat message sent to it.
+	needsPod := (pending && !budgetWait || hasChat) && task.Spec.Type != aiv1.TaskTypeQueue
 	// The pilot answers many messages; pilot.maxBudgetUSD bounds it.
 	blocked := pending && !inProgress && task.Status.Run.RunCount >= lc.MaxRunsPerTask && task.Spec.Type != aiv1.TaskTypeCoordinate
 	// A run deferred because of a usage limit waits until its retry time. In

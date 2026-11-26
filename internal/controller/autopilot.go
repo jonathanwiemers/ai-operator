@@ -222,6 +222,9 @@ type autopilot struct {
 	holds         map[int64]*openCompanion
 	// notes are the tracking issue's notes when settle read them already.
 	notes []gitlab.Note
+	// loose: st is the project's Queue task (the loose issues queue), not a
+	// milestone's spec task: st.Spec.Milestone is nil.
+	loose bool
 }
 
 func (a *autopilot) item(iid int64) *aiv1.AutopilotItem {

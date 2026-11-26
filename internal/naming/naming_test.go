@@ -41,6 +41,12 @@ func TestTaskNames(t *testing.T) {
 	if got := ImplementTask("shop", 7, "!!!"); got != "shop-7" {
 		t.Errorf("ImplementTask without slug = %q", got)
 	}
+	if got := QueueTask("Shop"); got != "shop-loose-issues" {
+		t.Errorf("QueueTask = %q", got)
+	}
+	if got := QueueTask(strings.Repeat("p", 70)); len(got) > MaxNameLength {
+		t.Errorf("QueueTask too long: %d %q", len(got), got)
+	}
 }
 
 func TestWorkspaceAndBranch(t *testing.T) {

@@ -586,6 +586,20 @@ func TestOldDeferralWaitsWithoutItsEngine(t *testing.T) {
 	}
 }
 
+func TestLooseQueueTaskNeverGetsAPod(t *testing.T) {
+	task := newImplTask("shop-loose-issues", 0)
+	task.Labels[LabelType] = "queue"
+	task.Spec.Type, task.Spec.Issue = aiv1.TaskTypeQueue, nil
+	task.Spec.Source.ChatMessages = []aiv1.ChatMessage{{ID: 1, Kind: "message", Text: "hello", Author: "u", At: metav1.NewTime(t0)}}
+	e := newTaskEnv(t, task)
+	e.reconcile(task.Name)
+	var pod corev1.Pod
+	var pvc corev1.PersistentVolumeClaim
+	if e.exists(&pod, task.Name) || e.exists(&pvc, naming.Workspace(task.Name)) {
+		t.Fatal("the Queue task must never get a pod or a workspace")
+	}
+}
+
 func TestBudgetStoppedTaskWaitsWithoutAPod(t *testing.T) {
 	task := newImplTask("x", 1)
 	task.Spec.BudgetStop = true

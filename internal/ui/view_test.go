@@ -150,3 +150,20 @@ func TestSummarizeMilestoneCounts(t *testing.T) {
 		t.Fatalf("counts = %d active, %d settling", s.ActiveMilestones, s.SettlingMilestones)
 	}
 }
+
+func TestDetailHidesTheQueueTask(t *testing.T) {
+	p := &aiv1.AgentProject{}
+	p.Name = "shop"
+	loose := aiv1.AgentTask{Spec: aiv1.AgentTaskSpec{Type: aiv1.TaskTypeImplement, Issue: &aiv1.IssueRef{IID: 7, Title: "Loose"}}}
+	loose.Name = "shop-7-loose"
+	queueTask := aiv1.AgentTask{Spec: aiv1.AgentTaskSpec{Type: aiv1.TaskTypeQueue},
+		Status: aiv1.AgentTaskStatus{Autopilot: &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning, TrackingIssueIID: 9}}}
+	queueTask.Name = "shop-loose-issues"
+	d := detail(p, []aiv1.AgentTask{loose, queueTask}, time.Now())
+	if len(d.Unplanned) != 1 || d.Unplanned[0].Name != "shop-7-loose" {
+		t.Fatalf("the Queue task is not on the Unplanned board: %+v", d.Unplanned)
+	}
+	if len(d.Milestones) != 0 || len(d.Autopilots) != 0 {
+		t.Fatalf("the Queue task is no milestone: %+v %+v", d.Milestones, d.Autopilots)
+	}
+}

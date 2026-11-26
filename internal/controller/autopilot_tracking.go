@@ -43,12 +43,11 @@ func (a *autopilot) ensureTracking(ctx context.Context) error {
 		}
 		return nil
 	}
-	is, err := a.gl.CreateIssue(ctx, a.spec.GitLab.Project, gitlab.CreateIssueOptions{
-		Title:       "🤖 Autopilot: " + a.st.Spec.Milestone.Title,
-		Description: a.renderTracking(),
-		Labels:      a.spec.Workflow.GeneratedLabel,
-		MilestoneID: a.st.Spec.Milestone.ID,
-	})
+	opts := gitlab.CreateIssueOptions{Title: "🤖 Loose issues", Description: a.renderTracking(), Labels: a.spec.Workflow.GeneratedLabel}
+	if !a.loose {
+		opts.Title, opts.MilestoneID = "🤖 Autopilot: "+a.st.Spec.Milestone.Title, a.st.Spec.Milestone.ID
+	}
+	is, err := a.gl.CreateIssue(ctx, a.spec.GitLab.Project, opts)
 	if err != nil {
 		return fmt.Errorf("creating the tracking issue: %w", err)
 	}
@@ -139,6 +138,9 @@ func (a *autopilot) save(ctx context.Context) error {
 
 // renderTracking renders the tracking issue's description.
 func (a *autopilot) renderTracking() string {
+	if a.loose {
+		return a.renderLoose()
+	}
 	var b strings.Builder
 	prefix := a.spec.Workflow.CommandPrefix
 	fmt.Fprintf(&b, "**Autopilot** for milestone **%s**: ", a.st.Spec.Milestone.Title)
