@@ -156,6 +156,25 @@ type PlanDraft struct {
 	CreatedMilestoneIID int64 `json:"createdMilestoneIID,omitempty"`
 	// +optional
 	CreatedMilestoneURL string `json:"createdMilestoneURL,omitempty"`
+	// PendingRefs are the references to later drafts that the created
+	// milestone's description names by their quoted title, until those drafts
+	// are created.
+	// +optional
+	// +listType=atomic
+	// +kubebuilder:validation:MaxItems=5
+	PendingRefs []PlanDraftRef `json:"pendingRefs,omitempty"`
+}
+
+// PlanDraftRef is a reference to a later draft, written in a created draft's
+// milestone in place of its %IID.
+type PlanDraftRef struct {
+	// Key is the later draft's key.
+	// +kubebuilder:validation:Minimum=1
+	Key int64 `json:"key"`
+	// Text is the exact text written in its place: the later draft's title in
+	// straight double quotes.
+	// +kubebuilder:validation:MaxLength=300
+	Text string `json:"text"`
 }
 
 // PlanDecision is one decision of a plan, at its current version.

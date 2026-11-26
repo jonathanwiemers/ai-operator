@@ -23,8 +23,10 @@ const draftCreating = -1
 
 // createPlanMilestone creates the milestone of the plan's draft {key, title,
 // description, spec, autopilot} with the owner's GitLab token: the owner's
-// text with each %draft-N replaced by its %IID, then the chosen markers and
-// the owners lines. Key 0 is the first draft without a milestone, a new one on
+// text with each %draft-N of a created draft replaced by its %IID and, in the
+// description only, each one of a later draft by its quoted title, which the
+// draft records as its PendingRefs; then the chosen markers and the owners
+// lines. Key 0 is the first draft without a milestone, a new one on
 // a plan without drafts. Drafts are created in list order only. The draft is
 // claimed first (its IID set to draftCreating under optimistic locking), so
 // one request wins; a GitLab failure restores it. The plan's phase becomes
@@ -64,13 +66,21 @@ func (s *Server) createPlanMilestone(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	key := st.Drafts[i].Key
-	// The title has no line break, so it is the text's first line.
-	text, refs := resolveDraftRefs(req.Title+"\n"+req.Description, st.Drafts, key)
+	title, refs, _ := resolveDraftRefs(req.Title, st.Drafts, i, false)
 	if len(refs) > 0 {
-		writeErrorResponse(w, http.StatusUnprocessableEntity, ErrorResponse{Error: unresolvedDraftRefs(refs), Field: "description"})
+		writeErrorResponse(w, http.StatusUnprocessableEntity, ErrorResponse{Error: unresolvedDraftRefs(refs), Field: "title"})
 		return
 	}
-	title, description, _ := strings.Cut(text, "\n")
+	description, refs, pending := resolveDraftRefs(req.Description, st.Drafts, i, true)
+	switch {
+	case len(refs) > 0:
+		writeErrorResponse(w, http.StatusUnprocessableEntity, ErrorResponse{Error: unresolvedDraftRefs(refs), Field: "description"})
+		return
+	case len(pending) > maxPendingRefs:
+		writeErrorResponse(w, http.StatusUnprocessableEntity, ErrorResponse{Field: "description",
+			Error: fmt.Sprintf("the description refers to %d later drafts; refer to at most %d", len(pending), maxPendingRefs)})
+		return
+	}
 	ap, tasks, ok := s.loadProject(w, r)
 	if !ok {
 		return
@@ -114,7 +124,7 @@ func (s *Server) createPlanMilestone(w http.ResponseWriter, r *http.Request) {
 	if err := s.settleDraft(ctx, pl, key, func(i int) {
 		d := &st.Drafts[i]
 		d.CreatedMilestoneIID, d.CreatedMilestoneURL, d.Title = m.IID, url, cmp.Or(m.Title, title)
-		d.Draft, d.Revision, d.By = description, d.Revision+1, "owner"
+		d.Draft, d.Revision, d.By, d.PendingRefs = description, d.Revision+1, "owner", pending
 		if st.CreatedMilestoneIID == 0 { // the first created draft names the plan
 			st.Title, st.CreatedMilestoneIID = d.Title, m.IID
 		}
@@ -167,24 +177,41 @@ func draftCreateRefusal(drafts []aiv1.PlanDraft, i int) string {
 // draftRef is a reference to a draft of the plan: %draft-N, N its key.
 var draftRef = regexp.MustCompile(`%draft-([0-9]+)\b`)
 
-// resolveDraftRefs replaces each %draft-N in text whose draft has its
-// milestone with the milestone's %IID. It returns the text and the
-// references it cannot replace, once each in text order: a draft without a
-// milestone (or being created), an unknown key and self, the draft the text
-// is for.
-func resolveDraftRefs(text string, drafts []aiv1.PlanDraft, self int64) (string, []string) {
+// maxPendingRefs is the most later drafts one draft's description may refer
+// to (PlanDraft.PendingRefs).
+const maxPendingRefs = 5
+
+// resolveDraftRefs resolves each %draft-N in text, the text of the draft at
+// self of drafts: a draft with its milestone becomes the milestone's %IID.
+// With forward, a later draft without a milestone and with a title becomes
+// that title in straight double quotes, returned among the pending refs once
+// per key in text order. It also returns the references it cannot replace,
+// once each in text order: an unknown key, self, a draft being created, an
+// earlier draft without a milestone, and a later one without forward or
+// without a title.
+func resolveDraftRefs(text string, drafts []aiv1.PlanDraft, self int, forward bool) (string, []string, []aiv1.PlanDraftRef) {
 	var refs []string
+	var pending []aiv1.PlanDraftRef
 	out := draftRef.ReplaceAllStringFunc(text, func(ref string) string {
 		key, err := strconv.ParseInt(draftRef.FindStringSubmatch(ref)[1], 10, 64)
-		if i := slices.IndexFunc(drafts, func(d aiv1.PlanDraft) bool { return d.Key == key }); err == nil && key != self && i >= 0 && drafts[i].CreatedMilestoneIID > 0 {
+		i := slices.IndexFunc(drafts, func(d aiv1.PlanDraft) bool { return d.Key == key })
+		switch {
+		case err != nil || i < 0 || i == self:
+		case drafts[i].CreatedMilestoneIID > 0:
 			return "%" + strconv.FormatInt(drafts[i].CreatedMilestoneIID, 10)
+		case forward && i > self && drafts[i].CreatedMilestoneIID == 0 && strings.TrimSpace(drafts[i].Title) != "":
+			quoted := `"` + strings.TrimSpace(drafts[i].Title) + `"`
+			if !slices.ContainsFunc(pending, func(p aiv1.PlanDraftRef) bool { return p.Key == key }) {
+				pending = append(pending, aiv1.PlanDraftRef{Key: key, Text: quoted})
+			}
+			return quoted
 		}
 		if !slices.Contains(refs, ref) {
 			refs = append(refs, ref)
 		}
 		return ref
 	})
-	return out, refs
+	return out, refs, pending
 }
 
 // unresolvedDraftRefs is the 422 message naming the references refs.

@@ -614,6 +614,34 @@ spec:
                       format: int64
                       minimum: 1
                       type: integer
+                    pendingRefs:
+                      description: |-
+                        PendingRefs are the references to later drafts that the created
+                        milestone's description names by their quoted title, until those drafts
+                        are created.
+                      items:
+                        description: |-
+                          PlanDraftRef is a reference to a later draft, written in a created draft's
+                          milestone in place of its %IID.
+                        properties:
+                          key:
+                            description: Key is the later draft's key.
+                            format: int64
+                            minimum: 1
+                            type: integer
+                          text:
+                            description: |-
+                              Text is the exact text written in its place: the later draft's title in
+                              straight double quotes.
+                            maxLength: 300
+                            type: string
+                        required:
+                        - key
+                        - text
+                        type: object
+                      maxItems: 5
+                      type: array
+                      x-kubernetes-list-type: atomic
                     revision:
                       description: Revision counts the draft's versions, by agent
                         or owner.

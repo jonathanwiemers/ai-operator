@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -253,7 +254,7 @@ func TestPlanOldDraftEditAndCreate(t *testing.T) {
 	}
 	st := env.getPlan(t, "shop-plan-new").Status
 	want := []aiv1.PlanDraft{{Key: 1, Title: "Old", Draft: "## Owner", Revision: 3, By: "owner", SHA: "abc"}}
-	if !slices.Equal(st.Drafts, want) || st.DraftSeq != 1 || st.Draft != "" || st.DraftRevision != 0 || st.DraftBy != "" || st.DraftSHA != "" {
+	if !reflect.DeepEqual(st.Drafts, want) || st.DraftSeq != 1 || st.Draft != "" || st.DraftRevision != 0 || st.DraftBy != "" || st.DraftSHA != "" {
 		t.Fatalf("not moved to key 1: %+v", st)
 	}
 	if code, out := env.postJSON(t, newPlanMilestone, planMilestoneBody(true, true)); code != http.StatusCreated {
@@ -328,20 +329,20 @@ func TestPlanMilestoneDraftRefusals(t *testing.T) {
 	env, fake := planSteerer(t)
 	withDrafts(t, env) // key 1 is %41, then keys 2 and 4
 	for name, c := range map[string]struct {
-		body  map[string]any
-		code  int
-		error string
+		body         map[string]any
+		code         int
+		error, field string
 	}{
-		"created":   {draftBody(1, "x"), http.StatusConflict, "draft 1 is already created as %41"},
-		"out of":    {draftBody(4, "x"), http.StatusConflict, "create draft 2 first"},
-		"unknown":   {draftBody(3, "x"), http.StatusNotFound, ""},
-		"forward":   {draftBody(2, "after %draft-4"), http.StatusUnprocessableEntity, "%draft-4 is not created yet; create it first or remove the reference"},
-		"self":      {draftBody(2, "see %draft-2"), http.StatusUnprocessableEntity, "%draft-2 is not created yet; create it first or remove the reference"},
-		"no key":    {draftBody(2, "%draft-9 and %draft-4, %draft-9"), http.StatusUnprocessableEntity, "%draft-9, %draft-4 are not created yet; create them first or remove the references"},
-		"title ref": {map[string]any{"key": 2, "title": "After %draft-4", "description": "x"}, http.StatusUnprocessableEntity, "%draft-4 is not created yet; create it first or remove the reference"},
+		"created":   {draftBody(1, "x"), http.StatusConflict, "draft 1 is already created as %41", ""},
+		"out of":    {draftBody(4, "x"), http.StatusConflict, "create draft 2 first", ""},
+		"unknown":   {draftBody(3, "x"), http.StatusNotFound, "", ""},
+		"self":      {draftBody(2, "see %draft-2"), http.StatusUnprocessableEntity, "%draft-2 is not created yet; create it first or remove the reference", "description"},
+		"no key":    {draftBody(2, "%draft-9 and %draft-4, %draft-7, %draft-9"), http.StatusUnprocessableEntity, "%draft-9, %draft-7 are not created yet; create them first or remove the references", "description"},
+		"title ref": {map[string]any{"key": 2, "title": "After %draft-4", "description": "x"}, http.StatusUnprocessableEntity, "%draft-4 is not created yet; create it first or remove the reference", "title"},
 	} {
-		if code, out := env.postJSON(t, newPlanMilestone, c.body); code != c.code || c.error != "" && out["error"] != c.error {
-			t.Errorf("%s: %d %v, want %d %q", name, code, out, c.code, c.error)
+		code, out := env.postJSON(t, newPlanMilestone, c.body)
+		if field, _ := out["field"].(string); code != c.code || c.error != "" && (out["error"] != c.error || field != c.field) {
+			t.Errorf("%s: %d %v, want %d %q on %q", name, code, out, c.code, c.error, c.field)
 		}
 	}
 	if st := env.getPlan(t, "shop-plan-new").Status; len(fake.Milestones) != 0 || st.Drafts[1].CreatedMilestoneIID != 0 || st.Drafts[1].Revision != 3 {
@@ -428,20 +429,80 @@ func TestPlanDraftBeingCreated(t *testing.T) {
 }
 
 func TestResolveDraftRefs(t *testing.T) {
-	drafts := []aiv1.PlanDraft{{Key: 1, CreatedMilestoneIID: 41}, {Key: 2, CreatedMilestoneIID: draftCreating}, {Key: 3}, {Key: 12, CreatedMilestoneIID: 50}}
+	drafts := []aiv1.PlanDraft{{Key: 1, CreatedMilestoneIID: 41}, {Key: 2, CreatedMilestoneIID: draftCreating}, {Key: 3},
+		{Key: 12, CreatedMilestoneIID: 50}, {Key: 5, Title: " Five "}, {Key: 6, Title: " "}, {Key: 8, Title: "Eight", CreatedMilestoneIID: draftCreating}}
+	five := []aiv1.PlanDraftRef{{Key: 5, Text: `"Five"`}}
 	for _, c := range []struct {
-		text, want string
-		refs       []string
+		text    string
+		forward bool
+		want    string
+		refs    []string
+		pending []aiv1.PlanDraftRef
 	}{
-		{"%draft-12 and %draft-1, (%draft-1)", "%50 and %41, (%41)", nil},
-		{"%draft-1x %draft-1_ %draft- draft-1 %draft-1", "%draft-1x %draft-1_ %draft- draft-1 %41", nil},
-		{"%draft-2 %draft-3 %draft-3 %draft-7", "%draft-2 %draft-3 %draft-3 %draft-7", []string{"%draft-2", "%draft-3", "%draft-7"}},
-		{"self %draft-3", "self %draft-3", []string{"%draft-3"}},
-		{"%draft-99999999999999999999", "%draft-99999999999999999999", []string{"%draft-99999999999999999999"}},
+		{"%draft-12 and %draft-1, (%draft-1)", true, "%50 and %41, (%41)", nil, nil},
+		{"%draft-1x %draft-1_ %draft- draft-1 %draft-1", true, "%draft-1x %draft-1_ %draft- draft-1 %41", nil, nil},
+		{"%draft-2 %draft-3 %draft-3 %draft-7", true, "%draft-2 %draft-3 %draft-3 %draft-7", []string{"%draft-2", "%draft-3", "%draft-7"}, nil},
+		{"self %draft-3", true, "self %draft-3", []string{"%draft-3"}, nil},
+		{"%draft-99999999999999999999", true, "%draft-99999999999999999999", []string{"%draft-99999999999999999999"}, nil},
+		// A later draft without a milestone becomes its quoted title, recorded once.
+		{"after %draft-5, see %draft-5; on %draft-1", true, `after "Five", see "Five"; on %41`, nil, five},
+		{"%draft-5 %draft-6 %draft-8", true, `"Five" %draft-6 %draft-8`, []string{"%draft-6", "%draft-8"}, five},
+		{"after %draft-5 and %draft-1", false, "after %draft-5 and %41", []string{"%draft-5"}, nil},
 	} {
-		got, refs := resolveDraftRefs(c.text, drafts, 3)
-		if got != c.want || !slices.Equal(refs, c.refs) {
-			t.Errorf("%q: %q %v, want %q %v", c.text, got, refs, c.want, c.refs)
+		got, refs, pending := resolveDraftRefs(c.text, drafts, 2, c.forward)
+		if got != c.want || !slices.Equal(refs, c.refs) || !slices.Equal(pending, c.pending) {
+			t.Errorf("%q: %q %v %v, want %q %v %v", c.text, got, refs, pending, c.want, c.refs, c.pending)
 		}
+	}
+}
+
+// A reference to a later draft is created as its quoted title and recorded
+// on the created draft, once per key.
+func TestPlanMilestoneForwardRef(t *testing.T) {
+	env, fake := planSteerer(t)
+	withDrafts(t, env) // key 1 is %41, then keys 2 "Two" and 4 "Four"
+	if code, out := env.postJSON(t, newPlanMilestone, draftBody(2, "before %draft-4 and %draft-4; after %draft-1")); code != http.StatusCreated {
+		t.Fatalf("create: %d %v", code, out)
+	}
+	const want = `before "Four" and "Four"; after %41`
+	if got := fake.Milestones[0].Description; !strings.HasPrefix(got, want+"\n") {
+		t.Errorf("created as:\n%s", got)
+	}
+	st := env.getPlan(t, "shop-plan-new").Status
+	if d := st.Drafts[1]; d.Draft != want || !slices.Equal(d.PendingRefs, []aiv1.PlanDraftRef{{Key: 4, Text: `"Four"`}}) {
+		t.Errorf("draft 2: %+v", d)
+	}
+	if code, out := env.postJSON(t, newPlanMilestone, draftBody(4, "after %draft-2")); code != http.StatusCreated {
+		t.Fatalf("create draft 4: %d %v", code, out)
+	}
+	if d := env.getPlan(t, "shop-plan-new").Status.Drafts[2]; d.Draft != "after %1" || d.PendingRefs != nil {
+		t.Errorf("draft 4: %+v", d)
+	}
+}
+
+// Draft 1 naming draft 2 and draft 2 naming draft 1 create in list order.
+func TestPlanMilestoneMutualRefs(t *testing.T) {
+	env, fake := planSteerer(t)
+	withThreeDrafts(t, env, "see %draft-2", "see %draft-1")
+	for key, text := range []string{"see %draft-2", "see %draft-1"} {
+		if code, out := env.postJSON(t, newPlanMilestone, draftBody(int64(key+1), text)); code != http.StatusCreated {
+			t.Fatalf("draft %d: %d %v", key+1, code, out)
+		}
+	}
+	pl := env.getPlan(t, "shop-plan-new")
+	if d := pl.Status.Drafts; d[0].Draft != `see "Draft"` || len(d[0].PendingRefs) != 1 || d[1].Draft != "see %1" || d[1].PendingRefs != nil ||
+		!strings.HasPrefix(fake.Milestones[1].Description, "see %1\n") || pl.Status.Phase != aiv1.AgentPlanCreated {
+		t.Errorf("status %+v", pl.Status)
+	}
+}
+
+// A description may refer to at most maxPendingRefs later drafts.
+func TestPlanMilestoneTooManyForwardRefs(t *testing.T) {
+	env, fake := planSteerer(t)
+	withThreeDrafts(t, env, "a", "b", "c", "d", "e", "f", "g")
+	body := draftBody(1, "%draft-2 %draft-3 %draft-4 %draft-5 %draft-6 %draft-7")
+	if code, out := env.postJSON(t, newPlanMilestone, body); code != http.StatusUnprocessableEntity ||
+		out["error"] != "the description refers to 6 later drafts; refer to at most 5" || out["field"] != "description" || len(fake.Milestones) != 0 {
+		t.Errorf("create: %d %v", code, out)
 	}
 }

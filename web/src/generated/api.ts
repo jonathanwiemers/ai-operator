@@ -244,6 +244,32 @@ export interface PlanDraft {
    * +optional
    */
   createdMilestoneURL?: string;
+  /**
+   * PendingRefs are the references to later drafts that the created
+   * milestone's description names by their quoted title, until those drafts
+   * are created.
+   * +optional
+   * +listType=atomic
+   * +kubebuilder:validation:MaxItems=5
+   */
+  pendingRefs?: PlanDraftRef[];
+}
+/**
+ * PlanDraftRef is a reference to a later draft, written in a created draft's
+ * milestone in place of its %IID.
+ */
+export interface PlanDraftRef {
+  /**
+   * Key is the later draft's key.
+   * +kubebuilder:validation:Minimum=1
+   */
+  key: number /* int64 */;
+  /**
+   * Text is the exact text written in its place: the later draft's title in
+   * straight double quotes.
+   * +kubebuilder:validation:MaxLength=300
+   */
+  text: string;
 }
 /**
  * PlanDecision is one decision of a plan, at its current version.

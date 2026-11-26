@@ -7,6 +7,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -39,7 +40,7 @@ func TestApplyPlanDraftsAddUpdateUnchanged(t *testing.T) {
 		{Key: 2, Title: "Two", Draft: "## Goal\n\nTwo.", Revision: 1, By: "owner"},
 		{Key: 3, Title: "Three", Draft: "## Goal\n\nThree.", Revision: 1, By: "agent", SHA: "new"},
 	}
-	if !slices.Equal(s.Drafts, want) || s.DraftSeq != 3 {
+	if !reflect.DeepEqual(s.Drafts, want) || s.DraftSeq != 3 {
 		t.Fatalf("drafts (seq %d):\n%+v\nwant\n%+v", s.DraftSeq, s.Drafts, want)
 	}
 	// An empty title keeps the draft's own.
@@ -91,7 +92,7 @@ func TestApplyPlanDraftsRefusals(t *testing.T) {
 		if !slices.Equal(notes, []string{tc.note}) || !maps.Equal(refused, map[int64]bool{tc.key: true}) || !allPlanDraftsRefused(refused) {
 			t.Errorf("%s: notes %q, refused %v", name, notes, refused)
 		}
-		if !slices.Equal(s.Drafts, before) || s.DraftSeq != 7 {
+		if !reflect.DeepEqual(s.Drafts, before) || s.DraftSeq != 7 {
 			t.Errorf("%s: drafts changed: %+v", name, s.Drafts)
 		}
 	}
@@ -115,7 +116,7 @@ func TestApplyPlanDraftsMovesOldDraft(t *testing.T) {
 	s := aiv1.AgentPlanStatus{Title: "Old", Draft: "Old words.", DraftRevision: 3, DraftBy: "owner"}
 	notes, refused := applyPlanDrafts(&s, map[int64]int64{1: 3}, []planTurnDraft{{Key: 1, Draft: "New words."}}, "new")
 	if len(notes) != 0 || !maps.Equal(refused, map[int64]bool{1: false}) || s.Draft != "" || s.DraftSeq != 1 ||
-		!slices.Equal(s.Drafts, []aiv1.PlanDraft{{Key: 1, Title: "Old", Draft: "New words.", Revision: 4, By: "agent", SHA: "new"}}) {
+		!reflect.DeepEqual(s.Drafts, []aiv1.PlanDraft{{Key: 1, Title: "Old", Draft: "New words.", Revision: 4, By: "agent", SHA: "new"}}) {
 		t.Fatalf("notes %q, refused %v, status %+v", notes, refused, s)
 	}
 	// Even without a change, the move happens.
