@@ -38,7 +38,7 @@ func TestMirrorChangedPins(t *testing.T) {
 	// main moves on with a pin change of its own: not the branches'.
 	commit("main", "main", map[string]string{".tool-versions": "nodejs 24\n"})
 
-	m := &Mirror{Dir: filepath.Join(e.tmp, "mirror.git")}
+	m := &Mirror{AuthorName: "Bot", AuthorEmail: "bot@example.com", Dir: filepath.Join(e.tmp, "mirror.git")}
 	ctx := context.Background()
 	if err := m.Sync(ctx, e.origin, "main", "same", "bump", "drop", "gone"); err != nil {
 		t.Fatal(err)

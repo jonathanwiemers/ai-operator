@@ -57,6 +57,32 @@ func TestListIssuesPaginatesAndFilters(t *testing.T) {
 	}
 }
 
+func TestCurrentUserDecodesGitIdentity(t *testing.T) {
+	for _, tc := range []struct {
+		body string
+		want User
+	}{
+		{`{"id":7,"username":"bot","name":"Bot","commit_email":"bot@example.com","email":"private@example.com"}`,
+			User{ID: 7, Username: "bot", Name: "Bot", CommitEmail: "bot@example.com"}},
+		{`{"id":7,"username":"bot","name":"Bot"}`, User{ID: 7, Username: "bot", Name: "Bot"}},
+	} {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/api/v4/user" {
+				t.Errorf("unexpected path %s", r.URL.Path)
+			}
+			_, _ = io.WriteString(w, tc.body)
+		}))
+		u, err := New(srv.URL, "tok").CurrentUser(context.Background())
+		srv.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if *u != tc.want {
+			t.Errorf("CurrentUser(%s) = %+v, want %+v", tc.body, *u, tc.want)
+		}
+	}
+}
+
 func TestListIssuesUpdatedAfter(t *testing.T) {
 	var got string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

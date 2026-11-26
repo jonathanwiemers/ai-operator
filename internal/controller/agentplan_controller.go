@@ -126,7 +126,7 @@ func (r *AgentPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if err := r.getOrCreate(ctx, buildPlanClaim(&plan, spec)); err != nil {
 		return ctrl.Result{}, err
 	}
-	pod := buildPlanPod(&plan, spec, r.Config, r.AgentLanguage)
+	pod := buildPlanPod(&plan, spec, r.Config, r.AgentLanguage, projectGitIdentity(&project))
 	if err := r.getOrCreate(ctx, pod); err != nil {
 		return ctrl.Result{}, err
 	}

@@ -156,11 +156,12 @@ func localAgent() *runner.LocalAgent {
 		engines[aiv1.EngineCursor] = &runner.CursorCLI{Env: env}
 	}
 	workspace := envOr("AI_WORKSPACE", "/workspace")
+	name, email := gitAuthor()
 	return &runner.LocalAgent{
 		Workspace: &runner.Workspace{
 			Dir:         filepath.Join(workspace, "repo"),
-			AuthorName:  envOr("AI_GIT_AUTHOR_NAME", "AI Operator"),
-			AuthorEmail: envOr("AI_GIT_AUTHOR_EMAIL", "ai-operator@noreply.local"),
+			AuthorName:  name,
+			AuthorEmail: email,
 		},
 		Workspaces: workspace,
 		Engines:    engines,
@@ -205,6 +206,7 @@ func runRunner(ctx context.Context) {
 		os.Exit(1)
 	}
 
+	authorName, authorEmail := gitAuthor()
 	r := &runner.Runner{
 		K8s:         k8s,
 		Namespace:   mustEnv("AI_TASK_NAMESPACE"),
@@ -216,7 +218,7 @@ func runRunner(ctx context.Context) {
 		NewGitLab:      func(url, token string) gitlab.API { return gitlab.New(url, token) },
 		Agent:          agent,
 		Mirror: &runner.Mirror{Dir: filepath.Join(stateDir, "mirror.git"), Token: token, Log: log.WithName("mirror"),
-			AuthorName: envOr("AI_GIT_AUTHOR_NAME", "AI Operator"), AuthorEmail: envOr("AI_GIT_AUTHOR_EMAIL", "ai-operator@noreply.local")},
+			AuthorName: authorName, AuthorEmail: authorEmail},
 		StateDir:         stateDir,
 		Exchange:         exchange,
 		PollInterval:     10 * time.Second,
@@ -325,6 +327,13 @@ func mustEnv(k string) string {
 		os.Exit(1)
 	}
 	return v
+}
+
+// gitAuthor is the git author and committer of the runner's and the agent
+// container's commits: the bot's identity the operator sets on the pod, or
+// the one default while the project status has none yet.
+func gitAuthor() (name, email string) {
+	return envOr("AI_GIT_AUTHOR_NAME", "AI Operator"), envOr("AI_GIT_AUTHOR_EMAIL", "ai-operator@noreply.local")
 }
 
 func envOr(k, def string) string {

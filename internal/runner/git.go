@@ -400,14 +400,7 @@ func (m *Mirror) StartBranch(ctx context.Context, branch, base, message string) 
 		return "", err
 	}
 	baseRef := "refs/remotes/origin/" + base
-	name, email := m.AuthorName, m.AuthorEmail
-	if name == "" {
-		name = "AI Operator"
-	}
-	if email == "" {
-		email = "ai-operator@noreply.local"
-	}
-	sha, err := m.run(ctx, false, "-c", "user.name="+name, "-c", "user.email="+email,
+	sha, err := m.run(ctx, false, "-c", "user.name="+m.AuthorName, "-c", "user.email="+m.AuthorEmail,
 		"commit-tree", baseRef+"^{tree}", "-p", baseRef, "-m", message)
 	if err != nil {
 		return "", err

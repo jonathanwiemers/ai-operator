@@ -98,7 +98,7 @@ var DefaultRunnerResources = corev1.ResourceRequirements{
 // targets are the project's valid companion targets (crossRepoTargets): a
 // task's companion gets its token (GITLAB_COMPANION_TOKEN) in the runner
 // container only while its project is one of them.
-func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec, deskURL string, targets []aiv1.CrossRepoTarget, language string) *corev1.Pod {
+func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec, deskURL string, targets []aiv1.CrossRepoTarget, language string, id gitIdentity) *corev1.Pod {
 	own := []corev1.EnvVar{{Name: "AI_TASK_NAME", Value: task.Name}, namespaceEnv("AI_TASK_NAMESPACE")}
 	var extra []corev1.EnvVar
 	annotations := map[string]string{}
@@ -108,7 +108,29 @@ func buildPod(task *aiv1.AgentTask, spec aiv1.AgentProjectSpec, deskURL string, 
 		annotations[AnnotationCompanion] = project
 	}
 	meta := metav1.ObjectMeta{Name: task.Name, Namespace: task.Namespace, Labels: taskLabels(task), Annotations: annotations}
-	return workspacePod(meta, spec, deskURL, language, []string{"ai-runner"}, own, extra, agentResources(task, spec))
+	return workspacePod(meta, spec, deskURL, language, id, []string{"ai-runner"}, own, extra, agentResources(task, spec))
+}
+
+// gitIdentity is the git author and committer of a pod's commits, from the
+// project status (botGitName, botGitEmail).
+type gitIdentity struct {
+	Name, Email string
+}
+
+// projectGitIdentity is the identity the poll resolved for project; empty
+// before the first successful poll.
+func projectGitIdentity(project *aiv1.AgentProject) gitIdentity {
+	return gitIdentity{Name: project.Status.BotGitName, Email: project.Status.BotGitEmail}
+}
+
+// env is the AI_GIT_AUTHOR_* vars the runner binary reads in both
+// containers, or none unless both values are
+// set: a half identity would mix the bot with the runner's default.
+func (id gitIdentity) env() []corev1.EnvVar {
+	if id.Name == "" || id.Email == "" {
+		return nil
+	}
+	return []corev1.EnvVar{{Name: "AI_GIT_AUTHOR_NAME", Value: id.Name}, {Name: "AI_GIT_AUTHOR_EMAIL", Value: id.Email}}
 }
 
 // namespaceEnv is the env var name set to the pod's namespace.
@@ -122,7 +144,7 @@ func namespaceEnv(name string) corev1.EnvVar {
 // meta.Name on the PVC naming.Workspace(meta.Name), the runner running
 // command with own first in its environment and extra after the log level,
 // the agent container with agentRes. meta.Annotations must not be nil.
-func workspacePod(meta metav1.ObjectMeta, spec aiv1.AgentProjectSpec, deskURL, language string, command []string, own, extra []corev1.EnvVar, agentRes corev1.ResourceRequirements) *corev1.Pod {
+func workspacePod(meta metav1.ObjectMeta, spec aiv1.AgentProjectSpec, deskURL, language string, id gitIdentity, command []string, own, extra []corev1.EnvVar, agentRes corev1.ResourceRequirements) *corev1.Pod {
 	agents := spec.Agents
 	claim := naming.Workspace(meta.Name)
 	runnerEnv := append(own, []corev1.EnvVar{
@@ -174,6 +196,10 @@ func workspacePod(meta metav1.ObjectMeta, spec aiv1.AgentProjectSpec, deskURL, l
 	}
 	runnerEnv = append(runnerEnv, logLevelEnv(agents)...)
 	runnerEnv = append(runnerEnv, extra...)
+	// Both containers commit: the runner its start commit, the agent
+	// container the step commits.
+	gitEnv := id.env()
+	runnerEnv = append(runnerEnv, gitEnv...)
 	if deskURL != "" {
 		runnerEnv = append(runnerEnv, corev1.EnvVar{Name: "AI_DESK_URL", Value: deskURL})
 	}
@@ -213,7 +239,7 @@ func workspacePod(meta metav1.ObjectMeta, spec aiv1.AgentProjectSpec, deskURL, l
 	}}
 	podSpec.Containers = []corev1.Container{
 		runnerContainer(agents, command, runnerEnv, runnerMounts),
-		agentContainer(agents, agentEnv(agents, language, cacheEnv...), agentMounts, agentRes),
+		agentContainer(agents, agentEnv(agents, language, append(cacheEnv, gitEnv...)...), agentMounts, agentRes),
 	}
 
 	return &corev1.Pod{ObjectMeta: meta, Spec: podSpec}

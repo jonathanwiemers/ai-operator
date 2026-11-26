@@ -2770,6 +2770,18 @@ spec:
                   this project.
                 format: int32
                 type: integer
+              botGitEmail:
+                description: |-
+                  BotGitEmail is the git author and committer email of the operator's
+                  commits: the token user's commit email, or else its GitLab noreply
+                  address <id>-<username>@users.noreply.gitlab.com.
+                type: string
+              botGitName:
+                description: |-
+                  BotGitName is the git author and committer name of the operator's
+                  commits: the token user's name, or its username when the name is
+                  empty. Read with BotUsername.
+                type: string
               botUserID:
                 description: |-
                   BotUserID is the GitLab user behind the token. Its comments never

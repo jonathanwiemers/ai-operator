@@ -39,6 +39,11 @@ type ListPipelinesOptions struct {
 type User struct {
 	ID       int64  `json:"id"`
 	Username string `json:"username"`
+	// Name is the display name.
+	Name string `json:"name"`
+	// CommitEmail is the email the user commits with in GitLab; empty when
+	// GitLab does not return it.
+	CommitEmail string `json:"commit_email"`
 }
 
 // Project is a GitLab project.

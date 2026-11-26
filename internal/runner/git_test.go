@@ -26,7 +26,7 @@ func guardedMirror(t *testing.T) (m *Mirror, origin string, log *[]string) {
 	e := newImplementEnv(t)
 	gitCmd(t, e.seed, "push", "-q", "origin", "HEAD:agent/42-x")
 	var lines []string
-	m = &Mirror{Dir: filepath.Join(e.tmp, "mirror.git"),
+	m = &Mirror{AuthorName: "Bot", AuthorEmail: "bot@example.com", Dir: filepath.Join(e.tmp, "mirror.git"),
 		Log:    funcr.New(func(_, args string) { lines = append(lines, args) }, funcr.Options{}),
 		Policy: &PushPolicy{Project: "group/app", DefaultBranch: "main", URL: e.origin}}
 	ctx := context.Background()
@@ -65,6 +65,24 @@ func TestMirrorCommitsAhead(t *testing.T) {
 	}
 	if _, err := m.CommitsAhead(ctx, "main", "agent/none"); err == nil {
 		t.Fatal("a missing branch counts as an error")
+	}
+}
+
+func TestStartBranchCommitsAsTheMirrorIdentity(t *testing.T) {
+	m, _, _ := guardedMirror(t)
+	m.AuthorName, m.AuthorEmail = "AI Bot", "999-ai-bot@users.noreply.gitlab.com"
+	ctx := context.Background()
+	sha, err := m.StartBranch(ctx, "agent/43-y", "main", "Start work on #43")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := m.run(ctx, false, "log", "-1", "--format=%an <%ae> / %cn <%ce>", sha)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = "AI Bot <999-ai-bot@users.noreply.gitlab.com> / AI Bot <999-ai-bot@users.noreply.gitlab.com>"
+	if strings.TrimSpace(got) != want {
+		t.Fatalf("start commit by %q, want %q", got, want)
 	}
 }
 

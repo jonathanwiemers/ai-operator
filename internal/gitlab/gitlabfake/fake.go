@@ -191,7 +191,7 @@ var _ gitlab.API = (*Fake)(nil)
 // New returns an empty fake.
 func New() *Fake {
 	return &Fake{
-		Bot:        gitlab.User{ID: 999, Username: "ai-bot"},
+		Bot:        gitlab.User{ID: 999, Username: "ai-bot", Name: "AI Bot", CommitEmail: "ai-bot@example.com"},
 		Project:    gitlab.Project{ID: 1, PathWithNamespace: "group/app", DefaultBranch: "main", HTTPURLToRepo: "https://gitlab.example/group/app.git"},
 		Issues:     map[int64]*gitlab.Issue{},
 		IssueNotes: map[int64][]gitlab.Note{},

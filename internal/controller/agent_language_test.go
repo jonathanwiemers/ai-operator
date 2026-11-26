@@ -20,10 +20,10 @@ func TestAgentLanguageEnv(t *testing.T) {
 	}
 	builders := map[string]func(language string) *corev1.Pod{
 		"task": func(language string) *corev1.Pod {
-			return buildPod(newImplTask("x", 1), withEnv(testProject().Spec.WithDefaults()), "", nil, language)
+			return buildPod(newImplTask("x", 1), withEnv(testProject().Spec.WithDefaults()), "", nil, language, gitIdentity{})
 		},
 		"plan": func(language string) *corev1.Pod {
-			return buildPlanPod(testPlan(), withEnv(testPlanSpec()), testPlanConfig, language)
+			return buildPlanPod(testPlan(), withEnv(testPlanSpec()), testPlanConfig, language, gitIdentity{})
 		},
 		"research": func(language string) *corev1.Pod {
 			spec := withEnv(researchProject().Spec.WithDefaults())

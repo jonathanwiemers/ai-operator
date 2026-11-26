@@ -40,6 +40,44 @@ func (e *projectEnv) issuePhases() issuePhases {
 	return issuePhases{e.projectPoll()}
 }
 
+func TestBotGitIdentity(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		u               gitlab.User
+		wantN, wantMail string
+	}{
+		{"commit email wins", gitlab.User{ID: 7, Username: "bot", Name: "Bot", CommitEmail: "bot@example.com"}, "Bot", "bot@example.com"},
+		{"noreply without commit email", gitlab.User{ID: 7, Username: "bot", Name: "Bot"}, "Bot", "7-bot@users.noreply.gitlab.com"},
+		{"username without name", gitlab.User{ID: 7, Username: "bot", CommitEmail: "bot@example.com"}, "bot", "bot@example.com"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if n, m := botGitIdentity(&tc.u); n != tc.wantN || m != tc.wantMail {
+				t.Fatalf("botGitIdentity = %q %q, want %q %q", n, m, tc.wantN, tc.wantMail)
+			}
+		})
+	}
+}
+
+// A status from an older release (bot user known, no git identity) gets
+// the identity on the next poll, even with pilot mentions off.
+func TestNewProjectPollFillsGitIdentity(t *testing.T) {
+	e := newProjectEnv(t)
+	var p aiv1.AgentProject
+	if err := e.c.Get(e.ctx, types.NamespacedName{Namespace: ns, Name: "shop"}, &p); err != nil {
+		t.Fatal(err)
+	}
+	p.Status.BotUserID, p.Status.BotUsername = 999, "ai-bot"
+	spec := p.Spec.WithDefaults()
+	off := false
+	spec.Pilot.Mention = &off
+	if _, err := e.r.newProjectPoll(e.ctx, e.gl, &p, spec, e.r.now()); err != nil {
+		t.Fatal(err)
+	}
+	if p.Status.BotGitName != "AI Bot" || p.Status.BotGitEmail != "ai-bot@example.com" {
+		t.Fatalf("git identity = %q %q", p.Status.BotGitName, p.Status.BotGitEmail)
+	}
+}
+
 func TestImplementPhaseCreatesTheTask(t *testing.T) {
 	e := newProjectEnv(t)
 	e.gl.AddIssue(42, "Add PayPal button", "agent::ready")

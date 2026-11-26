@@ -61,11 +61,28 @@ type projectPoll struct {
 	errs []error
 }
 
+// botGitIdentity is the git name and email the operator commits with as u:
+// its name, or its username when the name is empty, and its commit email,
+// or else GitLab's private commit address, which GitLab links to u. Never
+// the private email field.
+func botGitIdentity(u *gitlab.User) (name, email string) {
+	name = u.Name
+	if name == "" {
+		name = u.Username
+	}
+	email = u.CommitEmail
+	if email == "" {
+		email = fmt.Sprintf("%d-%s@users.noreply.gitlab.com", u.ID, u.Username)
+	}
+	return name, email
+}
+
 // newProjectPoll starts a poll with gl: the bot user, the webhook, the
 // command gate and the project's tasks.
 func (r *AgentProjectReconciler) newProjectPoll(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, started time.Time) (*projectPoll, error) {
-	// The username on every poll, for mentions of a renamed bot.
-	if project.Status.BotUserID == 0 || *spec.Pilot.Mention {
+	// The username on every poll, for mentions of a renamed bot. A status
+	// from an older release has no git identity yet.
+	if project.Status.BotUserID == 0 || *spec.Pilot.Mention || project.Status.BotGitEmail == "" {
 		u, err := gl.CurrentUser(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("resolving bot user: %w", err)
@@ -74,6 +91,7 @@ func (r *AgentProjectReconciler) newProjectPoll(ctx context.Context, gl gitlab.A
 			project.Status.BotUserID = u.ID
 		}
 		project.Status.BotUsername = u.Username
+		project.Status.BotGitName, project.Status.BotGitEmail = botGitIdentity(u)
 	}
 	r.syncWebhook(ctx, gl, project, spec)
 

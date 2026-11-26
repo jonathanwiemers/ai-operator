@@ -51,7 +51,7 @@ func TestPlanLabels(t *testing.T) {
 		LabelProject:                   "shop",
 		LabelPlan:                      plan.Name,
 	}
-	pod, pvc := buildPlanPod(plan, testPlanSpec(), testPlanConfig, ""), buildPlanClaim(plan, testPlanSpec())
+	pod, pvc := buildPlanPod(plan, testPlanSpec(), testPlanConfig, "", gitIdentity{}), buildPlanClaim(plan, testPlanSpec())
 	for what, got := range map[string]map[string]string{"labels": planLabels(plan), "pod": pod.Labels, "pvc": pvc.Labels} {
 		if !reflect.DeepEqual(got, want) {
 			t.Fatalf("%s: got %v, want %v (no %s)", what, got, want, LabelTask)
@@ -79,7 +79,7 @@ func TestPlanClaim(t *testing.T) {
 
 func TestPlanPod(t *testing.T) {
 	plan := testPlan()
-	pod := buildPlanPod(plan, testPlanSpec(), testPlanConfig, "")
+	pod := buildPlanPod(plan, testPlanSpec(), testPlanConfig, "", gitIdentity{})
 	if pod.Name != plan.Name || pod.Namespace != ns {
 		t.Fatalf("pod %s/%s", pod.Namespace, pod.Name)
 	}
@@ -128,7 +128,7 @@ func TestPlanPod(t *testing.T) {
 
 func TestPlanPodMounts(t *testing.T) {
 	plan := testPlan()
-	pod := buildPlanPod(plan, testPlanSpec(), testPlanConfig, "")
+	pod := buildPlanPod(plan, testPlanSpec(), testPlanConfig, "", gitIdentity{})
 	mounts := func(c *corev1.Container) map[string]string {
 		m := map[string]string{}
 		for _, v := range c.VolumeMounts {
@@ -160,8 +160,8 @@ func TestPlanPodMounts(t *testing.T) {
 func TestPlanPodSharesTaskLayout(t *testing.T) {
 	plan := testPlan()
 	spec := testPlanSpec()
-	planPod := buildPlanPod(plan, spec, testPlanConfig, "")
-	taskPod := buildPod(newImplTask(plan.Name, 1), spec, "", nil, "")
+	planPod := buildPlanPod(plan, spec, testPlanConfig, "", gitIdentity{})
+	taskPod := buildPod(newImplTask(plan.Name, 1), spec, "", nil, "", gitIdentity{})
 	if !reflect.DeepEqual(planPod.Spec.Volumes, taskPod.Spec.Volumes) ||
 		!reflect.DeepEqual(planPod.Spec.InitContainers, taskPod.Spec.InitContainers) ||
 		!reflect.DeepEqual(*container(planPod, AgentContainer), *container(taskPod, AgentContainer)) {
@@ -181,7 +181,7 @@ func TestPlanPodSharesTaskLayout(t *testing.T) {
 func TestPlanPodBudget(t *testing.T) {
 	plan := testPlan()
 	budget := func() string {
-		return envOf(container(buildPlanPod(plan, testPlanSpec(), testPlanConfig, ""), RunnerContainer))["AI_PLAN_MAX_BUDGET_USD"].Value
+		return envOf(container(buildPlanPod(plan, testPlanSpec(), testPlanConfig, "", gitIdentity{}), RunnerContainer))["AI_PLAN_MAX_BUDGET_USD"].Value
 	}
 	if got := budget(); got != "5" {
 		t.Fatalf("without spec.maxBudgetUSD the operator default applies, got %q", got)
@@ -189,5 +189,46 @@ func TestPlanPodBudget(t *testing.T) {
 	plan.Spec.MaxBudgetUSD = "12.50"
 	if got := budget(); got != "12.50" {
 		t.Fatalf("a raised budget applies, got %q", got)
+	}
+}
+
+// Task and plan pods carry the project's git identity on both containers
+// when the status has all of it, and on neither otherwise.
+func TestPodsCarryGitIdentity(t *testing.T) {
+	pods := func(id gitIdentity) map[string]*corev1.Pod {
+		return map[string]*corev1.Pod{
+			"task": buildPod(newImplTask("x", 1), testProject().Spec.WithDefaults(), "", nil, "", id),
+			"plan": buildPlanPod(testPlan(), testPlanSpec(), testPlanConfig, "", id),
+		}
+	}
+	full := gitIdentity{Name: "AI Bot", Email: "999-ai-bot@users.noreply.gitlab.com"}
+	for _, id := range []gitIdentity{full, {}, {Name: "AI Bot"}, {Email: full.Email}} {
+		for kind, pod := range pods(id) {
+			for _, c := range []string{RunnerContainer, AgentContainer} {
+				env := envOf(container(pod, c))
+				name, hasName := env["AI_GIT_AUTHOR_NAME"]
+				email, hasEmail := env["AI_GIT_AUTHOR_EMAIL"]
+				if id == full {
+					if name.Value != full.Name || email.Value != full.Email {
+						t.Errorf("%s pod, %s: identity %q %q, want %+v", kind, c, name.Value, email.Value, full)
+					}
+				} else if hasName || hasEmail {
+					t.Errorf("%s pod, %s: identity %+v must set no git env, got %q %q", kind, c, id, name.Value, email.Value)
+				}
+				if _, ok := env["GITLAB_TOKEN"]; ok && c == AgentContainer {
+					t.Errorf("%s pod: the agent container must not hold GITLAB_TOKEN", kind)
+				}
+				if _, ok := env["GITLAB_COMPANION_TOKEN"]; ok && c == AgentContainer {
+					t.Errorf("%s pod: the agent container must not hold GITLAB_COMPANION_TOKEN", kind)
+				}
+			}
+		}
+	}
+}
+
+func TestProjectGitIdentity(t *testing.T) {
+	p := &aiv1.AgentProject{Status: aiv1.AgentProjectStatus{BotGitName: "AI Bot", BotGitEmail: "bot@example.com"}}
+	if got := projectGitIdentity(p); got != (gitIdentity{Name: "AI Bot", Email: "bot@example.com"}) {
+		t.Fatalf("projectGitIdentity = %+v", got)
 	}
 }

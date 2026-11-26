@@ -734,7 +734,7 @@ func newTestRunner(t *testing.T, tmp string, k8s client.Client, gl gitlab.API, e
 		K8s: k8s, Namespace: "agents", TaskName: task,
 		NewGitLab: func(string, string) gitlab.API { return gl },
 		Agent:     agent,
-		Mirror:    &Mirror{Dir: filepath.Join(tmp, "runner", "mirror.git"), Token: "secret-token"},
+		Mirror:    &Mirror{AuthorName: "Bot", AuthorEmail: "bot@example.com", Dir: filepath.Join(tmp, "runner", "mirror.git"), Token: "secret-token"},
 		StateDir:  filepath.Join(tmp, "runner"),
 		Exchange:  exchange,
 		Log:       logr.Discard(),
@@ -777,7 +777,7 @@ func serveAgent(t *testing.T, server *AgentServer) *AgentClient {
 func TestMirrorEnvIsMinimal(t *testing.T) {
 	t.Setenv("GITLAB_TOKEN", "glpat-secret")
 	t.Setenv("KUBERNETES_SERVICE_HOST", "10.0.0.1")
-	m := &Mirror{Dir: "/runner/mirror.git", Token: "glpat-secret"}
+	m := &Mirror{AuthorName: "Bot", AuthorEmail: "bot@example.com", Dir: "/runner/mirror.git", Token: "glpat-secret"}
 	local := strings.Join(m.env(false), "\n")
 	if strings.Contains(local, "glpat-secret") || strings.Contains(local, "KUBERNETES") {
 		t.Fatalf("local git commands must not see credentials:\n%s", local)
@@ -809,7 +809,7 @@ func TestMirrorPinFilesListsDefaultBranchPins(t *testing.T) {
 	gitCmd(t, e.seed, "commit", "-m", "branch pin")
 	gitCmd(t, e.seed, "push", "origin", "work")
 
-	m := &Mirror{Dir: filepath.Join(e.tmp, "mirror.git")}
+	m := &Mirror{AuthorName: "Bot", AuthorEmail: "bot@example.com", Dir: filepath.Join(e.tmp, "mirror.git")}
 	ctx := context.Background()
 	if err := m.Sync(ctx, e.origin, "main", "work"); err != nil {
 		t.Fatal(err)

@@ -32,7 +32,7 @@ func newCompanionRepo(t *testing.T) *companionRepo {
 	work, mirror := filepath.Join(tmp, "work"), filepath.Join(tmp, "mirror.git")
 	gitCmd(t, tmp, "init", "--initial-branch=main", work)
 	gitCmd(t, tmp, "init", "--bare", mirror)
-	c := &companionRepo{t: t, work: work, mirror: &Mirror{Dir: mirror, Log: logr.Discard()}}
+	c := &companionRepo{t: t, work: work, mirror: &Mirror{AuthorName: "Bot", AuthorEmail: "bot@example.com", Dir: mirror, Log: logr.Discard()}}
 	c.write("README.md", "infra\n")
 	c.write(allowedTree+"/x", "x: 1\n")
 	c.write("docs/old.md", "old\n")

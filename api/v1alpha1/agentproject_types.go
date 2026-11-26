@@ -722,6 +722,18 @@ type AgentProjectStatus struct {
 	// +optional
 	BotUsername string `json:"botUsername,omitempty"`
 
+	// BotGitName is the git author and committer name of the operator's
+	// commits: the token user's name, or its username when the name is
+	// empty. Read with BotUsername.
+	// +optional
+	BotGitName string `json:"botGitName,omitempty"`
+
+	// BotGitEmail is the git author and committer email of the operator's
+	// commits: the token user's commit email, or else its GitLab noreply
+	// address <id>-<username>@users.noreply.gitlab.com.
+	// +optional
+	BotGitEmail string `json:"botGitEmail,omitempty"`
+
 	// ActiveMilestones is the number of tracked milestones that are not
 	// settling (see settlingMilestones).
 	// +optional

@@ -448,7 +448,7 @@ func TestChatWritableTurnPushes(t *testing.T) {
 	gitCmd(t, e.seed, "push", "origin", "HEAD:agent/42-add-paypal-button")
 	sha := strings.TrimSpace(gitCmd(t, e.seed, "rev-parse", "HEAD"))
 
-	r.Mirror = &Mirror{Dir: filepath.Join(e.tmp, "runner", "mirror.git"), Token: "t"}
+	r.Mirror = &Mirror{AuthorName: "Bot", AuthorEmail: "bot@example.com", Dir: filepath.Join(e.tmp, "runner", "mirror.git"), Token: "t"}
 	if err := r.Mirror.Sync(context.Background(), e.origin, "main", "agent/42-add-paypal-button"); err != nil {
 		t.Fatal(err)
 	}

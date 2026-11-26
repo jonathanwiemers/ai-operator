@@ -34,3 +34,18 @@ func TestStepGateFlags(t *testing.T) {
 		})
 	}
 }
+
+// TestGitAuthor: the pod's identity when the operator set it, else the one
+// default.
+func TestGitAuthor(t *testing.T) {
+	t.Setenv("AI_GIT_AUTHOR_NAME", "")
+	t.Setenv("AI_GIT_AUTHOR_EMAIL", "")
+	if n, e := gitAuthor(); n != "AI Operator" || e != "ai-operator@noreply.local" {
+		t.Fatalf("default = %q %q", n, e)
+	}
+	t.Setenv("AI_GIT_AUTHOR_NAME", "AI Bot")
+	t.Setenv("AI_GIT_AUTHOR_EMAIL", "ai-bot@example.com")
+	if n, e := gitAuthor(); n != "AI Bot" || e != "ai-bot@example.com" {
+		t.Fatalf("from env = %q %q", n, e)
+	}
+}

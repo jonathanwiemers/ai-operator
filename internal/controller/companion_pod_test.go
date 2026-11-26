@@ -42,7 +42,7 @@ func TestCompanionTokenOnlyInTheRunner(t *testing.T) {
 		{"the target's own secret", "group/infra", own},
 		{"the project's token by default", "Group/Other", &spec.GitLab.TokenSecretRef},
 	} {
-		pod := buildPod(withCompanion(tc.project), spec, "", targets, "")
+		pod := buildPod(withCompanion(tc.project), spec, "", targets, "", gitIdentity{})
 		env := token(container(pod, RunnerContainer))
 		if env == nil || env.ValueFrom == nil || env.ValueFrom.SecretKeyRef == nil || *env.ValueFrom.SecretKeyRef != *tc.want {
 			t.Fatalf("%s: runner GITLAB_COMPANION_TOKEN = %+v, want %+v", tc.name, env, tc.want)
@@ -63,9 +63,9 @@ func TestCompanionTokenOnlyInTheRunner(t *testing.T) {
 	// Without a companion, and with a target that is no longer valid (the
 	// cluster dropped it): no token, no annotation.
 	for name, pod := range map[string]*corev1.Pod{
-		"no companion":   buildPod(newImplTask("x", 1), spec, "", targets, ""),
-		"invalid target": buildPod(withCompanion("group/infra"), spec, "", crossRepoTargets(spec, []string{"group/other"}, nil), ""),
-		"unknown target": buildPod(withCompanion("group/elsewhere"), spec, "", targets, ""),
+		"no companion":   buildPod(newImplTask("x", 1), spec, "", targets, "", gitIdentity{}),
+		"invalid target": buildPod(withCompanion("group/infra"), spec, "", crossRepoTargets(spec, []string{"group/other"}, nil), "", gitIdentity{}),
+		"unknown target": buildPod(withCompanion("group/elsewhere"), spec, "", targets, "", gitIdentity{}),
 	} {
 		for _, c := range pod.Spec.Containers {
 			if token(&c) != nil {
@@ -88,19 +88,19 @@ func TestPodOutdatedByCompanion(t *testing.T) {
 	companion := newImplTask("x", 1)
 	companion.Spec.Companion = &aiv1.CompanionSpec{Project: "group/infra", Paths: []string{"clusters/app/"}, Branch: "agent/app-1-x"}
 
-	if podOutdated(buildPod(plain, spec, "", targets, ""), plain, spec, targets) {
+	if podOutdated(buildPod(plain, spec, "", targets, "", gitIdentity{}), plain, spec, targets) {
 		t.Fatal("a pod without a companion is current")
 	}
-	if podOutdated(buildPod(companion, spec, "", targets, ""), companion, spec, targets) {
+	if podOutdated(buildPod(companion, spec, "", targets, "", gitIdentity{}), companion, spec, targets) {
 		t.Fatal("a pod with the companion's token is current")
 	}
-	if !podOutdated(buildPod(plain, spec, "", targets, ""), companion, spec, targets) {
+	if !podOutdated(buildPod(plain, spec, "", targets, "", gitIdentity{}), companion, spec, targets) {
 		t.Fatal("a companion added after the pod started needs a pod with its token")
 	}
-	if !podOutdated(buildPod(companion, spec, "", targets, ""), plain, spec, targets) {
+	if !podOutdated(buildPod(companion, spec, "", targets, "", gitIdentity{}), plain, spec, targets) {
 		t.Fatal("a companion removed needs a pod without its token")
 	}
-	if !podOutdated(buildPod(companion, spec, "", targets, ""), companion, spec, nil) {
+	if !podOutdated(buildPod(companion, spec, "", targets, "", gitIdentity{}), companion, spec, nil) {
 		t.Fatal("a target no longer valid needs a pod without its token")
 	}
 }
@@ -119,7 +119,7 @@ func TestCompanionTokenKeptForTheRecordedCompanion(t *testing.T) {
 	if ref, project := companionToken(task, spec, targets); ref == nil || project != "group/infra" {
 		t.Fatalf("the recorded companion keeps its token: %v %q", ref, project)
 	}
-	if podOutdated(buildPod(task, spec, "", targets, ""), task, spec, targets) {
+	if podOutdated(buildPod(task, spec, "", targets, "", gitIdentity{}), task, spec, targets) {
 		t.Fatal("a pod with the recorded companion's token is current")
 	}
 	if ref, _ := companionToken(task, spec, nil); ref != nil {

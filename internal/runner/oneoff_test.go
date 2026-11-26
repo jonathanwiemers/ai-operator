@@ -162,7 +162,7 @@ func TestOpenMergeRequestRetries(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			e := newImplementEnv(t)
 			gitCmd(t, e.seed, "push", "-q", "origin", "HEAD:agent/42-x")
-			m := &Mirror{Dir: filepath.Join(e.tmp, "mirror.git"), Policy: &PushPolicy{Project: "group/app", DefaultBranch: "main", URL: e.origin}}
+			m := &Mirror{AuthorName: "Bot", AuthorEmail: "bot@example.com", Dir: filepath.Join(e.tmp, "mirror.git"), Policy: &PushPolicy{Project: "group/app", DefaultBranch: "main", URL: e.origin}}
 			ctx := context.Background()
 			if err := m.Sync(ctx, e.origin, "main", "agent/42-x"); err != nil {
 				t.Fatal(err)

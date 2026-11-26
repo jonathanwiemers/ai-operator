@@ -230,7 +230,7 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 					break
 				}
 			}
-			pod = buildPod(&task, spec, r.DeskURL, crossRepoTargets(spec, r.CrossRepoAllowed, r.CrossRepoNever), r.AgentLanguage)
+			pod = buildPod(&task, spec, r.DeskURL, crossRepoTargets(spec, r.CrossRepoAllowed, r.CrossRepoNever), r.AgentLanguage, projectGitIdentity(&project))
 			if err := controllerutil.SetControllerReference(&task, pod, r.Scheme); err != nil {
 				return ctrl.Result{}, err
 			}
