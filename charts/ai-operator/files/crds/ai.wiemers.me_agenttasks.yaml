@@ -185,7 +185,9 @@ spec:
                 format: int32
                 type: integer
               milestone:
-                description: Milestone the task belongs to.
+                description: |-
+                  Milestone the task belongs to. A Coordinate task has either milestone
+                  (a milestone's pilot) or queueTask (the loose issues queue's pilot).
                 properties:
                   id:
                     format: int64
@@ -226,6 +228,11 @@ spec:
                   red default branch (urgent). Empty: the task queues by its milestone.
                 enum:
                 - urgent
+                type: string
+              queueTask:
+                description: |-
+                  QueueTask is the name of the Queue task a Coordinate task pilots.
+                  Empty on a milestone's pilot.
                 type: string
               queuedBehind:
                 description: |-
@@ -757,6 +764,35 @@ spec:
                       - request
                       type: object
                     type: array
+                  pilotRound:
+                    description: |-
+                      PilotRound is the current round of the loose issues queue's pilot
+                      (Coordinate tasks with queueTask), copied by the operator from the
+                      Queue task's status.autopilot.round for the runner.
+                    properties:
+                      note:
+                        description: Note is the previous round's note, empty in the
+                          first round.
+                        maxLength: 1500
+                        type: string
+                      number:
+                        description: Number is the round, from 1.
+                        format: int32
+                        minimum: 1
+                        type: integer
+                      startCostUSD:
+                        description: |-
+                          StartCostUSD is the pilot task's status.run.costUSD when the round
+                          started, the base of the per-round budget (decimal string).
+                        type: string
+                      startedAt:
+                        description: StartedAt is when the round started.
+                        format: date-time
+                        type: string
+                    required:
+                    - number
+                    - startedAt
+                    type: object
                   pilotRun:
                     description: |-
                       PilotRun is a run request the pilot started (Implement tasks): that
@@ -1099,6 +1135,13 @@ spec:
                       companion it names both heads, "<home>+<companion>" (ReviewHeads). It is
                       asked once per head; if the branch moved on, the run is a normal one.
                     type: string
+                  roundNote:
+                    description: |-
+                      RoundNote is the run request that asks the queue's pilot for the note
+                      of the round that ends (Coordinate tasks with queueTask). The run
+                      answers in status.pilot.roundNote.
+                    format: int64
+                    type: integer
                 type: object
               suspend:
                 description: 'Suspend hibernates the task: its pod is deleted, the
@@ -2121,6 +2164,48 @@ spec:
                     - causeGone
                     - selfHealed
                     type: string
+                  round:
+                    description: |-
+                      Round is the current round of the queue's pilot. Only the Queue task
+                      uses it.
+                    properties:
+                      costUSD:
+                        description: CostUSD is what the queue's pilot spent in this
+                          round (decimal string).
+                        type: string
+                      finished:
+                        description: Finished counts the queue issues merged or left
+                          since StartedAt.
+                        format: int32
+                        type: integer
+                      note:
+                        description: Note is the previous round's note.
+                        maxLength: 1500
+                        type: string
+                      noteRequest:
+                        description: |-
+                          NoteRequest is the pilot's run request for this round's note while the
+                          round ends, 0 otherwise.
+                        format: int64
+                        type: integer
+                      number:
+                        description: Number is the round, from 1.
+                        format: int32
+                        minimum: 1
+                        type: integer
+                      startCostUSD:
+                        description: |-
+                          StartCostUSD is the pilot task's status.run.costUSD when the round
+                          started, the base of the per-round budget (decimal string).
+                        type: string
+                      startedAt:
+                        description: StartedAt is when the round started.
+                        format: date-time
+                        type: string
+                    required:
+                    - number
+                    - startedAt
+                    type: object
                   settleSyncedAt:
                     description: |-
                       SettleSyncedAt is when the operator last synced the milestone while it
@@ -3774,6 +3859,26 @@ spec:
                           without HTML (comments and tags removed), at most MaxRetroText bytes,
                           truncated beyond.
                         type: string
+                    type: object
+                  roundNote:
+                    description: |-
+                      RoundNote is the queue's pilot's answer to spec.source.roundNote
+                      (Coordinate tasks with queueTask), the newest only.
+                    properties:
+                      failed:
+                        description: Failed is why there is no note.
+                        type: string
+                      note:
+                        description: Note is the round note. Untrusted.
+                        maxLength: 1500
+                        type: string
+                      request:
+                        description: Request is the run request (spec.source.roundNote)
+                          it answers.
+                        format: int64
+                        type: integer
+                    required:
+                    - request
                     type: object
                 type: object
               plan:

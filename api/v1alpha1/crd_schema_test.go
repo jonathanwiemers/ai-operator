@@ -855,3 +855,104 @@ func TestQueueTaskAndLeftItemSchema(t *testing.T) {
 		t.Errorf("type Other: errors %v", errs)
 	}
 }
+
+// looseIssues.pilot defaults to {} so that roundIssues 5 and roundHours 24
+// apply; explicit 0 values (a limit switched off) are kept.
+func TestLooseIssuesPilotSchema(t *testing.T) {
+	crd := loadCRD(t, "agentprojects")
+	admit := func(li map[string]any) (map[string]any, string) {
+		obj, errs := crd.admit(map[string]any{"spec": map[string]any{"looseIssues": li}})
+		if obj == nil {
+			return nil, strings.Join(errs, "\n")
+		}
+		p, _ := spec(obj)["looseIssues"].(map[string]any)["pilot"].(map[string]any)
+		return p, strings.Join(errs, "\n")
+	}
+	num := func(v any) any {
+		if f, ok := v.(float64); ok {
+			return int64(f)
+		}
+		return v
+	}
+	for name, tc := range map[string]struct {
+		li            map[string]any
+		issues, hours int64
+	}{
+		"absent":   {map[string]any{}, 5, 24},
+		"empty":    {map[string]any{"pilot": map[string]any{}}, 5, 24},
+		"zero":     {map[string]any{"pilot": map[string]any{"roundIssues": int64(0), "roundHours": int64(0)}}, 0, 0},
+		"maximums": {map[string]any{"pilot": map[string]any{"roundIssues": int64(50), "roundHours": int64(168)}}, 50, 168},
+	} {
+		p, errs := admit(tc.li)
+		if strings.Contains(errs, "looseIssues") {
+			t.Errorf("%s: rejected: %s", name, errs)
+			continue
+		}
+		if num(p["roundIssues"]) != tc.issues || num(p["roundHours"]) != tc.hours {
+			t.Errorf("%s: pilot %v, want roundIssues %d and roundHours %d", name, p, tc.issues, tc.hours)
+		}
+	}
+	for _, tc := range []struct {
+		field string
+		n     int64
+	}{{"roundIssues", -1}, {"roundIssues", 51}, {"roundHours", -1}, {"roundHours", 169}} {
+		_, errs := admit(map[string]any{"pilot": map[string]any{tc.field: tc.n}})
+		if !strings.Contains(errs, "spec.looseIssues.pilot."+tc.field) {
+			t.Errorf("%s %d: errors %s, want one on spec.looseIssues.pilot.%s", tc.field, tc.n, errs, tc.field)
+		}
+	}
+}
+
+// The round of the queue's pilot and the round note handshake are admitted;
+// a note over MaxRoundNote characters is rejected.
+func TestQueuePilotRoundSchema(t *testing.T) {
+	crd := loadCRD(t, "agenttasks")
+	queue := func(note string) map[string]any {
+		return map[string]any{
+			"spec": map[string]any{"projectRef": "shop", "type": "Queue"},
+			"status": map[string]any{"autopilot": map[string]any{"phase": "Running", "round": map[string]any{
+				"number": int64(3), "startedAt": "2026-11-26T09:12:00Z", "finished": int64(2), "costUSD": "1.40",
+				"startCostUSD": "7.25", "note": note, "noteRequest": int64(12)}}},
+		}
+	}
+	pilot := func(note string) map[string]any {
+		return map[string]any{
+			"spec": map[string]any{"projectRef": "shop", "type": "Coordinate", "queueTask": "shop-loose",
+				"source": map[string]any{"roundNote": int64(12), "pilotRound": map[string]any{
+					"number": int64(3), "startedAt": "2026-11-26T09:12:00Z", "note": note, "startCostUSD": "7.25"}}},
+			"status": map[string]any{"pilot": map[string]any{"roundNote": map[string]any{
+				"request": int64(12), "note": note, "failed": ""}}},
+		}
+	}
+	relevant := func(errs []string) []string {
+		var out []string
+		for _, e := range errs {
+			if strings.Contains(e, "round") || strings.Contains(e, "queueTask") || strings.Contains(e, "Round") {
+				out = append(out, e)
+			}
+		}
+		return out
+	}
+	ok := strings.Repeat("ä", MaxRoundNote)
+	for name, obj := range map[string]map[string]any{"queue": queue(ok), "pilot": pilot(ok)} {
+		if _, errs := crd.admit(obj); len(relevant(errs)) > 0 {
+			t.Errorf("%s with a round rejected: %v", name, errs)
+		}
+	}
+	long := strings.Repeat("x", MaxRoundNote+1)
+	for name, want := range map[string][]string{
+		"queue": {"status.autopilot.round.note"},
+		"pilot": {"spec.source.pilotRound.note", "status.pilot.roundNote.note"},
+	} {
+		obj := queue(long)
+		if name == "pilot" {
+			obj = pilot(long)
+		}
+		_, errs := crd.admit(obj)
+		for _, w := range want {
+			if !strings.Contains(strings.Join(errs, "\n"), w) {
+				t.Errorf("%s: a %d-character note: errors %v, want one on %s", name, len(long), errs, w)
+			}
+		}
+	}
+}

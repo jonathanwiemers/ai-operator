@@ -367,6 +367,40 @@ type AutopilotStatus struct {
 	// queue starts and merges nothing. Unset while not frozen.
 	// +optional
 	FrozenAt *metav1.Time `json:"frozenAt,omitempty"`
+
+	// Round is the current round of the queue's pilot. Only the Queue task
+	// uses it.
+	// +optional
+	Round *LooseRound `json:"round,omitempty"`
+}
+
+// LooseRound is a round of the loose issues queue's pilot. It ends after
+// looseIssues.pilot.roundIssues finished queue issues or roundHours, and the
+// next round starts with a fresh session and budget.
+type LooseRound struct {
+	// Number is the round, from 1.
+	// +kubebuilder:validation:Minimum=1
+	Number int32 `json:"number"`
+	// StartedAt is when the round started.
+	StartedAt metav1.Time `json:"startedAt"`
+	// Finished counts the queue issues merged or left since StartedAt.
+	// +optional
+	Finished int32 `json:"finished,omitempty"`
+	// CostUSD is what the queue's pilot spent in this round (decimal string).
+	// +optional
+	CostUSD string `json:"costUSD,omitempty"`
+	// StartCostUSD is the pilot task's status.run.costUSD when the round
+	// started, the base of the per-round budget (decimal string).
+	// +optional
+	StartCostUSD string `json:"startCostUSD,omitempty"`
+	// Note is the previous round's note.
+	// +kubebuilder:validation:MaxLength=1500
+	// +optional
+	Note string `json:"note,omitempty"`
+	// NoteRequest is the pilot's run request for this round's note while the
+	// round ends, 0 otherwise.
+	// +optional
+	NoteRequest int64 `json:"noteRequest,omitempty"`
 }
 
 // BudgetStatus is the budget of an autopilot milestone and what it spent,

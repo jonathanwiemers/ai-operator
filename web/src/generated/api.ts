@@ -1281,6 +1281,37 @@ export interface LooseIssuesSpec {
    * +optional
    */
   maxParallel?: number /* int32 */;
+  /**
+   * Pilot configures the rounds of the queue's pilot.
+   * +kubebuilder:default={}
+   * +optional
+   */
+  pilot?: LooseIssuesPilotSpec;
+}
+/**
+ * LooseIssuesPilotSpec configures the rounds of the loose issues queue's
+ * pilot. A round ends at the first limit reached, and the next one starts
+ * with a fresh session. Both limits 0: one endless session.
+ */
+export interface LooseIssuesPilotSpec {
+  /**
+   * RoundIssues is how many finished queue issues (merged or left) end a
+   * round. 0 switches this limit off.
+   * +kubebuilder:default=5
+   * +kubebuilder:validation:Minimum=0
+   * +kubebuilder:validation:Maximum=50
+   * +optional
+   */
+  roundIssues?: number /* int32 */;
+  /**
+   * RoundHours is how many hours after its start a round ends. 0 switches
+   * this limit off.
+   * +kubebuilder:default=24
+   * +kubebuilder:validation:Minimum=0
+   * +kubebuilder:validation:Maximum=168
+   * +optional
+   */
+  roundHours?: number /* int32 */;
 }
 
 //////////
@@ -3510,6 +3541,56 @@ export interface AutopilotStatus {
    * +optional
    */
   frozenAt?: string;
+  /**
+   * Round is the current round of the queue's pilot. Only the Queue task
+   * uses it.
+   * +optional
+   */
+  round?: LooseRound;
+}
+/**
+ * LooseRound is a round of the loose issues queue's pilot. It ends after
+ * looseIssues.pilot.roundIssues finished queue issues or roundHours, and the
+ * next round starts with a fresh session and budget.
+ */
+export interface LooseRound {
+  /**
+   * Number is the round, from 1.
+   * +kubebuilder:validation:Minimum=1
+   */
+  number: number /* int32 */;
+  /**
+   * StartedAt is when the round started.
+   */
+  startedAt: string;
+  /**
+   * Finished counts the queue issues merged or left since StartedAt.
+   * +optional
+   */
+  finished?: number /* int32 */;
+  /**
+   * CostUSD is what the queue's pilot spent in this round (decimal string).
+   * +optional
+   */
+  costUSD?: string;
+  /**
+   * StartCostUSD is the pilot task's status.run.costUSD when the round
+   * started, the base of the per-round budget (decimal string).
+   * +optional
+   */
+  startCostUSD?: string;
+  /**
+   * Note is the previous round's note.
+   * +kubebuilder:validation:MaxLength=1500
+   * +optional
+   */
+  note?: string;
+  /**
+   * NoteRequest is the pilot's run request for this round's note while the
+   * round ends, 0 otherwise.
+   * +optional
+   */
+  noteRequest?: number /* int64 */;
 }
 /**
  * BudgetStatus is the budget of an autopilot milestone and what it spent,
@@ -4906,6 +4987,37 @@ export interface PilotStatus {
    * +optional
    */
   followUpDraft?: PilotFollowUpDraft;
+  /**
+   * RoundNote is the queue's pilot's answer to spec.source.roundNote
+   * (Coordinate tasks with queueTask), the newest only.
+   * +optional
+   */
+  roundNote?: PilotRoundNote;
+}
+/**
+ * MaxRoundNote bounds a round note of the loose issues queue's pilot, in
+ * characters, shared by the runner and the operator.
+ */
+export const MaxRoundNote = 1500;
+/**
+ * PilotRoundNote is the note the queue's pilot wrote at the end of a round.
+ */
+export interface PilotRoundNote {
+  /**
+   * Request is the run request (spec.source.roundNote) it answers.
+   */
+  request: number /* int64 */;
+  /**
+   * Note is the round note. Untrusted.
+   * +kubebuilder:validation:MaxLength=1500
+   * +optional
+   */
+  note?: string;
+  /**
+   * Failed is why there is no note.
+   * +optional
+   */
+  failed?: string;
 }
 /**
  * PilotFollowUpDraft is the pilot's draft of a follow-up milestone, or why
@@ -5375,10 +5487,17 @@ export interface AgentTaskSpec {
    */
   type: TaskType;
   /**
-   * Milestone the task belongs to.
+   * Milestone the task belongs to. A Coordinate task has either milestone
+   * (a milestone's pilot) or queueTask (the loose issues queue's pilot).
    * +optional
    */
   milestone?: MilestoneRef;
+  /**
+   * QueueTask is the name of the Queue task a Coordinate task pilots.
+   * Empty on a milestone's pilot.
+   * +optional
+   */
+  queueTask?: string;
   /**
    * Issue implemented by this task (Implement tasks), or the tracking
    * issue the pilot listens on (Coordinate tasks).
@@ -5830,6 +5949,20 @@ export interface SourceState {
    */
   followUpDraft?: FollowUpDraftRequest;
   /**
+   * PilotRound is the current round of the loose issues queue's pilot
+   * (Coordinate tasks with queueTask), copied by the operator from the
+   * Queue task's status.autopilot.round for the runner.
+   * +optional
+   */
+  pilotRound?: PilotRound;
+  /**
+   * RoundNote is the run request that asks the queue's pilot for the note
+   * of the round that ends (Coordinate tasks with queueTask). The run
+   * answers in status.pilot.roundNote.
+   * +optional
+   */
+  roundNote?: number /* int64 */;
+  /**
    * PilotInstruction is an instruction an owner accepted from the pilot
    * (Implement tasks), for the run of its request.
    * +optional
@@ -5843,6 +5976,32 @@ export interface SourceState {
    * +optional
    */
   ownerMessages?: OwnerMessage[];
+}
+/**
+ * PilotRound is the round of the queue's pilot that the runner works in.
+ */
+export interface PilotRound {
+  /**
+   * Number is the round, from 1.
+   * +kubebuilder:validation:Minimum=1
+   */
+  number: number /* int32 */;
+  /**
+   * StartedAt is when the round started.
+   */
+  startedAt: string;
+  /**
+   * Note is the previous round's note, empty in the first round.
+   * +kubebuilder:validation:MaxLength=1500
+   * +optional
+   */
+  note?: string;
+  /**
+   * StartCostUSD is the pilot task's status.run.costUSD when the round
+   * started, the base of the per-round budget (decimal string).
+   * +optional
+   */
+  startCostUSD?: string;
 }
 /**
  * FollowUpDraftRequest asks the pilot for a draft of a follow-up milestone.

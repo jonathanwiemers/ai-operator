@@ -264,6 +264,28 @@ type PilotStatus struct {
 	// Untrusted until an owner confirms it.
 	// +optional
 	FollowUpDraft *PilotFollowUpDraft `json:"followUpDraft,omitempty"`
+
+	// RoundNote is the queue's pilot's answer to spec.source.roundNote
+	// (Coordinate tasks with queueTask), the newest only.
+	// +optional
+	RoundNote *PilotRoundNote `json:"roundNote,omitempty"`
+}
+
+// MaxRoundNote bounds a round note of the loose issues queue's pilot, in
+// characters, shared by the runner and the operator.
+const MaxRoundNote = 1500
+
+// PilotRoundNote is the note the queue's pilot wrote at the end of a round.
+type PilotRoundNote struct {
+	// Request is the run request (spec.source.roundNote) it answers.
+	Request int64 `json:"request"`
+	// Note is the round note. Untrusted.
+	// +kubebuilder:validation:MaxLength=1500
+	// +optional
+	Note string `json:"note,omitempty"`
+	// Failed is why there is no note.
+	// +optional
+	Failed string `json:"failed,omitempty"`
 }
 
 // PilotFollowUpDraft is the pilot's draft of a follow-up milestone, or why

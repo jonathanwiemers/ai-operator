@@ -2165,6 +2165,29 @@ spec:
                     items:
                       type: string
                     type: array
+                  pilot:
+                    default: {}
+                    description: Pilot configures the rounds of the queue's pilot.
+                    properties:
+                      roundHours:
+                        default: 24
+                        description: |-
+                          RoundHours is how many hours after its start a round ends. 0 switches
+                          this limit off.
+                        format: int32
+                        maximum: 168
+                        minimum: 0
+                        type: integer
+                      roundIssues:
+                        default: 5
+                        description: |-
+                          RoundIssues is how many finished queue issues (merged or left) end a
+                          round. 0 switches this limit off.
+                        format: int32
+                        maximum: 50
+                        minimum: 0
+                        type: integer
+                    type: object
                 type: object
               mainHealth:
                 description: MainHealth watches the pipelines of the default branch.

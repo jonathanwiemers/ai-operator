@@ -40,9 +40,15 @@ type AgentTaskSpec struct {
 	// Type of the task.
 	Type TaskType `json:"type"`
 
-	// Milestone the task belongs to.
+	// Milestone the task belongs to. A Coordinate task has either milestone
+	// (a milestone's pilot) or queueTask (the loose issues queue's pilot).
 	// +optional
 	Milestone *MilestoneRef `json:"milestone,omitempty"`
+
+	// QueueTask is the name of the Queue task a Coordinate task pilots.
+	// Empty on a milestone's pilot.
+	// +optional
+	QueueTask string `json:"queueTask,omitempty"`
 
 	// Issue implemented by this task (Implement tasks), or the tracking
 	// issue the pilot listens on (Coordinate tasks).
@@ -404,6 +410,18 @@ type SourceState struct {
 	// +optional
 	FollowUpDraft *FollowUpDraftRequest `json:"followUpDraft,omitempty"`
 
+	// PilotRound is the current round of the loose issues queue's pilot
+	// (Coordinate tasks with queueTask), copied by the operator from the
+	// Queue task's status.autopilot.round for the runner.
+	// +optional
+	PilotRound *PilotRound `json:"pilotRound,omitempty"`
+
+	// RoundNote is the run request that asks the queue's pilot for the note
+	// of the round that ends (Coordinate tasks with queueTask). The run
+	// answers in status.pilot.roundNote.
+	// +optional
+	RoundNote int64 `json:"roundNote,omitempty"`
+
 	// PilotInstruction is an instruction an owner accepted from the pilot
 	// (Implement tasks), for the run of its request.
 	// +optional
@@ -415,6 +433,23 @@ type SourceState struct {
 	// +kubebuilder:validation:MaxItems=20
 	// +optional
 	OwnerMessages []OwnerMessage `json:"ownerMessages,omitempty"`
+}
+
+// PilotRound is the round of the queue's pilot that the runner works in.
+type PilotRound struct {
+	// Number is the round, from 1.
+	// +kubebuilder:validation:Minimum=1
+	Number int32 `json:"number"`
+	// StartedAt is when the round started.
+	StartedAt metav1.Time `json:"startedAt"`
+	// Note is the previous round's note, empty in the first round.
+	// +kubebuilder:validation:MaxLength=1500
+	// +optional
+	Note string `json:"note,omitempty"`
+	// StartCostUSD is the pilot task's status.run.costUSD when the round
+	// started, the base of the per-round budget (decimal string).
+	// +optional
+	StartCostUSD string `json:"startCostUSD,omitempty"`
 }
 
 // FollowUpDraftRequest asks the pilot for a draft of a follow-up milestone.
