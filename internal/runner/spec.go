@@ -488,7 +488,7 @@ func renderIssue(spec aiv1.AgentProjectSpec, item PlannedItem, keyToIID map[stri
 		b.WriteString("\n\n**Release:** not after this issue")
 	}
 	if p, ok := spec.Profile(item.Profile); ok {
-		fmt.Fprintf(&b, "\n\nTier: **%s** (%s)", p.Name, tierSetting(p))
+		fmt.Fprintf(&b, "\n\nTier: **%s** (%s)", p.Name, p.Setting())
 		if why := firstLine(item.ProfileWhy, maxProfileWhy); why != "" {
 			fmt.Fprintf(&b, ": %s", unmark.Replace(why))
 		}
@@ -555,22 +555,6 @@ func profileLabels(spec aiv1.AgentProjectSpec, item PlannedItem) []string {
 		return []string{spec.ProfileLabel(item.Profile)}
 	}
 	return nil
-}
-
-// tierSetting describes a profile's engine, model and effort:
-// "<model>, effort <effort>" on claude, which has efforts, else
-// "<engine>, <model>".
-func tierSetting(p aiv1.AgentProfile) string {
-	if p.Engine == aiv1.EngineClaude || p.Engine == "" {
-		if p.Effort == "" {
-			return p.Model
-		}
-		return fmt.Sprintf("%s, effort %s", p.Model, p.Effort)
-	}
-	if p.Model == "" {
-		return string(p.Engine)
-	}
-	return fmt.Sprintf("%s, %s", p.Engine, p.Model)
 }
 
 // tierLabelChange returns the labels a re-plan adds to and removes from a

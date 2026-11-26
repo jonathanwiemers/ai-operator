@@ -910,6 +910,10 @@ spec:
                                         retryPipeline retries.
                                       format: int64
                                       type: integer
+                                    profile:
+                                      description: Profile is the tier a setTier moves
+                                        the issue to.
+                                      type: string
                                     rule:
                                       description: |-
                                         Rule is the ID ("R2") of the standing rule forgetRule removes. A
@@ -931,10 +935,10 @@ spec:
                                       description: |-
                                         Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
                                         rebase, mergeBase, skip, unskip, startAnyway, markDone, pause, resume,
-                                        revisit, setRule, forgetRule or editSpec; the owner-only raiseBudget
-                                        and endMilestone come only in options the operator builds (budget
-                                        prompts), never from the model. unskip, startAnyway and markDone run
-                                        only on an owner's answer.
+                                        revisit, setRule, forgetRule, editSpec or setTier; the owner-only
+                                        raiseBudget and endMilestone come only in options the operator builds
+                                        (budget prompts), never from the model. unskip, startAnyway and
+                                        markDone run only on an owner's answer, setTier only on an Accept.
                                       type: string
                                   required:
                                   - tool
@@ -2622,6 +2626,10 @@ spec:
                                   retryPipeline retries.
                                 format: int64
                                 type: integer
+                              profile:
+                                description: Profile is the tier a setTier moves the
+                                  issue to.
+                                type: string
                               rule:
                                 description: |-
                                   Rule is the ID ("R2") of the standing rule forgetRule removes. A
@@ -2643,10 +2651,10 @@ spec:
                                 description: |-
                                   Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
                                   rebase, mergeBase, skip, unskip, startAnyway, markDone, pause, resume,
-                                  revisit, setRule, forgetRule or editSpec; the owner-only raiseBudget
-                                  and endMilestone come only in options the operator builds (budget
-                                  prompts), never from the model. unskip, startAnyway and markDone run
-                                  only on an owner's answer.
+                                  revisit, setRule, forgetRule, editSpec or setTier; the owner-only
+                                  raiseBudget and endMilestone come only in options the operator builds
+                                  (budget prompts), never from the model. unskip, startAnyway and
+                                  markDone run only on an owner's answer, setTier only on an Accept.
                                 type: string
                             required:
                             - tool
@@ -2726,6 +2734,10 @@ spec:
                                         retryPipeline retries.
                                       format: int64
                                       type: integer
+                                    profile:
+                                      description: Profile is the tier a setTier moves
+                                        the issue to.
+                                      type: string
                                     rule:
                                       description: |-
                                         Rule is the ID ("R2") of the standing rule forgetRule removes. A
@@ -2747,10 +2759,10 @@ spec:
                                       description: |-
                                         Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
                                         rebase, mergeBase, skip, unskip, startAnyway, markDone, pause, resume,
-                                        revisit, setRule, forgetRule or editSpec; the owner-only raiseBudget
-                                        and endMilestone come only in options the operator builds (budget
-                                        prompts), never from the model. unskip, startAnyway and markDone run
-                                        only on an owner's answer.
+                                        revisit, setRule, forgetRule, editSpec or setTier; the owner-only
+                                        raiseBudget and endMilestone come only in options the operator builds
+                                        (budget prompts), never from the model. unskip, startAnyway and
+                                        markDone run only on an owner's answer, setTier only on an Accept.
                                       type: string
                                   required:
                                   - tool
@@ -2949,6 +2961,10 @@ spec:
                                 retryPipeline retries.
                               format: int64
                               type: integer
+                            profile:
+                              description: Profile is the tier a setTier moves the
+                                issue to.
+                              type: string
                             rule:
                               description: |-
                                 Rule is the ID ("R2") of the standing rule forgetRule removes. A
@@ -2970,10 +2986,10 @@ spec:
                               description: |-
                                 Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
                                 rebase, mergeBase, skip, unskip, startAnyway, markDone, pause, resume,
-                                revisit, setRule, forgetRule or editSpec; the owner-only raiseBudget
-                                and endMilestone come only in options the operator builds (budget
-                                prompts), never from the model. unskip, startAnyway and markDone run
-                                only on an owner's answer.
+                                revisit, setRule, forgetRule, editSpec or setTier; the owner-only
+                                raiseBudget and endMilestone come only in options the operator builds
+                                (budget prompts), never from the model. unskip, startAnyway and
+                                markDone run only on an owner's answer, setTier only on an Accept.
                               type: string
                           required:
                           - tool
@@ -3131,6 +3147,10 @@ spec:
                                   retryPipeline retries.
                                 format: int64
                                 type: integer
+                              profile:
+                                description: Profile is the tier a setTier moves the
+                                  issue to.
+                                type: string
                               rule:
                                 description: |-
                                   Rule is the ID ("R2") of the standing rule forgetRule removes. A
@@ -3152,10 +3172,10 @@ spec:
                                 description: |-
                                   Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
                                   rebase, mergeBase, skip, unskip, startAnyway, markDone, pause, resume,
-                                  revisit, setRule, forgetRule or editSpec; the owner-only raiseBudget
-                                  and endMilestone come only in options the operator builds (budget
-                                  prompts), never from the model. unskip, startAnyway and markDone run
-                                  only on an owner's answer.
+                                  revisit, setRule, forgetRule, editSpec or setTier; the owner-only
+                                  raiseBudget and endMilestone come only in options the operator builds
+                                  (budget prompts), never from the model. unskip, startAnyway and
+                                  markDone run only on an owner's answer, setTier only on an Accept.
                                 type: string
                             required:
                             - tool
@@ -3235,6 +3255,10 @@ spec:
                                         retryPipeline retries.
                                       format: int64
                                       type: integer
+                                    profile:
+                                      description: Profile is the tier a setTier moves
+                                        the issue to.
+                                      type: string
                                     rule:
                                       description: |-
                                         Rule is the ID ("R2") of the standing rule forgetRule removes. A
@@ -3256,10 +3280,10 @@ spec:
                                       description: |-
                                         Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
                                         rebase, mergeBase, skip, unskip, startAnyway, markDone, pause, resume,
-                                        revisit, setRule, forgetRule or editSpec; the owner-only raiseBudget
-                                        and endMilestone come only in options the operator builds (budget
-                                        prompts), never from the model. unskip, startAnyway and markDone run
-                                        only on an owner's answer.
+                                        revisit, setRule, forgetRule, editSpec or setTier; the owner-only
+                                        raiseBudget and endMilestone come only in options the operator builds
+                                        (budget prompts), never from the model. unskip, startAnyway and
+                                        markDone run only on an owner's answer, setTier only on an Accept.
                                       type: string
                                   required:
                                   - tool
@@ -3394,6 +3418,10 @@ spec:
                                   retryPipeline retries.
                                 format: int64
                                 type: integer
+                              profile:
+                                description: Profile is the tier a setTier moves the
+                                  issue to.
+                                type: string
                               rule:
                                 description: |-
                                   Rule is the ID ("R2") of the standing rule forgetRule removes. A
@@ -3415,10 +3443,10 @@ spec:
                                 description: |-
                                   Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
                                   rebase, mergeBase, skip, unskip, startAnyway, markDone, pause, resume,
-                                  revisit, setRule, forgetRule or editSpec; the owner-only raiseBudget
-                                  and endMilestone come only in options the operator builds (budget
-                                  prompts), never from the model. unskip, startAnyway and markDone run
-                                  only on an owner's answer.
+                                  revisit, setRule, forgetRule, editSpec or setTier; the owner-only
+                                  raiseBudget and endMilestone come only in options the operator builds
+                                  (budget prompts), never from the model. unskip, startAnyway and
+                                  markDone run only on an owner's answer, setTier only on an Accept.
                                 type: string
                             required:
                             - tool
@@ -3498,6 +3526,10 @@ spec:
                                         retryPipeline retries.
                                       format: int64
                                       type: integer
+                                    profile:
+                                      description: Profile is the tier a setTier moves
+                                        the issue to.
+                                      type: string
                                     rule:
                                       description: |-
                                         Rule is the ID ("R2") of the standing rule forgetRule removes. A
@@ -3519,10 +3551,10 @@ spec:
                                       description: |-
                                         Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
                                         rebase, mergeBase, skip, unskip, startAnyway, markDone, pause, resume,
-                                        revisit, setRule, forgetRule or editSpec; the owner-only raiseBudget
-                                        and endMilestone come only in options the operator builds (budget
-                                        prompts), never from the model. unskip, startAnyway and markDone run
-                                        only on an owner's answer.
+                                        revisit, setRule, forgetRule, editSpec or setTier; the owner-only
+                                        raiseBudget and endMilestone come only in options the operator builds
+                                        (budget prompts), never from the model. unskip, startAnyway and
+                                        markDone run only on an owner's answer, setTier only on an Accept.
                                       type: string
                                   required:
                                   - tool
@@ -3672,6 +3704,10 @@ spec:
                                       retryPipeline retries.
                                     format: int64
                                     type: integer
+                                  profile:
+                                    description: Profile is the tier a setTier moves
+                                      the issue to.
+                                    type: string
                                   rule:
                                     description: |-
                                       Rule is the ID ("R2") of the standing rule forgetRule removes. A
@@ -3693,10 +3729,10 @@ spec:
                                     description: |-
                                       Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
                                       rebase, mergeBase, skip, unskip, startAnyway, markDone, pause, resume,
-                                      revisit, setRule, forgetRule or editSpec; the owner-only raiseBudget
-                                      and endMilestone come only in options the operator builds (budget
-                                      prompts), never from the model. unskip, startAnyway and markDone run
-                                      only on an owner's answer.
+                                      revisit, setRule, forgetRule, editSpec or setTier; the owner-only
+                                      raiseBudget and endMilestone come only in options the operator builds
+                                      (budget prompts), never from the model. unskip, startAnyway and
+                                      markDone run only on an owner's answer, setTier only on an Accept.
                                     type: string
                                 required:
                                 - tool
@@ -4072,6 +4108,10 @@ spec:
                                     retryPipeline retries.
                                   format: int64
                                   type: integer
+                                profile:
+                                  description: Profile is the tier a setTier moves
+                                    the issue to.
+                                  type: string
                                 rule:
                                   description: |-
                                     Rule is the ID ("R2") of the standing rule forgetRule removes. A
@@ -4093,10 +4133,10 @@ spec:
                                   description: |-
                                     Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
                                     rebase, mergeBase, skip, unskip, startAnyway, markDone, pause, resume,
-                                    revisit, setRule, forgetRule or editSpec; the owner-only raiseBudget
-                                    and endMilestone come only in options the operator builds (budget
-                                    prompts), never from the model. unskip, startAnyway and markDone run
-                                    only on an owner's answer.
+                                    revisit, setRule, forgetRule, editSpec or setTier; the owner-only
+                                    raiseBudget and endMilestone come only in options the operator builds
+                                    (budget prompts), never from the model. unskip, startAnyway and
+                                    markDone run only on an owner's answer, setTier only on an Accept.
                                   type: string
                               required:
                               - tool
@@ -4845,6 +4885,10 @@ spec:
                                         retryPipeline retries.
                                       format: int64
                                       type: integer
+                                    profile:
+                                      description: Profile is the tier a setTier moves
+                                        the issue to.
+                                      type: string
                                     rule:
                                       description: |-
                                         Rule is the ID ("R2") of the standing rule forgetRule removes. A
@@ -4866,10 +4910,10 @@ spec:
                                       description: |-
                                         Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
                                         rebase, mergeBase, skip, unskip, startAnyway, markDone, pause, resume,
-                                        revisit, setRule, forgetRule or editSpec; the owner-only raiseBudget
-                                        and endMilestone come only in options the operator builds (budget
-                                        prompts), never from the model. unskip, startAnyway and markDone run
-                                        only on an owner's answer.
+                                        revisit, setRule, forgetRule, editSpec or setTier; the owner-only
+                                        raiseBudget and endMilestone come only in options the operator builds
+                                        (budget prompts), never from the model. unskip, startAnyway and
+                                        markDone run only on an owner's answer, setTier only on an Accept.
                                       type: string
                                   required:
                                   - tool

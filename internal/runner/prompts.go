@@ -561,7 +561,7 @@ func buildSpecPrompt(m *gitlab.Milestone, existing []ExistingIssue, profiles []a
 	}
 	b.WriteString("## Agent profiles\n\n")
 	for _, p := range profiles {
-		fmt.Fprintf(&b, "- %s (%s): %s\n", p.Name, tierSetting(p), strings.TrimSpace(p.Description))
+		fmt.Fprintf(&b, "- %s (%s): %s\n", p.Name, p.Setting(), strings.TrimSpace(p.Description))
 	}
 	fmt.Fprintf(&b, "\n## Milestone: %s\n\n%s\n\n", m.Title, strings.TrimSpace(m.Description))
 	if len(existing) > 0 {
@@ -855,9 +855,16 @@ once an owner answers yes. The actions:
   owner's yes, also when you manage; the owners see the diff. The milestone
   is planned again: say in the answer which planned issues that changes.
   Drafts are updated; issues being worked on or merged are kept and may
-  get follow-ups.
-Nothing else exists: no merges, pushes, labels or other edits, and no
-closes but markDone.
+  get follow-ups;
+- setTier, issue N, profile P: the issue's next run uses tier P (its
+  profile label is swapped, its model and effort labels are dropped); a
+  running call is not restarted. Propose it only when the issue failed
+  twice on the same problem, or its review rounds ran out on substance
+  rather than style, and only one tier up (engines.profiles in the state are
+  listed in order, lowest first). It always waits for an owner's yes, also
+  when you manage; propose it together with a retry when the issue waits.
+Nothing else exists: no merges, pushes or other edits, no label changes
+but setTier, and no closes but markDone.
 Propose only what an owner asked for or what an event calls for, and say it
 in the answer. For anything else say what the owner can do, e.g. "/pilot
 tell #N: <words>" to pass their own words on to an implementer, or a label.
@@ -903,15 +910,16 @@ const actionSchema = `{
             "additionalProperties": false,
             "required": ["tool"],
             "properties": {
-              "tool": {"type": "string", "enum": ["retry", "reReview", "instruct", "openIssue", "fixFlaky", "retryPipeline", "rebase", "mergeBase", "restartRun", "skip", "unskip", "startAnyway", "markDone", "pause", "resume", "revisit", "setRule", "forgetRule", "editSpec"]},
-              "issue": {"type": "integer", "description": "retry, reReview, instruct, restartRun, skip, unskip, startAnyway, markDone: the issue of the milestone; rebase, mergeBase: an active queue item; fixFlaky: the flaky issue."},
+              "tool": {"type": "string", "enum": ["retry", "reReview", "instruct", "openIssue", "fixFlaky", "retryPipeline", "rebase", "mergeBase", "restartRun", "skip", "unskip", "startAnyway", "markDone", "pause", "resume", "revisit", "setRule", "forgetRule", "editSpec", "setTier"]},
+              "issue": {"type": "integer", "description": "retry, reReview, instruct, restartRun, skip, unskip, startAnyway, markDone, setTier: the issue of the milestone; rebase, mergeBase: an active queue item; fixFlaky: the flaky issue."},
               "decision": {"type": "string", "description": "revisit: the decision's ID, e.g. D12-3."},
               "kind": {"type": "string", "enum": ["ci-fix", "install-toolchains", "rerun", "switch", "pilot", "prompt"], "description": "instruct: the instruction; setRule: the kind of rule."},
               "note": {"type": "string", "description": "instruct: a short hint from what you saw; openIssue: the issue's body; revisit: the change asked for; markDone: why the issue is done (e.g. which issue replaces it); setRule: the rule, one line (a switch: setting=value)."},
               "title": {"type": "string", "description": "openIssue: the issue's title."},
               "rule": {"type": "string", "description": "forgetRule: the rule's ID, e.g. R2."},
               "spec": {"type": "string", "description": "editSpec: the complete new milestone spec, as it should read; without owners, rule and marker lines."},
-              "pipeline": {"type": "integer", "description": "retryPipeline: the red pipeline of the default branch (mainHealth.pipelineID)."}
+              "pipeline": {"type": "integer", "description": "retryPipeline: the red pipeline of the default branch (mainHealth.pipelineID)."},
+              "profile": {"type": "string", "description": "setTier: the tier (profile) the issue moves to."}
             }
           }`
 

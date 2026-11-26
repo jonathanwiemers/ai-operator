@@ -235,7 +235,7 @@ func TestPilotRecordsRestartRun(t *testing.T) {
 
 // pilotToolsCopy matches internal/controller.pilotTools. Keep in sync when
 // either side gains or drops a tool (cross-package import is avoided).
-var pilotToolsCopy = []string{"retry", "reReview", "instruct", "openIssue", "fixFlaky", "retryPipeline", "rebase", "mergeBase", "restartRun", "skip", "unskip", "startAnyway", "markDone", "pause", "resume", "revisit", "setRule", "forgetRule", "editSpec"}
+var pilotToolsCopy = []string{"retry", "reReview", "instruct", "openIssue", "fixFlaky", "retryPipeline", "rebase", "mergeBase", "restartRun", "skip", "unskip", "startAnyway", "markDone", "pause", "resume", "revisit", "setRule", "forgetRule", "editSpec", "setTier"}
 
 // The action schema's tool enum and the operator's pilotTools stay the same
 // set, so a proposal the runner accepts is one the controller can run.

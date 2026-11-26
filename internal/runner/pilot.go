@@ -461,6 +461,15 @@ type factsFunc func(aiv1.PilotEvent) string
 type pilotEngines struct {
 	UsageLimits []pilotLimit         `json:"usageLimits,omitempty"`
 	Roles       map[string]pilotRole `json:"roles"`
+	// Profiles are the project's tiers in order, lowest first: a setTier
+	// proposes one of them.
+	Profiles []pilotProfile `json:"profiles,omitempty"`
+}
+
+type pilotProfile struct {
+	Name   string `json:"name"`
+	Model  string `json:"model,omitempty"`
+	Effort string `json:"effort,omitempty"`
 }
 
 type pilotLimit struct {
@@ -487,6 +496,7 @@ func enginesOf(project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, now time.
 	e.Roles["spec"], e.Roles["implement"], e.Roles["review"] = role(spec.Agents.Spec), role(spec.Agents.Implement.RoleSpec), role(spec.Agents.Review.RoleSpec)
 	for _, p := range spec.Agents.Profiles {
 		e.Roles["profile "+p.Name] = role(p.RoleSpec)
+		e.Profiles = append(e.Profiles, pilotProfile{Name: p.Name, Model: p.Model, Effort: p.Effort})
 	}
 	return e
 }
@@ -562,7 +572,7 @@ func pilotActions(actions []ProposalAction) []aiv1.PilotAction {
 	for _, a := range actions[:min(len(actions), 5)] {
 		out = append(out, aiv1.PilotAction{Tool: textutil.Truncate(a.Tool, 40), IssueIID: a.Issue, Kind: textutil.Truncate(a.Kind, 40),
 			Note: textutil.Truncate(a.Note, 2000), Title: textutil.Truncate(a.Title, 200), Decision: textutil.Truncate(a.Decision, 40), Rule: textutil.Truncate(a.Rule, 10), Spec: a.Spec,
-			PipelineID: a.Pipeline})
+			PipelineID: a.Pipeline, Profile: textutil.Truncate(a.Profile, 100)})
 	}
 	return out
 }

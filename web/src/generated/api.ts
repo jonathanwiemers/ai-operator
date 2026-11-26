@@ -4679,10 +4679,10 @@ export interface PilotAction {
   /**
    * Tool: retry, reReview, instruct, openIssue, fixFlaky, retryPipeline,
    * rebase, mergeBase, skip, unskip, startAnyway, markDone, pause, resume,
-   * revisit, setRule, forgetRule or editSpec; the owner-only raiseBudget
-   * and endMilestone come only in options the operator builds (budget
-   * prompts), never from the model. unskip, startAnyway and markDone run
-   * only on an owner's answer.
+   * revisit, setRule, forgetRule, editSpec or setTier; the owner-only
+   * raiseBudget and endMilestone come only in options the operator builds
+   * (budget prompts), never from the model. unskip, startAnyway and
+   * markDone run only on an owner's answer, setTier only on an Accept.
    */
   tool: string;
   /**
@@ -4749,6 +4749,11 @@ export interface PilotAction {
    * +optional
    */
   amount?: string;
+  /**
+   * Profile is the tier a setTier moves the issue to.
+   * +optional
+   */
+  profile?: string;
 }
 /**
  * PilotProposal is a set of actions that waits for an owner's "yes".

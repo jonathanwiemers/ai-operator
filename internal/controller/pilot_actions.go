@@ -32,7 +32,7 @@ import (
 
 // pilotTools are the tools the pilot may propose; merging, closing and
 // pushing are none of them.
-var pilotTools = []string{"retry", "reReview", "instruct", "openIssue", "fixFlaky", "retryPipeline", "rebase", "mergeBase", "restartRun", "skip", "unskip", "startAnyway", "markDone", "pause", "resume", "revisit", "setRule", "forgetRule", "editSpec"}
+var pilotTools = []string{"retry", "reReview", "instruct", "openIssue", "fixFlaky", "retryPipeline", "rebase", "mergeBase", "restartRun", "skip", "unskip", "startAnyway", "markDone", "pause", "resume", "revisit", "setRule", "forgetRule", "editSpec", "setTier"}
 
 // ownerTools are the operator's own options of budget prompts: an owner
 // chooses them, the model never proposes them (checkAction).
@@ -317,6 +317,9 @@ func checkAction(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject,
 	}
 	*a = withRuleText(*a, st)
 	err := validAction(*a, st, tasks, opened)
+	if err == nil && a.Tool == "setTier" {
+		err = validProfile(spec, a.Profile)
+	}
 	if err == nil && a.Tool == "fixFlaky" {
 		_, err = checkFlaky(ctx, gl, spec, project.Status.BotUserID, project.Status.MainHealth, a.IssueIID, flakyMilestone(spec, st), byOwner)
 	}
@@ -608,6 +611,8 @@ func (r *AgentProjectReconciler) runAccepted(ctx context.Context, gl gitlab.API,
 			}
 			if errs[i][j] == nil && p.AcceptedBy == "" && a.Tool == "editSpec" {
 				errs[i][j] = errors.New("a spec edit needs an owner's yes")
+			} else if errs[i][j] == nil && p.AcceptedBy == "" && a.Tool == "setTier" {
+				errs[i][j] = errors.New("a tier change needs an owner's yes")
 			} else if errs[i][j] == nil && p.AcceptedBy == "" && (slices.Contains(ownerTools, a.Tool) || slices.Contains(answerTools, a.Tool)) {
 				errs[i][j] = fmt.Errorf("`%s` needs an owner's answer", a.Tool)
 			} else if errs[i][j] == nil && p.AcceptedBy == "" && spec.Pilot.AutonomyOf(coord) != aiv1.PilotManaged {
@@ -758,6 +763,8 @@ func (r *AgentProjectReconciler) runAction(ctx context.Context, gl gitlab.API, p
 		return "", r.queueCommand(ctx, st, aiv1.PilotCommand{Action: a, Owner: by, OnIssue: tracking})
 	case "markDone":
 		return "", markDone(ctx, gl, spec, st, how, a)
+	case "setTier":
+		return setTier(ctx, gl, spec, a)
 	case "raiseBudget":
 		return "", r.raiseBudget(ctx, gl, spec, st, a.Amount)
 	case "setRule", "forgetRule":
@@ -837,6 +844,40 @@ func (r *AgentProjectReconciler) runAction(ctx context.Context, gl gitlab.API, p
 		return "", nil
 	}
 	return fmt.Sprintf("queued for #%d's next run", a.IssueIID), nil
+}
+
+// setTier moves open issue a.IssueIID to tier a.Profile with one update: the
+// tier's profile label added, its other profile labels and its model and
+// effort labels removed. It requests no run: the next one resolves the tier
+// (IssueRole), a running call goes on as it is. It returns the acted line.
+func setTier(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, a aiv1.PilotAction) (string, error) {
+	p, ok := spec.Profile(a.Profile)
+	if !ok {
+		return "", validProfile(spec, a.Profile)
+	}
+	is, err := gl.GetIssue(ctx, spec.GitLab.Project, a.IssueIID)
+	switch {
+	case err != nil:
+		return "", fmt.Errorf("getting issue #%d: %w", a.IssueIID, err)
+	case is.State != "opened":
+		return "", fmt.Errorf("#%d is closed", a.IssueIID)
+	}
+	wf, add := spec.Workflow, spec.ProfileLabel(p.Name)
+	var remove []string
+	for _, l := range is.Labels {
+		if l != add && slices.ContainsFunc([]string{wf.ProfileLabelPrefix, wf.ModelLabelPrefix, wf.EffortLabelPrefix},
+			func(prefix string) bool { return prefix != "" && strings.HasPrefix(l, prefix) }) {
+			remove = append(remove, l)
+		}
+	}
+	if _, err := gl.UpdateIssue(ctx, spec.GitLab.Project, a.IssueIID, gitlab.UpdateIssueOptions{AddLabels: []string{add}, RemoveLabels: remove}); err != nil {
+		return "", err
+	}
+	line := fmt.Sprintf("#%d now runs on tier %s (%s)", a.IssueIID, p.Name, p.Setting())
+	if len(remove) > 0 {
+		line += "; removed " + strings.Join(remove, ", ")
+	}
+	return line, nil
 }
 
 // queueIssue reports whether action a of the pilot of Queue task st is on
@@ -1001,6 +1042,8 @@ func describeAction(a aiv1.PilotAction, err error) string {
 		s = fmt.Sprintf("**raiseBudget** to $%s: the milestone description's budget line", showBudget(a.Amount))
 	case "endMilestone":
 		s = "**endMilestone**: autopilot picks no further issue and is done after the active one"
+	case "setTier":
+		s = fmt.Sprintf("**setTier** #%d to tier %s: its next run uses it, a running call goes on", a.IssueIID, inertLine(a.Profile, 40))
 	default:
 		s = fmt.Sprintf("**%s**", inertLine(a.Tool, 40))
 	}

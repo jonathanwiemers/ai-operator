@@ -1,6 +1,7 @@
 package v1alpha1
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -359,6 +360,21 @@ func (s AgentProjectSpec) Profile(name string) (AgentProfile, bool) {
 		}
 	}
 	return AgentProfile{}, false
+}
+
+// Setting describes a profile's engine, model and effort: "<model>, effort
+// <effort>" on claude, which has efforts, else "<engine>, <model>".
+func (p AgentProfile) Setting() string {
+	if p.Engine == EngineClaude || p.Engine == "" {
+		if p.Effort == "" {
+			return p.Model
+		}
+		return fmt.Sprintf("%s, effort %s", p.Model, p.Effort)
+	}
+	if p.Model == "" {
+		return string(p.Engine)
+	}
+	return fmt.Sprintf("%s, %s", p.Engine, p.Model)
 }
 
 // ProfileLabel returns the label that selects a profile.

@@ -18,7 +18,7 @@ func TestSystemPromptsAreUnchanged(t *testing.T) {
 		"implement":  {implementSystemPrompt, "cc175f9e7c9dd485d742f7d0075dced48ef36da808760dd05197fb855ee9d021"},
 		"bugbot":     {bugbotSystemPrompt, "22853472d19cf325d2ba58ec9d5f8d5b7c1b43ef8ecf5d81b74305a116105e50"},
 		"security":   {securitySystemPrompt, "9251740c21e1e3f4f12d08efbd0a08f133ad8520a515d0478c92de5631de1f69"},
-		"pilot":      {pilotSystemPrompt, "2b4c41d23b19385ef5984c25272e8b6e5c3b0648135d42b2b250efade73f2803"},
+		"pilot":      {pilotSystemPrompt, "bdc60e4e2af2438a24c0fb533e0c17169d31e711934eba7a474d143aaa43efe5"},
 		"pilotRules": {pilotRulesPrompt, "acba6301c97a35c00ccceba25e5275d3db2e66e555005e75124be01d51aad954"},
 		"retro":      {retroSystemPrompt, "4045a57f426e954ee971306d52634806668213370b3815ceafac61fa292c1167"},
 		"describe":   {describeSystemPrompt, "602fe49622e80041a3e0bdce43c8d88040b51583e796d07f8c57a7b062c6bb0e"},

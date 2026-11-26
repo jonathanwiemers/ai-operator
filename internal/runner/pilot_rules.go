@@ -32,7 +32,7 @@ not a milestone. Its issues have no milestone, spec, plan, releases, rules or
 retrospective; the state has the queue, its items with their holds, the
 recent merges and the round. The tools allowed on the queue are retry,
 reReview, instruct, retryPipeline, rebase, mergeBase, fixFlaky, openIssue,
-markDone, pause and resume. skip drops an issue from the queue. revisit,
+markDone, setTier, pause and resume. skip drops an issue from the queue. revisit,
 setRule, forgetRule, editSpec, endMilestone, unskip, startAnyway and
 raiseBudget are refused: never propose them. An issue you open is not taken
 into the queue: an owner takes it.`

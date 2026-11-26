@@ -207,7 +207,7 @@ func TestQueuePilotSystemPrompt(t *testing.T) {
 		t.Errorf("the queue's system prompt has no rules block:\n%s", sys)
 	}
 	for _, want := range []string{"you coordinate the project's loose issues queue",
-		"retry,\nreReview, instruct, retryPipeline, rebase, mergeBase, fixFlaky, openIssue,\nmarkDone, pause and resume",
+		"retry,\nreReview, instruct, retryPipeline, rebase, mergeBase, fixFlaky, openIssue,\nmarkDone, setTier, pause and resume",
 		"skip drops an issue from the queue", "revisit,\nsetRule, forgetRule, editSpec, endMilestone, unskip, startAnyway and\nraiseBudget are refused",
 		"An issue you open is not taken\ninto the queue: an owner takes it"} {
 		if !strings.Contains(sys, want) {

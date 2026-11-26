@@ -199,3 +199,9 @@ func TestTaskResponseShape(t *testing.T) {
 		t.Errorf("TaskResponse = %+v", tr)
 	}
 }
+
+func TestActionTextOfSetTier(t *testing.T) {
+	if got := actionText(aiv1.PilotAction{Tool: "setTier", IssueIID: 12, Profile: "deep"}); got != "setTier #12 → deep" {
+		t.Fatalf("got %q", got)
+	}
+}

@@ -66,6 +66,8 @@ func validAction(a aiv1.PilotAction, st *aiv1.AgentTask, tasks map[int64]*aiv1.A
 		return activeMR(ap, a.IssueIID)
 	case a.Tool == "unskip" || a.Tool == "startAnyway" || a.Tool == "markDone":
 		return validWayOut(a, st)
+	case a.Tool == "setTier":
+		return validTierIssue(a.IssueIID, st, tasks) // the profile: checkAction, setTier
 	}
 	if a.Tool == "openIssue" {
 		switch {
@@ -207,6 +209,45 @@ func validWayOut(a aiv1.PilotAction, st *aiv1.AgentTask) error {
 		}
 	}
 	return nil
+}
+
+// validTierIssue checks the issue of a setTier: one of the milestone of st
+// (its plan, its autopilot items or a task) that is not merged. On the loose
+// issues queue validQueueAction has checked it is a pending, active or held
+// item.
+func validTierIssue(iid int64, st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask) error {
+	var items []aiv1.AutopilotItem
+	if ap := st.Status.Autopilot; ap != nil {
+		items = ap.Items
+	}
+	of := func(it aiv1.AutopilotItem) bool { return it.IID == iid }
+	planned := slices.ContainsFunc(st.Status.Plan, func(p aiv1.PlannedIssue) bool { return p.IID == iid })
+	switch {
+	case iid <= 0:
+		return errors.New("setTier needs the issue")
+	case !planned && !slices.ContainsFunc(items, of) && tasks[iid] == nil:
+		return fmt.Errorf("#%d is not an issue of this milestone", iid)
+	case slices.ContainsFunc(items, of) &&
+		!slices.ContainsFunc(items, func(it aiv1.AutopilotItem) bool { return of(it) && it.State != aiv1.AutopilotItemMerged }):
+		return fmt.Errorf("#%d is merged already", iid)
+	}
+	return nil
+}
+
+// validProfile refuses a name that is no profile of the project (spec),
+// naming the profiles there are.
+func validProfile(spec aiv1.AgentProjectSpec, name string) error {
+	if _, ok := spec.Profile(name); ok && name != "" {
+		return nil
+	}
+	names := make([]string, 0, len(spec.Agents.Profiles))
+	for _, p := range spec.Agents.Profiles {
+		names = append(names, p.Name)
+	}
+	if len(names) == 0 {
+		names = append(names, "none")
+	}
+	return fmt.Errorf("`%s` is no profile of this project (%s)", inertLine(name, 40), strings.Join(names, ", "))
 }
 
 // checkOpenIssue refuses an issue that is closed, gone or no longer in the

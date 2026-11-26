@@ -120,3 +120,19 @@ func TestConflictRoleUnchangedByEffortDefaults(t *testing.T) {
 		t.Fatalf("conflict role = %+v, want claude/%s without effort", role, DefaultModel)
 	}
 }
+
+func TestProfileSetting(t *testing.T) {
+	for _, c := range []struct {
+		p    AgentProfile
+		want string
+	}{
+		{AgentProfile{RoleSpec: RoleSpec{Engine: EngineClaude, Model: "claude-opus-5-5", Effort: "high"}}, "claude-opus-5-5, effort high"},
+		{AgentProfile{RoleSpec: RoleSpec{Model: "claude-opus-5-5"}}, "claude-opus-5-5"},
+		{AgentProfile{RoleSpec: RoleSpec{Engine: EngineCursor, Model: "auto", Effort: "high"}}, "cursor, auto"},
+		{AgentProfile{RoleSpec: RoleSpec{Engine: EngineCursor}}, "cursor"},
+	} {
+		if got := c.p.Setting(); got != c.want {
+			t.Errorf("Setting(%+v) = %q, want %q", c.p.RoleSpec, got, c.want)
+		}
+	}
+}

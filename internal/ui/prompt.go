@@ -177,6 +177,8 @@ func actionText(a aiv1.PilotAction) string {
 		return fmt.Sprintf("setRule (%s): %s", a.Kind, a.Note)
 	case "forgetRule":
 		return "forgetRule " + a.Rule
+	case "setTier":
+		return fmt.Sprintf("setTier #%d → %s", a.IssueIID, a.Profile)
 	case "editSpec":
 		return "editSpec: a new spec replaces the milestone description, its command lines kept"
 	}
