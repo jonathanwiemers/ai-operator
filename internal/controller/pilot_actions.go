@@ -318,7 +318,7 @@ func checkAction(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject,
 	*a = withRuleText(*a, st)
 	err := validAction(*a, st, tasks, opened)
 	if err == nil && a.Tool == "fixFlaky" {
-		_, err = checkFlaky(ctx, gl, spec, project.Status.BotUserID, project.Status.MainHealth, a.IssueIID, st.Spec.Milestone.IID, byOwner)
+		_, err = checkFlaky(ctx, gl, spec, project.Status.BotUserID, project.Status.MainHealth, a.IssueIID, flakyMilestone(spec, st), byOwner)
 	}
 	if err == nil && a.Tool == "retryPipeline" {
 		err = checkRetryPipeline(project.Status.MainHealth, a.PipelineID)
@@ -587,7 +587,7 @@ func (r *AgentProjectReconciler) whichProposal(prefix string, st *aiv1.AgentTask
 // status before any action runs, so each runs once at most; every action
 // is checked again first. The outcome goes on the tracking issue.
 func (r *AgentProjectReconciler) runAccepted(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
-	st, coord *aiv1.AgentTask, tracking int64) error {
+	st, coord, queue *aiv1.AgentTask, tracking int64) error {
 	ps := coord.Status.Pilot
 	if ps == nil || len(ps.Accepted) == 0 {
 		return nil
@@ -602,7 +602,7 @@ func (r *AgentProjectReconciler) runAccepted(ctx context.Context, gl gitlab.API,
 		errs[i] = make([]error, len(p.Actions))
 		for j, a := range p.Actions {
 			if errs[i][j] = validAction(a, st, tasks, opened); errs[i][j] == nil && a.Tool == "fixFlaky" {
-				_, errs[i][j] = checkFlaky(ctx, gl, spec, project.Status.BotUserID, project.Status.MainHealth, a.IssueIID, st.Spec.Milestone.IID, p.AcceptedBy != "")
+				_, errs[i][j] = checkFlaky(ctx, gl, spec, project.Status.BotUserID, project.Status.MainHealth, a.IssueIID, flakyMilestone(spec, st), p.AcceptedBy != "")
 			} else if errs[i][j] == nil && a.Tool == "retryPipeline" {
 				errs[i][j] = checkRetryPipeline(project.Status.MainHealth, a.PipelineID)
 			}
@@ -642,7 +642,7 @@ func (r *AgentProjectReconciler) runAccepted(ctx context.Context, gl gitlab.API,
 			if errs[i][j] == nil && a.Tool == "restartRun" {
 				answer, errs[i][j] = r.pilotRestart(ctx, gl, spec, tasks[a.IssueIID], a.IssueIID, proposalHow(p), project.Status.BotUserID)
 			} else if errs[i][j] == nil {
-				if answer, errs[i][j] = r.runAction(ctx, gl, project, spec, st, tracking, proposalHow(p), p.AcceptedBy, ownerMessageID(p), a, tasks[a.IssueIID]); errs[i][j] != nil && a.Tool == "openIssue" {
+				if answer, errs[i][j] = r.runAction(ctx, gl, project, spec, st, queue, tracking, proposalHow(p), p.AcceptedBy, ownerMessageID(p), a, tasks[a.IssueIID]); errs[i][j] != nil && a.Tool == "openIssue" {
 					failed = append(failed, titleKey(a.Title)) // may be opened again
 				}
 			}
@@ -726,19 +726,27 @@ func ownerMessageID(p aiv1.PilotProposal) string {
 
 // runAction executes one validated action of an accepted proposal; how
 // says how it came to run (proposalHow), by who accepted it, source is the
-// key of an owner's words (ownerMessageID). It returns where an owner's
-// words went.
-func (r *AgentProjectReconciler) runAction(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, st *aiv1.AgentTask,
+// key of an owner's words (ownerMessageID), queue the Queue task of the
+// loose issues queue (nil: none). It returns where an owner's words went.
+func (r *AgentProjectReconciler) runAction(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, st, queue *aiv1.AgentTask,
 	tracking int64, how, by, source string, a aiv1.PilotAction, t *aiv1.AgentTask) (string, error) {
 	switch a.Tool {
 	case "fixFlaky":
 		// Checked again: another pilot may have handed it over meanwhile.
 		mh := project.Status.MainHealth
-		is, err := checkFlaky(ctx, gl, spec, project.Status.BotUserID, mh, a.IssueIID, st.Spec.Milestone.IID, by != "")
+		is, err := checkFlaky(ctx, gl, spec, project.Status.BotUserID, mh, a.IssueIID, flakyMilestone(spec, st), by != "")
 		if err != nil {
 			return "", err
 		}
-		return "", r.handOverFlaky(ctx, gl, spec, mh, st, is, fmt.Sprintf("the pilot of milestone %q, %s", inertLine(st.Spec.Milestone.Title, 100), how), by != "")
+		loose, err := looseQueue(spec, queue)
+		if err != nil {
+			return "", err
+		}
+		takenBy := "the pilot"
+		if by != "" {
+			takenBy = "@" + by
+		}
+		return "", r.handOverFlaky(ctx, gl, spec, mh, st, loose, is, fmt.Sprintf("the pilot of milestone %q, %s", inertLine(st.Spec.Milestone.Title, 100), how), takenBy, by != "")
 	case "retryPipeline":
 		// Checked again: the branch may be green or have a newer pipeline.
 		if err := checkRetryPipeline(project.Status.MainHealth, a.PipelineID); err != nil {

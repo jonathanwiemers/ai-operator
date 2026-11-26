@@ -364,7 +364,8 @@ type mainHealthPhase struct {
 
 func (ph mainHealthPhase) run(ctx context.Context) {
 	r, gl, project, spec, lane := ph.r, ph.gl, ph.project, ph.spec, ph.lane
-	if err := r.syncMainHealth(ctx, gl, project, spec, lane); err != nil {
+	// The Queue task is looked up: syncQueueTask runs in the autopilot phase.
+	if err := r.syncMainHealth(ctx, gl, project, spec, lane, ph.findQueueTask()); err != nil {
 		ph.errs = append(ph.errs, fmt.Errorf("main health: %w", err))
 	}
 }
@@ -451,7 +452,7 @@ func (ph pilotPhase) run(ctx context.Context) {
 	if err := r.syncOpenPrompts(ctx, gl, project, spec, specTasks, byMilestone, issues, implTasks); err != nil {
 		ph.errs = append(ph.errs, err)
 	}
-	if err := r.syncPilots(ctx, gl, project, spec, specTasks, lane, pilots, keep, issues, implTasks); err != nil {
+	if err := r.syncPilots(ctx, gl, project, spec, specTasks, lane, ph.queueTask, pilots, keep, issues, implTasks); err != nil {
 		ph.errs = append(ph.errs, err)
 	}
 	// The prompts' GitLab comments, once answers have their outcome.

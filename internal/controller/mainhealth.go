@@ -45,8 +45,10 @@ const (
 // A canceled pipeline is retried once and reported if canceled again
 // (checkCanceled). The status changes only when every step succeeded, so a
 // failed one is repeated on the next check. With autoFixFlaky, a flaky issue goes to the
-// agent at its second occurrence, into the milestone of lane (nil: none).
-func (r *AgentProjectReconciler) syncMainHealth(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec, lane *aiv1.AgentTask) error {
+// agent at its second occurrence, into the milestone of lane (nil: none), or
+// into the loose issues queue of Queue task queue (nil: off).
+func (r *AgentProjectReconciler) syncMainHealth(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
+	lane, queue *aiv1.AgentTask) error {
 	if spec.MainHealth.Disabled {
 		var kept *aiv1.MainHealthStatus
 		if cur := project.Status.MainHealth; cur != nil && len(cur.FlakyFixes) > 0 {
@@ -79,7 +81,7 @@ func (r *AgentProjectReconciler) syncMainHealth(ctx context.Context, gl gitlab.A
 		return err
 	}
 	if spec.MainHealth.AutoFixFlaky && cur.State == aiv1.MainHealthRetrying && st.State == aiv1.MainHealthFlaky {
-		if err := r.autoFixFlaky(ctx, gl, spec, project.Status.BotUserID, st, lane); err != nil {
+		if err := r.autoFixFlaky(ctx, gl, spec, project.Status.BotUserID, st, lane, queue); err != nil {
 			// The check repeats; the hand-overs that went through stay.
 			cur.FlakyFixes = st.FlakyFixes
 			return err

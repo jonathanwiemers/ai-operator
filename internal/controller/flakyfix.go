@@ -69,6 +69,9 @@ func checkFlaky(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, 
 	}
 	if f := flakyLatch(mh, iid); f != nil {
 		where := "without a milestone"
+		if spec.LooseIssues.Enabled {
+			where = "in the loose issues queue"
+		}
 		if f.MilestoneIID != 0 {
 			where = fmt.Sprintf("in milestone %q", inertLine(f.MilestoneTitle, 100))
 		}
@@ -122,36 +125,58 @@ func queueRunning(st *aiv1.AgentTask) bool {
 // its queue, else with agent::ready, and with the operator's task, set
 // last: that update is the hand-over, so one that failed before it can be
 // repeated. how says who did it; an owner's choice (byOwner) always gets
-// agent::ready, also on the queue, so its run starts at once.
+// agent::ready, also on the queue, so its run starts at once. With the loose
+// issues queue on (its Queue task loose, nil: off) the issue goes into that
+// queue instead of a milestone, taken by by.
 func (r *AgentProjectReconciler) handOverFlaky(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, mh *aiv1.MainHealthStatus,
-	st *aiv1.AgentTask, is *gitlab.Issue, how string, byOwner bool) error {
+	st, loose *aiv1.AgentTask, is *gitlab.Issue, how, by string, byOwner bool) error {
 	glProject := spec.GitLab.Project
 	opts := gitlab.UpdateIssueOptions{Description: is.Description + "\n\n" + fixFlakyTask}
 	fix := aiv1.FlakyFix{IssueIID: is.IID, At: metav1.NewTime(r.now())}
-	where, queue := "without a milestone, with `"+spec.Workflow.ReadyLabel+"`", st != nil && queueRunning(st)
-	if st != nil {
-		opts.MilestoneID = st.Spec.Milestone.ID
-		fix.MilestoneIID, fix.MilestoneTitle = st.Spec.Milestone.IID, st.Spec.Milestone.Title
-		where = fmt.Sprintf("in milestone %q, with `%s`", inertLine(st.Spec.Milestone.Title, 100), spec.Workflow.ReadyLabel)
-	}
-	if queue {
-		where = fmt.Sprintf("in milestone %q, queued on its autopilot", inertLine(st.Spec.Milestone.Title, 100))
-	}
-	if !queue || byOwner {
-		opts.AddLabels = []string{spec.Workflow.ReadyLabel}
-	}
-	if queue && byOwner {
-		where += fmt.Sprintf(", with `%s`", spec.Workflow.ReadyLabel)
-	}
-	if queue {
-		if err := r.queueFlakyFix(ctx, st, is.IID, true); err != nil {
-			return fmt.Errorf("queueing flaky issue #%d: %w", is.IID, err)
+	var where string
+	var undo func() error // takes the issue off a queue again
+	if loose != nil {
+		where = "in the loose issues queue"
+		if byOwner {
+			opts.AddLabels = []string{spec.Workflow.ReadyLabel}
+			where += fmt.Sprintf(", with `%s`", spec.Workflow.ReadyLabel)
+		}
+		var prev []aiv1.AutopilotItem
+		if loose.Status.Autopilot != nil {
+			prev = slices.Clone(loose.Status.Autopilot.Items)
+		}
+		if err := r.setLooseItems(ctx, loose, looseFlakyItems(slices.Clone(prev), is.IID, by, fix.At, byOwner)); err != nil {
+			return fmt.Errorf("queueing flaky issue #%d in the loose issues queue: %w", is.IID, err)
+		}
+		undo = func() error { return r.setLooseItems(ctx, loose, prev) }
+	} else {
+		var queue bool
+		where, queue = "without a milestone, with `"+spec.Workflow.ReadyLabel+"`", st != nil && queueRunning(st)
+		if st != nil {
+			opts.MilestoneID = st.Spec.Milestone.ID
+			fix.MilestoneIID, fix.MilestoneTitle = st.Spec.Milestone.IID, st.Spec.Milestone.Title
+			where = fmt.Sprintf("in milestone %q, with `%s`", inertLine(st.Spec.Milestone.Title, 100), spec.Workflow.ReadyLabel)
+		}
+		if queue {
+			where = fmt.Sprintf("in milestone %q, queued on its autopilot", inertLine(st.Spec.Milestone.Title, 100))
+		}
+		if !queue || byOwner {
+			opts.AddLabels = []string{spec.Workflow.ReadyLabel}
+		}
+		if queue && byOwner {
+			where += fmt.Sprintf(", with `%s`", spec.Workflow.ReadyLabel)
+		}
+		if queue {
+			if err := r.queueFlakyFix(ctx, st, is.IID, true); err != nil {
+				return fmt.Errorf("queueing flaky issue #%d: %w", is.IID, err)
+			}
+			// Not in the milestone, the queue would skip it.
+			undo = func() error { return r.queueFlakyFix(ctx, st, is.IID, false) }
 		}
 	}
 	if _, err := gl.UpdateIssue(ctx, glProject, is.IID, opts); err != nil {
-		if queue {
-			// Not in the milestone, the queue would skip it.
-			if qerr := r.queueFlakyFix(ctx, st, is.IID, false); qerr != nil {
+		if undo != nil {
+			if qerr := undo(); qerr != nil {
 				log.FromContext(ctx).Info("could not take the flaky issue off the queue", "issue", is.IID, "error", qerr.Error())
 			}
 		}
@@ -159,11 +184,70 @@ func (r *AgentProjectReconciler) handOverFlaky(ctx context.Context, gl gitlab.AP
 	}
 	mh.FlakyFixes = append(mh.FlakyFixes, fix)
 	mh.FlakyFixes = mh.FlakyFixes[max(0, len(mh.FlakyFixes)-maxFlakyFixes):]
-	log.FromContext(ctx).Info("flaky issue handed to the agent", "issue", is.IID, "milestone", fix.MilestoneIID)
+	log.FromContext(ctx).Info("flaky issue handed to the agent", "issue", is.IID, "milestone", fix.MilestoneIID, "loose", loose != nil)
 	if _, err := gl.CreateIssueNote(ctx, glProject, is.IID, fmt.Sprintf("🛠️ Handed to the agent (%s), %s.", how, where)); err != nil {
 		log.FromContext(ctx).Info("could not comment on the flaky issue", "issue", is.IID, "error", err.Error())
 	}
 	return nil
+}
+
+// looseQueue is the Queue task flaky issues go to, qt of the poll: nil while
+// the loose issues queue is off. While it is on but its task is not created
+// yet, the hand-over waits (an error: it is repeated).
+func looseQueue(spec aiv1.AgentProjectSpec, qt *aiv1.AgentTask) (*aiv1.AgentTask, error) {
+	switch {
+	case !spec.LooseIssues.Enabled:
+		return nil, nil
+	case qt == nil:
+		return nil, errors.New("the loose issues queue task is not created yet")
+	}
+	return qt, nil
+}
+
+// flakyMilestone is the milestone a flaky issue handed over by spec task st
+// (nil: none) goes into: none while the loose issues queue takes them.
+func flakyMilestone(spec aiv1.AgentProjectSpec, st *aiv1.AgentTask) int64 {
+	if st == nil || spec.LooseIssues.Enabled {
+		return 0
+	}
+	return st.Spec.Milestone.IID
+}
+
+// looseFlakyItems is items of the loose issues queue with flaky issue iid
+// appended as pending, flagged and taken by by at at, as the take command
+// does; one in the queue already gets the flag. An owner's choice (active)
+// is active at once: it gets the ready label in the same hand-over.
+func looseFlakyItems(items []aiv1.AutopilotItem, iid int64, by string, at metav1.Time, active bool) []aiv1.AutopilotItem {
+	state := aiv1.AutopilotItemPending
+	if active {
+		state = aiv1.AutopilotItemActive
+	}
+	if i := slices.IndexFunc(items, func(it aiv1.AutopilotItem) bool { return it.IID == iid && !finished(it) }); i >= 0 {
+		items[i].FlakyFix = true
+		if active {
+			items[i].State = state
+		}
+		return items
+	}
+	// Taken again after it merged or left: a new item, at the end.
+	return append(slices.DeleteFunc(items, func(it aiv1.AutopilotItem) bool { return it.IID == iid }),
+		aiv1.AutopilotItem{IID: iid, State: state, FlakyFix: true, TakenBy: by, TakenAt: &at})
+}
+
+// setLooseItems writes items into the status of Queue task qt, so the next
+// syncQueue sees them. A failed write leaves qt as it was: the poll's
+// syncLoose saves what it holds.
+func (r *AgentProjectReconciler) setLooseItems(ctx context.Context, qt *aiv1.AgentTask, items []aiv1.AutopilotItem) error {
+	orig := qt.DeepCopy()
+	if qt.Status.Autopilot == nil {
+		qt.Status.Autopilot = &aiv1.AutopilotStatus{}
+	}
+	qt.Status.Autopilot.Items = items
+	err := r.Status().Patch(ctx, qt, client.MergeFromWithOptions(orig, client.MergeFromWithOptimisticLock{}))
+	if err != nil {
+		orig.DeepCopyInto(qt)
+	}
+	return err
 }
 
 // queueFlakyFix appends a flaky issue to the autopilot queue of spec task
@@ -190,12 +274,11 @@ func (r *AgentProjectReconciler) queueFlakyFix(ctx context.Context, st *aiv1.Age
 
 // autoFixFlaky hands the flaky issues of a check to the agent at their
 // second occurrence (mainHealth.autoFixFlaky), into the milestone of lane
-// (nil: none), recorded in st.
-func (r *AgentProjectReconciler) autoFixFlaky(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, bot int64, st *aiv1.MainHealthStatus, lane *aiv1.AgentTask) error {
-	var milestone int64
-	if lane != nil {
-		milestone = lane.Spec.Milestone.IID
-	}
+// (nil: none), or into the loose issues queue of Queue task queue while it is
+// on, recorded in st.
+func (r *AgentProjectReconciler) autoFixFlaky(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, bot int64, st *aiv1.MainHealthStatus,
+	lane, queue *aiv1.AgentTask) error {
+	milestone := flakyMilestone(spec, lane)
 	for _, f := range st.Flaky {
 		is, err := checkFlaky(ctx, gl, spec, bot, st, f.IssueIID, milestone, false)
 		var refused flakyRefusal
@@ -205,7 +288,11 @@ func (r *AgentProjectReconciler) autoFixFlaky(ctx context.Context, gl gitlab.API
 		case err != nil:
 			return err
 		}
-		if err := r.handOverFlaky(ctx, gl, spec, st, lane, is, "`mainHealth.autoFixFlaky`", false); err != nil {
+		loose, err := looseQueue(spec, queue)
+		if err != nil {
+			return err
+		}
+		if err := r.handOverFlaky(ctx, gl, spec, st, lane, loose, is, "`mainHealth.autoFixFlaky`", "mainHealth.autoFixFlaky", false); err != nil {
 			return err
 		}
 	}

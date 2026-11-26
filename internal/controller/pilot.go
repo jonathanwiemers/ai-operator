@@ -365,7 +365,7 @@ func (r *AgentProjectReconciler) ensurePilot(ctx context.Context, project *aiv1.
 // their milestones, those of the default branch's health only for lane's.
 // Pilots left out of keep are deleted.
 func (r *AgentProjectReconciler) syncPilots(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
-	specTasks []*aiv1.AgentTask, lane *aiv1.AgentTask, pilots map[int64]*aiv1.AgentTask, keep map[string]bool, issues map[int64]gitlab.Issue, tasks map[int64]*aiv1.AgentTask) error {
+	specTasks []*aiv1.AgentTask, lane, queue *aiv1.AgentTask, pilots map[int64]*aiv1.AgentTask, keep map[string]bool, issues map[int64]gitlab.Issue, tasks map[int64]*aiv1.AgentTask) error {
 	var errs []error
 	for _, st := range specTasks {
 		coord := pilots[st.Spec.Milestone.IID]
@@ -438,7 +438,7 @@ func (r *AgentProjectReconciler) syncPilots(ctx context.Context, gl gitlab.API, 
 				err = r.consumeRefined(ctx, gl, project, spec, st, coord)
 			}
 			if err == nil {
-				err = r.runAccepted(ctx, gl, project, spec, st, coord, tracking)
+				err = r.runAccepted(ctx, gl, project, spec, st, coord, queue, tracking)
 			}
 			if err == nil {
 				err = r.reportDeliveries(ctx, gl, spec, st, coord, tracking, issues, tasks)
