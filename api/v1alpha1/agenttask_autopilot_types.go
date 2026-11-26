@@ -192,10 +192,13 @@ const (
 const PauseRunByAutopilot = "autopilot"
 
 // AutopilotItemState is the state of one issue in the queue.
-// +kubebuilder:validation:Enum=Pending;Active;Merged;Skipped
+// +kubebuilder:validation:Enum=Pending;Active;Merged;Skipped;Left
 type AutopilotItemState string
 
 const (
+	// AutopilotItemLeft: the issue left the loose issues queue without being
+	// merged. Only the Queue task uses it.
+	AutopilotItemLeft    AutopilotItemState = "Left"
 	AutopilotItemPending AutopilotItemState = "Pending"
 	AutopilotItemActive  AutopilotItemState = "Active"
 	AutopilotItemMerged  AutopilotItemState = "Merged"
@@ -398,6 +401,26 @@ type MergedLines struct {
 type AutopilotItem struct {
 	IID   int64              `json:"iid"`
 	State AutopilotItemState `json:"state"`
+
+	// LeftReason is why the issue left the queue. Set on the loose issues
+	// queue only.
+	// +optional
+	LeftReason string `json:"leftReason,omitempty"`
+
+	// LeftAt is when the issue left the queue. Set on the loose issues queue
+	// only.
+	// +optional
+	LeftAt *metav1.Time `json:"leftAt,omitempty"`
+
+	// TakenBy is who took the issue: "@user" or "login via the Desk". Set on
+	// the loose issues queue only.
+	// +optional
+	TakenBy string `json:"takenBy,omitempty"`
+
+	// TakenAt is when the issue was taken. Set on the loose issues queue
+	// only.
+	// +optional
+	TakenAt *metav1.Time `json:"takenAt,omitempty"`
 
 	// MergeRequestIID and MergeRequestURL of the issue's merge request.
 	// +optional

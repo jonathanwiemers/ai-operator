@@ -805,3 +805,53 @@ func TestProjectSetSchemaRejects(t *testing.T) {
 		t.Errorf("unknown state admitted: %v", errs)
 	}
 }
+
+func TestLooseIssuesSchema(t *testing.T) {
+	crd := loadCRD(t, "agentprojects")
+	project := func(li map[string]any) map[string]any {
+		s := map[string]any{}
+		if li != nil {
+			s["looseIssues"] = li
+		}
+		return map[string]any{"spec": s}
+	}
+	obj, errs := crd.admit(project(map[string]any{}))
+	if joined := strings.Join(errs, "\n"); strings.Contains(joined, "looseIssues") {
+		t.Fatalf("empty looseIssues rejected: %v", errs)
+	}
+	li, _ := spec(obj)["looseIssues"].(map[string]any)
+	if li["maxParallel"] != int64(1) && li["maxParallel"] != float64(1) {
+		t.Errorf("maxParallel default %v (%T), want 1", li["maxParallel"], li["maxParallel"])
+	}
+	for _, n := range []int64{1, 10} {
+		_, errs := crd.admit(project(map[string]any{"enabled": true, "maxParallel": n}))
+		if strings.Contains(strings.Join(errs, "\n"), "looseIssues") {
+			t.Errorf("maxParallel %d rejected: %v", n, errs)
+		}
+	}
+	for _, n := range []int64{0, 11} {
+		_, errs := crd.admit(project(map[string]any{"maxParallel": n}))
+		if !strings.Contains(strings.Join(errs, "\n"), "spec.looseIssues.maxParallel") {
+			t.Errorf("maxParallel %d: errors %v, want one on spec.looseIssues.maxParallel", n, errs)
+		}
+	}
+}
+
+func TestQueueTaskAndLeftItemSchema(t *testing.T) {
+	crd := loadCRD(t, "agenttasks")
+	item := map[string]any{"iid": int64(5), "state": "Left", "leftReason": "closed", "leftAt": "2026-11-26T10:00:00Z",
+		"takenBy": "@jo", "takenAt": "2026-11-26T09:00:00Z"}
+	obj := map[string]any{
+		"spec":   map[string]any{"projectRef": "shop", "type": "Queue"},
+		"status": map[string]any{"autopilot": map[string]any{"phase": "Running", "items": []any{item}}},
+	}
+	for _, e := range func() []string { _, e := crd.admit(obj); return e }() {
+		if strings.Contains(e, "spec.type") || strings.Contains(e, "state") || strings.Contains(e, "left") || strings.Contains(e, "taken") {
+			t.Errorf("Queue task or Left item rejected: %v", e)
+		}
+	}
+	obj["spec"].(map[string]any)["type"] = "Other"
+	if _, errs := crd.admit(obj); !strings.Contains(strings.Join(errs, "\n"), "spec.type") {
+		t.Errorf("type Other: errors %v", errs)
+	}
+}

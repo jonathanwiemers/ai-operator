@@ -7,7 +7,7 @@ import (
 )
 
 // TaskType is the kind of work an AgentTask performs.
-// +kubebuilder:validation:Enum=Spec;Implement;Coordinate
+// +kubebuilder:validation:Enum=Spec;Implement;Coordinate;Queue
 type TaskType string
 
 const (
@@ -17,6 +17,9 @@ const (
 	TaskTypeImplement TaskType = "Implement"
 	// TaskTypeCoordinate is a milestone's pilot: it answers its owners.
 	TaskTypeCoordinate TaskType = "Coordinate"
+	// TaskTypeQueue is the project's loose issues queue: no milestone, its
+	// state is in status.autopilot.
+	TaskTypeQueue TaskType = "Queue"
 )
 
 // QueueLane is the lane of the project's run queue a task waits in.

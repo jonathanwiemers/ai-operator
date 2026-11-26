@@ -305,3 +305,11 @@ func TestMaxMRLines(t *testing.T) {
 		}
 	}
 }
+
+func TestLooseIssuesParallel(t *testing.T) {
+	for in, want := range map[int32]int32{0: 1, 1: 1, 4: 4} {
+		if got := (LooseIssuesSpec{MaxParallel: in}).Parallel(); got != want {
+			t.Errorf("Parallel(%d) = %d, want %d", in, got, want)
+		}
+	}
+}

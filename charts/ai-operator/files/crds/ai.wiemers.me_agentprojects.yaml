@@ -2135,6 +2135,37 @@ spec:
                       further deferral of the same run, up to MaxUsageLimitBackoff.
                     type: string
                 type: object
+              looseIssues:
+                description: |-
+                  LooseIssues configures the project's queue of issues without a
+                  milestone that owners hand to autopilot.
+                properties:
+                  enabled:
+                    description: Enabled turns the queue on.
+                    type: boolean
+                  maxParallel:
+                    default: 1
+                    description: MaxParallel is how many queue issues may run at the
+                      same time.
+                    format: int32
+                    maximum: 10
+                    minimum: 1
+                    type: integer
+                  ownerSubjects:
+                    description: |-
+                      OwnerSubjects are the Desk logins (OIDC username claim) that may take
+                      issues and answer questions. There is no fallback, as with milestones.
+                    items:
+                      type: string
+                    type: array
+                  owners:
+                    description: |-
+                      Owners are the GitLab usernames the queue mentions and who may command
+                      it. Empty: the controller falls back to spec.notify.users.
+                    items:
+                      type: string
+                    type: array
+                type: object
               mainHealth:
                 description: MainHealth watches the pipelines of the default branch.
                 properties:

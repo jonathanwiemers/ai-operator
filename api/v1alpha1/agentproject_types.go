@@ -36,6 +36,11 @@ type AgentProjectSpec struct {
 	// +optional
 	MainHealth MainHealthSpec `json:"mainHealth,omitempty"`
 
+	// LooseIssues configures the project's queue of issues without a
+	// milestone that owners hand to autopilot.
+	// +optional
+	LooseIssues LooseIssuesSpec `json:"looseIssues,omitzero"`
+
 	// Checkpoint configures the checkpoint commits that save the work tree
 	// of an implementer call that was cut off (usage limit, engine error,
 	// timeout, budget stop). On unless disabled.

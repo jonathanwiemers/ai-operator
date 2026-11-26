@@ -1248,6 +1248,42 @@ export interface FlakyFix {
 }
 
 //////////
+// source: agentproject_looseissues_types.go
+
+/**
+ * LooseIssuesSpec configures the loose issues queue: a second autopilot lane
+ * for open issues without a milestone, which owners pick. It is one
+ * AgentTask of type Queue per AgentProject.
+ */
+export interface LooseIssuesSpec {
+  /**
+   * Enabled turns the queue on.
+   * +optional
+   */
+  enabled?: boolean;
+  /**
+   * Owners are the GitLab usernames the queue mentions and who may command
+   * it. Empty: the controller falls back to spec.notify.users.
+   * +optional
+   */
+  owners?: string[];
+  /**
+   * OwnerSubjects are the Desk logins (OIDC username claim) that may take
+   * issues and answer questions. There is no fallback, as with milestones.
+   * +optional
+   */
+  ownerSubjects?: string[];
+  /**
+   * MaxParallel is how many queue issues may run at the same time.
+   * +kubebuilder:default=1
+   * +kubebuilder:validation:Minimum=1
+   * +kubebuilder:validation:Maximum=10
+   * +optional
+   */
+  maxParallel?: number /* int32 */;
+}
+
+//////////
 // source: agentproject_types.go
 
 /**
@@ -1288,6 +1324,12 @@ export interface AgentProjectSpec {
    * +optional
    */
   mainHealth?: MainHealthSpec;
+  /**
+   * LooseIssues configures the project's queue of issues without a
+   * milestone that owners hand to autopilot.
+   * +optional
+   */
+  looseIssues?: LooseIssuesSpec;
   /**
    * Checkpoint configures the checkpoint commits that save the work tree
    * of an implementer call that was cut off (usage limit, engine error,
@@ -3261,9 +3303,14 @@ export const ResumedViaSelfHealed: PauseResumeVia = "selfHealed";
 export const PauseRunByAutopilot = "autopilot";
 /**
  * AutopilotItemState is the state of one issue in the queue.
- * +kubebuilder:validation:Enum=Pending;Active;Merged;Skipped
+ * +kubebuilder:validation:Enum=Pending;Active;Merged;Skipped;Left
  */
 export type AutopilotItemState = string;
+/**
+ * AutopilotItemLeft: the issue left the loose issues queue without being
+ * merged. Only the Queue task uses it.
+ */
+export const AutopilotItemLeft: AutopilotItemState = "Left";
 export const AutopilotItemPending: AutopilotItemState = "Pending";
 export const AutopilotItemActive: AutopilotItemState = "Active";
 export const AutopilotItemMerged: AutopilotItemState = "Merged";
@@ -3508,6 +3555,30 @@ export interface MergedLines {
 export interface AutopilotItem {
   iid: number /* int64 */;
   state: AutopilotItemState;
+  /**
+   * LeftReason is why the issue left the queue. Set on the loose issues
+   * queue only.
+   * +optional
+   */
+  leftReason?: string;
+  /**
+   * LeftAt is when the issue left the queue. Set on the loose issues queue
+   * only.
+   * +optional
+   */
+  leftAt?: string;
+  /**
+   * TakenBy is who took the issue: "@user" or "login via the Desk". Set on
+   * the loose issues queue only.
+   * +optional
+   */
+  takenBy?: string;
+  /**
+   * TakenAt is when the issue was taken. Set on the loose issues queue
+   * only.
+   * +optional
+   */
+  takenAt?: string;
   /**
    * MergeRequestIID and MergeRequestURL of the issue's merge request.
    * +optional
@@ -5252,7 +5323,7 @@ export interface SpendDriver {
 
 /**
  * TaskType is the kind of work an AgentTask performs.
- * +kubebuilder:validation:Enum=Spec;Implement;Coordinate
+ * +kubebuilder:validation:Enum=Spec;Implement;Coordinate;Queue
  */
 /**
  * TaskTypeSpec turns a milestone description into implementable issues.
@@ -5266,7 +5337,12 @@ export const TaskTypeImplement = "Implement";
  * TaskTypeCoordinate is a milestone's pilot: it answers its owners.
  */
 export const TaskTypeCoordinate = "Coordinate";
-export type TaskType = typeof TaskTypeSpec | typeof TaskTypeImplement | typeof TaskTypeCoordinate;
+/**
+ * TaskTypeQueue is the project's loose issues queue: no milestone, its
+ * state is in status.autopilot.
+ */
+export const TaskTypeQueue = "Queue";
+export type TaskType = typeof TaskTypeSpec | typeof TaskTypeImplement | typeof TaskTypeCoordinate | typeof TaskTypeQueue;
 /**
  * QueueLane is the lane of the project's run queue a task waits in.
  * +kubebuilder:validation:Enum=urgent

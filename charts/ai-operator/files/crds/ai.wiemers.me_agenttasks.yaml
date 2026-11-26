@@ -1110,6 +1110,7 @@ spec:
                 - Spec
                 - Implement
                 - Coordinate
+                - Queue
                 type: string
               warmRequestedAt:
                 description: |-
@@ -1354,6 +1355,17 @@ spec:
                         iid:
                           format: int64
                           type: integer
+                        leftAt:
+                          description: |-
+                            LeftAt is when the issue left the queue. Set on the loose issues queue
+                            only.
+                          format: date-time
+                          type: string
+                        leftReason:
+                          description: |-
+                            LeftReason is why the issue left the queue. Set on the loose issues
+                            queue only.
+                          type: string
                         markedReady:
                           description: |-
                             MarkedReady is set once the operator marked the draft MR ready, or
@@ -1497,6 +1509,18 @@ spec:
                           - Active
                           - Merged
                           - Skipped
+                          - Left
+                          type: string
+                        takenAt:
+                          description: |-
+                            TakenAt is when the issue was taken. Set on the loose issues queue
+                            only.
+                          format: date-time
+                          type: string
+                        takenBy:
+                          description: |-
+                            TakenBy is who took the issue: "@user" or "login via the Desk". Set on
+                            the loose issues queue only.
                           type: string
                       required:
                       - iid
@@ -1671,6 +1695,17 @@ spec:
                       iid:
                         format: int64
                         type: integer
+                      leftAt:
+                        description: |-
+                          LeftAt is when the issue left the queue. Set on the loose issues queue
+                          only.
+                        format: date-time
+                        type: string
+                      leftReason:
+                        description: |-
+                          LeftReason is why the issue left the queue. Set on the loose issues
+                          queue only.
+                        type: string
                       markedReady:
                         description: |-
                           MarkedReady is set once the operator marked the draft MR ready, or
@@ -1814,6 +1849,18 @@ spec:
                         - Active
                         - Merged
                         - Skipped
+                        - Left
+                        type: string
+                      takenAt:
+                        description: |-
+                          TakenAt is when the issue was taken. Set on the loose issues queue
+                          only.
+                        format: date-time
+                        type: string
+                      takenBy:
+                        description: |-
+                          TakenBy is who took the issue: "@user" or "login via the Desk". Set on
+                          the loose issues queue only.
                         type: string
                     required:
                     - iid
