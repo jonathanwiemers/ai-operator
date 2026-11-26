@@ -52,7 +52,7 @@ func withQueue(t *testing.T, env *testEnv, subjects ...string) {
 	q := &aiv1.AgentTask{
 		ObjectMeta: metav1.ObjectMeta{Namespace: "team-a", Name: naming.QueueTask("shop")},
 		Spec:       aiv1.AgentTaskSpec{ProjectRef: "shop", Type: aiv1.TaskTypeQueue, OwnerSubjects: subjects},
-		Status: aiv1.AgentTaskStatus{Autopilot: &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning, Items: []aiv1.AutopilotItem{
+		Status: aiv1.AgentTaskStatus{Autopilot: &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning, FrozenAt: &merged, Items: []aiv1.AutopilotItem{
 			{IID: 50, State: aiv1.AutopilotItemPending},
 			{IID: 51, State: aiv1.AutopilotItemActive, MergeRequestIID: 7, MergeRequestURL: "https://gitlab.example/mr/7",
 				Hold: &aiv1.ItemHold{Kind: aiv1.PauseStuck, Reason: "CI stays red", Since: merged}},
@@ -79,7 +79,7 @@ func TestLooseIssuesView(t *testing.T) {
 	if code := env.get(t, shopLoose, &v); code != http.StatusOK {
 		t.Fatalf("GET: %d", code)
 	}
-	if v.Queue == nil || v.Queue.Phase != aiv1.AutopilotRunning || v.Queue.MaxParallel != 2 {
+	if v.Queue == nil || v.Queue.Phase != aiv1.AutopilotRunning || v.Queue.MaxParallel != 2 || v.Queue.FrozenAt == nil {
 		t.Fatalf("queue %+v", v.Queue)
 	}
 	if !v.Take || v.QueueTask != naming.QueueTask("shop") || len(v.OwnerSubjects) != 1 {

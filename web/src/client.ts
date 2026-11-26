@@ -19,6 +19,7 @@ import type {
   HistoryResponse,
   InboxResponse,
   IssueView,
+  LooseIssues,
   Me,
   MetricsCodeView,
   MetricsFlowView,
@@ -263,6 +264,12 @@ function taskPath(namespace: string, name: string, task: string): string {
 // grouped by milestone.
 export function getProject(namespace: string, name: string): Promise<ProjectDetail> {
   return get<ProjectDetail>(projectPath(namespace, name))
+}
+
+// getLooseIssues: GET /projects/{namespace}/{name}/loose-issues, the loose
+// issues queue and the open issues without a milestone.
+export function getLooseIssues(namespace: string, name: string): Promise<LooseIssues> {
+  return get<LooseIssues>(`${projectPath(namespace, name)}/loose-issues`)
 }
 
 // getProjectHistory: GET /projects/{namespace}/{name}/history, the

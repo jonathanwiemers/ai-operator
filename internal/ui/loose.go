@@ -41,6 +41,9 @@ type LooseQueue struct {
 	Phase        aiv1.AutopilotPhase `json:"phase"`
 	PausedReason string              `json:"pausedReason,omitempty"`
 	MaxParallel  int32               `json:"maxParallel"`
+	// FrozenAt is when the freeze began: the default branch is red with
+	// mainHealth.freezeAutopilot, nothing starts or merges. Unset: not frozen.
+	FrozenAt *metav1.Time `json:"frozenAt,omitempty"`
 }
 
 // LooseItem is one issue of the queue. HeadSHA is the implement task's
@@ -119,7 +122,7 @@ func (s *Server) looseIssues(w http.ResponseWriter, r *http.Request) {
 			if st.Phase != "" {
 				out.Queue.Phase = st.Phase
 			}
-			out.Queue.PausedReason = st.PausedReason
+			out.Queue.PausedReason, out.Queue.FrozenAt = st.PausedReason, st.FrozenAt
 			out.Items = looseItems(ap, tasks, st.Items, issues)
 			for _, it := range st.Items {
 				inQueue[it.IID] = it.State == aiv1.AutopilotItemPending || it.State == aiv1.AutopilotItemActive || it.Hold != nil

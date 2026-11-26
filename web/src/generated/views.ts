@@ -618,6 +618,11 @@ export interface LooseQueue {
   phase: aiv1.AutopilotPhase;
   pausedReason?: string;
   maxParallel: number /* int32 */;
+  /**
+   * FrozenAt is when the freeze began: the default branch is red with
+   * mainHealth.freezeAutopilot, nothing starts or merges. Unset: not frozen.
+   */
+  frozenAt?: string;
 }
 /**
  * LooseItem is one issue of the queue. HeadSHA is the implement task's

@@ -393,6 +393,12 @@ build, so the CI `web` job enforces it. It prints
   `planNewSubmit.ts`; the overshoot is chunk regrouping in the shared
   initial chunks. The cap rose to 143.3 kB and the raise was reported on its
   merge request.
+- 2026-11-26, the Loose issues tab (#852, R8 of the loose issues
+  milestone): 143.8 kB, 0.5 kB over the cap. The tab and its two `UTable`s
+  load lazily with the project page, but the theme classes of `UTable`
+  (row selection, hover and the loading bar) go into the global stylesheet
+  (about 0.3 kB). The milestone requires `UTable` for both tables. The cap
+  rose to 143.9 kB and the raise was reported on its merge request.
 - The cap only drops. A change that breaks it is reported, not answered by
   raising it.
 
@@ -2965,6 +2971,7 @@ the task that owns it:
 | Implement | `retry`, `review`, `use`, `effort`, `answer` (to `needsInput` prompts, owners), `restart` (owners) |
 | autopilot Spec | `pause`, `resume` (`"issue":N` lifts one hold) and `skip` (chat grant); `merge`, `parallel`, `start`, `unstart`, `endmilestone` and `restart` (also the milestone's `owner-subjects`) |
 | Coordinate (pilot) | `accept`, `reject`, `answer`, `revisit`, `draft` and `restart`, all only for the milestone's `owner-subjects`; plain messages need the chat grant only |
+| Queue (loose issues) | `take` (`"issues":[N,…]`, up to 20), `drop`, `resume` (`"issue":N` lifts one hold), `pause`, `merge`, `rebase` and `mergebase`, only for the queue's `ownerSubjects`; the Loose issues tab sends them |
 
 | Command | Effect |
 |---------|--------|

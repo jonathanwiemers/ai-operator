@@ -87,6 +87,8 @@ export type ChatCommand =
   | { cmd: 'revisit'; decision: string; text: string }
   | { cmd: 'draft'; followUps: number[] }
   | { cmd: 'parallel'; parallel: number }
+  | { cmd: 'take'; issues: number[] }
+  | { cmd: 'drop'; issue: number }
 
 // commandLabel turns a command row's body into a short chip; unparsable
 // bodies fall back to the raw text.
@@ -138,6 +140,12 @@ export function commandLabel(body: string | undefined): string {
       return typeof o.effort === 'string' && o.effort ? `effort ${o.effort}` : body
     case 'skip':
       return typeof o.issue === 'number' && o.issue > 0 ? `skip #${o.issue}` : body
+    case 'drop':
+      return typeof o.issue === 'number' && o.issue > 0 ? `drop #${o.issue}` : body
+    case 'take':
+      return Array.isArray(o.issues) && o.issues.length && o.issues.every((n) => typeof n === 'number' && n > 0)
+        ? `take ${o.issues.map((n) => `#${n}`).join(' ')}`
+        : body
     case 'merge':
       return typeof o.issue === 'number' && o.issue > 0 && typeof o.sha === 'string' && o.sha.trim()
         ? `merge #${o.issue} ${o.sha.trim().slice(0, 7)}`

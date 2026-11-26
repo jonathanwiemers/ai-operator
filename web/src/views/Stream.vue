@@ -64,6 +64,7 @@ import { announceChange } from '../ui/useAnnounce'
 // The queue and its drag library (vue-draggable-plus) load with the project
 // page, not with the initial bundle (D662-P4).
 const ProjectQueue = defineAsyncComponent(() => import('../components/ProjectQueue.vue'))
+const LooseIssues = defineAsyncComponent(() => import('../components/LooseIssues.vue'))
 
 const props = defineProps<{
   namespace: string
@@ -89,7 +90,7 @@ const route = useRoute()
 const pageMilestone = computed(() => (milestone.value?.iid === milestoneIID.value ? milestone.value : null))
 const needsCount = computed(() => (pageMilestone.value ? needsOpen(pageMilestone.value).count : 0))
 const tabs = computed(() => {
-  if (!milestoneIID.value) return projectTabsFor(hasFeature('plans'))
+  if (!milestoneIID.value) return projectTabsFor(hasFeature('plans'), !!project.value?.looseIssues)
   return milestoneTabsFor(pageMilestone.value)
 })
 // The header's Needs you count is the badge of the Cockpit tab: its link
@@ -105,7 +106,9 @@ const tab = computed((): string => {
     const loaded = milestone.value?.iid === milestoneIID.value || milestoneFailed.value
     return milestoneTabFromRoute(route.query.tab, loaded ? tabs.value : milestoneTabs)
   }
-  return projectTabFromRoute(route.query.tab, tabs.value)
+  // Likewise a project's ?tab=loose waits for the project (looseIssues).
+  const loaded = !!project.value || notFound.value || !!error.value
+  return projectTabFromRoute(route.query.tab, loaded ? tabs.value : projectTabsFor(hasFeature('plans'), true))
 })
 // tabTo: a tab's link; from a problem's thread it leads back to the
 // milestone's route.
@@ -502,6 +505,11 @@ watch(
           <ProjectFinishing v-if="project" class="mb-3" :namespace="namespace" :name="name" :finishing="project.finishing ?? []" :gitlab="project.gitlab.url" />
           <MilestoneSections :namespace="namespace" :name="name" />
         </div>
+      </div>
+      <div v-else-if="tab === 'loose' && !milestoneIID && namespace && name" class="scroll board">
+        <!-- The loose issues queue and the issues without a milestone (R8
+             of "Loose issues"). -->
+        <LooseIssues :namespace="namespace" :name="name" />
       </div>
       <div v-else-if="tab === 'cockpit' && !milestoneIID && namespace && name" class="scroll board">
         <!-- The project's Cockpit (R15, R9 of "Desk: the Cockpit newest

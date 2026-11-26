@@ -4,8 +4,10 @@
 //
 // Project pages: Cockpit (the default, R15 of "Desk: the Cockpit": the
 // stream across the project's milestones) | Milestones (queue, Finishing,
-// the milestone sections, the Board as a view) | Decisions | Metrics, and
-// Plans with the plans feature. Milestone pages: Cockpit (the default, R10)
+// the milestone sections, the Board as a view) | Loose issues (with
+// spec.looseIssues: the loose issues queue and the issues without a
+// milestone, R8 of "Loose issues") | Decisions | Metrics, and Plans with
+// the plans feature. Milestone pages: Cockpit (the default, R10)
 // | Issues | Decisions | Metrics, then Retrospective once one exists (R14;
 // Decisions is a tab again, R6 of "Desk: the Cockpit newest first by
 // issue"); the pilot's composer
@@ -19,7 +21,7 @@
 // task's Details went into its Overview (?tab=details). A project's and a
 // milestone's removed tabs open where their content moved (projectAlias,
 // milestoneAlias).
-export type ProjectTab = 'cockpit' | 'milestones' | 'decisions' | 'metrics' | 'plans'
+export type ProjectTab = 'cockpit' | 'milestones' | 'loose' | 'decisions' | 'metrics' | 'plans'
 export type MilestoneTab = 'cockpit' | 'issues' | 'decisions' | 'metrics' | 'retrospective'
 export type DashboardTab = 'cockpit' | 'timeline'
 export type TaskTab = 'overview' | 'live' | 'logs' | 'calls'
@@ -50,12 +52,14 @@ export interface Tab<T extends string> {
 }
 
 // projectTabsFor are a project page's tabs: the Cockpit first and the
-// default, Plans only with the plans feature, so ?tab=plans without it
-// opens the Cockpit.
-export function projectTabsFor(plans: boolean): Tab<ProjectTab>[] {
+// default, Loose issues after Milestones only with the loose issues queue
+// (ProjectDetail.looseIssues), Plans only with the plans feature, so
+// ?tab=loose or ?tab=plans without them opens the Cockpit.
+export function projectTabsFor(plans: boolean, loose = false): Tab<ProjectTab>[] {
   const tabs: Tab<ProjectTab>[] = [
     { id: 'cockpit', label: 'Cockpit' },
     { id: 'milestones', label: 'Milestones' },
+    ...(loose ? [{ id: 'loose' as const, label: 'Loose issues' }] : []),
     { id: 'decisions', label: 'Decisions' },
     { id: 'metrics', label: 'Metrics' },
   ]

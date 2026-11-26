@@ -14,6 +14,7 @@ import { about, features, me } from './session'
 import { answerSpend } from './spend'
 import { answerStream, milestones, refundsIssue, shopDetail, shopHistory } from './stream'
 import { answerSearch, gitlabStatus, pilotChat, refunds, refundsChat, refundsLogs, refundsResponse, refundsThread } from './task'
+import { looseIssues } from './loose'
 import { answerTimeline } from './timeline'
 import type { MilestoneView } from '../../src/types'
 
@@ -53,6 +54,7 @@ export const api: Record<string, Fixture> = {
   [shopPath]: shopDetail,
   [`${shopPath}/history`]: shopHistory,
   [`${shopPath}/decisions`]: answerDecisions,
+  [`${shopPath}/loose-issues`]: looseIssues,
   ...Object.fromEntries(Object.entries(milestones).map(([iid, m]) => [`${shopPath}/milestones/${iid}`, m])),
   [`${shopPath}/milestones/14/issues/281`]: refundsIssue,
   [refundsPath]: refundsResponse,
