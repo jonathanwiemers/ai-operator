@@ -115,12 +115,15 @@ func (a *autopilot) looseChatCommand(ctx context.Context, m aiv1.ChatMessage) (s
 		who = m.AuthorName
 	}
 	// The tracking issue's words, so both sources share one dispatch.
-	args := []string{fmt.Sprintf("#%d", cmd.Issue)}
-	if cmd.Cmd == "take" {
-		args = args[:0]
-		for _, iid := range cmd.Issues {
-			args = append(args, fmt.Sprintf("#%d", iid))
-		}
+	var args []string
+	for _, iid := range cmd.Issues { // take
+		args = append(args, fmt.Sprintf("#%d", iid))
+	}
+	if cmd.Issue != 0 {
+		args = append(args, fmt.Sprintf("#%d", cmd.Issue))
+	}
+	if cmd.SHA != "" { // merge
+		args = append(args, cmd.SHA)
 	}
 	at := m.At.Time
 	if at.IsZero() {
@@ -146,6 +149,22 @@ func (a *autopilot) looseCommand(ctx context.Context, word string, args []string
 		return reply, false, err
 	case "drop":
 		return a.drop(ctx, args, by)
+	case "pause", "resume", "merge", "rebase", "mergebase":
+		// As on a milestone's tracking issue: the issue, and merge's sha.
+		args = append(args, "", "")
+		arg := args[0]
+		if word == "merge" {
+			arg += " " + args[1]
+		}
+		reply, applied, err := a.command(ctx, word, arg, by)
+		switch {
+		case err != nil || !applied:
+		case word == "pause":
+			reply = "The loose issues queue is paused."
+		case word == "resume" && arg == "":
+			reply = "The loose issues queue goes on."
+		}
+		return reply, applied, err
 	default:
 		return fmt.Sprintf("`%s` is %s.", word, notOnQueue), false, nil
 	}

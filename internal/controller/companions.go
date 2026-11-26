@@ -61,12 +61,13 @@ func (r *AgentProjectReconciler) syncCompanions(ctx context.Context, gl gitlab.A
 	logger := log.FromContext(ctx)
 	st := &project.Status
 	var errs []error
+	queued := queueIssues(tasks)
 	for i := range tasks {
 		t := &tasks[i]
 		run := t.Status.Run
 		c := run.Companion
 		if t.Spec.Type != aiv1.TaskTypeImplement || t.Spec.Issue == nil || c == nil || c.MRIID == 0 || run.MergeRequestIID == 0 ||
-			findCompanion(st.Companions, c.Project, c.MRIID) != nil {
+			findCompanion(st.Companions, c.Project, c.MRIID) != nil || queued[t.Spec.Issue.IID] {
 			continue
 		}
 		mr, ok := homeMRs[t.Name]

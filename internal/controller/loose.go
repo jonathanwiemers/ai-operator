@@ -152,7 +152,14 @@ func (a *autopilot) syncQueue(ctx context.Context) error {
 	if err := a.leaveQueue(ctx); err != nil {
 		return err
 	}
+	// After the commands: a resume while a budget is spent holds again.
+	if err := a.budget(ctx); err != nil {
+		return err
+	}
 	if err := a.resumeHolds(ctx); err != nil {
+		return err
+	}
+	if err := a.looseFreeze(ctx); err != nil {
 		return err
 	}
 	if a.ap.Phase == aiv1.AutopilotRunning {

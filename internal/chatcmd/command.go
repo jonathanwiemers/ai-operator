@@ -149,7 +149,7 @@ func Parse(body string) (Command, error) {
 		if err := c.parseEffort(); err != nil {
 			return Command{}, err
 		}
-	case "skip", "drop":
+	case "skip", "drop", "rebase", "mergebase":
 		if c.Issue <= 0 {
 			return Command{}, fmt.Errorf("%s needs issue > 0", c.Cmd)
 		}

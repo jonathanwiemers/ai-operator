@@ -1210,6 +1210,13 @@ spec:
                     items:
                       type: string
                     type: array
+                  frozenAt:
+                    description: |-
+                      FrozenAt is, on the loose issues queue only, when its freeze began:
+                      the default branch is red with mainHealth.freezeAutopilot, so the
+                      queue starts and merges nothing. Unset while not frozen.
+                    format: date-time
+                    type: string
                   items:
                     description: 'Items in queue order: dependencies first, ties in
                       plan order.'

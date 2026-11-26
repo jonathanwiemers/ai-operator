@@ -19,7 +19,7 @@ import (
 // merge is live at merge and needs none. No record is added while another
 // one covers the home merge (companionReleaseCovered).
 func (a *autopilot) companionReleases(ctx context.Context) error {
-	if a.project == nil {
+	if a.project == nil || a.loose { // the loose issues queue has no companions
 		return nil
 	}
 	for i := range a.project.Status.Companions {

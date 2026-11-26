@@ -676,6 +676,9 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 		a.unready(it)
 		return nil
 	}
+	if held, err := a.looseCompanionHold(ctx, it, task); held || err != nil {
+		return err
+	}
 	switch g := a.gateCheck(it, is, task); g.state {
 	case gateWaiting:
 		return nil // the agent or CI is still working on it
@@ -732,6 +735,9 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 	// The companion's merge request must be able to follow (companionGate).
 	if pass, err := a.companionGate(ctx, it, task); err != nil || !pass {
 		return err
+	}
+	if a.ap.FrozenAt != nil {
+		return nil // the loose issues queue merges nothing while frozen (looseFreeze)
 	}
 	// Ready to land; one item lands at a time, the others wait (land).
 	ready = true

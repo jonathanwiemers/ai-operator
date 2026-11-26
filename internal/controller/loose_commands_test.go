@@ -227,7 +227,7 @@ func TestLooseNonOwnerAndOtherWords(t *testing.T) {
 	if got := botComments(e, 40); len(got) != 0 {
 		t.Fatalf("no note on a refused take: %q", got)
 	}
-	for _, word := range []string{"pause", "move", "release", "endMilestone"} {
+	for _, word := range []string{"parallel 2", "move top", "release", "no-release #1", "endMilestone", "skip #1", "unskip #1", "start", "startAnyway #1"} {
 		if reply := e.sayLoose(tracking, bob, "/agent "+word); !strings.Contains(reply, "is not on the loose issues queue") {
 			t.Fatalf("%s: %q", word, reply)
 		}
@@ -305,10 +305,10 @@ func TestLooseDeskCommands(t *testing.T) {
 	e.wantItems("dropped from the Desk, the next starts", "350:Left", "421:Active")
 
 	e.sendCommand(queueTaskName, 3, "mallory@example.com", `{"cmd":"take","issues":[5]}`)
-	e.sendCommand(queueTaskName, 4, "alice@example.com", `{"cmd":"pause"}`)
+	e.sendCommand(queueTaskName, 4, "alice@example.com", `{"cmd":"move","to":"top"}`)
 	e.sendCommand(queueTaskName, 5, "alice@example.com", `{"cmd":"take","issues":[]}`)
 	qt := e.queue()
-	for id, want := range map[int64]string{3: notOwnerQueue, 4: "pause is not on the loose issues queue.", 5: "take needs 1 to 20 issues"} {
+	for id, want := range map[int64]string{3: notOwnerQueue, 4: "move is not on the loose issues queue.", 5: "take needs 1 to 20 issues"} {
 		if got := chatAnswer(*qt, id); !strings.Contains(got, want) {
 			t.Fatalf("message %d: %q, want %q", id, got, want)
 		}

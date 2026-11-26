@@ -25,6 +25,13 @@ func (a *autopilot) renderLoose() string {
 	default:
 		b.WriteString("▶️ running.\n")
 	}
+	if a.ap.FrozenAt != nil && a.ap.Phase != aiv1.AutopilotOff {
+		var issue int64
+		if a.project != nil && a.project.Status.MainHealth != nil {
+			issue = a.project.Status.MainHealth.IssueIID
+		}
+		b.WriteString("\n🧊 " + frozenLine(issue) + "\n")
+	}
 	owners := "none"
 	if names := notify.Usernames(a.st.Spec.Owners); len(names) > 0 {
 		owners = "`" + strings.Join(names, "`, `") + "`"

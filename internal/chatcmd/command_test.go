@@ -164,6 +164,9 @@ func TestParse(t *testing.T) {
 		{`{"cmd":"drop"}`, Command{}, "drop needs issue > 0"},
 		{`{"cmd":"drop","issue":46,"proposal":1}`, Command{}, "drop takes only issue"},
 		{`{"cmd":"drop","issues":[46]}`, Command{}, "drop takes no issues"},
+		{`{"cmd":"rebase","issue":46}`, Command{Cmd: "rebase", Issue: 46}, ""},
+		{`{"cmd":"mergeBase","issue":46}`, Command{Cmd: "mergebase", Issue: 46}, ""},
+		{`{"cmd":"mergebase"}`, Command{}, "mergebase needs issue > 0"},
 	} {
 		got, err := Parse(tc.body)
 		if tc.wantErr != "" {
@@ -250,12 +253,17 @@ func TestImplementOnlyAndRouting(t *testing.T) {
 		}
 	}
 
-	for _, cmd := range []string{"take", "drop"} {
+	for _, cmd := range []string{"take", "drop", "rebase", "mergebase"} {
 		if c := (Command{Cmd: cmd}); !c.Queue() || c.ImplementOnly() || c.Autopilot() || c.ProposalOnly() || c.PromptCmd() || c.RestartCmd() {
 			t.Errorf("%s should be Queue only", cmd)
 		}
 	}
-	for _, cmd := range []string{"pause", "resume", "skip", "merge", "restart"} {
+	for _, cmd := range []string{"pause", "resume", "merge"} {
+		if c := (Command{Cmd: cmd}); !c.Queue() || !c.Autopilot() {
+			t.Errorf("%s should be Queue and Autopilot", cmd)
+		}
+	}
+	for _, cmd := range []string{"skip", "move", "parallel", "endmilestone", "restart"} {
 		if (Command{Cmd: cmd}).Queue() {
 			t.Errorf("%s should not be Queue", cmd)
 		}

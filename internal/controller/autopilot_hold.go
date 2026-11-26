@@ -120,6 +120,9 @@ func (a *autopilot) exitLines(kind aiv1.PauseKind, iid int64, held bool) string 
 	}
 	var b strings.Builder
 	for _, e := range aiv1.PauseExits(kind) {
+		if a.loose && (e.Prompt || e.Command == "skip" || e.Command == "unskip" || e.Command == "startAnyway") {
+			continue // the loose issues queue has no pilot and does not skip; drop takes an issue off
+		}
 		var how string
 		switch {
 		case e.Auto:

@@ -361,6 +361,12 @@ type AutopilotStatus struct {
 	// was settling: done, waiting only for its retrospective's follow-ups.
 	// +optional
 	SettleSyncedAt *metav1.Time `json:"settleSyncedAt,omitempty"`
+
+	// FrozenAt is, on the loose issues queue only, when its freeze began:
+	// the default branch is red with mainHealth.freezeAutopilot, so the
+	// queue starts and merges nothing. Unset while not frozen.
+	// +optional
+	FrozenAt *metav1.Time `json:"frozenAt,omitempty"`
 }
 
 // BudgetStatus is the budget of an autopilot milestone and what it spent,

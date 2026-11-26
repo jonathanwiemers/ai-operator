@@ -3503,6 +3503,13 @@ export interface AutopilotStatus {
    * +optional
    */
   settleSyncedAt?: string;
+  /**
+   * FrozenAt is, on the loose issues queue only, when its freeze began:
+   * the default branch is red with mainHealth.freezeAutopilot, so the
+   * queue starts and merges nothing. Unset while not frozen.
+   * +optional
+   */
+  frozenAt?: string;
 }
 /**
  * BudgetStatus is the budget of an autopilot milestone and what it spent,

@@ -13,10 +13,15 @@ const MaxTake = 20
 // takeUsage is the error of a malformed take, in either form.
 var takeUsage = fmt.Sprintf("take needs 1 to %d issues, e.g. #350 #421", MaxTake)
 
-// Queue reports whether the command is a verb of the loose issues queue
-// (take, drop) for its Queue task.
+// Queue reports whether the command is a verb of the loose issues queue for
+// its Queue task: take and drop, and the steering words it shares with a
+// milestone's tracking issue. rebase and mergebase are the queue's only.
 func (c Command) Queue() bool {
-	return c.Cmd == "take" || c.Cmd == "drop"
+	switch c.Cmd {
+	case "take", "drop", "pause", "resume", "merge", "rebase", "mergebase":
+		return true
+	}
+	return false
 }
 
 // ParseTake reads the tracking issue's words after `take`: 1 to MaxTake

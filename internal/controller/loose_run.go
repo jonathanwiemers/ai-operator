@@ -79,7 +79,7 @@ func (a *autopilot) leaveQueue(ctx context.Context) error {
 func (a *autopilot) pickLoose(ctx context.Context) error {
 	wf := a.spec.Workflow
 	for i := range a.ap.Items {
-		if a.running() >= int(a.maxParallel()) {
+		if a.running() >= int(a.maxParallel()) || a.ap.FrozenAt != nil {
 			return nil
 		}
 		it := &a.ap.Items[i]

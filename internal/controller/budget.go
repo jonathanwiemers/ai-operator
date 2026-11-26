@@ -31,6 +31,9 @@ import (
 // database, or the query failed) the budgets are not enforced and nothing
 // is alerted.
 func (a *autopilot) budget(ctx context.Context) error {
+	if a.loose {
+		return a.looseBudget(ctx)
+	}
 	limit := a.st.Spec.BudgetUSD
 	if limit == "" {
 		a.ap.Budget = nil
@@ -106,8 +109,7 @@ func (a *autopilot) budget(ctx context.Context) error {
 	} else {
 		for _, it := range issues {
 			if b := it.Budget; aiv1.BudgetLeft(b.LimitUSD, b.SpentUSD, 0) <= 0 {
-				over, reason = it.IID, fmt.Sprintf("#%d used its budget of $%s ($%s spent). Raise it with `%s budget <usd>` on the issue",
-					it.IID, showBudget(b.LimitUSD), showBudget(b.SpentUSD), prefix)
+				over, reason = it.IID, a.issueBudgetReason(it)
 				break
 			}
 		}
@@ -125,6 +127,13 @@ func (a *autopilot) budget(ctx context.Context) error {
 		return a.resumeBudget(ctx, fmt.Sprintf("%s is $%s now ($%s spent)", why, showBudget(b.LimitUSD), showBudget(b.SpentUSD)))
 	}
 	return a.budgetPrompts(ctx)
+}
+
+// issueBudgetReason is why item it stops: it used its budget (it.Budget).
+func (a *autopilot) issueBudgetReason(it *aiv1.AutopilotItem) string {
+	b := it.Budget
+	return fmt.Sprintf("#%d used its budget of $%s ($%s spent). Raise it with `%s budget <usd>` on the issue",
+		it.IID, showBudget(b.LimitUSD), showBudget(b.SpentUSD), a.spec.Workflow.CommandPrefix)
 }
 
 // issueBudget is the budget of an item that can still spend (pending or
@@ -276,8 +285,15 @@ func (a *autopilot) budgetPaused() bool {
 // and a resume clears it.
 func budgetStopped(st *aiv1.AgentTask, iid int64) bool {
 	ap := st.Status.Autopilot
-	// The loose issues queue's Queue task runs without spec.autopilot.
-	if !st.Spec.Autopilot && st.Spec.Type != aiv1.TaskTypeQueue || ap == nil {
+	switch {
+	case ap == nil:
+		return false
+	case st.Spec.Type == aiv1.TaskTypeQueue:
+		// The loose issues queue holds the issue (looseBudget); it has no
+		// budget of its own and never pauses for one.
+		it := heldItem(ap, iid)
+		return it != nil && it.Hold.Kind == aiv1.PauseBudget
+	case !st.Spec.Autopilot:
 		return false
 	}
 	if b := ap.Budget; ap.Phase == aiv1.AutopilotDone && b != nil && b.SpentUSD != "" && aiv1.BudgetLeft(b.LimitUSD, b.SpentUSD, 0) <= 0 {
