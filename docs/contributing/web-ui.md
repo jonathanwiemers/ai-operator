@@ -388,6 +388,11 @@ build, so the CI `web` job enforces it. It prints
   Dropping `useFileUpload` for an input made off the page, the chip icons
   and new utility classes saved 0.1 kB. The cap rose to 143.2 kB and the
   raise was reported on its merge request.
+- 2026-11-26, attachments on the New plan page (#837, R8): about 143.2 kB,
+  0.0 kB over the cap. The page only imports the lazy picker and
+  `planNewSubmit.ts`; the overshoot is chunk regrouping in the shared
+  initial chunks. The cap rose to 143.3 kB and the raise was reported on its
+  merge request.
 - The cap only drops. A change that breaks it is reported, not answered by
   raising it.
 

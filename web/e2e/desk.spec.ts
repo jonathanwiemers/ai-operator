@@ -5673,6 +5673,55 @@ test('plan-new shows a field error on its field@1280', async ({ page, baseURL })
   await expect(page).toHaveURL(/\/plans\/new/)
 })
 
+// Files on the first message (PlanNew.vue, planNewSubmit.ts): a pasted image
+// shows as a chip (axe stays green); a failed upload names the file, creates
+// no plan and keeps the form; with the upload working, the plan is created
+// with the link line.
+test('plan-new attaches a pasted image; a failed upload keeps the form@1280', async ({ page, baseURL }) => {
+  const route = routes.find((r) => r.name === 'plan-new-dark')!
+  await openRoute(page, baseURL, route, { width: 1280, height: 800 })
+  await route.ready(page)
+  let created: unknown
+  let uploadStatus = 400
+  await page.route('**/api/v1/projects/team-a/tools-foo/plans', async (r) => {
+    created = r.request().postDataJSON()
+    await r.fulfill({ status: 201, json: { name: 'plan-csv' } })
+  })
+  await page.route('**/api/v1/projects/team-a/tools-foo/plans/uploads', (r) =>
+    uploadStatus === 201
+      ? r.fulfill({ status: 201, json: { markdown: '![pasted-1.png](/uploads/' + '1'.repeat(32) + '/pasted-1.png)' } })
+      : r.fulfill({ status: uploadStatus, json: { error: 'not an image', field: 'file' } }),
+  )
+  await page.getByLabel('What do you want to plan?').fill('Fix the header')
+  // The page has a known color-contrast finding (known-a11y.ts): the chip
+  // must add no node to the ones axe finds before it is shown.
+  const axeNodes = async () => {
+    const { violations } = await new AxeBuilder({ page }).include('main [data-plan-new-form]').withTags(a11yTags).analyze()
+    return violations.flatMap((v) => v.nodes.map((n) => `${v.id}: ${n.target.join(' ')} ${n.any[0]?.message ?? ''}`))
+  }
+  const before = await axeNodes()
+  await page.locator('main textarea').evaluate((el) => {
+    const dt = new DataTransfer()
+    dt.items.add(new File([new Uint8Array(10)], 'image.png', { type: 'image/png' }))
+    el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
+  })
+  const chip = page.locator('main [data-attachment-chip]')
+  await expect(chip).toContainText('pasted-1.png')
+  expect((await axeNodes()).filter((n) => !before.includes(n)), 'axe nodes the chip adds').toEqual([])
+
+  await page.getByRole('button', { name: 'Start plan' }).click()
+  await expect(page.locator('main [data-slot=error]')).toContainText('pasted-1.png')
+  await expect(page).toHaveURL(/\/plans\/new/)
+  expect(created).toBeUndefined()
+  await expect(page.getByLabel('What do you want to plan?')).toHaveValue('Fix the header')
+  await expect(chip).toHaveCount(1)
+
+  uploadStatus = 201
+  await page.getByRole('button', { name: 'Start plan' }).click()
+  await expect(page).toHaveURL(/\/plans\/plan-csv$/)
+  expect(created).toEqual({ message: 'Fix the header\n![pasted-1.png](/uploads/' + '1'.repeat(32) + '/pasted-1.png)' })
+})
+
 // New plan at the top of the rail (RailNav.vue, railNewPlan) opens the New
 // plan page, expanded and collapsed (an icon with its name as tooltip).
 test('rail New plan opens the New plan page, expanded and collapsed@1280', async ({ page, baseURL }) => {

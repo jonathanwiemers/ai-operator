@@ -9,11 +9,15 @@ import UInput from '@nuxt/ui/components/Input.vue'
 import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
 import USelectMenu from '@nuxt/ui/components/SelectMenu.vue'
 import UTextarea from '@nuxt/ui/components/Textarea.vue'
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, useTemplateRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ApiError, createPlan, getPlans } from '../client'
 import { useResource } from '../live'
 import { pageHeaderUi } from '../pageHeader'
+import { pastedFiles } from '../attachments'
+import AttachmentPicker from '../components/AttachmentPicker.vue'
+import { startPlan } from '../planNewSubmit'
+import { uploadPlanFile } from '../planUpload'
 import { planStartGroups, planStartMenuItems } from '../planStart'
 
 // The New plan page (spec plan-anywhere, Decisions 4 and 5): pick a project
@@ -38,6 +42,9 @@ const offered = computed(() => groups.value.flatMap((g) => g.items))
 const project = ref<string | undefined>()
 const message = ref('')
 const title = ref('')
+const files = ref<File[]>([])
+const picker = useTemplateRef<InstanceType<typeof AttachmentPicker>>('picker')
+let pasted = 0
 const errors = reactive<Partial<Record<Field, string>>>({})
 const formError = ref<string | null>(null)
 const sending = ref(false)
@@ -56,6 +63,25 @@ watch(
   { immediate: true },
 )
 
+// Paste and drop on the message field add files, as in the plan chat's composer.
+function onPaste(ev: ClipboardEvent) {
+  const list = [...(ev.clipboardData?.files ?? [])]
+  if (sending.value || !list.length) return
+  ev.preventDefault()
+  const named = pastedFiles(list, pasted + 1)
+  pasted += named.filter((f, i) => f !== list[i]).length
+  picker.value?.add(named)
+}
+const hasFiles = (ev: DragEvent) => !!ev.dataTransfer?.types.includes('Files')
+function onDragover(ev: DragEvent) {
+  if (!sending.value && hasFiles(ev)) ev.preventDefault()
+}
+function onDrop(ev: DragEvent) {
+  if (sending.value || !hasFiles(ev)) return
+  ev.preventDefault()
+  picker.value?.add([...(ev.dataTransfer?.files ?? [])])
+}
+
 const canSubmit = computed(() => !sending.value && !!selected.value && messageLength.value > 0 && messageLength.value <= maxMessage)
 
 async function submit() {
@@ -65,9 +91,19 @@ async function submit() {
   formError.value = null
   sending.value = true
   try {
-    const t = title.value.trim()
-    const plan = await createPlan(p.namespace, p.name, { message: message.value, ...(t ? { title: t } : {}) })
-    await router.push({ name: 'plans', params: { namespace: p.namespace, name: p.name, plan: plan.name } })
+    const res = await startPlan({
+      files: files.value,
+      message: message.value,
+      title: title.value,
+      upload: (f) => uploadPlanFile(p.namespace, p.name, f),
+      create: (body) => createPlan(p.namespace, p.name, body),
+    })
+    if ('error' in res) {
+      // Message, title, project and chips stay; a 409 error already says to connect GitLab.
+      errors.message = res.error
+      return
+    }
+    await router.push({ name: 'plans', params: { namespace: p.namespace, name: p.name, plan: res.plan.name } })
   } catch (e) {
     if (e instanceof ApiError && (fields as readonly string[]).includes(e.field ?? '')) errors[e.field as Field] = e.message
     else formError.value = errorMessage(e)
@@ -120,6 +156,7 @@ const control = 'text-base/5 tablet:text-sm/5'
       </UFormField>
 
       <UFormField label="What do you want to plan?" name="message" required :error="errors.message" :ui="fieldUI">
+        <div class="flex flex-col gap-1.5" @paste="onPaste" @dragover="onDragover" @drop="onDrop">
         <UTextarea
           v-model="message"
           :rows="5"
@@ -130,6 +167,10 @@ const control = 'text-base/5 tablet:text-sm/5'
           @keydown.meta.enter="submit"
           @keydown.ctrl.enter="submit"
         />
+        <div class="flex flex-wrap items-center gap-2">
+          <AttachmentPicker ref="picker" v-model="files" :disabled="sending" />
+        </div>
+        </div>
         <template #hint>
           <span :class="messageLength > maxMessage ? 'text-(--tone-danger-fg)' : 'text-(--text-3)'" data-counter>
             {{ messageLength }} / {{ maxMessage }}
