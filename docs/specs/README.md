@@ -29,6 +29,7 @@ git history does; otherwise "no milestone".
 13. [Agents write in one language](agent-language.spec.md) — One chart value, `agent.language`, sets the language every agent writes in. Milestone: Agents write in English, set by one chart value.
 14. [Project sets: per-project settings inside the set](project-set-entries.spec.md) — Entries in `spec.projects` merged onto the template, named projects never dormant, adoption of an annotated AgentProject. Milestone: Project sets: per-project settings inside the set, no Kustomize patches.
 15. [Four implementer tiers, and an explicit model and effort for every agent](four-implementer-tiers.spec.md) — Role efforts, the default tiers `fast`, `balanced`, `strong` and `deep`, one planner pick with a reason, the Desk badge and the pilot's `setTier`. Milestone: Four implementer tiers, and an explicit model and effort for every agent.
+16. [Agent commits carry the bot's GitLab identity](git-identity.spec.md) — Name and email from the token's GitLab user, resolved on every poll into `status.botGitName` and `status.botGitEmail`, handed to the runner and agent containers as env vars, with one runner default. Milestone: Agent commits carry the bot's GitLab identity.
 
 ## Autopilot and the pilot
 

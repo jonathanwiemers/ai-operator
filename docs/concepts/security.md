@@ -178,6 +178,24 @@ the agent's answers and the CI logs it puts into prompts. The model can
 still push a key in the code it writes, so keep your model credentials
 scoped to this use.
 
+### Commit identity
+
+The runner makes every commit as the GitLab user that owns the project's
+token. GitLab shows that account, with its avatar and profile, as author and
+committer. The name is the user's name, or the username when the name is
+empty. The email is the user's commit email.
+
+Set a commit email in the bot account's GitLab profile. Without one, the
+operator uses the account's GitLab noreply address, which GitLab still links
+to the user.
+
+The identity is not a secret. It reaches the agent container as environment
+variables, but no token does. A
+[companion repository](glossary.md#companion-repository) gets commits with
+the home project's identity, also when its token belongs to another user.
+To see the identity, run `kubectl get agentproject -o yaml` and read
+`status.botGitName` and `status.botGitEmail`.
+
 ## Webhook deliveries
 
 A delivery only wakes the operator to sync a project now. It counts only

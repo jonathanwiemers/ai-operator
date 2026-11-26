@@ -194,6 +194,21 @@ Only the first milestone starts new issues. Change the order with
 [`/agent move`](commands.md#on-the-tracking-issue), not by editing the
 status.
 
+## `botGitName` and `botGitEmail`
+
+The identity of every commit the operator makes: the GitLab user that owns
+the project's token. The operator sets both on each poll of the project, and
+you cannot set them. They are on the AgentProject, read only:
+
+```yaml
+status:
+  botGitName: AI Operator
+  botGitEmail: 42-ai-operator@users.noreply.gitlab.com
+```
+
+The email is the user's commit email, or the GitLab noreply address when the
+user has none. See [Commit identity](../concepts/security.md#commit-identity).
+
 ## AgentPlan status
 
 An AgentPlan is a [plan](../concepts/glossary.md#plan-draft) of the Desk.
