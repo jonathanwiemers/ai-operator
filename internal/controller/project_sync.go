@@ -425,7 +425,7 @@ func (ph autopilotPhase) run(ctx context.Context) {
 	}
 	if qt := ph.queueTask; qt != nil {
 		var err error
-		if ph.queueNotes, err = r.syncLoose(ctx, gl, gate, project, spec, qt, implTasks, ph.issues); err != nil {
+		if ph.queueNotes, err = r.syncLoose(ctx, gl, gate, project, spec, qt, ph.findQueuePilot(), implTasks, ph.issues); err != nil {
 			ph.errs = append(ph.errs, fmt.Errorf("loose issues queue: %w", err))
 		}
 	}

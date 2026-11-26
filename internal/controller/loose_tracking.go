@@ -7,6 +7,7 @@ import (
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/marker"
 	"github.com/jonathanwiemers/ai-operator/internal/notify"
+	"github.com/jonathanwiemers/ai-operator/internal/timefmt"
 )
 
 // renderLoose renders the loose issues queue's tracking issue: what the
@@ -31,6 +32,9 @@ func (a *autopilot) renderLoose() string {
 			issue = a.project.Status.MainHealth.IssueIID
 		}
 		b.WriteString("\n🧊 " + frozenLine(issue) + "\n")
+	}
+	if line := roundLine(a.spec.LooseIssues.Pilot, a.ap.Round); line != "" && a.ap.Phase != aiv1.AutopilotOff {
+		b.WriteString("\n🧭 " + line + "\n")
 	}
 	owners := "none"
 	if names := notify.Usernames(a.st.Spec.Owners); len(names) > 0 {
@@ -74,6 +78,24 @@ func (a *autopilot) renderLoose() string {
 	}
 	b.WriteString("\n" + marker.TrackingIssue + "\n")
 	return b.String()
+}
+
+// roundLine is the line of the pilot's round rd under the limits of p, ""
+// without a round: "Round 3 · started 2026-11-26 09:12 UTC · 2 of 5 issues ·
+// $1.40". GitLab knows no viewer's time zone, so it is UTC.
+func roundLine(p aiv1.LooseIssuesPilotSpec, rd *aiv1.LooseRound) string {
+	if rd == nil {
+		return ""
+	}
+	issues := fmt.Sprintf("%d of %d issues", rd.Finished, p.Issues())
+	if p.Issues() == 0 {
+		issues = fmt.Sprintf("%d issues, no issue limit", rd.Finished)
+	}
+	parts := []string{fmt.Sprintf("Round %d", rd.Number), "started " + timefmt.UTCMinute(rd.StartedAt.Time), issues}
+	if p.Duration() == 0 {
+		parts = append(parts, "no time limit")
+	}
+	return strings.Join(append(parts, "$"+aiv1.ShowCost(aiv1.CostOf(rd.CostUSD))), " · ")
 }
 
 // mrRef is " !<iid>" for an item with a merge request, else "".

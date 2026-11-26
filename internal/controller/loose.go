@@ -98,10 +98,11 @@ func (p *projectPoll) queueItem(iid int64) (*aiv1.AgentTask, *aiv1.AutopilotItem
 // switches it off once spec.looseIssues is disabled. It never takes a
 // milestone path: no planning, releases, settling or closing a milestone.
 // tasks and issues are the poll's implement tasks and agent-labelled issues
-// by IID. It returns the tracking issue's comments it read, for the queue's
-// pilot; nil when it read none.
+// by IID; coord is the queue's pilot, nil while there is none. It returns
+// the tracking issue's comments it read, for the queue's pilot; nil when it
+// read none.
 func (r *AgentProjectReconciler) syncLoose(ctx context.Context, gl gitlab.API, gate *commandGate, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
-	qt *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, issues map[int64]gitlab.Issue) ([]gitlab.Note, error) {
+	qt, coord *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, issues map[int64]gitlab.Issue) ([]gitlab.Note, error) {
 	ap := &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning}
 	if qt.Status.Autopilot != nil {
 		ap = qt.Status.Autopilot.DeepCopy()
@@ -111,7 +112,7 @@ func (r *AgentProjectReconciler) syncLoose(ctx context.Context, gl gitlab.API, g
 	var err error
 	switch {
 	case spec.LooseIssues.Enabled:
-		err = a.syncQueue(ctx)
+		err = a.syncQueue(ctx, coord)
 	case ap.TrackingIssueIID != 0 && ap.Phase != aiv1.AutopilotOff:
 		err = a.looseOff(ctx)
 	}
@@ -131,8 +132,8 @@ func (r *AgentProjectReconciler) syncLoose(ctx context.Context, gl gitlab.API, g
 // syncQueue is one poll of the loose issues queue: its issues, the owners'
 // commands, the items that leave, the holds that end by themselves, then the
 // milestone's merge gate for the active items and the start of pending ones,
-// and the tracking issue.
-func (a *autopilot) syncQueue(ctx context.Context) error {
+// the round of its pilot coord, and the tracking issue.
+func (a *autopilot) syncQueue(ctx context.Context, coord *aiv1.AgentTask) error {
 	if a.ap.Phase == aiv1.AutopilotOff || a.ap.Phase == "" {
 		a.ap.Phase = aiv1.AutopilotRunning
 	}
@@ -167,6 +168,9 @@ func (a *autopilot) syncQueue(ctx context.Context) error {
 		if err := a.step(ctx); err != nil {
 			return err
 		}
+	}
+	if err := a.syncRound(ctx, coord); err != nil {
+		return err
 	}
 	return a.updateTracking(ctx)
 }

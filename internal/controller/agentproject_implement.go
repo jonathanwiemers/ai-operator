@@ -68,6 +68,7 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 	commandBy := "" // the author of the newest command, "@name"
 	var reply *routingReply
 	var denied []pilotNote
+	unread := false
 	if ready || issueChanged || mrChanged {
 		var latest int64
 		var issueNotes, mrNotes []gitlab.Note
@@ -87,7 +88,9 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 		if reply, err = r.applyRouting(ctx, gl, spec, &is, cmdIssue, cmdMR, &task.Spec, project.Status.BotUserID); err != nil {
 			return nil, nil, err
 		}
-		denied = append(denied, r.pilotIssueNotes(ctx, gl, project, spec, is, mr, task, issueNotes, mrNotes)...)
+		var pilotDenied []pilotNote
+		pilotDenied, unread = r.pilotIssueNotes(ctx, gl, project, spec, is, mr, task, issueNotes, mrNotes)
+		denied = append(denied, pilotDenied...)
 		if created {
 			// Comments written before the task existed are context, not commands.
 			src.LastCommandNoteID = latest
@@ -98,10 +101,11 @@ func (r *AgentProjectReconciler) syncImplementTask(ctx context.Context, gl gitla
 			command = true
 		}
 	}
-	if is.UpdatedAt != nil {
+	// Comments the pilot did not get are read again on the next poll.
+	if is.UpdatedAt != nil && !unread {
 		src.IssueUpdatedAt = &metav1.Time{Time: *is.UpdatedAt}
 	}
-	if mr != nil && mr.UpdatedAt != nil {
+	if mr != nil && mr.UpdatedAt != nil && !unread {
 		src.MergeRequestUpdatedAt = &metav1.Time{Time: *mr.UpdatedAt}
 	}
 

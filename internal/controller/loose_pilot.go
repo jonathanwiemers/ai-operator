@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -81,7 +82,21 @@ func (r *AgentProjectReconciler) queuePilotTasks(ctx context.Context, project *a
 	if qt == nil || !queueHas(qt, iid) {
 		return nil, nil, nil
 	}
+	if roundNotePending(qt) {
+		// Left unread for the next round.
+		return nil, nil, errRoundNotePending
+	}
 	return qt, coord, nil
+}
+
+var errRoundNotePending = errors.New("the queue's pilot writes its round note; comments wait for the next round")
+
+// roundNotePending reports whether the queue's pilot writes the note of its
+// round (syncRound): owners' messages and events wait, unread, for the next
+// round's fresh session.
+func roundNotePending(qt *aiv1.AgentTask) bool {
+	ap := qt.Status.Autopilot
+	return ap != nil && ap.Round != nil && ap.Round.NoteRequest != 0
 }
 
 // queueHas reports whether issue iid is a pending, active or held item of
@@ -166,6 +181,10 @@ func (r *AgentProjectReconciler) syncQueuePilot(ctx context.Context, gl gitlab.A
 	coord, err := r.ensureQueuePilot(ctx, project, qt, coord)
 	if err == nil {
 		keep[coord.Name] = true
+	}
+	// While it writes its round note, its steps wait for the next round.
+	if err == nil && roundNotePending(qt) {
+		return nil
 	}
 	// The first read marks the comments so far as history.
 	if err == nil && notes != nil {

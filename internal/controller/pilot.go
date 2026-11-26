@@ -72,23 +72,23 @@ func newestNote(notes ...[]gitlab.Note) int64 {
 // pilotIssueNotes hands the comments to the pilot that were written on an
 // issue with a task or its merge request since the last poll that read
 // them. Comments from before the task (or this feature) are history. A
-// failure is logged and tried again the next time the notes are read. A
-// project without GitLab input hands nothing over: it returns the comments,
-// to be answered with the Desk.
+// failure is logged and reports unread: the notes are read again on the
+// next poll. A project without GitLab input hands nothing over: it returns
+// the comments, to be answered with the Desk.
 func (r *AgentProjectReconciler) pilotIssueNotes(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
-	is gitlab.Issue, mr *gitlab.MergeRequest, task *aiv1.AgentTask, issueNotes, mrNotes []gitlab.Note) []pilotNote {
+	is gitlab.Issue, mr *gitlab.MergeRequest, task *aiv1.AgentTask, issueNotes, mrNotes []gitlab.Note) (out []pilotNote, unread bool) {
 	src := &task.Spec.Source
 	since := src.LastPilotNoteID
 	src.LastPilotNoteID = max(since, newestNote(issueNotes, mrNotes), 1)
 	if since == 0 {
-		return nil
+		return nil, false
 	}
 	notes := pilotNotes(project, spec, issueNotes, since, is.IID, 0)
 	if mr != nil {
 		notes = append(notes, pilotNotes(project, spec, mrNotes, since, 0, mr.IID)...)
 	}
 	if !spec.Workflow.Takes(aiv1.InputGitLab) {
-		return notes
+		return notes, false
 	}
 	// Option letters in the threads of prompts on the issue and its merge
 	// request.
@@ -96,7 +96,7 @@ func (r *AgentProjectReconciler) pilotIssueNotes(ctx context.Context, gl gitlab.
 	letters := len(letterReplies(issueNotes, since, bot)) > 0
 	mrLetters := mr != nil && len(letterReplies(mrNotes, since, bot)) > 0
 	if len(notes) == 0 && !letters && !mrLetters {
-		return nil
+		return nil, false
 	}
 	st, coord, err := r.milestoneTasks(ctx, project, is.Milestone)
 	owners := task.Spec.Owners
@@ -118,8 +118,9 @@ func (r *AgentProjectReconciler) pilotIssueNotes(ctx context.Context, gl gitlab.
 	if err != nil {
 		log.FromContext(ctx).Info("could not hand comments to the pilot", "issue", is.IID, "error", err.Error())
 		src.LastPilotNoteID = since
+		return nil, true
 	}
-	return nil
+	return nil, false
 }
 
 // pilot hands the comments on the tracking issue of an autopilot milestone
