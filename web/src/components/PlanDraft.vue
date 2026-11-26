@@ -66,7 +66,7 @@ const creatingAll = ref(false)
       </template>
     </UTabs>
     <PlanCreateDialog v-if="createFor" :key="createFor.key" v-model:open="creating" :namespace="namespace" :name="name" :plan="plan"
-      :draft-key="createFor.key" :title="createFor.title" :draft="createFor.draft" :pending="view.decisionsPending ?? 0" @created="emit('created')" />
+      :draft-key="createFor.key" :title="createFor.title" :draft="createFor.draft" :drafts="view.drafts" :pending="view.decisionsPending ?? 0" @created="emit('created')" />
     <PlanCreateAllDialog v-if="creatingAll || showAll" v-model:open="creatingAll" :namespace="namespace" :name="name" :plan="plan"
       :drafts="view.drafts" :pending="view.decisionsPending ?? 0" @created="emit('created')" />
   </div>

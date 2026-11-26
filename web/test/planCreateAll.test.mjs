@@ -1,7 +1,7 @@
 // Tests of src/planCreateAll.ts: npm test (node --test, no extra dependencies).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { createAll, uncreated } from '../src/planCreateAll.ts'
+import { createAll, filledInLine, forwardRefs, uncreated } from '../src/planCreateAll.ts'
 
 const drafts = (...created) => created.map((iid, i) => ({ key: i + 1, ...(iid ? { createdMilestoneIID: iid } : {}) }))
 
@@ -37,6 +37,7 @@ test('createAll creates every draft in list order', async () => {
       { key: 2, iid: 43, url: 'https://gitlab.example/m/43' },
     ],
     skipped: [],
+    filledIn: [],
   })
 })
 
@@ -59,7 +60,7 @@ test('createAll stops at the first error and reports created, failed and skipped
 
 test('createAll reports a non-Error rejection as text', async () => {
   const r = await createAll(drafts(0), () => Promise.reject('offline'))
-  assert.deepEqual(r, { created: [], failed: { key: 1, message: 'offline' }, skipped: [] })
+  assert.deepEqual(r, { created: [], failed: { key: 1, message: 'offline' }, skipped: [], filledIn: [] })
 })
 
 test('createAll calls create sequentially, never in parallel', async () => {
@@ -76,6 +77,43 @@ test('createAll calls create sequentially, never in parallel', async () => {
 
 test('createAll with nothing to create calls nothing', async () => {
   const f = fake()
-  assert.deepEqual(await createAll(drafts(40, 41), f.create), { created: [], skipped: [] })
+  assert.deepEqual(await createAll(drafts(40, 41), f.create), { created: [], skipped: [], filledIn: [] })
   assert.deepEqual(f.calls, [])
+})
+
+test('forwardRefs counts later uncreated drafts once each', () => {
+  const list = [{ key: 1, createdMilestoneIID: 40 }, { key: 2 }, { key: 3 }, { key: 4, createdMilestoneIID: 41 }, { key: 5 }]
+  const text = 'See %draft-3, again %draft-3, and %draft-5. Not %draft-1 (earlier), %draft-4 (created), %draft-2 (itself), %draft-9 (unknown), %draft-30x.'
+  assert.equal(forwardRefs(text, list, 2), 2)
+  assert.equal(forwardRefs(text, list, 5), 0)
+  assert.equal(forwardRefs('no references', list, 2), 0)
+  assert.equal(forwardRefs('%draft-3', list, 0), 0) // a new draft goes last
+})
+
+test('createAll merges filledIn across creates, tagged with the new IID', async () => {
+  const answers = {
+    1: { iid: 41, webURL: '', filledIn: [] },
+    2: { iid: 42, webURL: '', filledIn: [{ key: 1, iid: 41, state: 'filled' }] },
+    3: { iid: 43, webURL: '', filledIn: [{ key: 1, iid: 41, state: 'skipped', reason: 'already planning' }, { key: 2, iid: 42, state: 'filled' }] },
+  }
+  const r = await createAll(drafts(0, 0, 0), async (d) => answers[d.key])
+  assert.deepEqual(r.filledIn, [
+    { key: 1, iid: 41, state: 'filled', by: 42 },
+    { key: 1, iid: 41, state: 'skipped', reason: 'already planning', by: 43 },
+    { key: 2, iid: 42, state: 'filled', by: 43 },
+  ])
+})
+
+test('createAll keeps the filledIn gathered before a failure', async () => {
+  const r = await createAll(drafts(0, 0, 0), async (d) => {
+    if (d.key === 3) throw new Error('GitLab is down')
+    return { iid: 40 + d.key, webURL: '', filledIn: d.key === 2 ? [{ key: 1, iid: 41, state: 'filled' }] : [] }
+  })
+  assert.deepEqual(r.filledIn, [{ key: 1, iid: 41, state: 'filled', by: 42 }])
+  assert.equal(r.failed?.key, 3)
+})
+
+test('filledInLine words filled and skipped entries', () => {
+  assert.equal(filledInLine({ key: 1, iid: 41, state: 'filled', by: 42 }), '%41: filled in %42')
+  assert.equal(filledInLine({ key: 1, iid: 41, state: 'skipped', reason: 'text changed in GitLab', by: 42 }), '%41: kept the title (text changed in GitLab)')
 })

@@ -12,7 +12,7 @@ import USwitch from '@nuxt/ui/components/Switch.vue'
 import { alertColor } from '../badgeTone'
 import { createPlanMilestone, getEstimate } from '../client'
 import { estimateLabel } from '../estimate'
-import { createAll, uncreated, type CreateAllResult } from '../planCreateAll'
+import { createAll, filledInLine, uncreated, type CreateAllResult } from '../planCreateAll'
 import { createWarning } from '../planDecisions'
 import { draftLabel } from '../planDraft'
 import { planHeaderLines, planMilestoneTitle } from '../planRows'
@@ -94,6 +94,11 @@ const stateLabel = (r: Row) => ({ waiting: 'waiting', creating: 'creating…', c
         <div class="flex gap-4"><USwitch v-model="spec" label="Spec" :disabled="busy || !!result" /><USwitch v-model="autopilot" label="Autopilot" :disabled="busy || !!result" /></div>
         <pre class="m-0 text-xs text-(--text-2)" aria-label="Lines the operator appends to each">{{ planHeaderLines(spec, autopilot).join('\n') }}</pre>
         <UAlert v-if="!ready" role="status" :color="alertColor('warning')" variant="subtle" description="Every draft needs a title and a text: save them first." />
+        <UAlert v-if="result?.filledIn.length" role="status" data-filled-in :color="alertColor('info')" variant="subtle" title="References to later drafts">
+          <template #description>
+            <ul class="m-0 pl-5"><li v-for="(f, i) in result.filledIn" :key="i">{{ filledInLine(f) }}</li></ul>
+          </template>
+        </UAlert>
         <UAlert v-if="result?.failed" role="alert" data-create-all-failed :color="alertColor('danger')" variant="subtle" class="[overflow-wrap:anywhere]"
           :title="`${failed?.label} failed`" :description="result.failed.message + (later.length ? ` ${later.join(', ')} ${plural(later.length, 'stays', 'stay')} a draft.` : '')" />
       </div>

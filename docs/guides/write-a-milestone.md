@@ -32,8 +32,7 @@ issues:
    project's owners) and an estimate of the cost.
 
 The operator then creates the milestone in GitLab with your GitLab login.
-A plan has its own budget; the chart values are in the
-[chart README](../../charts/ai-operator/README.md#plan).
+A plan has its own budget; the chart values are in the [chart README](../../charts/ai-operator/README.md#plan).
 
 To show the agent a screenshot or log, [attach files](attach-files-to-a-plan.md).
 
@@ -85,9 +84,17 @@ numbers follow the order they build on each other:
   order and creates them one after the other with the same choices. It
   stops at the first error. The dialog then shows which drafts were
   created, which one failed and why, and which stay drafts.
-- On create, each `%draft-N` of a draft that already has its milestone
-  becomes that milestone's `%IID`. A `%draft-N` of a draft not created yet
-  is refused: create that draft first, or remove the reference.
+- On create, a `%draft-N` of a draft with a milestone becomes its `%IID`.
+  One of the draft itself, of an unknown draft, or in the title is refused.
+
+An earlier draft may name a later one. On create, the reference becomes
+the later draft's title in quotes, and *Create milestone* says so first:
+"Refers to later drafts: 1". When you create the later draft, the Desk
+puts its `%IID` in place of the title while the earlier milestone waits
+for its turn. The result lists each: "%41: filled in %42", or "%41: kept
+the title (already planning)" once planning started there. "Text changed
+in GitLab" means you removed the title from it. Removing a draft leaves
+its title.
 
 The plan stays open, and you can keep chatting, until every draft has its
 milestone.
@@ -115,8 +122,7 @@ into that milestone or to narrow the draft. The same rules hold between
 the drafts of one plan.
 
 To point the agent at a milestone, name it in your message: "build on
-%38". The agent reads %38 in full before it answers, also when %38 is an
-older closed milestone.
+%38". The agent reads %38 in full before it answers, also when %38 is an older closed milestone.
 
 Type `%` in the plan chat to pick a reference from a menu. It lists the
 project's open milestones in queue order, then the newest closed ones,
@@ -365,8 +371,7 @@ The planner orders the work: an issue that needs another one lists it under
 *Depends on*. On autopilot, issues with no dependency between them may run
 at the same time, so the planner keeps them off the same files. Where they
 would overlap, it makes one depend on the other. Conflicts that happen
-anyway are
-[resolved by the agent](while-the-agent-works.md#merge-conflicts).
+anyway are [resolved by the agent](while-the-agent-works.md#merge-conflicts).
 
 The dependencies are also GitLab issue links, so the issue page and the
 boards show them:
@@ -388,13 +393,8 @@ plan does not list it, and even if the linked issue is in another project.
 
 ## Next
 
-- [Answer and hand over](answer-and-hand-over.md): answer the planner's
-  questions and start the work.
-- [Commands](../reference/commands.md#in-the-milestone-description): every
-  marker line.
-- [Your first milestone](../getting-started/first-milestone.md): a short
-  spec on autopilot, step by step.
+- [Answer and hand over](answer-and-hand-over.md): answer the planner's questions and start the work.
+- [Commands](../reference/commands.md#in-the-milestone-description): every marker line.
+- [Your first milestone](../getting-started/first-milestone.md): a short spec on autopilot, step by step.
 - [Attach files to a plan](attach-files-to-a-plan.md): screenshots, PDFs and logs in a plan message.
-- [Desk API](../reference/desk-api.md#plans): the plan endpoints, the
-  drafts, the decisions history and the `decisions` field of the plan
-  chat.
+- [Desk API](../reference/desk-api.md#plans): the plan endpoints, the drafts, the decisions history and the `decisions` field of the plan chat.

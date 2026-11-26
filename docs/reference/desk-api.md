@@ -208,15 +208,20 @@ The rules:
   otherwise).
 - `POST …/milestone` takes `key`, `title`, `description`, `spec` and
   `autopilot`, with the same default for `key` as `PUT …/draft`. It answers
-  `201` with the milestone's `iid` and `webURL`.
+  `201` with the milestone's `iid`, `webURL` and `filledIn`.
 - Only the first draft without a milestone can be created: any other
   answers `409` with "create draft 1 first", naming the draft to create.
-  Before it creates the
-  milestone, each `%draft-N` of a created draft becomes `%IID`. A
-  `%draft-N` of a draft not created yet answers `422` with
-  `field: "description"`, naming the reference.
+  Each `%draft-N` of a created draft becomes `%IID`. In the description,
+  one of a later draft becomes its title in quotes, kept in the draft's
+  `pendingRefs` (`key`, `text`, at most 5). Any other answers `422`
+  naming it, with `field` `title` or `description`.
+- `filledIn` lists the earlier milestones that named this draft by its
+  title: `key` and `iid` are the earlier draft and its milestone, `state`
+  is `filled` (now `%IID`) or `skipped` with a `reason` (`already
+  planning`, `text changed in GitLab` or GitLab's error), as in
+  `{"key": 1, "iid": 41, "state": "filled"}`. A skip never fails the create.
 - A created draft is read-only: editing, removing or moving it answers
-  `409`.
+  `409`. Removing an uncreated draft drops the `pendingRefs` to it.
 - When GitLab refuses the milestone, the draft stays uncreated and the
   plan stays open.
 - `…/estimate?plan=` counts the draft `&draft=` names. Without it, it

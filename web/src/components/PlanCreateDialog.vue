@@ -15,17 +15,21 @@ import UInput from '@nuxt/ui/components/Input.vue'
 import USwitch from '@nuxt/ui/components/Switch.vue'
 import UTextarea from '@nuxt/ui/components/Textarea.vue'
 import ExtLink from './ExtLink.vue'
-import type { PlanMilestoneView } from '../generated/views'
+import type { PlanDraftView, PlanMilestoneView } from '../generated/views'
+import { filledIn, filledInLine, forwardRefs } from '../planCreateAll'
 import { useBackClose } from '../ui/useBackClose'
 
 const UModal = defineAsyncComponent(() => import('@nuxt/ui/components/Modal.vue'))
-const props = defineProps<{ namespace: string; name: string; plan: string; draftKey: number; title: string; draft: string; pending?: number }>()
+const props = defineProps<{ namespace: string; name: string; plan: string; draftKey: number; title: string; draft: string; drafts?: PlanDraftView[]; pending?: number }>()
 const route = useRoute()
 const warning = computed(() => createWarning(props.pending ?? 0))
 const emit = defineEmits<{ created: [] }>()
 const open = defineModel<boolean>('open', { required: true })
 const [title, text, spec, autopilot, estimate, error, busy] = [ref(''), ref(''), ref(true), ref(true), ref(''), ref(''), ref(false)]
 const created = ref<PlanMilestoneView | null>(null)
+// ahead counts the edited text's references to later drafts, written as their titles.
+const ahead = computed(() => forwardRefs(text.value, props.drafts ?? [], props.draftKey))
+const fills = computed(() => (created.value ? filledIn(created.value).map(filledInLine) : []))
 useBackClose(open)
 watch(open, async (o) => {
   if (!o) return
@@ -52,6 +56,9 @@ async function create() {
       <UAlert v-if="created" role="status" data-plan-created :color="alertColor('info')" variant="subtle" class="mt-3">
         <template #description>
         Created the milestone %{{ created.iid }}: <ExtLink :href="created.webURL">on GitLab</ExtLink>.
+        <ul v-if="fills.length" class="m-0 mt-1 pl-5" data-filled-in aria-label="References to this milestone">
+          <li v-for="l in fills" :key="l">{{ l }}</li>
+        </ul>
         </template>
       </UAlert>
       <div v-else class="flex flex-col gap-2 text-sm" data-plan-create>
@@ -61,6 +68,8 @@ async function create() {
           <RouterLink :to="{ query: tabQuery(route.query, 'decisions', planTabs) }" @click="open = false">Review them</RouterLink>
           </template>
         </UAlert>
+        <UAlert v-if="ahead" role="status" data-forward-refs :color="alertColor('info')" variant="subtle"
+          :description="`Refers to later drafts: ${ahead}. Their titles are used until they are created.`" />
         <UInput v-model="title" :maxlength="255" aria-label="Title" placeholder="Title" />
         <UTextarea v-model="text" :rows="14" spellcheck="true" aria-label="Description" :ui="{ base: 'font-mono text-base/5 tablet:text-[13px]/5' }" />
         <div class="flex gap-4"><USwitch v-model="spec" label="Spec" /><USwitch v-model="autopilot" label="Autopilot" /></div>

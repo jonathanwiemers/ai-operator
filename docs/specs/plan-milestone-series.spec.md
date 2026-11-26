@@ -65,3 +65,4 @@ Before this milestone a plan (`AgentPlan`) held one draft in `status.draft` and 
 - The owner cannot add a draft through the API; only the agent adds drafts (Decision 7). `PUT …/draft` and `POST …/milestone` without a `key` act on the first draft without a milestone, so an old client keeps working on a plan's first draft.
 - R6 landed before R5, so the UI server's edit by key was in place before the runner wrote several drafts.
 - No requirement was narrowed, and no follow-up issue was opened for this milestone.
+- **Later: references to later drafts are accepted** (Decision 10). A later milestone changed the 422 for a `%draft-N` of a later uncreated draft: the description now gets that draft's quoted title, filled in with its `%IID` when it is created. See [plan-forward-refs](plan-forward-refs.spec.md).
