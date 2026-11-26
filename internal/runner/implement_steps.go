@@ -25,8 +25,12 @@ import (
 // new session with the run's prompt, the earlier steps' summaries, the agent
 // notes and the comments handed over so far. Only the last step's session
 // becomes the implementer's, once the steps are done.
+//
+// A step whose comments link uploads (fresh steps: those handed over and
+// new) gets them in .attachments, after the run's links atts, and listed in
+// its prompt; otherwise the folder stays as the run's prompt left it.
 func (r *Runner) runSteps(ctx context.Context, gl gitlab.API, glProject string, issue *gitlab.Issue, mrIID, botID int64, prefix, branch, base string, types []string,
-	role aiv1.RoleSpec, freshSteps bool, inv Invocation, fullPrompt string, res *Result, answer *ImplementAnswer, st *state, out *Outcome) (*Result, int64, error) {
+	role aiv1.RoleSpec, freshSteps bool, inv Invocation, fullPrompt string, atts runAttachments, res *Result, answer *ImplementAnswer, st *state, out *Outcome) (*Result, int64, error) {
 	var seen int64
 	pushSteps := true
 	summaries := []string{answer.Summary}
@@ -101,14 +105,22 @@ func (r *Runner) runSteps(ctx context.Context, gl gitlab.API, glProject string, 
 		next.Kind = aiv1.CallKindImplement
 		next.Resume = res.SessionID
 		next.Prompt = stepContinue
+		// shownIssue and shownMR are the new comments the prompt shows.
+		var shownIssue, shownMR []gitlab.Note
 		if fresh > 0 {
+			shownIssue, shownMR = newIssue, newMR
 			next.Prompt = stepContinue + "\n\n" + thread("New comments on the issue", newIssue, botID) + thread("New comments on the merge request", newMR, botID)
 		}
-		// Should the session be gone, a fresh one also gets the new comments.
-		stepPrompt := fullPrompt + "\n\n" + next.Prompt
+		var stepPrompt string
 		if freshSteps {
 			next.Resume = ""
-			stepPrompt = fullPrompt + "\n\n" + buildFreshStepPrompt(summaries, answer.Handoff, handedIssue, handedMR, botID) + "\n\n" + next.Prompt
+			section := r.stepAttachments(ctx, gl, glProject, atts, "The files linked in the comments since the run started, newest first.",
+				slices.Concat(handedIssue, shownIssue), slices.Concat(handedMR, shownMR))
+			stepPrompt = fullPrompt + "\n\n" + buildFreshStepPrompt(summaries, answer.Handoff, handedIssue, handedMR, botID) + "\n\n" + section + next.Prompt
+		} else {
+			next.Prompt += r.stepAttachments(ctx, gl, glProject, atts, "The files linked in the new comments, newest first.", shownIssue, shownMR)
+			// Should the session be gone, a fresh one also gets the new comments.
+			stepPrompt = fullPrompt + "\n\n" + next.Prompt
 		}
 
 		s = r.step(ctx, fmt.Sprintf("run implementer, step %d", step+1), "engine", role.Engine, "model", role.Model, "newNotes", fresh, "resume", next.Resume != "")

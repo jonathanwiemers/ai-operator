@@ -15,7 +15,7 @@ import (
 func TestSystemPromptsAreUnchanged(t *testing.T) {
 	for name, tc := range map[string]struct{ prompt, sha string }{
 		"spec":       {specSystemPrompt, "a4096347111255fbbb25c6dd4bc15e43a7587addbca271b4876fceaf2b994578"},
-		"implement":  {implementSystemPrompt, "8fd4977e803db331e4f19625382c5289e23f8bedbfc52097e1dbbdb1e8affa5c"},
+		"implement":  {implementSystemPrompt, "cc175f9e7c9dd485d742f7d0075dced48ef36da808760dd05197fb855ee9d021"},
 		"bugbot":     {bugbotSystemPrompt, "22853472d19cf325d2ba58ec9d5f8d5b7c1b43ef8ecf5d81b74305a116105e50"},
 		"security":   {securitySystemPrompt, "9251740c21e1e3f4f12d08efbd0a08f133ad8520a515d0478c92de5631de1f69"},
 		"pilot":      {pilotSystemPrompt, "2b4c41d23b19385ef5984c25272e8b6e5c3b0648135d42b2b250efade73f2803"},

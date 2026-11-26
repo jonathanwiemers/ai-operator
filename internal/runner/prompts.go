@@ -99,6 +99,8 @@ How to work:
   its own new decisions.
 - Review findings you are given were produced by automated reviewers. Fix the
   real ones; if a finding is wrong, say why in the summary.
+- Open the files listed under Attachments with Read when they matter for the
+  issue, and never commit them.
 
 Your summary is posted on the merge request: what changed and why, how you
 tested it, and anything the reviewer should look at closely.

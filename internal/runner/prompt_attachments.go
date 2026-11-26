@@ -1,29 +1,102 @@
 package runner
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/jonathanwiemers/ai-operator/internal/attachments"
+	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 )
 
 // attachmentLinks are the upload links of proj in texts, in the given order.
 // Each secret and file name is kept once, at its first appearance.
 func attachmentLinks(proj attachments.Project, texts ...string) []attachments.Link {
+	lists := make([][]attachments.Link, 0, len(texts))
+	for _, text := range texts {
+		lists = append(lists, attachments.Find(text, proj))
+	}
+	return joinLinks(lists...)
+}
+
+// joinLinks are the links of lists in order, each secret and file name once.
+func joinLinks(lists ...[]attachments.Link) []attachments.Link {
 	var out []attachments.Link
 	seen := map[string]bool{}
-	for _, text := range texts {
-		for _, l := range attachments.Find(text, proj) {
-			if key := l.Secret + "/" + l.Filename; !seen[key] {
-				seen[key] = true
-				out = append(out, l)
-			}
+	for _, l := range slices.Concat(lists...) {
+		if key := linkKey(l); !seen[key] {
+			seen[key] = true
+			out = append(out, l)
 		}
 	}
 	return out
+}
+
+func linkKey(l attachments.Link) string { return l.Secret + "/" + l.Filename }
+
+// implementAttachmentLinks are the upload links of proj in the implementer's
+// texts, newest first: the comments of both threads by note ID descending
+// (note IDs grow across issues and merge requests), then the issue
+// description, then the milestone description. System notes, which no prompt
+// shows, are skipped. A nil issue or milestone adds nothing.
+func implementAttachmentLinks(proj attachments.Project, issue *gitlab.Issue, milestone *gitlab.Milestone, issueNotes, mrNotes []gitlab.Note) []attachments.Link {
+	notes := slices.DeleteFunc(slices.Concat(issueNotes, mrNotes), func(n gitlab.Note) bool { return n.System })
+	slices.SortStableFunc(notes, func(x, y gitlab.Note) int { return cmp.Compare(y.ID, x.ID) })
+	texts := make([]string, 0, len(notes)+2)
+	for _, n := range notes {
+		texts = append(texts, n.Body)
+	}
+	if issue != nil {
+		texts = append(texts, issue.Description)
+	}
+	if milestone != nil {
+		texts = append(texts, milestone.Description)
+	}
+	return attachmentLinks(proj, texts...)
+}
+
+// attachmentsOf are the results in res of links, in the order of links and
+// each with the link as given; a link res lacks is left out.
+func attachmentsOf(res []attachments.Result, links []attachments.Link) []attachments.Result {
+	by := map[string]attachments.Result{}
+	for _, a := range res {
+		if _, ok := by[linkKey(a.Link)]; !ok {
+			by[linkKey(a.Link)] = a
+		}
+	}
+	var out []attachments.Result
+	for _, l := range links {
+		if a, ok := by[linkKey(l)]; ok {
+			a.Link = l
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+// fetchAttachments is handAttachments as a step of the run when there are
+// links; without, the agent only removes the folder of an earlier prompt.
+func (r *Runner) fetchAttachments(ctx context.Context, dl attachments.Downloader, project string, links []attachments.Link) []attachments.Result {
+	if len(links) == 0 {
+		return r.handAttachments(ctx, dl, project, nil)
+	}
+	s := r.step(ctx, "fetch attachments", "links", len(links))
+	res := r.handAttachments(ctx, dl, project, links)
+	s.done(fmt.Sprintf("%d of %d fetched", fetchedCount(res), len(res)), "fetched", fetchedCount(res))
+	return res
+}
+
+// withSection appends section to prompt after a blank line; without a
+// section prompt is unchanged.
+func withSection(prompt, section string) string {
+	if section == "" {
+		return prompt
+	}
+	return strings.TrimRight(prompt, "\n") + "\n\n" + section
 }
 
 // handAttachments fetches links of project into the exchange directory under

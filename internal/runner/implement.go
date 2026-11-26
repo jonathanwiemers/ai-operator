@@ -89,6 +89,9 @@ type implementRun struct {
 	// Conventional Commits): a conflict call on its own role gets them too.
 	systemNotes string
 	fullPrompt  string
+	// attachments are the uploads the full prompt links, which the steps
+	// hand over again after their own.
+	attachments runAttachments
 	stepwise    bool
 	// stepSession is the effective step-session mode: the arm's, else
 	// agents.implement.stepSession.
@@ -340,8 +343,11 @@ func (run *implementRun) buildPrompt(ctx context.Context) error {
 	inv.Resume = st.session("implement", role.Engine)
 	// Comments that are only a model or effort command are the operator's.
 	prefix := wf.CommandPrefix
-	fullPrompt := buildImplementPrompt(issue, milestone, command.WithoutRouting(run.issueNotes, prefix), command.WithoutRouting(run.mrNotes, prefix), botID, false, run.prior)
-	inv.Prompt = buildImplementPrompt(issue, milestone, command.WithoutRouting(run.newIssueNotes, prefix), command.WithoutRouting(run.newMRNotes, prefix), botID, true, handoff{})
+	issueNotes, mrNotes := command.WithoutRouting(run.issueNotes, prefix), command.WithoutRouting(run.mrNotes, prefix)
+	newIssueNotes, newMRNotes := command.WithoutRouting(run.newIssueNotes, prefix), command.WithoutRouting(run.newMRNotes, prefix)
+	fullPrompt := buildImplementPrompt(issue, milestone, issueNotes, mrNotes, botID, false, run.prior)
+	inv.Prompt = buildImplementPrompt(issue, milestone, newIssueNotes, newMRNotes, botID, true, handoff{})
+	fullPrompt, inv.Prompt = run.addAttachments(ctx, fullPrompt, inv.Prompt, issueNotes, mrNotes, newIssueNotes, newMRNotes)
 	fullPrompt, inv.Prompt = fullPrompt+run.ownersRules, inv.Prompt+run.ownersRules
 	if chat := buildChatContext(task.Spec.Source.ChatContext); run.deskOnly && chat != "" {
 		fullPrompt += "\n\n" + chat
@@ -592,7 +598,7 @@ func (run *implementRun) implement(ctx context.Context) error {
 	}
 	if run.stepwise && run.runAgent {
 		res, seen, err := r.runSteps(ctx, run.gl, run.glProject, run.issue, run.mr.IID, botID, run.wf.CommandPrefix, run.branch, run.base, run.types, role,
-			run.stepSession == aiv1.StepSessionFresh, *inv, run.fullPrompt, run.res, answer, st, out)
+			run.stepSession == aiv1.StepSessionFresh, *inv, run.fullPrompt, run.attachments, run.res, answer, st, out)
 		run.res = res
 		if err != nil {
 			// The steps pushed so far are on the branch: their decisions

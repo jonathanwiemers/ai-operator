@@ -262,9 +262,10 @@ func TestOutOfStepsStaysDraft(t *testing.T) {
 }
 
 // threeStepEngine implements in three steps, each in a session of its own
-// ID. A human comments on the MR during the first step.
+// ID. A human comments on the MR during the first step, with comment if set.
 type threeStepEngine struct {
-	gl *gitlabfake.Fake
+	gl      *gitlabfake.Fake
+	comment string
 
 	mu   sync.Mutex
 	invs []Invocation
@@ -282,7 +283,11 @@ func (s *threeStepEngine) Run(ctx context.Context, inv Invocation) (*Result, err
 			CommitMessage: fmt.Sprintf("Add part %d", n), Handoff: fmt.Sprintf("notes after step %d", n)}
 		switch n {
 		case 1:
-			s.gl.AddMRNote(1, gitlab.User{ID: 7, Username: "jonathan"}, "Name the parts in English.")
+			comment := "Name the parts in English."
+			if s.comment != "" {
+				comment = s.comment
+			}
+			s.gl.AddMRNote(1, gitlab.User{ID: 7, Username: "jonathan"}, comment)
 		case 3:
 			a.Status = "done"
 		}
