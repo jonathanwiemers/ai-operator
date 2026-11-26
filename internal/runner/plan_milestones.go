@@ -14,6 +14,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/attachments"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/milestoneorder"
 	"github.com/jonathanwiemers/ai-operator/internal/textutil"
@@ -46,9 +47,11 @@ type planMilestoneInfo struct {
 
 // writePlanFiles writes the milestone files of this turn into the agent's
 // checkout, and the plan's drafts: the runner writes them to the exchange
-// directory, the agent copies them over. refs are the IIDs the owner names.
-// A failure is logged; the turn runs without them.
-func (p *PlanRun) writePlanFiles(ctx context.Context, projectRef, project string, refs []int64, drafts []aiv1.PlanDraft) []planMilestoneInfo {
+// directory, the agent copies them over. refs are the IIDs the owner names,
+// links the attachments to fetch into it (planAttachmentLinks); the result
+// for each link is returned with the milestone infos. A failure is logged;
+// the turn runs without them.
+func (p *PlanRun) writePlanFiles(ctx context.Context, projectRef, project string, refs []int64, drafts []aiv1.PlanDraft, links []attachments.Link) ([]planMilestoneInfo, []attachments.Result) {
 	dir := filepath.Join(p.Exchange, "plan")
 	defer os.RemoveAll(dir)
 	var infos []planMilestoneInfo
@@ -76,11 +79,17 @@ func (p *PlanRun) writePlanFiles(ctx context.Context, projectRef, project string
 	if err := writePlanDrafts(filepath.Join(dir, planContextDir), drafts); err != nil {
 		p.Log.Info("plan turn with incomplete draft files", "error", err.Error())
 	}
+	files := p.fetchPlanAttachments(ctx, filepath.Join(dir, planContextDir), project, links)
 	if err := p.Agent.PlanContext(ctx, filepath.Join(dir, planContextDir)); err != nil {
 		p.Log.Info("plan turn without the milestone files", "error", err.Error())
-		return nil
+		for i := range files {
+			if files[i].Path != "" {
+				files[i].Path, files[i].Reason = "", "could not be handed to the agent"
+			}
+		}
+		return nil, files
 	}
-	return infos
+	return infos, files
 }
 
 // writePlanMilestones writes <dir>/.plan-context anew: one file per open

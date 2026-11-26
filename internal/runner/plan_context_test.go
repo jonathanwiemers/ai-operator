@@ -54,7 +54,12 @@ func (f *fakePlanGitLab) GetMergeRequest(context.Context, string, int64) (*gitla
 	return nil, &gitlab.Error{StatusCode: 404}
 }
 
-// The plan pod never writes to GitLab: its client has reads only.
+func (f *fakePlanGitLab) DownloadUpload(context.Context, string, string, string, int64) ([]byte, error) {
+	return nil, &gitlab.Error{StatusCode: 404}
+}
+
+// The plan pod never writes to GitLab: its client has reads only. A
+// Download (an upload's file, a GET) is a read too.
 func TestPlanGitLabIsReadOnly(t *testing.T) {
 	typ := reflect.TypeFor[planGitLab]()
 	if typ.NumMethod() == 0 {
@@ -62,8 +67,8 @@ func TestPlanGitLabIsReadOnly(t *testing.T) {
 	}
 	for i := range typ.NumMethod() {
 		m := typ.Method(i)
-		if !strings.HasPrefix(m.Name, "Get") && !strings.HasPrefix(m.Name, "List") {
-			t.Errorf("planGitLab.%s is not a read (Get or List)", m.Name)
+		if !strings.HasPrefix(m.Name, "Get") && !strings.HasPrefix(m.Name, "List") && !strings.HasPrefix(m.Name, "Download") {
+			t.Errorf("planGitLab.%s is not a read (Get, List or Download)", m.Name)
 		}
 	}
 }

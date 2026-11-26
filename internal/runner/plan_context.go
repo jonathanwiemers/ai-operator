@@ -11,7 +11,8 @@ import (
 )
 
 // planGitLab is all of GitLab the plan role gets: reads only, so the plan
-// pod cannot write to GitLab. A test pins that every method is a Get or List.
+// pod cannot write to GitLab. A test pins that every method is a Get, List
+// or Download.
 type planGitLab interface {
 	GetProject(ctx context.Context, project string) (*gitlab.Project, error)
 	ListMilestones(ctx context.Context, project string) ([]gitlab.Milestone, error)
@@ -19,6 +20,7 @@ type planGitLab interface {
 	GetMilestoneByIID(ctx context.Context, project string, iid int64) (*gitlab.Milestone, error)
 	ListIssues(ctx context.Context, project string, opts gitlab.ListIssuesOptions) ([]gitlab.Issue, error)
 	GetMergeRequest(ctx context.Context, project string, iid int64) (*gitlab.MergeRequest, error)
+	DownloadUpload(ctx context.Context, project, secret, filename string, max int64) ([]byte, error)
 }
 
 // planTools reads code; find and git grep are left out: -exec and -O run

@@ -685,6 +685,15 @@ titles. `drafts/<key>.md` holds each draft of the plan under a header line
 with its key, title and state (`not created` or `created as %N
 (read-only)`); it is the plan's own text, so it has no untrusted line.
 
+**Attachments.** `planAttachmentLinks` (`plan_attachments.go`) collects the
+project's upload links (`attachments.Find`) in the turn's message, then in
+the drafts by revision descending, each once. `attachments.Fetch` downloads
+them with the bot token into `attachments/<first 8 of secret>-<name>`, at
+most 20 files and 50 MiB per turn, before the folder is handed over. The
+prompt's `## Attachments` section, after the owner's message, maps each link
+to its file or to why it was not fetched ("plan turn attachment not
+fetched" in the log); a failure never fails the turn.
+
 **Index and queue position.** `planContext`
 (`internal/runner/plan_context.go`) puts an index in the prompt in place of
 the old description excerpts: one line per milestone, `- %iid title ·
@@ -700,7 +709,7 @@ from 1.
 milestones the owner's message names. Each gets the line "The owner names
 %N: read `.plan-context/milestones/N.md` before you answer." A named
 milestone without a file is fetched with `GetMilestoneByIID` (a `List` with
-`iids[]`, so `planGitLab` stays Get and List only), at most 5
+`iids[]`, so `planGitLab` stays Get, List and Download only), at most 5
 (`planRefFetches`) per turn, and written like the others but left out of the
 index. One that does not exist gets a line that says so.
 

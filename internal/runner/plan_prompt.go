@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/attachments"
 )
 
 const planSystemPrompt = `You help the owner of a project write the description of one GitLab
@@ -63,6 +64,11 @@ milestone from your draft in the Desk.
 
 The owner may edit a draft by hand between turns. Their edit is the
 current draft: build on it and keep their changes unless they ask otherwise.
+
+Open every file the turn lists under Attachments with Read, which opens
+images and PDFs too. Say in words what matters in them, because the next
+reader may not open them. Embed an attachment's link, as it appears in the
+message, in the draft where someone building the milestone needs to see it.
 
 Answer every turn with:
 - reply: what you say to the owner, in markdown: your questions, what you
@@ -167,6 +173,9 @@ type planTurnInput struct {
 	// Decisions, the plan's current list.
 	Answers   []aiv1.PlanDecisionAnswer
 	Decisions []aiv1.PlanDecision
+	// Attachments are the files linked in the message and the drafts, each
+	// fetched into .plan-context/attachments/ or with why not.
+	Attachments []attachments.Result
 }
 
 // houseRules renders the project's house rules for a plan turn.
@@ -216,6 +225,7 @@ func buildPlanPrompt(in planTurnInput) string {
 	if msg := strings.TrimSpace(in.Message); msg != "" || answers == "" {
 		fmt.Fprintf(&b, "## The owner's message\n\n%s\n\n", msg)
 	}
+	b.WriteString(renderPlanAttachments(in.Attachments))
 	gl := strings.TrimSpace(in.GitLab)
 	if gl == "" {
 		b.WriteString("## GitLab\n\nThe project's milestones, issues and merge requests could not be read for this turn.\n")

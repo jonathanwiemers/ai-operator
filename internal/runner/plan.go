@@ -245,7 +245,8 @@ func (p *PlanRun) ask(ctx context.Context, st *state, plan *aiv1.AgentPlan, spec
 	}
 	sha, _ = p.Mirror.resolve(ctx, "refs/remotes/origin/"+proj.DefaultBranch)
 	refs, drafts := planRefs(msg.Text), plan.DraftList()
-	milestones := p.writePlanFiles(ctx, plan.Spec.ProjectRef, spec.GitLab.Project, refs, drafts)
+	links := planAttachmentLinks(msg.Text, drafts, planAttachmentProject(proj))
+	milestones, files := p.writePlanFiles(ctx, plan.Spec.ProjectRef, spec.GitLab.Project, refs, drafts, links)
 	gl, err := planContext(ctx, p.GitLab, spec.GitLab.Project, milestones)
 	if err != nil {
 		p.Log.Info("plan turn without the GitLab context", "error", err.Error())
@@ -255,7 +256,7 @@ func (p *PlanRun) ask(ctx context.Context, st *state, plan *aiv1.AgentPlan, spec
 	inv := roleInvocation(role, planSystemPrompt, planTools, planTurnSchema, true)
 	inv.Role, inv.Kind, inv.Resume, inv.LogPrompt = "plan", aiv1.CallKindPlan, st.session("plan", role.Engine), spec.Agents.LogPrompts
 	inv.Prompt = buildPlanPrompt(planTurnInput{Message: msg.Text, Refs: planRefList(refs, milestones), Branch: proj.DefaultBranch, SHA: sha, GitLab: gl,
-		FirstTurn: inv.Resume == "", Title: plan.Spec.Title, Drafts: lines,
+		FirstTurn: inv.Resume == "", Title: plan.Spec.Title, Drafts: lines, Attachments: files,
 		Untitled:   plan.Spec.Title == "" && plan.Status.Title == "",
 		MaxMRLines: spec.MaxMRLines(), Constraints: spec.HouseConstraints(),
 		DecisionIDs: planDecisionIDs(plan.Status.Decisions), NextDecisionID: int(plan.Status.DecisionSeq) + 1,
