@@ -78,6 +78,35 @@ func TestAllowed(t *testing.T) {
 	}
 }
 
+func TestRefusal(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		head []byte
+		want string
+	}{
+		{"a.png", pngBytes, ""},
+		{"a.log", textBytes, ""},
+		{"a.zip", []byte("PK\x03\x04"), "only PNG, JPG, GIF, WebP, PDF and text files"},
+		{"README", textBytes, "only PNG, JPG, GIF, WebP, PDF and text files"},
+		{"text.png", textBytes, "the content is not a PNG image"},
+		{"png.JPG", pngBytes, "the content is not a JPEG image"},
+		{"a.gif", textBytes, "the content is not a GIF image"},
+		{"a.webp", textBytes, "the content is not a WebP image"},
+		{"a.pdf", textBytes, "the content is not a PDF"},
+		{"binary.log", []byte("\x00\x01\x02\x03"), "the content is not plain text"},
+	} {
+		if got := Refusal(c.name, c.head); got != c.want {
+			t.Errorf("Refusal(%q) = %q; want %q", c.name, got, c.want)
+		}
+	}
+	// Every sniffed type has a kind to name.
+	for ext, ct := range sniffed {
+		if kinds[ct] == "" {
+			t.Errorf("no kind for %s (%s)", ext, ct)
+		}
+	}
+}
+
 func TestImage(t *testing.T) {
 	for ct, want := range map[string]bool{
 		"image/png": true, "image/jpeg": true, "image/gif": true, "image/webp": true,

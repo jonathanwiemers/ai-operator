@@ -199,6 +199,10 @@ func (s *Server) routes() []route {
 		{"GET /api/v1/projects/{namespace}/{name}/plans/{plan}/chat", s.authed(s.getPlanChat)},
 		{"POST /api/v1/projects/{namespace}/{name}/plans/{plan}/chat", s.authed(s.postPlanChat)},
 		{"GET /api/v1/projects/{namespace}/{name}/plans/{plan}/decisions", s.authed(s.planDecisionHistory)},
+		// "uploads" is more specific than {plan}: it would shadow a plan of
+		// that name, but planName never makes one.
+		{"POST /api/v1/projects/{namespace}/{name}/plans/uploads", s.authed(s.uploadPlanFile)},
+		{"GET /api/v1/projects/{namespace}/{name}/plans/uploads/{secret}/{filename}", s.authed(s.planUploadFile)},
 		{"GET /api/v1/projects/{namespace}/{name}/tasks/{task}/transcript", s.authed(s.transcript)},
 		{"GET /api/v1/projects/{namespace}/{name}/tasks/{task}/logs", s.authed(s.rawLogs)},
 		{"GET /api/v1/projects/{namespace}/{name}/tasks/{task}/chat", s.authed(s.getChat)},

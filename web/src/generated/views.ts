@@ -1400,6 +1400,22 @@ export interface PlanSignOffView {
 }
 
 //////////
+// source: plan_uploads.go
+
+/**
+ * PlanUploadView is a file uploaded to the project's GitLab uploads for a
+ * plan message: the cleaned name, its size in bytes and served type, and
+ * GitLab's link and Markdown, which the message carries.
+ */
+export interface PlanUploadView {
+  name: string;
+  size: number /* int */;
+  contentType: string;
+  url: string;
+  markdown: string;
+}
+
+//////////
 // source: plans.go
 
 /**

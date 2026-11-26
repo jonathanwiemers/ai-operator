@@ -15,9 +15,10 @@ import (
 )
 
 // setEntryProject is a project a set discovered that has no child yet: a
-// dormant entry, under the child name the set would give it.
+// dormant entry, under the child name the set would give it. URL is the
+// set's GitLab instance, Path the entry's full project path there.
 type setEntryProject struct {
-	Set, Namespace, Name, Path string
+	Set, Namespace, Name, Path, URL string
 }
 
 // setEntryProjects lists the dormant entries without a child of the sets p
@@ -65,7 +66,7 @@ func (s *Server) setEntryProjects(ctx context.Context, p Principal) ([]setEntryP
 				continue
 			}
 			taken[k] = true
-			out = append(out, setEntryProject{Set: set.Name, Namespace: set.Namespace, Name: name, Path: e.Path})
+			out = append(out, setEntryProject{Set: set.Name, Namespace: set.Namespace, Name: name, Path: e.Path, URL: set.Spec.GitLab.URL})
 		}
 	}
 	slices.SortFunc(out, func(a, b setEntryProject) int {
@@ -76,7 +77,8 @@ func (s *Server) setEntryProjects(ctx context.Context, p Principal) ([]setEntryP
 
 // planProject reads the project of the request path and its tasks, like
 // loadProject, but stands in for an offered dormant set entry without an
-// AgentProject: the child name in the namespace, the set label, no tasks.
+// AgentProject: the child name in the namespace, the set label, the entry's
+// GitLab project (for uploads with the user's token), no tasks.
 func (s *Server) planProject(w http.ResponseWriter, r *http.Request) (planScope, bool) {
 	p, ns, name := principalOf(r), r.PathValue("namespace"), r.PathValue("name")
 	if !s.authz.CanView(p, ns, name) {
@@ -105,7 +107,8 @@ func (s *Server) planProject(w http.ResponseWriter, r *http.Request) (planScope,
 		notFound(w)
 	default:
 		return planScope{Project: &aiv1.AgentProject{ObjectMeta: metav1.ObjectMeta{Namespace: ns, Name: name,
-			Labels: map[string]string{aiv1.LabelProjectSet: e.Set}}}, Set: e.Set}, true
+			Labels: map[string]string{aiv1.LabelProjectSet: e.Set}},
+			Spec: aiv1.AgentProjectSpec{GitLab: aiv1.GitLabSpec{URL: e.URL, Project: e.Path}}}, Set: e.Set}, true
 	}
 	return planScope{}, false
 }

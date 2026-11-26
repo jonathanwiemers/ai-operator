@@ -226,13 +226,23 @@ func TestAllPlansNeedChat(t *testing.T) {
 // the set.
 func setPlansEnv(t *testing.T, roles ...string) *testEnv {
 	t.Helper()
-	cfg := withChat(oidcConfig(
+	return setPlansEnvOf(t, setPlansConfig(), roles...)
+}
+
+// setPlansConfig is the configuration of setPlansEnv.
+func setPlansConfig() *Config {
+	return withChat(oidcConfig(
 		Rule{Roles: []string{"leads"}, Projects: []string{"team-a/*"}, Steer: true},
 		Rule{Roles: []string{"viewers", "mixed"}, Projects: []string{"team-a/*"}},
 		Rule{Roles: []string{"mixed"}, Projects: []string{"team-a/tools-foo"}, Steer: true},
 		Rule{Roles: []string{"narrow"}, Projects: []string{"team-a/acme", "team-a/tools-foo", "team-a/shop"}, Steer: true},
 		Rule{Roles: []string{"setless"}, Projects: []string{"team-a/tools-foo"}, Steer: true},
 	))
+}
+
+// setPlansEnvOf is setPlansEnv with the configuration cfg.
+func setPlansEnvOf(t *testing.T, cfg *Config, roles ...string) *testEnv {
+	t.Helper()
 	env := newTestEnv(t, cfg)
 	addPlans(t, env)
 	at := metav1.NewTime(time.Date(2026, 11, 10, 13, 0, 0, 0, time.UTC))

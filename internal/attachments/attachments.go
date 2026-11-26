@@ -76,6 +76,26 @@ func Allowed(name string, head []byte) (contentType string, ok bool) {
 	return got, true
 }
 
+// kinds names the content each sniffed type stands for, in a refusal.
+var kinds = map[string]string{
+	"image/png": "a PNG image", "image/jpeg": "a JPEG image", "image/gif": "a GIF image",
+	"image/webp": "a WebP image", "application/pdf": "a PDF", textPlain: "plain text",
+}
+
+// Refusal is why Allowed refuses a file named name whose content starts
+// with head, as a user reads it ("only PNG, JPG, GIF, WebP, PDF and text
+// files", "the content is not a PNG image"), or "" when it allows the file.
+func Refusal(name string, head []byte) string {
+	if _, ok := Allowed(name, head); ok {
+		return ""
+	}
+	want, ok := sniffed[strings.ToLower(filepath.Ext(name))]
+	if !ok {
+		return "only PNG, JPG, GIF, WebP, PDF and text files"
+	}
+	return "the content is not " + kinds[want]
+}
+
 // Image reports whether contentType, as Allowed returns it, is an image the
 // Desk can show inline.
 func Image(contentType string) bool {
