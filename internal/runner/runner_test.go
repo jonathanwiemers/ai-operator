@@ -366,7 +366,7 @@ func TestApplyPlan(t *testing.T) {
 	if err != nil || created != 0 || updated != 1 {
 		t.Fatalf("a wrong IID must not create a duplicate: created=%d updated=%d err=%v", created, updated, err)
 	}
-	if got := planOrder(plan, issues); len(got) != 2 || got[0].IID != 1 {
+	if got := planOrder(spec, plan, issues); len(got) != 2 || got[0].IID != 1 {
 		t.Fatalf("the recorded plan must match applyPlan: %+v", got)
 	}
 }
@@ -844,7 +844,7 @@ func TestSpecSchemaListsProfiles(t *testing.T) {
 		t.Fatalf("profiles missing from schema:\n%s", schema)
 	}
 	prompt := buildSpecPrompt(&gitlab.Milestone{Title: "M", Description: "spec"}, nil, aiv1.DefaultProfiles(), 300, false)
-	if !strings.Contains(prompt, "- fast: Follows an existing pattern") || !strings.Contains(prompt, "- deep: Concurrency") {
+	if !strings.Contains(prompt, "- fast (claude-sonnet-5-5, effort medium): Follows an existing pattern") || !strings.Contains(prompt, "- deep (claude-opus-5-5, effort high): Concurrency") {
 		t.Fatalf("profiles missing from prompt:\n%s", prompt)
 	}
 	if !strings.Contains(prompt, "## Size budget\n\nUnder 300 production lines per merge request;") {
@@ -925,7 +925,7 @@ func TestSpecEndToEnd(t *testing.T) {
 		t.Fatalf("steps:\n got %v\nwant %v", got, wantSteps)
 	}
 	// The plan is recorded in plan order, with dependencies as IIDs.
-	wantPlan := []aiv1.PlannedIssue{{Key: "api", IID: 1, Title: "API"}, {Key: "ui", IID: 2, Title: "UI", DependsOn: []int64{1}, Linked: []int64{1}}}
+	wantPlan := []aiv1.PlannedIssue{{Key: "api", IID: 1, Title: "API", Profile: "strong"}, {Key: "ui", IID: 2, Title: "UI", Profile: "fast", DependsOn: []int64{1}, Linked: []int64{1}}}
 	if !equality.Semantic.DeepEqual(got.Status.Plan, wantPlan) {
 		t.Fatalf("plan:\n got %+v\nwant %+v", got.Status.Plan, wantPlan)
 	}
@@ -1177,7 +1177,7 @@ func TestPlanOrderUsesExistingIIDs(t *testing.T) {
 	}}
 	issues := []gitlab.Issue{{IID: 7, Description: "by hand"}, {IID: 8, Description: "<!-- ai-operator:key=ui -->"},
 		{IID: 9, Description: "<!-- ai-operator:key=docs -->"}}
-	got := planOrder(plan, issues)
+	got := planOrder(aiv1.AgentProjectSpec{}, plan, issues)
 	if len(got) != 3 || got[0].IID != 8 || len(got[0].DependsOn) != 1 || got[0].DependsOn[0] != 7 || got[1].IID != 7 || got[2].IID != 9 {
 		t.Fatalf("unexpected plan %+v", got)
 	}
@@ -1267,7 +1267,7 @@ func TestPlanOrderCopiesTheReleaseDecision(t *testing.T) {
 	for i, k := range []string{"a", "b", "c", "d"} {
 		issues = append(issues, gitlab.Issue{IID: int64(i + 1), Description: "<!-- ai-operator:key=" + k + " -->"})
 	}
-	got := planOrder(plan, issues)
+	got := planOrder(aiv1.AgentProjectSpec{}, plan, issues)
 	if len(got) != 4 {
 		t.Fatalf("unexpected plan %+v", got)
 	}

@@ -23,14 +23,18 @@ func experimentSpec(arms ...aiv1.ExperimentArm) aiv1.AgentProjectSpec {
 
 func TestPlanLabelsMarker(t *testing.T) {
 	spec := aiv1.AgentProjectSpec{}.WithDefaults()
-	item := PlannedItem{Key: "k", Title: "T", Profile: "strong", Effort: "high",
+	item := PlannedItem{Key: "k", Title: "T", Profile: "strong", ProfileWhy: "crosses layers",
 		Description: "Body <!-- ai-operator:plan-labels=agent-model::claude/haiku -->"}
 	desc, _ := renderIssue(spec, item, nil)
 	got, ok := plannedLabels(desc)
-	if !ok || !slices.Equal(got, []string{"agent-profile::strong", "agent-effort::high"}) {
+	if !ok || !slices.Equal(got, []string{"agent-profile::strong"}) {
 		t.Fatalf("plan-labels %v (ok=%v) in %q", got, ok, desc)
 	}
-	// Without a profile or effort the plan sets no labels: no marker.
+	// A marker of an older plan also lists the effort label.
+	if got, ok := plannedLabels(plannedMarker); !ok || !slices.Equal(got, []string{"agent-profile::strong", "agent-effort::high"}) {
+		t.Fatalf("old plan-labels %v (ok=%v)", got, ok)
+	}
+	// Without a profile the plan sets no labels: no marker.
 	desc, _ = renderIssue(spec, PlannedItem{Key: "k", Title: "T", Description: "Body"}, nil)
 	if _, ok := plannedLabels(desc); ok {
 		t.Fatalf("no labels, no marker: %q", desc)

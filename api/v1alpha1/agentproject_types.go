@@ -276,8 +276,9 @@ type WorkflowSpec struct {
 
 	// EffortLabelPrefix: an issue labelled "<prefix><level>" (e.g.
 	// "agent-effort::high") is implemented with that effort, at most
-	// agents.maxEffort (claude engine only). The spec agent sets one on the
-	// issues it creates; "/agent effort <level>" changes it.
+	// agents.maxEffort (claude engine only), instead of its profile's. The
+	// spec agent sets none: it picks a profile; "/agent effort <level>" sets
+	// one.
 	// +kubebuilder:default="agent-effort::"
 	// +optional
 	EffortLabelPrefix string `json:"effortLabelPrefix,omitempty"`

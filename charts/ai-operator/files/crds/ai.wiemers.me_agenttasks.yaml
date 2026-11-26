@@ -3908,6 +3908,15 @@ spec:
                         format: int64
                         type: integer
                       type: array
+                    profile:
+                      description: |-
+                        Profile is the agent profile (tier) the planner picked for the issue;
+                        empty when it picked none the project knows.
+                      type: string
+                    profileWhy:
+                      description: ProfileWhy is the planner's one-line reason for
+                        Profile.
+                      type: string
                     release:
                       description: |-
                         Release is the planner's decision to release the default branch after

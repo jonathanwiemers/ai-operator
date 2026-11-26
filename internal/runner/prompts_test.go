@@ -316,7 +316,7 @@ func TestSpecSchemaRequiresRelease(t *testing.T) {
 		t.Fatalf("release is required, releaseWhy is not: %v", items.Required)
 	}
 	// An answer without release misses a required property.
-	answer := map[string]any{"key": "k", "title": "T", "description": "D", "profile": "default",
+	answer := map[string]any{"key": "k", "title": "T", "description": "D", "profile": "default", "profileWhy": "fits",
 		"questions": []string{}, "decisions": []any{}, "dependsOn": []string{}}
 	var missing []string
 	for _, r := range items.Required {

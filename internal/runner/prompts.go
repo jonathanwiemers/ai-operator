@@ -50,14 +50,10 @@ How to plan:
   milestone spec.
 - When the prompt lists attachments, copy an attachment's link, as written,
   into the description of each issue whose implementer needs to see it.
-- Pick the agent profile that should implement each sub-issue from the
-  profiles listed in the prompt. Cheaper profiles are for work you are
-  confident is simple; when in doubt pick the stronger one.
-- Pick how hard the implementer should think (effort): "low" or "medium"
-  for mechanical work that follows an existing pattern, "high" for design
-  decisions and subtle logic, "xhigh" or "max" only where a subtle mistake
-  would be expensive and hard to find (e.g. determinism, concurrency,
-  security). Leave it empty to keep the profile's setting.
+- Pick the tier (agent profile) that implements each sub-issue from the
+  profiles listed in the prompt, lowest first: the lowest tier whose
+  description fits the sub-issue. When in doubt, pick one tier up. Give the
+  reason in profileWhy: one line that names the rubric point that decided it.
 - Only raise questions that change the design or the scope. For each question
   state the default you would pick, so a human can just confirm it.
 - Record the decisions you made for each sub-issue in its decisions list:
@@ -291,14 +287,14 @@ const specSchemaTemplate = `{
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["key", "title", "description", "profile", "questions", "decisions", "dependsOn", "release"],
+        "required": ["key", "title", "description", "profile", "profileWhy", "questions", "decisions", "dependsOn", "release"],
         "properties": {
           "key": {"type": "string", "description": "Stable kebab-case identifier, e.g. 'payment-api'."},
           "existingIid": {"type": "integer", "description": "IID of the existing issue this updates, 0 for a new issue."},
           "title": {"type": "string"},
           "description": {"type": "string"},
           "profile": {"type": "string", "enum": __PROFILES__},
-          "effort": {"type": "string", "enum": ["", "low", "medium", "high", "xhigh", "max"], "description": "How hard the implementer should think; empty keeps the profile's setting."},
+          "profileWhy": {"type": "string", "description": "One line, at most 200 characters: why this tier, naming the rubric point that decided it."},
           "questions": {"type": "array", "items": {"type": "string"}},
           "decisions": __DECISIONS__,
           "dependsOn": {"type": "array", "items": {"type": "string"}, "description": "Keys of issues that must be merged first."},
@@ -415,15 +411,16 @@ type SpecPlan struct {
 
 // PlannedItem is one planned issue.
 type PlannedItem struct {
-	Key         string     `json:"key"`
-	ExistingIID int64      `json:"existingIid,omitempty"`
-	Title       string     `json:"title"`
-	Description string     `json:"description"`
-	Profile     string     `json:"profile"`
-	Effort      string     `json:"effort,omitempty"`
-	Questions   []string   `json:"questions"`
-	Decisions   []Decision `json:"decisions"`
-	DependsOn   []string   `json:"dependsOn"`
+	Key         string `json:"key"`
+	ExistingIID int64  `json:"existingIid,omitempty"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Profile     string `json:"profile"`
+	// ProfileWhy is the one-line reason for Profile.
+	ProfileWhy string     `json:"profileWhy"`
+	Questions  []string   `json:"questions"`
+	Decisions  []Decision `json:"decisions"`
+	DependsOn  []string   `json:"dependsOn"`
 	// Release asks for a release of the default branch after the issue is
 	// merged; ReleaseWhy is the one-line reason it needs.
 	Release    bool   `json:"release"`
@@ -564,7 +561,7 @@ func buildSpecPrompt(m *gitlab.Milestone, existing []ExistingIssue, profiles []a
 	}
 	b.WriteString("## Agent profiles\n\n")
 	for _, p := range profiles {
-		fmt.Fprintf(&b, "- %s: %s\n", p.Name, strings.TrimSpace(p.Description))
+		fmt.Fprintf(&b, "- %s (%s): %s\n", p.Name, tierSetting(p), strings.TrimSpace(p.Description))
 	}
 	fmt.Fprintf(&b, "\n## Milestone: %s\n\n%s\n\n", m.Title, strings.TrimSpace(m.Description))
 	if len(existing) > 0 {

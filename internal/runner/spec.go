@@ -143,7 +143,7 @@ func (r *Runner) runSpec(ctx context.Context, gl gitlab.API, task *aiv1.AgentTas
 	if err != nil {
 		return out, s.fail(fmt.Errorf("listing milestone issues: %w", err))
 	}
-	out.Plan = planOrder(plan, after)
+	out.Plan = planOrder(spec, plan, after)
 	kept := keepReleases(out.Plan, task.Status.Plan, after, spec.Workflow)
 	s.done(fmt.Sprintf("%d issues in plan order", len(out.Plan)), "issues", len(out.Plan), "keptReleaseDecisions", kept)
 	r.linkDependencies(ctx, gl, glProject, proj.ID, spec.Workflow, out.Plan, task.Status.Plan, after)
@@ -156,7 +156,7 @@ func (r *Runner) runSpec(ctx context.Context, gl gitlab.API, task *aiv1.AgentTas
 // dependencies as IIDs. Like applyPlan, an item is matched by its existing
 // IID first, then by its key. Planned issues that could not be found are left
 // out.
-func planOrder(plan SpecPlan, issues []gitlab.Issue) []aiv1.PlannedIssue {
+func planOrder(spec aiv1.AgentProjectSpec, plan SpecPlan, issues []gitlab.Issue) []aiv1.PlannedIssue {
 	inMilestone := map[int64]bool{}
 	keyToIID := map[string]int64{}
 	for _, is := range issues {
@@ -187,6 +187,9 @@ func planOrder(plan SpecPlan, issues []gitlab.Issue) []aiv1.PlannedIssue {
 		}
 		p := aiv1.PlannedIssue{Key: slugKey(item.Key, item.Title), IID: iid, Title: item.Title}
 		p.Release, p.ReleaseWhy = releaseDecision(item)
+		if _, ok := spec.Profile(item.Profile); ok {
+			p.Profile, p.ProfileWhy = item.Profile, firstLine(item.ProfileWhy, maxProfileWhy)
+		}
 		for _, dep := range item.DependsOn {
 			if d, ok := keyToIID[slugKey(dep, "")]; ok && d != iid {
 				p.DependsOn = append(p.DependsOn, d)
@@ -200,15 +203,23 @@ func planOrder(plan SpecPlan, issues []gitlab.Issue) []aiv1.PlannedIssue {
 // maxReleaseWhy is the longest reason of a release decision, in characters.
 const maxReleaseWhy = 200
 
+// maxProfileWhy is the longest reason of a tier pick, in characters.
+const maxProfileWhy = 200
+
+// firstLine returns the first line of s, cut to n characters.
+func firstLine(s string, n int) string {
+	line, _, _ := strings.Cut(strings.TrimSpace(s), "\n")
+	if r := []rune(line); len(r) > n {
+		line = string(r[:n])
+	}
+	return strings.TrimSpace(line)
+}
+
 // releaseDecision is a plan item's release decision. A release needs a
 // reason: the first line of releaseWhy, cut to maxReleaseWhy characters.
 // Without one it is no release; the final release follows anyway.
 func releaseDecision(item PlannedItem) (bool, string) {
-	why, _, _ := strings.Cut(strings.TrimSpace(item.ReleaseWhy), "\n")
-	if r := []rune(why); len(r) > maxReleaseWhy {
-		why = string(r[:maxReleaseWhy])
-	}
-	why = strings.TrimSpace(why)
+	why := firstLine(item.ReleaseWhy, maxReleaseWhy)
 	if !item.Release || why == "" {
 		return false, ""
 	}
@@ -216,8 +227,8 @@ func releaseDecision(item PlannedItem) (bool, string) {
 }
 
 // keepReleases gives the issues of a re-plan that are no drafts any more the
-// release decision of the previous plan: applyPlan left them untouched, so
-// their descriptions still state that one. An issue the previous plan did not
+// release decision and tier pick of the previous plan: applyPlan left them
+// untouched, so their descriptions still state those. An issue the previous plan did not
 // have keeps the new answer. It returns how many decisions it kept.
 func keepReleases(plan, prev []aiv1.PlannedIssue, issues []gitlab.Issue, wf aiv1.WorkflowSpec) int {
 	byIID := map[int64]gitlab.Issue{}
@@ -232,6 +243,7 @@ func keepReleases(plan, prev []aiv1.PlannedIssue, issues []gitlab.Issue, wf aiv1
 			continue
 		}
 		p.Release, p.ReleaseWhy = prev[j].Release, prev[j].ReleaseWhy
+		p.Profile, p.ProfileWhy = prev[j].Profile, prev[j].ProfileWhy
 		kept++
 	}
 	return kept
@@ -291,15 +303,7 @@ func applyPlan(ctx context.Context, log logr.Logger, gl gitlab.API, glProject st
 				log.Info("issue left untouched", "iid", iid, "key", item.Key, "reason", "no longer a draft")
 				continue
 			}
-			// Profile and effort labels set earlier (possibly by a human)
-			// are kept.
-			var add []string
-			if spec.ProfileOf(ex.Labels) == "" {
-				add = profileLabels(spec, item)
-			}
-			if !hasLabelPrefix(ex.Labels, wf.EffortLabelPrefix) {
-				add = append(add, effortLabels(spec, item)...)
-			}
+			add, remove := tierLabelChange(spec, ex, item)
 			repoAdd, repoRemove, planOwned, err := repoLabelChange(ctx, gl, glProject, ex, item.Repo, pc.botID)
 			if err != nil {
 				return created, updated, skipped, err
@@ -310,7 +314,7 @@ func applyPlan(ctx context.Context, log logr.Logger, gl gitlab.API, glProject st
 			}
 			desc, missing = renderIssue(spec, item, keyToIID)
 			if err := gitlab.RetryTransient(ctx, func() error {
-				_, err := gl.UpdateIssue(ctx, glProject, iid, gitlab.UpdateIssueOptions{Title: item.Title, Description: desc, AddLabels: add, RemoveLabels: repoRemove})
+				_, err := gl.UpdateIssue(ctx, glProject, iid, gitlab.UpdateIssueOptions{Title: item.Title, Description: desc, AddLabels: add, RemoveLabels: append(remove, repoRemove...)})
 				return err
 			}); err != nil {
 				return created, updated, skipped, fmt.Errorf("updating issue #%d: %w", iid, err)
@@ -333,7 +337,7 @@ func applyPlan(ctx context.Context, log logr.Logger, gl gitlab.API, glProject st
 				is, err = gl.CreateIssue(ctx, glProject, gitlab.CreateIssueOptions{
 					Title:       item.Title,
 					Description: desc,
-					Labels:      strings.Join(slices.Concat([]string{wf.GeneratedLabel, wf.DraftLabel}, profileLabels(spec, item), effortLabels(spec, item), repoLabels(item)), ","),
+					Labels:      strings.Join(slices.Concat([]string{wf.GeneratedLabel, wf.DraftLabel}, profileLabels(spec, item), repoLabels(item)), ","),
 					MilestoneID: m.ID,
 				})
 				isNew = err == nil
@@ -343,7 +347,7 @@ func applyPlan(ctx context.Context, log logr.Logger, gl gitlab.API, glProject st
 			}
 			iid = is.IID
 			created++
-			log.Info("issue created", "iid", iid, "key", item.Key, "profile", item.Profile, "effort", item.Effort, "repo", item.Repo)
+			log.Info("issue created", "iid", iid, "key", item.Key, "profile", item.Profile, "repo", item.Repo)
 		}
 		// Decision IDs carry the IID, which is known now. A post that failed
 		// transiently may have been stored: a retry looks for the note.
@@ -464,19 +468,30 @@ func hasAnyLabel(is *gitlab.Issue, labels []string) bool {
 // decision.
 var releaseLine = regexp.MustCompile(`(?m)^[ \t]*\*\*Release:\*\*.*$`)
 
+// tierLine is a line of an issue description that states its tier, as
+// renderIssue writes it or in bold.
+var tierLine = regexp.MustCompile(`(?m)^[ \t]*(?:\*\*Tier:\*\*|Tier:).*$`)
+
 // renderIssue renders the description of a planned issue. It reports whether
 // it must be rendered again once every issue has an IID: a dependency could
 // not be resolved.
 func renderIssue(spec aiv1.AgentProjectSpec, item PlannedItem, keyToIID map[string]int64) (string, bool) {
 	var b strings.Builder
 	// The planner's text must not carry the operator's markers, nor a
-	// release line of its own: the operator writes that one.
+	// release or tier line of its own: the operator writes those.
 	unmark := strings.NewReplacer("<!-- ai-operator:", "<!-- ai-operator :")
-	b.WriteString(unmark.Replace(strings.TrimSpace(releaseLine.ReplaceAllString(item.Description, ""))))
+	text := tierLine.ReplaceAllString(releaseLine.ReplaceAllString(item.Description, ""), "")
+	b.WriteString(unmark.Replace(strings.TrimSpace(text)))
 	if item.Release {
 		fmt.Fprintf(&b, "\n\n**Release:** after this issue: %s", unmark.Replace(item.ReleaseWhy))
 	} else {
 		b.WriteString("\n\n**Release:** not after this issue")
+	}
+	if p, ok := spec.Profile(item.Profile); ok {
+		fmt.Fprintf(&b, "\n\nTier: **%s** (%s)", p.Name, tierSetting(p))
+		if why := firstLine(item.ProfileWhy, maxProfileWhy); why != "" {
+			fmt.Fprintf(&b, ": %s", unmark.Replace(why))
+		}
 	}
 	missing := false
 	if len(item.DependsOn) > 0 {
@@ -504,9 +519,9 @@ func renderIssue(spec aiv1.AgentProjectSpec, item PlannedItem, keyToIID map[stri
 	if item.Repo != "" {
 		fmt.Fprintf(&b, "\n<!-- ai-operator:plan-repo=%s -->", item.Repo)
 	}
-	// The profile and effort labels the plan computed, so an experiment
-	// tells them from labels a human or a command set (plannedLabels).
-	if labels := slices.Concat(profileLabels(spec, item), effortLabels(spec, item)); len(labels) > 0 {
+	// The profile label the plan computed, so an experiment and a re-plan
+	// tell it from labels a human or a command set (plannedLabels).
+	if labels := profileLabels(spec, item); len(labels) > 0 {
 		fmt.Fprintf(&b, "\n<!-- ai-operator:plan-labels=%s -->", strings.Join(labels, ","))
 	}
 	fmt.Fprintf(&b, "\n<!-- ai-operator:key=%s -->\n", item.Key)
@@ -514,7 +529,8 @@ func renderIssue(spec aiv1.AgentProjectSpec, item PlannedItem, keyToIID map[stri
 }
 
 // planLabelsMarker records in a planned issue's description the profile
-// and effort labels the plan computed for it.
+// label the plan computed for it; markers of older plans also list an effort
+// label.
 var planLabelsMarker = regexp.MustCompile(`<!-- ai-operator:plan-labels=(.*?) -->`)
 
 // plannedLabels returns the labels of a description's plan-labels marker;
@@ -541,24 +557,55 @@ func profileLabels(spec aiv1.AgentProjectSpec, item PlannedItem) []string {
 	return nil
 }
 
-// effortLabels returns the label of the effort the planner picked, at most
-// agents.maxEffort. No or an unknown choice, or a profile on an engine
-// without efforts, gets no label: the profile's effort applies.
-func effortLabels(spec aiv1.AgentProjectSpec, item PlannedItem) []string {
-	if !aiv1.ValidEffort(item.Effort) {
-		return nil
+// tierSetting describes a profile's engine, model and effort:
+// "<model>, effort <effort>" on claude, which has efforts, else
+// "<engine>, <model>".
+func tierSetting(p aiv1.AgentProfile) string {
+	if p.Engine == aiv1.EngineClaude || p.Engine == "" {
+		if p.Effort == "" {
+			return p.Model
+		}
+		return fmt.Sprintf("%s, effort %s", p.Model, p.Effort)
 	}
-	// Only claude has an effort setting.
-	role, _ := spec.ImplementRole(profileLabels(spec, item))
-	if role.Engine != aiv1.EngineClaude {
-		return nil
+	if p.Model == "" {
+		return string(p.Engine)
 	}
-	effort, _ := spec.CapEffort(item.Effort)
-	return []string{spec.EffortLabel(effort)}
+	return fmt.Sprintf("%s, %s", p.Engine, p.Model)
 }
 
-func hasLabelPrefix(labels []string, prefix string) bool {
-	return slices.ContainsFunc(labels, func(l string) bool { return strings.HasPrefix(l, prefix) })
+// tierLabelChange returns the labels a re-plan adds to and removes from a
+// draft issue for the tier the planner picked. Labels its plan-labels marker
+// lists are the plan's own: its profile label gives way to the new pick, its
+// effort label goes, as the tier sets the effort now. Any other profile,
+// effort or model label is a human's or a command's and stays; with a human
+// profile label the plan adds none. Without a marker nothing is told apart:
+// all labels stay, and only an issue without a profile label gets the pick.
+func tierLabelChange(spec aiv1.AgentProjectSpec, ex *gitlab.Issue, item PlannedItem) (add, remove []string) {
+	wf := spec.Workflow
+	pick := profileLabels(spec, item)
+	planned, ok := plannedLabels(ex.Description)
+	if !ok {
+		if spec.ProfileOf(ex.Labels) == "" {
+			add = pick
+		}
+		return add, nil
+	}
+	human, has := false, false
+	for _, l := range ex.Labels {
+		own := slices.Contains(planned, l)
+		switch {
+		case strings.HasPrefix(l, wf.ProfileLabelPrefix) && !own:
+			human = true
+		case strings.HasPrefix(l, wf.ProfileLabelPrefix) && slices.Contains(pick, l):
+			has = true
+		case strings.HasPrefix(l, wf.ProfileLabelPrefix), strings.HasPrefix(l, wf.EffortLabelPrefix) && own:
+			remove = append(remove, l)
+		}
+	}
+	if !human && !has {
+		add = pick
+	}
+	return add, remove
 }
 
 // linkDependencies mirrors the plan's dependencies as GitLab issue links, so

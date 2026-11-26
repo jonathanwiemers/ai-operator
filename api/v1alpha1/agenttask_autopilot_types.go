@@ -24,6 +24,13 @@ type PlannedIssue struct {
 	// ReleaseWhy is the planner's one-line reason for Release.
 	// +optional
 	ReleaseWhy string `json:"releaseWhy,omitempty"`
+	// Profile is the agent profile (tier) the planner picked for the issue;
+	// empty when it picked none the project knows.
+	// +optional
+	Profile string `json:"profile,omitempty"`
+	// ProfileWhy is the planner's one-line reason for Profile.
+	// +optional
+	ProfileWhy string `json:"profileWhy,omitempty"`
 }
 
 // AutopilotPhase is the state of an autopilot milestone.

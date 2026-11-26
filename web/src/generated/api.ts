@@ -1649,8 +1649,9 @@ export interface WorkflowSpec {
   /**
    * EffortLabelPrefix: an issue labelled "<prefix><level>" (e.g.
    * "agent-effort::high") is implemented with that effort, at most
-   * agents.maxEffort (claude engine only). The spec agent sets one on the
-   * issues it creates; "/agent effort <level>" changes it.
+   * agents.maxEffort (claude engine only), instead of its profile's. The
+   * spec agent sets none: it picks a profile; "/agent effort <level>" sets
+   * one.
    * +kubebuilder:default="agent-effort::"
    * +optional
    */
@@ -3102,6 +3103,17 @@ export interface PlannedIssue {
    * +optional
    */
   releaseWhy?: string;
+  /**
+   * Profile is the agent profile (tier) the planner picked for the issue;
+   * empty when it picked none the project knows.
+   * +optional
+   */
+  profile?: string;
+  /**
+   * ProfileWhy is the planner's one-line reason for Profile.
+   * +optional
+   */
+  profileWhy?: string;
 }
 /**
  * AutopilotPhase is the state of an autopilot milestone.

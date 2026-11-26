@@ -2,46 +2,12 @@ package runner
 
 import (
 	"context"
-	"slices"
 	"strings"
 	"testing"
 
-	"github.com/go-logr/logr"
-
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
-	"github.com/jonathanwiemers/ai-operator/internal/gitlab/gitlabfake"
 )
-
-func TestApplyPlanSetsEffort(t *testing.T) {
-	gl := gitlabfake.New()
-	m := gitlab.Milestone{ID: 11, IID: 3, Title: "Checkout v2"}
-	gl.Milestones = []gitlab.Milestone{m}
-	spec := aiv1.AgentProjectSpec{}.WithDefaults()
-	ctx := context.Background()
-	plan := SpecPlan{Issues: []PlannedItem{
-		{Key: "ui", Title: "UI", Description: "x", Profile: "fast", Effort: "low"},
-		{Key: "core", Title: "Core", Description: "y", Profile: "strong", Effort: "max"},
-		{Key: "docs", Title: "Docs", Description: "z", Profile: "fast"},
-	}}
-	if _, _, _, err := applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, nil, plan, nil, planComment{botID: gl.Bot.ID, runID: "s#1"}); err != nil {
-		t.Fatal(err)
-	}
-	ui, core, docs := gl.Issues[1], gl.Issues[2], gl.Issues[3]
-	if !ui.HasLabel("agent-effort::low") || !core.HasLabel("agent-effort::high") || slices.ContainsFunc(docs.Labels, func(l string) bool { return strings.HasPrefix(l, "agent-effort::") }) {
-		t.Fatalf("effort labels (capped at high, none without a choice): %v / %v / %v", ui.Labels, core.Labels, docs.Labels)
-	}
-	// A human's effort label survives a re-plan.
-	gl.SetLabels(1, "agent::draft", "ai-generated", "agent-profile::fast", "agent-effort::medium")
-	issues, _ := gl.ListIssues(ctx, "g/p", gitlab.ListIssuesOptions{Milestone: m.Title, State: "all"})
-	plan.Issues[0].ExistingIID = 1
-	if _, _, _, err := applyPlan(ctx, logr.Discard(), gl, "g/p", &m, spec, nil, plan, issues, planComment{botID: gl.Bot.ID, runID: "s#2"}); err != nil {
-		t.Fatal(err)
-	}
-	if l := gl.Labels(1); !slices.Contains(l, "agent-effort::medium") || slices.Contains(l, "agent-effort::low") {
-		t.Fatalf("the human's effort must stay: %v", l)
-	}
-}
 
 func TestImplementerUsesTheIssuesModelAndEffort(t *testing.T) {
 	e := newImplementEnv(t)
@@ -58,15 +24,6 @@ func TestImplementerUsesTheIssuesModelAndEffort(t *testing.T) {
 	}
 	if strings.Contains(impl.Prompt, "/agent use") {
 		t.Fatalf("a pure model command is no input for the agent:\n%s", impl.Prompt)
-	}
-}
-
-func TestPlannerSetsNoEffortOnCursor(t *testing.T) {
-	spec := aiv1.AgentProjectSpec{}
-	spec.Agents.Profiles = []aiv1.AgentProfile{{Name: "fast", RoleSpec: aiv1.RoleSpec{Engine: aiv1.EngineCursor, Model: "auto"}}}
-	spec = spec.WithDefaults()
-	if l := effortLabels(spec, PlannedItem{Profile: "fast", Effort: "low"}); l != nil {
-		t.Fatalf("cursor has no effort: %v", l)
 	}
 }
 
