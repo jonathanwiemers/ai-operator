@@ -1109,7 +1109,7 @@ name of their `tool_use` (a subagent's results under the tool that started
 it, unknown ids as `unknown`; estimated tokens are bytes / 4 on read); and
 `base_context_tokens` is the first main-thread turn's context of a claude
 call that started its session (`resume` empty). The planner records the
-profile and effort labels it set in a `plan-labels` marker of the issue
+profile label it set in a `plan-labels` marker of the issue
 description, so the arm assignment tells them from a human's. The runner only appends the
 call to the task's `status.run.calls` (the newest 50, each with a task-wide
 `seq`); the operator stays the only writer. The differ writes each call

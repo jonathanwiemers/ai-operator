@@ -28,6 +28,7 @@ git history does; otherwise "no milestone".
 12. [Webhooks tell of milestones too, so idle projects stop polling GitLab](milestone-webhooks.spec.md) — Milestone events, heartbeats, explicit projects covered by the set, set hooks on dormant projects. Milestone: no milestone.
 13. [Agents write in one language](agent-language.spec.md) — One chart value, `agent.language`, sets the language every agent writes in. Milestone: Agents write in English, set by one chart value.
 14. [Project sets: per-project settings inside the set](project-set-entries.spec.md) — Entries in `spec.projects` merged onto the template, named projects never dormant, adoption of an annotated AgentProject. Milestone: Project sets: per-project settings inside the set, no Kustomize patches.
+15. [Four implementer tiers, and an explicit model and effort for every agent](four-implementer-tiers.spec.md) — Role efforts, the default tiers `fast`, `balanced`, `strong` and `deep`, one planner pick with a reason, the Desk badge and the pilot's `setTier`. Milestone: Four implementer tiers, and an explicit model and effort for every agent.
 
 ## Autopilot and the pilot
 

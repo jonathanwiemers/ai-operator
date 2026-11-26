@@ -56,8 +56,8 @@ autopilot), when you give an instruction with `/agent <what to change>` or
 in the Desk chat, when CI fails for a real reason, and when the reviewers
 find something that blocks.
 
-**Which model:** the planner picks a profile for each issue, for example a
-cheap one for small changes and a strong one for hard ones. Issues without a
+**Which model:** the planner picks one [tier](glossary.md#tier) for each issue, for example
+`fast` for small changes and `deep` for hard ones, and says why. Issues without a
 profile use `agents.implement`. You can override the model and effort per
 issue with `/agent use …`, within the models your project allows.
 

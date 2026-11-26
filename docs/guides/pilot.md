@@ -95,9 +95,7 @@ in the thread at once, marked *sending* and then *sent*. If the operator does
 not react within a minute, a note says so and links the task's logs.
 
 Under it is the text box. What you write goes to the pilot as
-`problem: #558`, in the same chat as the Cockpit's message box. If you clearly ask
-for an action ("rerun it with a hint to answer in JSON"), the pilot runs it
-and logs it in the thread. Otherwise it asks back.
+`problem: #558`, in the same chat as the Cockpit's message box. If you clearly ask for an action ("rerun it with a hint to answer in JSON"), the pilot runs it and logs it in the thread. Otherwise it asks back.
 
 The pilot stays up while a problem is open, so it answers within seconds.
 Opening a thread wakes it if it is asleep, for owners only. The longest it stays
@@ -221,6 +219,10 @@ test over only once the test was flaky twice. See
 after an issue of the milestone or drop a planned one, with a one-line
 reason. That needs no answer from you. See
 [Releases](releases.md#the-pilots-releases).
+
+## Raise an issue's tier
+
+The pilot proposes `setTier`, one [tier](../concepts/glossary.md#tier) up, when an issue failed twice on the same problem or its review rounds ran out on substance, not style. It needs an owner's Accept, also when the pilot manages. On Accept the operator sets `agent-profile::<tier>`, drops the issue's other profile labels and its `agent-model::` and `agent-effort::` labels, and says so in the acted entry. The next run uses the tier; a running call is not restarted.
 
 ## Your words to the agent
 
@@ -376,21 +378,14 @@ the tools above, without the milestone ones:
 
 - **Allowed:** retry, reReview, instruct, retryPipeline, rebase, mergeBase,
   fixFlaky (into the queue), openIssue (not taken into the queue), markDone
-  for a pending issue, pause and resume. A skip drops the issue.
+  for a pending issue, setTier, pause and resume. A skip drops the issue.
 - **Refused, with the reason:** revisit, setRule, forgetRule, editSpec,
   endMilestone, unskip, startAnyway and raiseBudget. It has no spec, standing
   rules or retrospective.
 
 ## What it costs
 
-The pilot runs on its own light model
-([`agents.pilot`](../reference/agents-and-models.md#roles)), in its own pod,
-outside the queue of runs. Its spend has a cap per milestone, and per round
-on the loose issues queue,
-[`pilot.maxBudgetUSD`](../reference/agentproject.md#specpilot). Once that is
-spent, it answers that the budget is used up, without a model call, and an
-assessment only says what happened. Comments of people who are not owners
-never reach the model. The Desk shows the pilot's cost above the Cockpit's message box.
+The pilot runs on its own light model ([`agents.pilot`](../reference/agents-and-models.md#roles)), in its own pod, outside the queue of runs. [`pilot.maxBudgetUSD`](../reference/agentproject.md#specpilot) caps its spend per milestone (per round on the loose issues queue); once spent, it answers without a model call. Comments of non-owners never reach the model. The Desk shows its cost above the message box.
 
 ## Next
 

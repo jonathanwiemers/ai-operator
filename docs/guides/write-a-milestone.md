@@ -314,9 +314,9 @@ own:
   `not after this issue`. A release without a reason counts as none (see
   [Planned releases](../concepts/how-it-works.md#planned-releases));
 - *Open questions*, each with the default the agent would pick;
-- the labels `ai-generated`, `agent::draft` and the
-  [profile](../concepts/glossary.md#profile) the planner chose, such as
-  `agent-profile::fast`.
+- the labels `ai-generated`, `agent::draft` and the [tier](../concepts/glossary.md#tier)
+  the planner chose, such as `agent-profile::fast`, with a `Tier:` line near
+  the end that says why.
 
 The planner records the choices it made for each issue as
 [decisions](../concepts/glossary.md#decision) in a comment on that issue.

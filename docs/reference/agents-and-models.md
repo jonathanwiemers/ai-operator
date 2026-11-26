@@ -34,14 +34,10 @@ spec:
         model: claude-sonnet-5-5
         effort: medium
     profiles:
-      - name: fast
-        description: Small, well-defined changes that follow existing patterns.
-        engine: cursor
-        model: auto
-        fallback: {engine: claude, model: sonnet}
-      - name: strong
-        description: Design decisions, cross-cutting or risky changes, unclear scope.
-        model: claude-opus-5-5
+      - {name: fast, description: "Follows an existing pattern, leaves no decision open.", model: claude-sonnet-5-5, effort: medium, fallback: {engine: cursor, model: auto}}
+      - {name: balanced, description: "New logic in one area with a clear spec.", model: claude-sonnet-5-5, effort: high, fallback: {engine: cursor, model: auto}}
+      - {name: strong, description: "Crosses layers, changes a CRD or needs design.", model: claude-opus-5-5, effort: medium}
+      - {name: deep, description: "Concurrency, security, spend accounting or work that failed before.", model: claude-opus-5-5, effort: high}
     review:
       model: claude-sonnet-5-5
       reviewers: [bugbot, security]
@@ -85,12 +81,12 @@ The roles, each a block under `spec.agents`:
 
 | Field | Role | Default |
 |-------|------|---------|
-| `spec` | Plans a milestone into issues. | claude, `claude-opus-5-5` |
-| `implement` | Works on issues without a profile label. | claude, `claude-opus-5-5` |
-| `profiles` | Implementers an issue picks with a label, see [Profiles](#profiles). | `fast` and `strong` |
-| `review` | Reviews each change before it is merged. | claude, `claude-sonnet-5-5` |
-| `describe` | Writes the merge request description after each push that changed the diff. `disabled: true` keeps the placeholder. | claude, `claude-sonnet-5-5` |
-| `pilot` | The milestone's [pilot](../concepts/glossary.md#pilot). Read-only, one session per milestone. | claude, `claude-sonnet-5-5` |
+| `spec` | Plans a milestone into issues. | claude, `claude-opus-5-5`, `high` |
+| `implement` | Works on issues without a profile label. | claude, `claude-opus-5-5`, `medium` |
+| `profiles` | The [tiers](../concepts/glossary.md#tier) an issue picks with a label, see [Profiles](#profiles). | `fast`, `balanced`, `strong`, `deep` |
+| `review` | Reviews each change before it is merged. | claude, `claude-sonnet-5-5`, `medium` |
+| `describe` | Writes the merge request description after each push that changed the diff. `disabled: true` keeps the placeholder. | claude, `claude-sonnet-5-5`, `low` |
+| `pilot` | The milestone's [pilot](../concepts/glossary.md#pilot). Read-only, one session per milestone. | claude, `claude-sonnet-5-5`, `medium` |
 
 ## Roles
 
@@ -100,7 +96,7 @@ Every role and profile has these fields:
 |-------|---------|---------|---------|
 | `engine` | – | `claude` or `cursor`. | `claude` |
 | `model` | both | e.g. `claude-opus-5-5`, or `auto` on cursor. | see above; cursor picks its own |
-| `effort` | claude | `low`, `medium`, `high`, `xhigh` or `max`. | the engine's |
+| `effort` | claude | `low`, `medium`, `high`, `xhigh` or `max`. | the role's, see above; a cursor role gets none; the conflict role follows the implementer |
 | `maxBudgetUSD` | claude | Spend cap per call, e.g. `"5"`. | – |
 | `allowedTools` | claude | Replaces the role's tool list. | the role's |
 | `instructions` | both | Added to the role's prompt: house rules, test commands. | – |
@@ -192,7 +188,7 @@ agents:
 | `name` | The experiment's name, lowercase letters, digits and `-`, at most 40 characters. A new name starts a new experiment. | – |
 | `arms` | 2 to 4 arms with unique names. | – |
 | `arms[].stepSession` | Replaces `implement.stepSession` for the arm's issues. | the project's |
-| `arms[].effort` | Replaces the effort the planner chose. Not above `maxEffort`. | the planner's |
+| `arms[].effort` | Replaces the profile's effort. Not above `maxEffort`. | the profile's |
 | `arms[].profile` | Replaces the profile the planner chose. Must be one of the project's profiles. | the planner's |
 
 At most one arm may set nothing: the baseline. An issue gets its arm when
@@ -202,7 +198,7 @@ fix, CI, conflict and review calls count for it too.
 
 Labels win over the arm. An issue with a model label, or a profile or
 effort label that a human or an `/agent` command set, gets no arm. The
-planner's own profile and effort labels do not count. A label set after the
+planner's own profile label does not count. A label set after the
 arm was assigned wins for that one setting; the issue keeps its arm.
 
 The condition `ExperimentValid` on the AgentProject is `True` for a valid
@@ -285,33 +281,36 @@ is `claude-opus-5-5` (`opus`), `claude-sonnet-5-5` (`sonnet`) and
 `claude-haiku-5-5` (`haiku`), all on claude. An empty list `[]` allows only
 the models of the profiles and `implement`.
 
-The planner sets an `agent-effort::` label on an issue when it thinks the
-issue needs more or less thinking than its profile. A label you set is kept
-when the milestone is planned again.
+The planner sets one `agent-profile::` label, which fixes model and effort,
+and no effort label. A label you set wins over the profile and is kept when
+the milestone is planned again. `maxEffort` caps these labels only, never
+a role's or profile's own `effort`.
 
 ## Profiles
 
-```yaml
-profiles:
-  - name: fast
-    description: Small, well-defined changes that follow existing patterns.
-    engine: cursor
-    model: auto
-  - name: strong
-    description: Design decisions, cross-cutting or risky changes, unclear scope.
-    engine: claude
-    model: claude-opus-5-5
-```
+Profiles are the implementer [tiers](../concepts/glossary.md#tier) an issue
+picks with a label. The default four, lowest first, with each
+`description`, the rubric the planner reads:
+
+| Tier | Model | Effort | Description |
+|------|-------|--------|-------------|
+| `fast` | `claude-sonnet-5-5` | `medium` | Follows an existing pattern, touches a few files, adds no new API, type or migration, leaves no decision open (docs, config, tests of existing code, small UI changes). |
+| `balanced` | `claude-sonnet-5-5` | `high` | New logic in one package or one area of the UI, with a clear spec and some edge cases. |
+| `strong` | `claude-opus-5-5` | `medium` | Crosses layers (for example API, controller and Desk), changes a CRD or the store schema, or needs design within the issue. |
+| `deep` | `claude-opus-5-5` | `high` | Concurrency, reconcile or state-machine logic, security, spend accounting, stream parsing, changes that can lose data, or work whose earlier attempt failed. |
+
+The planner picks the lowest tier whose description fits, one up when in
+doubt, and gives a one-line reason. It sets one `agent-profile::<name>`
+label. The example [above](#example) lists the four tiers, with cursor as
+the [fallback](#fallback-engine) of the two Sonnet tiers; write your own
+descriptions to change the rubric.
 
 A profile has `name`, `description`, the [role fields](#roles) and the
-implementer's `maxStepLines`. The planner sees the names and descriptions
-and labels each issue it creates `agent-profile::<name>`, so write
-descriptions that let it decide. An issue with a missing or unknown label
-runs on `implement`. A label you set by hand is never replaced when the
-milestone is planned again.
-
-Without profiles, `fast` (claude, `claude-sonnet-5-5`) and `strong` (claude,
-`claude-opus-5-5`) are used.
+implementer's `maxStepLines`. An issue with a missing or unknown label runs
+on `implement`. A label you set by hand is never replaced when the
+milestone is planned again. A project that lists profiles replaces the
+default four. The pilot can raise an issue one tier with a
+[`setTier` proposal](../guides/pilot.md#raise-an-issues-tier).
 
 ## Fallback engine
 

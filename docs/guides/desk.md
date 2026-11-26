@@ -255,7 +255,8 @@ its own address; `#prompt-Q3` or `#problem-280` links open it.
 The milestone's state, progress and cost, then one row per issue: its
 title, state, merge request, wall time (first run to merge), agent time,
 time paused, cost, tokens, and written and merged lines (see [Lines of
-code](budgets-and-spend.md#lines-of-code)). An issue that shipped shows its version.
+code](budgets-and-spend.md#lines-of-code)). An issue that shipped shows its version. A planned issue shows its
+[tier](../concepts/glossary.md#tier) as a badge such as `balanced · Sonnet · high`; hover it for the planner's reason.
 Between the issues sit the releases, at the point they were decided:
 *Release after #N*, *Releasing…* with its pipeline, or the version with a
 link to the GitLab release.
@@ -271,8 +272,7 @@ Below, a switch picks the view, kept in the address (`?view=`):
 - *Board* shows the milestone's tasks in columns: *In progress*, *Needs you*, *CI* and *Review*.
 
 A milestone with companion merge requests lists them under *Companions*.
-
-Click a row to open the **issue page**: the same figures, the task while one
+Click a row to open the **issue page**: the same figures, the tier with its reason, the task while one
 works on the issue, and the issue's own stream.
 
 ### Decisions

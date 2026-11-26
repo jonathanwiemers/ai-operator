@@ -88,7 +88,7 @@ Each of these has a command too, so you can also set it with a comment.
 |-------|--------|---------|
 | `agent::ready` | Hand the issue to the agent. Starts a run. | — |
 | `agent::done` | The issue is finished. Its task, pod and workspace are removed. | — |
-| `agent-profile::<name>` | Implement with that [profile](../concepts/glossary.md#profile), for example `agent-profile::strong`. An unknown name falls back to the project's implementer. | — |
+| `agent-profile::<name>` | Implement with that [tier](../concepts/glossary.md#tier), for example `agent-profile::strong`. An unknown name falls back to the project's implementer. | — |
 | `agent-model::<engine>/<model>` | Implement with that engine and model, for example `agent-model::claude/opus`. It must be allowed in the `AgentProject`. | `/agent use` |
 | `agent-effort::<level>` | Implement with that effort: `low`, `medium`, `high`, `xhigh` or `max`. It is lowered to `agents.maxEffort` (default `high`). | `/agent effort` |
 | `agent-repo::<project>` | Change that [companion repository](../concepts/glossary.md#companion-repository) too. | `/agent repo` |
@@ -96,9 +96,10 @@ Each of these has a command too, so you can also set it with a comment.
 - **Precedence:** the model and effort labels override the profile. The
   profile overrides the project's implementer. See
   [Model and effort](commands.md#model-and-effort).
-- **The planner keeps yours:** it never changes a profile or effort label
-  that is already on an issue. It adds its own only where none is, also on a
-  re-plan.
+- **The planner sets one profile label, no effort label.** It keeps a
+  profile, model or effort label that a human set, also on a re-plan. On a
+  draft it replaces its own profile label with its new pick. See
+  [tier](../concepts/glossary.md#tier).
 - **Companion labels need a reason:** an `agent-repo::` label counts only
   when the milestone has a line `/agent repo <project>`, or when an
   [owner](../concepts/glossary.md#owner) or the operator set it. Otherwise it

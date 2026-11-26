@@ -112,9 +112,9 @@ implementer of every following run reads them:
 
 | Label | Set by | Example |
 |-------|--------|---------|
-| `agent-profile::<name>` | the planner, or you | `agent-profile::strong` |
+| `agent-profile::<name>` | the planner (its [tier](../concepts/glossary.md#tier)), the pilot, or you | `agent-profile::strong` |
 | `agent-model::<engine>/<model>` | `/agent use`, or you | `agent-model::claude/opus` |
-| `agent-effort::<level>` | the planner, `/agent effort`, `/agent use … <effort>`, or you | `agent-effort::high` |
+| `agent-effort::<level>` | `/agent effort`, `/agent use … <effort>`, or you | `agent-effort::high` |
 
 To switch and start a run in one comment, put instructions on the next
 lines:

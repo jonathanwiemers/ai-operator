@@ -93,7 +93,8 @@ Keep these rules in mind:
 
 - **List every profile you want.** A project that lists profiles replaces
   the built-in ones. If you add `balanced`, also list `fast` and `strong`,
-  or the planner can no longer pick them.
+  or the planner can no longer pick them. The four defaults are `fast`,
+  `balanced`, `strong` and `deep`.
 - **Describe the new profile for the planner.** The planner picks a profile
   per issue from the descriptions. The `balanced` description above tells
   it which issues are "medium".
@@ -124,7 +125,7 @@ The fields and rules are in
   an arm.
 - **You win over the arm.** An issue with a model label, or a profile or
   effort label that you or an `/agent` command set, gets no arm and records
-  none. The planner's own labels do not count. A label you add after the
+  none. The planner's own profile label does not count. A label you add after the
   arm was assigned wins for that one setting, and the issue keeps its arm.
 
 So when you want an issue on a particular model or effort, label it as
@@ -235,4 +236,4 @@ no arm.
 - [Experiment](../reference/agents-and-models.md#experiment): every field
   and rule of an experiment.
 - [Profiles](../reference/agents-and-models.md#profiles): how the planner
-  picks a profile.
+  picks a tier.

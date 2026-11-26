@@ -37,13 +37,7 @@ to raise it; see [Budgets and spend](../guides/budgets-and-spend.md).
 
 ### Cockpit
 
-The main view of a milestone, a project and the Overview in the
-[Desk](#desk). A milestone's Cockpit reads from the top: the message box to
-its [pilot](#pilot), the latest exchange with it, what [needs you](#needs-you),
-then one thread per issue with the latest activity first, with merges and
-milestone state shown, [decisions](#decision) in their issue's thread, and
-runs, CI rounds and reviews folded into closed lines. [Now & next](#now--next)
-sits beside it. See [The Cockpit](../guides/steer-from-the-desk.md#the-cockpit).
+The main view of a milestone, a project and the Overview in the [Desk](#desk). A milestone's Cockpit reads from the top: the message box to its [pilot](#pilot), the latest exchange with it, what [needs you](#needs-you), then one thread per issue with the latest activity first, with merges and milestone state shown, [decisions](#decision) in their issue's thread, and runs, CI rounds and reviews folded into closed lines. [Now & next](#now--next) sits beside it. See [The Cockpit](../guides/steer-from-the-desk.md#the-cockpit).
 
 ### Companion repository
 
@@ -55,12 +49,7 @@ and it gets its own merge request; see
 
 ### Decision
 
-A choice an agent made and recorded on the issue, with why and the
-alternatives it rejected, under an ID such as `D42-3` (or `D42-P1` for the
-planner's). You can [revisit](#revisit) any of them. The Desk's
-*Decisions* panel shows them; see
-[Read and revisit decisions](../guides/decisions.md) and
-[How it works](how-it-works.md#from-spec-to-merged-work).
+A choice an agent made and recorded on the issue, with why and the alternatives it rejected, under an ID such as `D42-3` (or `D42-P1` for the planner's). You can [revisit](#revisit) any of them. The Desk's *Decisions* panel shows them; see [Read and revisit decisions](../guides/decisions.md) and [How it works](how-it-works.md#from-spec-to-merged-work).
 
 ### Describer
 
@@ -166,13 +155,7 @@ the pilot's proposals. See [The Desk](../guides/desk.md#the-pinned-cards).
 
 ### Now & next
 
-The sidebar beside a [Cockpit](#cockpit) in the [Desk](#desk): what is going
-on and what comes next. *Running* lists the issues an agent works on, with
-step and time; *Waiting* the issues that wait for CI or a review and the held
-ones; *Up next* the next issues; *Milestones* the milestone and the ones
-after it. It collapses to a rail with counts; below 1180 px a one-line strip
-under the header opens it. See
-[The Cockpit](../guides/steer-from-the-desk.md#the-cockpit).
+The sidebar beside a [Cockpit](#cockpit) in the [Desk](#desk): what is going on and what comes next. *Running* lists the issues an agent works on, with step and time; *Waiting* the issues that wait for CI or a review and the held ones; *Up next* the next issues; *Milestones* the milestone and the ones after it. It collapses to a rail with counts; below 1180 px a one-line strip under the header opens it. See [The Cockpit](../guides/steer-from-the-desk.md#the-cockpit).
 
 ### Pause
 
@@ -221,17 +204,12 @@ the issue. The pilot gets the same facts. See
 ### Profile
 
 A named implementer setup, with its own engine, model and effort, that an
-issue selects with an `agent-profile::<name>` label. The planner picks one
-per issue; see [Roles](roles.md#implementer).
+issue selects with an `agent-profile::<name>` label. The default profiles
+are the [tiers](#tier). See [Roles](roles.md#implementer).
 
 ### Project entry
 
-One project a [project set](#project-set) names in `spec.projects`, with
-its own settings on top of the set's template. A named project always has
-a [set child](#set-child), and the set can adopt an existing AgentProject
-for it. See
-[Settings for one project](../guides/project-sets.md#settings-for-one-project)
-and the [reference](../reference/agentprojectset.md#specprojects).
+One project a [project set](#project-set) names in `spec.projects`, with its own settings on top of the set's template. A named project always has a [set child](#set-child), and the set can adopt an existing AgentProject for it. See [Settings for one project](../guides/project-sets.md#settings-for-one-project) and the [reference](../reference/agentprojectset.md#specprojects).
 
 ### Project set
 
@@ -361,6 +339,13 @@ What the operator keeps per piece of work: one per planned milestone for
 the planner, one per issue, and one per milestone with a pilot. Each task
 has its own pod and volume; see [How it works](how-it-works.md#pods-per-issue).
 
+### Tier
+
+One of the implementer [profiles](#profile) the planner picks per issue,
+with a model and an effort: by default `fast`, `balanced`, `strong` and
+`deep`. The planner picks the lowest that fits and says why; the Desk shows
+it as a badge. See [Profiles](../reference/agents-and-models.md#profiles).
+
 ### Tracking issue
 
 The issue the operator opens for an autopilot milestone (or for a pilot
@@ -389,10 +374,7 @@ existing file, for a role. See [Roles](roles.md#scout-and-writer).
 
 ### Written lines
 
-The lines the [implementer](#implementer) calls wrote: every step commit,
-rewrites and fix rounds included, every file counted. They measure the
-effort; [merged lines](#merged-lines) measure the outcome. See
-[Lines of code](../guides/budgets-and-spend.md#lines-of-code).
+The lines the [implementer](#implementer) calls wrote: every step commit, rewrites and fix rounds included, every file counted. They measure the effort; [merged lines](#merged-lines) measure the outcome. See [Lines of code](../guides/budgets-and-spend.md#lines-of-code).
 
 ## Next
 
