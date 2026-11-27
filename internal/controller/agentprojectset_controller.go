@@ -79,6 +79,7 @@ func (r *AgentProjectSetReconciler) WakeSet(n types.NamespacedName) {
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get
 
 func (r *AgentProjectSetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	ctx = gitlab.WithPriority(ctx, gitlab.Background)
 	logger := log.FromContext(ctx)
 
 	var set aiv1.AgentProjectSet

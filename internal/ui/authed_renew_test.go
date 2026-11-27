@@ -16,6 +16,7 @@ import (
 	"github.com/go-logr/logr/funcr"
 
 	"github.com/jonathanwiemers/ai-operator/internal/claims"
+	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 )
 
 // renewEnv is a UI logged in through the fake provider, with a clock the
@@ -383,5 +384,23 @@ func TestMeIdleUntil(t *testing.T) {
 	want = e.start.Add(e.s.cfg.Auth.SessionTTL.Duration)
 	if me.Renewing || me.IdleUntil == nil || !me.IdleUntil.Equal(want) {
 		t.Errorf("fixed login: renewing %v, idleUntil %v, want %v", me.Renewing, me.IdleUntil, want)
+	}
+}
+
+// TestAuthedGitLabPriority checks that Desk reads are background GitLab calls
+// and writes are work.
+func TestAuthedGitLabPriority(t *testing.T) {
+	env := newTestEnv(t, &Config{Auth: AuthConfig{Mode: AuthNone}})
+	var got gitlab.Priority
+	h := env.server.authed(func(_ http.ResponseWriter, r *http.Request) { got = gitlab.PriorityOf(r.Context()) })
+	for method, want := range map[string]gitlab.Priority{
+		http.MethodGet: gitlab.Background, http.MethodHead: gitlab.Background,
+		http.MethodPost: gitlab.Work, http.MethodDelete: gitlab.Work,
+	} {
+		got = -1
+		h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(method, "/x", nil))
+		if got != want {
+			t.Errorf("%s: priority %v, want %v", method, got, want)
+		}
 	}
 }

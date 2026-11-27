@@ -278,6 +278,14 @@ const (
 // expired session with a live refresh cookie is renewed first; when that
 // fails, both cookies are cleared.
 func (s *Server) authed(h http.HandlerFunc) http.Handler {
+	inner := h
+	h = func(w http.ResponseWriter, r *http.Request) {
+		// Desk reads give way to runs; writes keep the default (work).
+		if r.Method == http.MethodGet || r.Method == http.MethodHead {
+			r = r.WithContext(gitlab.WithPriority(r.Context(), gitlab.Background))
+		}
+		inner(w, r)
+	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.cfg.Auth.Mode == AuthNone {
 			ctx := context.WithValue(r.Context(), principalKey, Principal{Username: "anonymous"})

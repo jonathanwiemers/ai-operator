@@ -127,6 +127,9 @@ type AgentProjectReconciler struct {
 // +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
 
 func (r *AgentProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	// The poll, heartbeat and webhook checks give way to runs; the client
+	// keeps writes at work priority.
+	ctx = gitlab.WithPriority(ctx, gitlab.Background)
 	logger := log.FromContext(ctx)
 
 	var project aiv1.AgentProject

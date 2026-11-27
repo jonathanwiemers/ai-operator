@@ -45,6 +45,9 @@ func WithPriority(ctx context.Context, p Priority) context.Context {
 	return context.WithValue(ctx, priorityKey{}, p)
 }
 
+// PriorityOf returns the priority set with WithPriority, Work by default.
+func PriorityOf(ctx context.Context) Priority { return priorityOf(ctx) }
+
 func priorityOf(ctx context.Context) Priority {
 	p, _ := ctx.Value(priorityKey{}).(Priority)
 	return p
