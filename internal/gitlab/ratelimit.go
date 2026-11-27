@@ -65,6 +65,9 @@ func init() { rateLimitReserve.Store(20) }
 // leave to work calls (default 20).
 func SetRateLimitReserve(n int) { rateLimitReserve.Store(int64(max(n, 0))) }
 
+// RateLimitReserve is the reserve set by SetRateLimitReserve.
+func RateLimitReserve() int { return int(rateLimitReserve.Load()) }
+
 // RateLimitReading is the latest RateLimit header reading of a token, with the
 // requests sent since counted off Remaining.
 type RateLimitReading struct {

@@ -148,6 +148,8 @@ packages:
       aiv1.AgentPlanPhase: aiv1.AgentPlanPhase
       aiv1.AutopilotItemState: aiv1.AutopilotItemState
       aiv1.AutopilotPhase: aiv1.AutopilotPhase
+      aiv1.BlockReason: aiv1.BlockReason
+      aiv1.GitLabProjectStatus: aiv1.GitLabProjectStatus
       aiv1.Engine: aiv1.Engine
       aiv1.EngineUsage: aiv1.EngineUsage
       aiv1.IssueRef: aiv1.IssueRef

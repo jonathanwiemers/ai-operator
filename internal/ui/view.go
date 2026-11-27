@@ -10,6 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 )
 
 // The API returns these views instead of the raw resources: they leave out
@@ -122,6 +123,11 @@ type ProjectSummary struct {
 	// Set is the AgentProjectSet the project is a child of, empty for an
 	// explicit AgentProject.
 	Set string `json:"set,omitempty"`
+	// GitLab is the project's GitLab API use (the bot token's rate limit);
+	// GitLabReserve is the UI server's reserve, at or below which the web shows
+	// the usage as low. It is a process setting, not part of the status.
+	GitLabStatus  *aiv1.GitLabProjectStatus `json:"gitLab,omitempty"`
+	GitLabReserve int                       `json:"gitLabReserve"`
 
 	// Cost sums the tasks here; the project endpoint takes it from
 	// agent_calls when the history database is connected.
@@ -317,6 +323,8 @@ func summarize(p *aiv1.AgentProject, tasks []aiv1.AgentTask, now time.Time) Proj
 		Set:                setOf(p),
 		ActiveMilestones:   p.Status.ActiveMilestones,
 		SettlingMilestones: p.Status.SettlingMilestones,
+		GitLabStatus:       p.Status.GitLab,
+		GitLabReserve:      gitlab.RateLimitReserve(),
 	}
 	var cost float64
 	for i := range tasks {

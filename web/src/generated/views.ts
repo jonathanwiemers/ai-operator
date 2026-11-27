@@ -1012,7 +1012,7 @@ export interface MilestoneView extends Cost {
  * implement task, if any. Figures are absent without the history database
  * or while the snapshot lacks the issue. Titles are untrusted text.
  */
-export interface MilestoneIssueRow {
+export interface MilestoneIssueRow extends Deferral {
   iid: number /* int64 */;
   title: string;
   state: 'planned' | 'pending' | 'active' | 'merged' | 'skipped' | 'closed';
@@ -1029,6 +1029,14 @@ export interface MilestoneIssueRow {
    * Tier is the planner's tier of the issue; absent without one.
    */
   tier?: TierView;
+}
+/**
+ * Deferral is why a pending run waits (usage or GitLab limit) and until when.
+ */
+export interface Deferral {
+  blockReason?: aiv1.BlockReason;
+  deferredUntil?: string;
+  deferrals?: number /* int32 */;
 }
 /**
  * TierView is the planner's tier (profile) of an issue, with the engine,
@@ -1175,7 +1183,7 @@ export interface HoldView {
 /**
  * QueueItem is an issue in the autopilot's queue, in queue order.
  */
-export interface QueueItem {
+export interface QueueItem extends Deferral {
   iid: number /* int64 */;
   title: string;
   state: aiv1.AutopilotItemState;
@@ -2583,6 +2591,13 @@ export interface ProjectSummary extends Cost {
    * explicit AgentProject.
    */
   set?: string;
+  /**
+   * GitLab is the project's GitLab API use (the bot token's rate limit);
+   * GitLabReserve is the UI server's reserve, at or below which the web shows
+   * the usage as low. It is a process setting, not part of the status.
+   */
+  gitLab?: aiv1.GitLabProjectStatus;
+  gitLabReserve: number /* int */;
 }
 /**
  * AutopilotOverview is the state of one autopilot milestone.

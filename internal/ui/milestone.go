@@ -86,6 +86,25 @@ type MilestoneIssueRow struct {
 	Version string `json:"version,omitempty"`
 	// Tier is the planner's tier of the issue; absent without one.
 	Tier *TierView `json:"tier,omitempty"`
+	// The task's deferral, while its run request is pending and deferred.
+	Deferral `tstype:",extends"`
+}
+
+// Deferral is why a pending run waits (usage or GitLab limit) and until when.
+type Deferral struct {
+	BlockReason   aiv1.BlockReason `json:"blockReason,omitempty"`
+	DeferredUntil *metav1.Time     `json:"deferredUntil,omitempty"`
+	Deferrals     int32            `json:"deferrals,omitempty"`
+}
+
+// deferralOf is the deferral of t, empty unless its run request is pending
+// and deferred.
+func deferralOf(t *aiv1.AgentTask) Deferral {
+	if t == nil || !t.RunPending() || t.Status.Run.DeferredUntil == nil {
+		return Deferral{}
+	}
+	r := &t.Status.Run
+	return Deferral{BlockReason: r.BlockReason, DeferredUntil: r.DeferredUntil, Deferrals: r.Deferrals}
 }
 
 // TierView is the planner's tier (profile) of an issue, with the engine,
@@ -386,6 +405,7 @@ type QueueItem struct {
 	WaitingFor []int64        `json:"waitingFor,omitempty"`
 	Hold       *aiv1.ItemHold `json:"hold,omitempty"`
 	ReadyAt    *metav1.Time   `json:"readyAt,omitempty"`
+	Deferral   `tstype:",extends"`
 }
 
 // queueLane is the lane of the item it of the autopilot ap.
@@ -607,6 +627,7 @@ func milestoneView(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st, coord *aiv1
 		State: liveMilestoneState(st), Spec: taskView(st, p, now), Tasks: []Task{}}
 	var cost float64
 	byIssue := map[int64]string{}
+	deferred := map[int64]Deferral{}
 	for i := range tasks {
 		t := &tasks[i]
 		if t.Spec.Milestone == nil || t.Spec.Milestone.IID != ms.IID {
@@ -617,12 +638,16 @@ func milestoneView(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st, coord *aiv1
 			v.Tasks = append(v.Tasks, taskView(t, p, now))
 			if t.Spec.Issue != nil {
 				byIssue[t.Spec.Issue.IID] = t.Name
+				deferred[t.Spec.Issue.IID] = deferralOf(t)
 			}
 		}
 	}
 	sortTasks(v.Tasks)
 	spec := p.Spec.WithDefaults()
 	v.Issues, v.Releases = issueRows(&spec, st, byIssue, now), liveReleases(st)
+	for i := range v.Issues {
+		v.Issues[i].Deferral = deferred[v.Issues[i].IID]
+	}
 	v.Problems = milestoneProblems(web, st, tasks, v.Issues)
 	v.Companions = milestoneCompanions(p, tasks, ms.IID)
 	v.Cost = tasksCost(cost)
@@ -646,7 +671,7 @@ func milestoneView(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st, coord *aiv1
 		for i := range ap.Items {
 			it := &ap.Items[i]
 			q := QueueItem{IID: it.IID, Title: titles[it.IID], State: it.State, MergeRequestIID: it.MergeRequestIID, MergeRequestURL: it.MergeRequestURL, Task: byIssue[it.IID],
-				Lane: queueLane(ap, it), Wave: waves[it.IID], Hold: it.Hold, ReadyAt: it.ReadyAt}
+				Lane: queueLane(ap, it), Wave: waves[it.IID], Hold: it.Hold, ReadyAt: it.ReadyAt, Deferral: deferred[it.IID]}
 			for _, d := range deps[it.IID] {
 				// Met as in the controller's startable: merged, not in the
 				// queue, or skipped for an item an owner let start anyway.
