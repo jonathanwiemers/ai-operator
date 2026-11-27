@@ -17,7 +17,8 @@ import { useNow, useResource } from '../live'
 import { nowStripText, overviewNowAndNext } from '../nowAndNext'
 import { pageHeaderUi } from '../pageHeader'
 import RouteTabs from '../ui/RouteTabs.vue'
-import { dashboardAlias, dashboardTabFromRoute, dashboardTabs, tabQuery } from '../streamTabs'
+import { dashboardAlias, dashboardTabFromRoute, dashboardTabs, tabQuery, type DashboardTab } from '../streamTabs'
+import SwipeTabs from '../ui/SwipeTabs.vue'
 
 // The dashboard at / (R16 of "Desk: the Cockpit"): Cockpit, the default,
 // and Timeline (?tab=timeline). The Cockpit pins the Inbox's open items of
@@ -34,6 +35,8 @@ import { dashboardAlias, dashboardTabFromRoute, dashboardTabs, tabQuery } from '
 const route = useRoute()
 const router = useRouter()
 const tab = computed(() => dashboardTabFromRoute(route.query.tab))
+// A tab's link, for the tab row and its swipe surface.
+const tabTo = (id: DashboardTab) => ({ query: tabQuery(route.query, id, dashboardTabs) })
 watch(
   () => route.query,
   (query) => {
@@ -98,43 +101,48 @@ function followPanel() {
             data-now-strip
             @click="openPanel"
           />
-          <RouteTabs :tabs="dashboardTabs" :active="tab" :to="(id) => ({ query: tabQuery(route.query, id, dashboardTabs) })" />
+          <RouteTabs :tabs="dashboardTabs" :active="tab" :to="tabTo" />
         </div>
 
-        <div v-if="tab === 'timeline'" class="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-10 tablet:px-7">
-          <section class="section" aria-labelledby="overview-timeline-head">
-            <h2 id="overview-timeline-head" class="text-[15px]">Timeline</h2>
-            <!-- The load error shows here too: below 1180 px the panel's copy is in a closed sheet. -->
-            <UAlert v-if="overview.error.value" :color="alertColor('danger')" variant="subtle" :description="overview.error.value" />
-            <div v-if="overview.loading.value && !overview.data.value" class="empty">Loading…</div>
-            <OverviewTimeline v-else-if="overview.data.value?.history" />
-            <UAlert
-              v-else-if="overview.data.value"
-              :color="alertColor('info')"
-              variant="subtle"
-              description="Done milestones and spend need the research database."
-              data-timeline-no-history
-            />
-          </section>
-          <MilestoneSections />
-        </div>
-
-        <div v-else class="min-h-0 flex-1 overflow-y-auto px-4 pt-[18px] pb-10 tablet:px-7">
-          <Cockpit :scope="{}">
-            <template #pinned>
-              <UAlert v-if="inbox.error.value" :color="alertColor('danger')" variant="subtle" :description="inbox.error.value" />
-              <div v-if="inbox.loading.value && !inbox.data.value" class="empty">Loading…</div>
-              <UEmpty
-                v-else-if="inbox.data.value && !inbox.data.value.items.length"
-                icon="i-lucide-inbox"
-                title="Nothing needs you."
-                variant="naked"
-                size="sm"
+        <!-- The swipe surface keeps the column: each tab stays its own
+             scroller; the Timeline scrolls sideways, so swipes there do
+             nothing. -->
+        <SwipeTabs :tabs="dashboardTabs" :active="tab" :to="tabTo">
+          <div v-if="tab === 'timeline'" class="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-10 tablet:px-7">
+            <section class="section" aria-labelledby="overview-timeline-head">
+              <h2 id="overview-timeline-head" class="text-[15px]">Timeline</h2>
+              <!-- The load error shows here too: below 1180 px the panel's copy is in a closed sheet. -->
+              <UAlert v-if="overview.error.value" :color="alertColor('danger')" variant="subtle" :description="overview.error.value" />
+              <div v-if="overview.loading.value && !overview.data.value" class="empty">Loading…</div>
+              <OverviewTimeline v-else-if="overview.data.value?.history" />
+              <UAlert
+                v-else-if="overview.data.value"
+                :color="alertColor('info')"
+                variant="subtle"
+                description="Done milestones and spend need the research database."
+                data-timeline-no-history
               />
-              <InboxList v-else-if="inbox.data.value" :items="inbox.data.value.items" />
-            </template>
-          </Cockpit>
-        </div>
+            </section>
+            <MilestoneSections />
+          </div>
+
+          <div v-else class="min-h-0 flex-1 overflow-y-auto px-4 pt-[18px] pb-10 tablet:px-7">
+            <Cockpit :scope="{}">
+              <template #pinned>
+                <UAlert v-if="inbox.error.value" :color="alertColor('danger')" variant="subtle" :description="inbox.error.value" />
+                <div v-if="inbox.loading.value && !inbox.data.value" class="empty">Loading…</div>
+                <UEmpty
+                  v-else-if="inbox.data.value && !inbox.data.value.items.length"
+                  icon="i-lucide-inbox"
+                  title="Nothing needs you."
+                  variant="naked"
+                  size="sm"
+                />
+                <InboxList v-else-if="inbox.data.value" :items="inbox.data.value.items" />
+              </template>
+            </Cockpit>
+          </div>
+        </SwipeTabs>
       </div>
     </template>
     <template #panel="{ sheet }">

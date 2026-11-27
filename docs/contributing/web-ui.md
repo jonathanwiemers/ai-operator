@@ -929,9 +929,23 @@ row:
   is not remounted when `disabled` changes, for a row that is shown only at
   some widths.
 
-Users: the project and milestone page (`Stream.vue`), around its `v-if`
-chain of `div.scroll.board`. The Overview, `TaskBody.vue` and the plan page
-follow in the next issue of the milestone.
+Users:
+
+- the project and milestone page (`Stream.vue`), around its `v-if` chain
+  of `div.scroll.board`;
+- the Overview (`Dashboard.vue`), around the *Cockpit* and *Timeline*
+  branches, each still its own `overflow-y-auto` scroller. The Timeline
+  scrolls sideways, so a swipe that starts on it does nothing;
+- `TaskBody.vue`, around the *Overview*, *Live*, *Logs* and *Calls*
+  branches, on the task page and in the issue page's Task section. There
+  the root is a flex column inside a block scroller, where `flex: 1` has no
+  effect and the `.section` spacing stays the same;
+- the plan page (`Plan.vue`), with two surfaces switched by `disabled` from
+  a `matchMedia('(min-width: 760px)')` ref. Below 760 px one wraps the whole
+  grid with `planTabs`. From 760 px the other wraps the right pane's
+  `PlanDraft` and `PlanDecisions` with `planPaneTabs`, and the chat column
+  does not swipe. Only the enabled surface acts; the disabled one ignores
+  pointers, so a touch on the nested one goes to the outer one below 760 px.
 
 **Input.** Only `pointerType === 'touch'` with the primary pointer counts.
 Mouse, pen and trackpad never switch tabs. The root has

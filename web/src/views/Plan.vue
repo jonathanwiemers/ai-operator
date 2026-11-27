@@ -23,6 +23,7 @@ import PlanWizardButton from '../components/PlanWizardButton.vue'
 import { toneText } from '../badgeTone'
 import { pageHeaderUi } from '../pageHeader'
 import RouteTabs from '../ui/RouteTabs.vue'
+import SwipeTabs from '../ui/SwipeTabs.vue'
 import type { PlanView } from '../generated/views'
 import type { PlanUploads } from '../attachments'
 import { loadPlanUploads } from '../planUpload'
@@ -97,6 +98,14 @@ onMounted(() => {
   }, 5000)
 })
 onUnmounted(() => window.clearInterval(timer))
+
+// From 760 px (tablet) the chat is a column and the pane row is shown, so
+// the pane swipes; below it the whole grid does.
+const wideQuery = window.matchMedia('(min-width: 760px)')
+const wide = ref(wideQuery.matches)
+const onWide = () => (wide.value = wideQuery.matches)
+wideQuery.addEventListener('change', onWide)
+onUnmounted(() => wideQuery.removeEventListener('change', onWide))
 </script>
 
 <template>
@@ -130,23 +139,29 @@ onUnmounted(() => window.clearInterval(timer))
     <template v-else>
       <RouteTabs class="mb-3 w-fit tablet:hidden" :tabs="planTabs" :active="tab" :to="tabTo" label="Plan"
         :badges="{ decisions: view.decisionsPending }" />
-      <div class="grid gap-4 tablet:grid-cols-2">
-        <PlanChat :class="{ 'max-tablet:hidden': tab !== 'chat' }" :namespace="namespace" :name="name" :plan="plan"
-          :can-post="owner" :phase="view.phase" :spend-u-s-d="view.spendUSD" :budget-u-s-d="view.budgetUSD" :decisions="view.decisions ?? []"
-          :drafts="view.drafts" :uploads="uploads" />
-        <div class="flex min-w-0 flex-col" :class="{ 'max-tablet:hidden': tab === 'chat' }">
-          <RouteTabs class="mb-3 w-fit max-tablet:hidden" :tabs="planPaneTabs" :active="pane" :to="tabTo" label="Plan pane"
-            :badges="{ decisions: view.decisionsPending }" />
-          <PlanDraft :class="paneClass('draft')" :namespace="namespace" :name="name" :plan="plan"
-            :view="view" :uploads="uploads" :can-edit="owner && view.phase !== 'Created'" @view="(v) => (view = v)" @created="load">
-            <template #actions><PlanWizardButton :decisions="view.decisions ?? []" :phase="view.phase" @open="wizard = true" /></template>
-          </PlanDraft>
-          <PlanDecisions :class="paneClass('decisions')" :namespace="namespace" :name="name" :plan="plan"
-            :decisions="view.decisions ?? []" :pending="view.decisionsPending">
-            <template v-if="owner" #actions><PlanWizardButton :decisions="view.decisions ?? []" :phase="view.phase" @open="wizard = true" /></template>
-          </PlanDecisions>
+      <!-- Two swipe surfaces, one per tab row; only the row shown at this
+           width swipes (the other is disabled and ignores pointers). -->
+      <SwipeTabs :tabs="planTabs" :active="tab" :to="tabTo" :disabled="wide">
+        <div class="grid gap-4 tablet:grid-cols-2">
+          <PlanChat :class="{ 'max-tablet:hidden': tab !== 'chat' }" :namespace="namespace" :name="name" :plan="plan"
+            :can-post="owner" :phase="view.phase" :spend-u-s-d="view.spendUSD" :budget-u-s-d="view.budgetUSD" :decisions="view.decisions ?? []"
+            :drafts="view.drafts" :uploads="uploads" />
+          <div class="flex min-w-0 flex-col" :class="{ 'max-tablet:hidden': tab === 'chat' }">
+            <RouteTabs class="mb-3 w-fit max-tablet:hidden" :tabs="planPaneTabs" :active="pane" :to="tabTo" label="Plan pane"
+              :badges="{ decisions: view.decisionsPending }" />
+            <SwipeTabs :tabs="planPaneTabs" :active="pane" :to="tabTo" :disabled="!wide">
+              <PlanDraft :class="paneClass('draft')" :namespace="namespace" :name="name" :plan="plan"
+                :view="view" :uploads="uploads" :can-edit="owner && view.phase !== 'Created'" @view="(v) => (view = v)" @created="load">
+                <template #actions><PlanWizardButton :decisions="view.decisions ?? []" :phase="view.phase" @open="wizard = true" /></template>
+              </PlanDraft>
+              <PlanDecisions :class="paneClass('decisions')" :namespace="namespace" :name="name" :plan="plan"
+                :decisions="view.decisions ?? []" :pending="view.decisionsPending">
+                <template v-if="owner" #actions><PlanWizardButton :decisions="view.decisions ?? []" :phase="view.phase" @open="wizard = true" /></template>
+              </PlanDecisions>
+            </SwipeTabs>
+          </div>
         </div>
-      </div>
+      </SwipeTabs>
       <PlanDecisionWizard v-if="owner" v-model:open="wizard" :namespace="namespace" :name="name" :plan="plan" :view="view"
         @view="(v) => (view = v)" @sent="load" />
     </template>

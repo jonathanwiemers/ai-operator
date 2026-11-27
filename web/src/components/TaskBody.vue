@@ -16,6 +16,7 @@ import { pageHeaderUi } from '../pageHeader'
 import { tabQuery, taskTabFromRoute, taskTabs, type TaskTab } from '../streamTabs'
 import DataList, { type DataListColumn } from '../ui/DataList.vue'
 import RouteTabs from '../ui/RouteTabs.vue'
+import SwipeTabs from '../ui/SwipeTabs.vue'
 import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
 import Badge from './Badge.vue'
 import HeaderActions from './HeaderActions.vue'
@@ -218,188 +219,192 @@ const actions = computed(() => [
     </template>
   </UAlert>
 
-  <template v-if="tab === 'overview'">
-    <!-- Phase, current step, last result and last activity are the
-         header's status line; the other facts are here. -->
-    <div class="stat-tiles section" data-task-figures>
-      <StatTile label="Runs" :value="run.runCount ?? 0" :sub="t.runPending ? '+ 1 requested' : undefined" />
-      <StatTile label="Model spend" :value="cost(run.costUSD)" />
-      <!-- A long branch is clamped to one line and opens on tap. -->
-      <StatTile v-if="t.type === 'Implement'" label="Branch">
-        <Truncated class="mono text-base" :text="run.branch || '—'" />
-      </StatTile>
-      <StatTile v-if="t.type === 'Implement'" label="Last push">
-        <span class="mono">{{ shortSHA(run.pushedSHA) }}</span>
-        <template v-if="run.pushedAt" #sub><RelTime :time="run.pushedAt" /></template>
-      </StatTile>
-    </div>
-
-    <section v-if="run.summary" class="section">
-      <component :is="sec" :class="h3">Summary of the last run</component>
-      <Markdown class="card px-4 py-3.5" :text="run.summary" />
-    </section>
-    <UEmpty v-else-if="noSummary" icon="i-lucide-file-text" title="No run has left a summary yet." size="sm" class="section" />
-
-    <section v-if="prompts.length" class="section">
-      <component :is="sec" :class="h3">Questions from the agent</component>
-      <div class="mb-3 grid gap-2.5">
-        <PromptCard v-for="p in prompts" :key="p.id" :namespace="namespace" :name="name" :prompt="p" />
+  <!-- The tabs swipe on a touch screen. The surface's flex column inside
+       the page's block scroller keeps the .section spacing: nothing in it
+       has a bottom margin, and a first child's top margin lands as before. -->
+  <SwipeTabs :tabs="tabs" :active="tab" :to="tabTo">
+    <template v-if="tab === 'overview'">
+      <!-- Phase, current step, last result and last activity are the
+           header's status line; the other facts are here. -->
+      <div class="stat-tiles section" data-task-figures>
+        <StatTile label="Runs" :value="run.runCount ?? 0" :sub="t.runPending ? '+ 1 requested' : undefined" />
+        <StatTile label="Model spend" :value="cost(run.costUSD)" />
+        <!-- A long branch is clamped to one line and opens on tap. -->
+        <StatTile v-if="t.type === 'Implement'" label="Branch">
+          <Truncated class="mono text-base" :text="run.branch || '—'" />
+        </StatTile>
+        <StatTile v-if="t.type === 'Implement'" label="Last push">
+          <span class="mono">{{ shortSHA(run.pushedSHA) }}</span>
+          <template v-if="run.pushedAt" #sub><RelTime :time="run.pushedAt" /></template>
+        </StatTile>
       </div>
-    </section>
 
-    <!-- The GitLab conversation, once on the removed Chat tab (R18 of
-         "Desk: the Cockpit"): the pilot is the only Desk chat. -->
-    <section v-if="data.permissions?.gitlab" class="section">
-      <component :is="sec" :class="h3">Conversation</component>
-      <Conversation
-        :namespace="namespace"
-        :name="name"
-        :task="task"
-        :steer="!!data.permissions?.steer"
-        :stamp="`${run.observedRunRequest ?? ''}|${run.activeRunRequest ?? ''}|${run.mergeRequestIID ?? ''}|${t.status.ci?.state ?? ''}|${t.status.autopilot?.phase ?? ''}`"
-      />
-    </section>
-
-    <div v-if="t.type === 'Implement'" :class="['section', cols]">
-      <section class="min-w-0">
-        <component :is="sec" :class="h3">Review</component>
-        <dl :class="['card px-4 py-3.5', dl]">
-          <dt :class="dt">Blocking findings</dt>
-          <dd :class="dd">
-            <Badge :tone="(run.blockingFindings ?? 0) > 0 ? 'danger' : 'success'">{{ run.blockingFindings ?? 0 }}</Badge>
-          </dd>
-          <dt :class="dt">Failed reviewers</dt>
-          <dd :class="dd">
-            <Badge :tone="(run.reviewErrors ?? 0) > 0 ? 'warning' : 'success'">{{ run.reviewErrors ?? 0 }}</Badge>
-          </dd>
-          <dt :class="dt">Reviewed commit</dt>
-          <dd :class="dd">
-            <span class="mono">{{ shortSHA(run.reviewedSHA) }}</span>
-            <span v-if="run.reviewedSHA && run.pushedSHA && run.reviewedSHA !== run.pushedSHA" class="faint">
-              (later commits were not reviewed)
-            </span>
-          </dd>
-        </dl>
+      <section v-if="run.summary" class="section">
+        <component :is="sec" :class="h3">Summary of the last run</component>
+        <Markdown class="card px-4 py-3.5" :text="run.summary" />
       </section>
-      <section class="min-w-0">
-        <component :is="sec" :class="h3">CI</component>
-        <dl v-if="t.status.ci" :class="['card px-4 py-3.5', dl]">
-          <dt :class="dt">Pipeline</dt>
-          <dd :class="dd">
-            <Badge :tone="ciTone(t.status.ci.state)">{{ ciLabel[t.status.ci.state] }}</Badge>
-            <ExtLink v-if="t.status.ci.pipelineURL" :href="t.status.ci.pipelineURL" class="ml-2">
-              #{{ t.status.ci.pipelineID }}
-            </ExtLink>
-          </dd>
-          <dt :class="dt">Commit</dt>
-          <dd :class="[dd, 'mono']">{{ shortSHA(t.status.ci.sha) }}</dd>
-          <dt :class="dt">Fix rounds</dt>
-          <dd :class="dd">{{ run.ciRound ?? 0 }}<span v-if="t.status.ci.retried" class="faint"> · failed jobs retried</span></dd>
-          <template v-if="t.status.ci.failedJobs?.length">
-            <dt :class="dt">Failed jobs</dt>
+      <UEmpty v-else-if="noSummary" icon="i-lucide-file-text" title="No run has left a summary yet." size="sm" class="section" />
+
+      <section v-if="prompts.length" class="section">
+        <component :is="sec" :class="h3">Questions from the agent</component>
+        <div class="mb-3 grid gap-2.5">
+          <PromptCard v-for="p in prompts" :key="p.id" :namespace="namespace" :name="name" :prompt="p" />
+        </div>
+      </section>
+
+      <!-- The GitLab conversation, once on the removed Chat tab (R18 of
+           "Desk: the Cockpit"): the pilot is the only Desk chat. -->
+      <section v-if="data.permissions?.gitlab" class="section">
+        <component :is="sec" :class="h3">Conversation</component>
+        <Conversation
+          :namespace="namespace"
+          :name="name"
+          :task="task"
+          :steer="!!data.permissions?.steer"
+          :stamp="`${run.observedRunRequest ?? ''}|${run.activeRunRequest ?? ''}|${run.mergeRequestIID ?? ''}|${t.status.ci?.state ?? ''}|${t.status.autopilot?.phase ?? ''}`"
+        />
+      </section>
+
+      <div v-if="t.type === 'Implement'" :class="['section', cols]">
+        <section class="min-w-0">
+          <component :is="sec" :class="h3">Review</component>
+          <dl :class="['card px-4 py-3.5', dl]">
+            <dt :class="dt">Blocking findings</dt>
             <dd :class="dd">
-              <code v-for="j in t.status.ci.failedJobs" :key="j" :class="chip">{{ j }}</code>
+              <Badge :tone="(run.blockingFindings ?? 0) > 0 ? 'danger' : 'success'">{{ run.blockingFindings ?? 0 }}</Badge>
             </dd>
-          </template>
-        </dl>
-        <UEmpty v-else icon="i-lucide-git-pull-request" title="No pipeline followed yet." size="sm" />
-      </section>
-    </div>
-
-    <section v-if="t.status.plan?.length" class="section">
-      <component :is="sec" :class="h3">Plan</component>
-      <div class="card">
-        <DataList :columns="planColumns" :rows="t.status.plan" :row-key="(pi) => pi.key">
-          <template #cell-iid="{ row: pi }"><ExtLink :href="issueURL(pi.iid)">#{{ pi.iid }}</ExtLink></template>
-          <template #cell-dependsOn="{ row: pi }">
-            <span v-if="!pi.dependsOn?.length" class="faint">—</span>
-            <span v-for="d in pi.dependsOn" :key="d" :class="chip">#{{ d }}</span>
-          </template>
-        </DataList>
+            <dt :class="dt">Failed reviewers</dt>
+            <dd :class="dd">
+              <Badge :tone="(run.reviewErrors ?? 0) > 0 ? 'warning' : 'success'">{{ run.reviewErrors ?? 0 }}</Badge>
+            </dd>
+            <dt :class="dt">Reviewed commit</dt>
+            <dd :class="dd">
+              <span class="mono">{{ shortSHA(run.reviewedSHA) }}</span>
+              <span v-if="run.reviewedSHA && run.pushedSHA && run.reviewedSHA !== run.pushedSHA" class="faint">
+                (later commits were not reviewed)
+              </span>
+            </dd>
+          </dl>
+        </section>
+        <section class="min-w-0">
+          <component :is="sec" :class="h3">CI</component>
+          <dl v-if="t.status.ci" :class="['card px-4 py-3.5', dl]">
+            <dt :class="dt">Pipeline</dt>
+            <dd :class="dd">
+              <Badge :tone="ciTone(t.status.ci.state)">{{ ciLabel[t.status.ci.state] }}</Badge>
+              <ExtLink v-if="t.status.ci.pipelineURL" :href="t.status.ci.pipelineURL" class="ml-2">
+                #{{ t.status.ci.pipelineID }}
+              </ExtLink>
+            </dd>
+            <dt :class="dt">Commit</dt>
+            <dd :class="[dd, 'mono']">{{ shortSHA(t.status.ci.sha) }}</dd>
+            <dt :class="dt">Fix rounds</dt>
+            <dd :class="dd">{{ run.ciRound ?? 0 }}<span v-if="t.status.ci.retried" class="faint"> · failed jobs retried</span></dd>
+            <template v-if="t.status.ci.failedJobs?.length">
+              <dt :class="dt">Failed jobs</dt>
+              <dd :class="dd">
+                <code v-for="j in t.status.ci.failedJobs" :key="j" :class="chip">{{ j }}</code>
+              </dd>
+            </template>
+          </dl>
+          <UEmpty v-else icon="i-lucide-git-pull-request" title="No pipeline followed yet." size="sm" />
+        </section>
       </div>
-    </section>
 
-    <section v-if="t.status.autopilot" class="section">
-      <div class="row section-head">
-        <component :is="sec" class="h3">Autopilot</component>
-        <Badge :tone="t.status.autopilot.phase === 'Paused' ? 'warning' : 'progress'">{{ t.status.autopilot.phase }}</Badge>
-        <span v-if="autopilotItems.length" class="faint">{{ queueDone(autopilotItems) }} / {{ autopilotItems.length }} done</span>
-        <span class="grow" />
-        <RouterLink
-          v-if="t.milestone"
-          :to="{ name: 'stream-milestone', params: { namespace, name, iid: String(t.milestone.iid) } }"
-        >
-          Queue in the milestone stream
-        </RouterLink>
-        <ExtLink v-if="t.status.autopilot.trackingIssueIID" :href="issueURL(t.status.autopilot.trackingIssueIID)">
-          Tracking issue #{{ t.status.autopilot.trackingIssueIID }}
-        </ExtLink>
-      </div>
-      <UAlert v-if="t.status.autopilot.pausedReason" :color="alertColor('warning')" variant="subtle" class="mt-3">
-        <template #description>
-          <Markdown mode="inline" :text="t.status.autopilot.pausedReason" />
-          <template v-if="t.status.autopilot.pausedFor">(issue #{{ t.status.autopilot.pausedFor }})</template>
-          <template v-if="t.status.autopilot.resumeWhenReady">
-            It continues by itself once a later run of #{{ t.status.autopilot.pausedFor }} is reviewed and green.
-          </template>
-        </template>
-      </UAlert>
-    </section>
-
-    <!-- The pod and its conditions close Overview (D673-P1). -->
-    <div :class="['section', cols]">
-      <section class="min-w-0">
-        <component :is="sec" :class="h3">Pod</component>
-        <dl :class="['card px-4 py-3.5', dl]">
-          <dt :class="dt">Pod</dt>
-          <dd :class="[dd, 'mono']">{{ t.status.podName || 'not running' }}</dd>
-          <dt :class="dt">Workspace</dt>
-          <dd :class="[dd, 'mono']">{{ t.status.workspaceClaimName || '—' }}</dd>
-          <template v-if="t.status.agentTermination">
-            <dt :class="dt">Agent container</dt>
-            <dd :class="dd">
-              last stopped <LocalText :text="t.status.agentTermination.reason" /> (exit {{ t.status.agentTermination.exitCode ?? '?' }}),
-              {{ t.status.agentTermination.restarts ?? 0 }} restarts
-            </dd>
-          </template>
-          <template v-if="t.status.podName">
-            <dt :class="dt">Logs</dt>
-            <dd :class="dd">
-              <!-- Scrolls inside its own box; the page never does. -->
-              <code class="block overflow-x-auto rounded bg-(--surface-2) px-2 py-1.5 whitespace-nowrap"
-                >kubectl -n {{ t.namespace }} logs -f {{ t.status.podName }} -c runner</code
-              >
-            </dd>
-          </template>
-        </dl>
-      </section>
-      <section v-if="t.status.conditions?.length" class="min-w-0">
-        <component :is="sec" :class="h3">Conditions</component>
+      <section v-if="t.status.plan?.length" class="section">
+        <component :is="sec" :class="h3">Plan</component>
         <div class="card">
-          <DataList :columns="conditionColumns" :rows="t.status.conditions" :row-key="(c) => c.type">
-            <template #cell-status="{ row: c }">
-              <Badge :tone="conditionTone(c.type, c.status)">{{ c.reason || c.status }}</Badge>
-              <div v-if="c.message" class="faint"><LocalText :text="c.message" /></div>
+          <DataList :columns="planColumns" :rows="t.status.plan" :row-key="(pi) => pi.key">
+            <template #cell-iid="{ row: pi }"><ExtLink :href="issueURL(pi.iid)">#{{ pi.iid }}</ExtLink></template>
+            <template #cell-dependsOn="{ row: pi }">
+              <span v-if="!pi.dependsOn?.length" class="faint">—</span>
+              <span v-for="d in pi.dependsOn" :key="d" :class="chip">#{{ d }}</span>
             </template>
           </DataList>
         </div>
       </section>
-    </div>
-  </template>
 
-  <section v-else-if="tab === 'live'" id="live-transcript" class="section">
-    <component :is="sec" :class="h3">Live</component>
-    <LiveTranscript
-      :namespace="namespace"
-      :name="name"
-      :task="task"
-      :pod="t.status.podName"
-      :run="String(run.activeRunRequest ?? '')"
-    />
-  </section>
+      <section v-if="t.status.autopilot" class="section">
+        <div class="row section-head">
+          <component :is="sec" class="h3">Autopilot</component>
+          <Badge :tone="t.status.autopilot.phase === 'Paused' ? 'warning' : 'progress'">{{ t.status.autopilot.phase }}</Badge>
+          <span v-if="autopilotItems.length" class="faint">{{ queueDone(autopilotItems) }} / {{ autopilotItems.length }} done</span>
+          <span class="grow" />
+          <RouterLink
+            v-if="t.milestone"
+            :to="{ name: 'stream-milestone', params: { namespace, name, iid: String(t.milestone.iid) } }"
+          >
+            Queue in the milestone stream
+          </RouterLink>
+          <ExtLink v-if="t.status.autopilot.trackingIssueIID" :href="issueURL(t.status.autopilot.trackingIssueIID)">
+            Tracking issue #{{ t.status.autopilot.trackingIssueIID }}
+          </ExtLink>
+        </div>
+        <UAlert v-if="t.status.autopilot.pausedReason" :color="alertColor('warning')" variant="subtle" class="mt-3">
+          <template #description>
+            <Markdown mode="inline" :text="t.status.autopilot.pausedReason" />
+            <template v-if="t.status.autopilot.pausedFor">(issue #{{ t.status.autopilot.pausedFor }})</template>
+            <template v-if="t.status.autopilot.resumeWhenReady">
+              It continues by itself once a later run of #{{ t.status.autopilot.pausedFor }} is reviewed and green.
+            </template>
+          </template>
+        </UAlert>
+      </section>
 
-  <TaskLogs v-else-if="tab === 'logs'" :namespace="namespace" :name="name" :task="task" />
+      <!-- The pod and its conditions close Overview (D673-P1). -->
+      <div :class="['section', cols]">
+        <section class="min-w-0">
+          <component :is="sec" :class="h3">Pod</component>
+          <dl :class="['card px-4 py-3.5', dl]">
+            <dt :class="dt">Pod</dt>
+            <dd :class="[dd, 'mono']">{{ t.status.podName || 'not running' }}</dd>
+            <dt :class="dt">Workspace</dt>
+            <dd :class="[dd, 'mono']">{{ t.status.workspaceClaimName || '—' }}</dd>
+            <template v-if="t.status.agentTermination">
+              <dt :class="dt">Agent container</dt>
+              <dd :class="dd">
+                last stopped <LocalText :text="t.status.agentTermination.reason" /> (exit {{ t.status.agentTermination.exitCode ?? '?' }}),
+                {{ t.status.agentTermination.restarts ?? 0 }} restarts
+              </dd>
+            </template>
+            <template v-if="t.status.podName">
+              <dt :class="dt">Logs</dt>
+              <dd :class="dd">
+                <!-- Scrolls inside its own box; the page never does. -->
+                <code class="block overflow-x-auto rounded bg-(--surface-2) px-2 py-1.5 whitespace-nowrap"
+                  >kubectl -n {{ t.namespace }} logs -f {{ t.status.podName }} -c runner</code
+                >
+              </dd>
+            </template>
+          </dl>
+        </section>
+        <section v-if="t.status.conditions?.length" class="min-w-0">
+          <component :is="sec" :class="h3">Conditions</component>
+          <div class="card">
+            <DataList :columns="conditionColumns" :rows="t.status.conditions" :row-key="(c) => c.type">
+              <template #cell-status="{ row: c }">
+                <Badge :tone="conditionTone(c.type, c.status)">{{ c.reason || c.status }}</Badge>
+                <div v-if="c.message" class="faint"><LocalText :text="c.message" /></div>
+              </template>
+            </DataList>
+          </div>
+        </section>
+      </div>
+    </template>
 
-  <TaskCalls v-else-if="tab === 'calls'" :namespace="namespace" :name="name" :task="task" :level="page ? 2 : 3" />
+    <section v-else-if="tab === 'live'" id="live-transcript" class="section">
+      <component :is="sec" :class="h3">Live</component>
+      <LiveTranscript
+        :namespace="namespace"
+        :name="name"
+        :task="task"
+        :pod="t.status.podName"
+        :run="String(run.activeRunRequest ?? '')"
+      />
+    </section>
 
+    <TaskLogs v-else-if="tab === 'logs'" :namespace="namespace" :name="name" :task="task" />
+
+    <TaskCalls v-else-if="tab === 'calls'" :namespace="namespace" :name="name" :task="task" :level="page ? 2 : 3" />
+  </SwipeTabs>
 </template>

@@ -6,11 +6,13 @@
 // its content is not mounted. A short drag, a swipe past the first or last
 // tab, a vertical drag and swipes that start on the tab strip, a sideways
 // scroller, the composer or the screen edge keep the tab. A mouse never
-// switches. The touches are CDP Input.dispatchTouchEvent (swipe, hold).
+// switches. The Overview, the task page and the plan page's two rows swipe
+// too (#878). The touches are CDP Input.dispatchTouchEvent (swipe, hold).
 // The fixture project team-a/shop and its milestone %14 (fixtures). Run
 // with npm run e2e (built UI, Chromium).
 import { expect, test, type CDPSession, type Page } from '@playwright/test'
 import { answer, now } from './fixtures'
+import { features } from './fixtures/session'
 
 interface Point {
   x: number
@@ -26,6 +28,8 @@ async function open(page: Page, baseURL: string | undefined, path: string) {
     const p = url.pathname.slice('/api/v1'.length)
     if (p === '/events') return r.fulfill({ status: 200, contentType: 'text/event-stream', body: 'retry: 3600000\n\n' })
     if (p.endsWith('/warm')) return r.fulfill({ status: 204 })
+    // A plan page needs the plans feature, off in the default fixture.
+    if (p === '/features' && path.includes('/plans/')) return r.fulfill({ status: 200, json: { features: [...features.features, { name: 'plans' }] } })
     const body = r.request().method() === 'GET' ? answer(p, url.searchParams) : undefined
     if (body === undefined) return r.fulfill({ status: 404, json: { error: 'no fixture' } })
     if (typeof body === 'string') return r.fulfill({ status: 200, contentType: 'text/plain; charset=utf-8', body })
@@ -61,9 +65,12 @@ async function swipe(page: Page, from: Point, to: Point, opts: { steps?: number;
   await lift(await hold(page, from, to, opts))
 }
 
-const surface = (page: Page) => page.locator('main [data-swipe-tabs]')
+// The enabled surface: the plan page has one per tab row, and only the row
+// shown at that width swipes.
+const surface = (page: Page) => page.locator('main [data-swipe-tabs].live').first()
 const track = (page: Page) => surface(page).locator(':scope > div').first()
-const activeTab = (page: Page) => page.locator('main [data-stream-head] nav a[aria-current="page"]')
+// The active tab of the row shown (the plan page hides one of its two).
+const activeTab = (page: Page) => page.locator('main [data-route-tabs] a[aria-current="page"]').filter({ visible: true })
 // A tab's text starts with its label; a badge (the milestone Cockpit's
 // count of open needs) may follow.
 const tabLabel = (label: string) => new RegExp(`^${label.replace(/\d+$/, '')}`)
@@ -121,6 +128,7 @@ async function keeps(page: Page, url: RegExp, label: string) {
 const projectPath = '/projects/team-a/shop'
 const milestonePath = '/projects/team-a/shop/milestones/14'
 const cockpitURL = /\/projects\/team-a\/shop(\?|$)/
+const taskPath = '/projects/team-a/shop/tasks/shop-281-implement'
 
 for (const [width, height] of [[390, 844], [1024, 768]] as const) {
   test.describe(`swiping tabs at ${width} px`, () => {
@@ -245,8 +253,95 @@ for (const [width, height] of [[390, 844], [1024, 768]] as const) {
       await swipe(page, { x: width - 10, y }, { x: width - 260, y })
       await keeps(page, cockpitURL, 'Cockpit')
     })
+
+    test('a left swipe on the task Overview opens Live', async ({ page, baseURL }) => {
+      await open(page, baseURL, taskPath)
+      await expect(activeTab(page)).toHaveText(tabLabel('Overview'))
+      await swipe(page, await at(page, 0.8), await at(page, 0.2))
+      await expect(page).toHaveURL(/\?tab=live$/)
+      await expect(activeTab(page)).toHaveText(tabLabel('Live'))
+      await page.goBack()
+      await expect(activeTab(page)).toHaveText(tabLabel('Overview'))
+    })
+
+    test('a left swipe on the Overview Cockpit opens the Timeline', async ({ page, baseURL }) => {
+      await open(page, baseURL, '/')
+      await expect(activeTab(page)).toHaveText(tabLabel('Cockpit'))
+      await swipe(page, await at(page, 0.8), await at(page, 0.2))
+      await expect(page).toHaveURL(/\?tab=timeline$/)
+      await expect(activeTab(page)).toHaveText(tabLabel('Timeline'))
+    })
+
+    test('a swipe on the Overview Timeline keeps the tab', async ({ page, baseURL }) => {
+      await open(page, baseURL, '/?tab=timeline')
+      // The Timeline's sideways scroller (a lazy chunk), narrowed where it fits.
+      const timeline = surface(page).locator('[data-timeline]')
+      await expect(timeline).toBeVisible()
+      const box = await timeline.evaluate((el: HTMLElement) => {
+        if (el.scrollWidth <= el.clientWidth) el.style.width = `${Math.floor(el.scrollWidth / 2)}px`
+        if (el.scrollWidth <= el.clientWidth) return null
+        el.scrollIntoView({ block: 'center' })
+        const r = el.getBoundingClientRect()
+        return { x: r.x, y: r.y, width: r.width, height: r.height }
+      })
+      expect(box, 'the Timeline scrolls sideways').not.toBeNull()
+      const y = box!.y + Math.min(box!.height / 2, 40)
+      const x = Math.min(box!.x + box!.width - 30, width * 0.8)
+      await swipe(page, { x, y }, { x: Math.max(x - 200, 40), y })
+      await keeps(page, /\?tab=timeline$/, 'Timeline')
+    })
   })
 }
+
+// The plan page: below 760 px the whole grid swipes Chat / Decisions /
+// Draft; from 760 px only the right pane swipes Draft / Decisions, and the
+// chat column does not.
+// plan-wait is the plan with a detail fixture.
+const planPath = '/projects/team-a/tools-foo/plans/plan-wait'
+const planURL = /\/plans\/plan-wait$/
+
+test.describe('swiping the plan tabs at 390 px', () => {
+  test.use({ hasTouch: true, viewport: { width: 390, height: 844 } })
+
+  test('a left swipe on Chat opens Decisions', async ({ page, baseURL }) => {
+    await open(page, baseURL, planPath)
+    await expect(activeTab(page)).toHaveText(tabLabel('Chat'))
+    await swipe(page, await at(page, 0.8), await at(page, 0.2))
+    await expect(page).toHaveURL(/\?tab=decisions$/)
+    await expect(activeTab(page)).toHaveText(tabLabel('Decisions'))
+  })
+
+  test('a swipe in the plan composer keeps Chat', async ({ page, baseURL }) => {
+    await open(page, baseURL, planPath)
+    const field = page.locator('main [data-plan-chat] textarea')
+    await expect(field).toBeVisible()
+    const box = (await field.boundingBox())!
+    const y = box.y + box.height / 2
+    const x = Math.min(box.x + box.width - 20, 390 * 0.8)
+    await swipe(page, { x, y }, { x: x - 200, y })
+    await keeps(page, planURL, 'Chat')
+  })
+})
+
+test.describe('swiping the plan pane at 1024 px', () => {
+  test.use({ hasTouch: true, viewport: { width: 1024, height: 768 } })
+
+  test('a left swipe on the pane opens Decisions', async ({ page, baseURL }) => {
+    await open(page, baseURL, planPath)
+    await expect(activeTab(page)).toHaveText(tabLabel('Draft'))
+    await swipe(page, await at(page, 0.8), await at(page, 0.2))
+    await expect(page).toHaveURL(/\?tab=decisions$/)
+    await expect(activeTab(page)).toHaveText(tabLabel('Decisions'))
+  })
+
+  test('a swipe on the chat column keeps the tab', async ({ page, baseURL }) => {
+    await open(page, baseURL, planPath)
+    const box = (await page.locator('main [data-plan-chat] [role="log"]').boundingBox())!
+    const y = box.y + box.height / 2
+    await swipe(page, { x: box.x + box.width * 0.9, y }, { x: box.x + box.width * 0.1, y })
+    await keeps(page, planURL, 'Draft')
+  })
+})
 
 test.describe('a mouse', () => {
   test.use({ hasTouch: false, viewport: { width: 1280, height: 800 } })

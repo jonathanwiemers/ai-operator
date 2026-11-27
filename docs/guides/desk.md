@@ -127,9 +127,9 @@ their own. Scheduled researches are managed with `kubectl`.
   projects, milestones, issues and merge requests, and pages such as the
   Inbox, *Plans* or *Plan milestone*, which opens the project's *Plans* tab.
 - **Live**: every page updates by itself.
-- **Pages** share one header: status, title, one main button and a ⋯ menu,
-  and a line with cost and counts. One row of tabs sits below. A tab's
-  switches and filters, with search on the right, sit in a bar on top of it.
+- **Pages** share one header (status, title, main button, ⋯ menu, cost and
+  counts) and one row of tabs. On a touch screen, swipe the content sideways
+  to the next or previous tab. A tab's switches, filters and search sit on top.
 
 ### The account menu
 

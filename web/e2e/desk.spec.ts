@@ -2981,6 +2981,8 @@ test.describe('task tabs', () => {
           const figures = main.querySelector('[data-task-figures]')
           let next = nav.nextElementSibling
           while (next?.matches('[data-task-alert]')) next = next.nextElementSibling
+          // The tab's content sits in its swipe surface and track.
+          if (next?.matches('[data-swipe-tabs]')) next = next.firstElementChild?.firstElementChild ?? null
           return { first: next === figures, alerts: after('[data-task-alert]') }
         })
         expect(order, 'tiles first on Overview, alerts below the tabs').toEqual({ first: true, alerts: true })
