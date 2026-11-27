@@ -1,0 +1,23 @@
+# Agent image for ai-operator's own agents: the agent image plus Chromium,
+# its system libraries and fonts, and cwebp, so the Desk's Playwright checks
+# (make ui-e2e, make ui-e2e-journey) and make docs-screenshots run in their
+# pods. Other projects keep the plain agent image.
+#
+# PLAYWRIGHT_VERSION must equal @playwright/test in web/package.json: npm test
+# in web/ checks it, and Renovate bumps both in the same merge request.
+# The release-agent-web job rewrites the ARG AGENT_IMAGE line to the agent
+# image of the same release.
+ARG AGENT_IMAGE=registry.gitlab.com/jo.wiemers/ai-operator/agent:latest
+FROM ${AGENT_IMAGE}
+USER root
+ARG PLAYWRIGHT_VERSION=1.65.0
+# The Makefile's `npx playwright install chromium` finds the browser here and
+# does nothing; it takes a lock file in the directory, so uid 1000 owns it.
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+RUN set -eu; \
+    npx -y playwright@${PLAYWRIGHT_VERSION} install --with-deps chromium; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends webp; \
+    chown -R 1000:1000 /opt/ms-playwright; \
+    rm -rf /var/lib/apt/lists/* /root/.npm /tmp/*
+USER 1000

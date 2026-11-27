@@ -86,6 +86,7 @@ default:
   - mise.toml
   - mise.lock
   - .gitlab-ci.yml
+  - Dockerfile.agent-web
 
 .go-test-rules:
   rules:
@@ -221,6 +222,26 @@ web:
     expose_as: Desk screenshots
     paths: [web/e2e-results/]
 
+# build <dockerfile> <image suffix> <cache name> pushes
+# ${CI_REGISTRY_IMAGE}<suffix>:${VERSION} and :latest for linux/amd64. release
+# and release-agent-web define it with the script line `- *docker-build-fn`.
+# jo-docker-build creates the docker context tls-env and fails if it already
+# exists, so a second build needs it removed first.
+.docker-build-fn: &docker-build-fn |
+  build() {
+    docker context rm --force tls-env >/dev/null 2>&1 || true
+    jo-docker-build \
+      --dockerfile "$1" \
+      --image "${CI_REGISTRY_IMAGE}$2" \
+      --tag "${VERSION}" \
+      --extra-tag latest \
+      --platforms linux/amd64 \
+      --registry "${CI_REGISTRY}" \
+      --registry-password-env CI_JOB_TOKEN \
+      --dependency-proxy-server "${CI_DEPENDENCY_PROXY_SERVER}" \
+      --cache-ref "${CI_REGISTRY_IMAGE}/buildcache:$3"
+  }
+
 # A release is a decision, not a side effect of a merge (docs/contributing/releasing.md):
 # pushes to main run the checks only. A release is a tag YEAR.MONTH.N on main
 # with a GitLab release, which
@@ -235,7 +256,9 @@ web:
 #   - chart   oci://registry.gitlab.com/jo.wiemers/ai-operator/charts/ai-operator --version <version>
 # and adds the install section to the GitLab release (creates it for a bare
 # tag). The operator follows the tag pipeline; GitHub's release.yml counts its
-# own versions.
+# own versions. release-agent-web then publishes
+# registry.gitlab.com/jo.wiemers/ai-operator/agent-web:<version> and :latest
+# after release, and may fail without failing the release.
 release:
   extends: .docker-build
   stage: release
@@ -256,22 +279,8 @@ release:
     # copy as its default (no build argument needed from jo-docker-build).
     - sed -i "s/^ARG VERSION=dev\$/ARG VERSION=${VERSION}/" Dockerfile
     - grep -qx "ARG VERSION=${VERSION}" Dockerfile
+    - *docker-build-fn
     - |
-      # jo-docker-build creates the docker context tls-env and fails if it
-      # already exists, so the second build needs it removed first.
-      build() {
-        docker context rm --force tls-env >/dev/null 2>&1 || true
-        jo-docker-build \
-          --dockerfile "$1" \
-          --image "${CI_REGISTRY_IMAGE}$2" \
-          --tag "${VERSION}" \
-          --extra-tag latest \
-          --platforms linux/amd64 \
-          --registry "${CI_REGISTRY}" \
-          --registry-password-env CI_JOB_TOKEN \
-          --dependency-proxy-server "${CI_DEPENDENCY_PROXY_SERVER}" \
-          --cache-ref "${CI_REGISTRY_IMAGE}/buildcache:$3"
-      }
       build Dockerfile "" operator
       build Dockerfile.agent /agent agent
     - echo "${CI_JOB_TOKEN}" | helm registry login "${CI_REGISTRY}" --username gitlab-ci-token --password-stdin
@@ -317,3 +326,28 @@ release:
       *)
         cat release.json; exit 1 ;;
       esac
+
+# ai-operator's own agents run this image (Dockerfile.agent-web): the agent
+# image of the same release plus Chromium, its libraries and fonts, and cwebp.
+# GitLab only. A failed build never fails the release: retry the job on its own.
+release-agent-web:
+  extends: .docker-build
+  stage: release
+  needs: [release]
+  # Two tags close together must not race on :latest. A lock of its own does
+  # not hold the next release while this image builds or is retried.
+  resource_group: release-agent-web
+  interruptible: false
+  allow_failure: true
+  variables:
+    CI_TOOLS_IMAGE: registry.gitlab.com/jo.wiemers/devops/ci:v0.2.55
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^20\d\d\.\d+\.\d+$/
+  script:
+    - VERSION="${CI_COMMIT_TAG}"
+    - echo "Building agent-web ${VERSION}"
+    # FROM the agent image this tag's release job pushed.
+    - sed -i "s|^ARG AGENT_IMAGE=.*\$|ARG AGENT_IMAGE=${CI_REGISTRY_IMAGE}/agent:${VERSION}|" Dockerfile.agent-web
+    - grep -qx "ARG AGENT_IMAGE=${CI_REGISTRY_IMAGE}/agent:${VERSION}" Dockerfile.agent-web
+    - *docker-build-fn
+    - build Dockerfile.agent-web /agent-web agent-web

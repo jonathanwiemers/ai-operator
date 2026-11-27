@@ -1,4 +1,14 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": [":dependencyDashboard", ":semanticCommits", "group:allNonMajor"]
+  "extends": [":dependencyDashboard", ":semanticCommits", "group:allNonMajor"],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "The browser of Dockerfile.agent-web follows @playwright/test in web/package.json",
+      "managerFilePatterns": ["/(^|/)Dockerfile\\.agent-web$/"],
+      "matchStrings": ["ARG PLAYWRIGHT_VERSION=(?<currentValue>\\S+)"],
+      "datasourceTemplate": "npm",
+      "depNameTemplate": "@playwright/test"
+    }
+  ]
 }
