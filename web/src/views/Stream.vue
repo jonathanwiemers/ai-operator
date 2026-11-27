@@ -30,6 +30,7 @@ import PlanList from '../components/PlanList.vue'
 import ProjectDecisions from '../components/ProjectDecisions.vue'
 import ProjectFinishing from '../components/ProjectFinishing.vue'
 import RouteTabs from '../ui/RouteTabs.vue'
+import SwipeTabs from '../ui/SwipeTabs.vue'
 import { live, useNow, useResource } from '../live'
 import { needsOpen } from '../needsOpen'
 import { nowAndNext, nowStripText, projectNowAndNext } from '../nowAndNext'
@@ -473,6 +474,8 @@ watch(
 
       <!-- A project's milestones (R9), in the dashboard's lists, or its
            Board (?view=board, R15), picked in the tab's toolbar. -->
+      <!-- A touch swipe on the content opens the next or previous tab. -->
+      <SwipeTabs :tabs="tabs" :active="tab" :to="tabTo">
       <div v-if="tab === 'milestones'" class="scroll board">
         <UDashboardToolbar class="mb-3 min-h-0 border-0 px-0 sm:px-0" data-tab-toolbar>
           <template #left>
@@ -613,6 +616,7 @@ watch(
           @totals="(t) => showCost(totalsCost(t))"
         />
       </div>
+      </SwipeTabs>
 
     </div>
     </template>

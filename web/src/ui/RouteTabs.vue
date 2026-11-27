@@ -88,9 +88,12 @@ watch(() => [props.active, props.tabs], reveal, { flush: 'post' })
        list is the scroller; its end padding lets the last tab scroll fully
        into view whatever the rounding of the widest scroll. Tabs are 44 px
        high on phones (style.css, "Hit areas"). The focus
-       outline sits on the link's inset ::before, inside the list's clip. -->
+       outline sits on the link's inset ::before, inside the list's clip.
+       data-route-tabs: a swipe that starts on the strip is no tab swipe
+       (SwipeTabs). -->
   <UNavigationMenu
     :id="id"
+    data-route-tabs
     :aria-label="label ?? 'View'"
     orientation="horizontal"
     highlight

@@ -501,6 +501,7 @@ headings, focus, the announcer) and keeps the axe check green.
 | --- | --- | --- |
 | [DataList](#datalist) | `web/src/ui/DataList.vue` | Shows cards below 760 px; `UTable` has no card layout. |
 | [RouteTabs](#routetabs) | `web/src/ui/RouteTabs.vue` | Wraps `UNavigationMenu` for `?tab=` links: explicit active tab, in-strip scroll and reveal of the active tab. |
+| [SwipeTabs](#swipetabs) | `web/src/ui/SwipeTabs.vue` | Nuxt UI has no swipe or pager component; switches a RouteTabs row's tabs by touch swipe. |
 | [Truncated](#truncated) | `web/src/ui/Truncated.vue` | Cuts long text and shows the whole of it on demand; no Nuxt UI component does both. |
 | `useBackClose` | `web/src/ui/useBackClose.ts` | Lets the Back button close a [sheet](#sheets); Nuxt UI overlays do not touch history. |
 | `useKeyboardInset` | `web/src/ui/useKeyboardInset.ts` | Lifts the [composer](#composer) above the phone keyboard; Nuxt UI has no such helper. |
@@ -905,6 +906,119 @@ to a line of its own (`flex-wrap`), so it gets the full width before it
 scrolls. Users: the project and milestone page (`Stream.vue`, the milestone's
 *Cockpit* tab with the count of open needs as its badge), the dashboard, and the task page (`TaskBody.vue`) shows its tabs with `label="Task"` and the
 open questions' count as Overview's badge.
+
+### SwipeTabs
+
+`web/src/ui/SwipeTabs.vue` wraps the content of a [RouteTabs](#routetabs)
+row's tabs. On a touch screen, at any width, you can swipe the content
+sideways to reach the next or previous tab. The content follows the finger,
+like a native pager. It takes the same `tabs`, `active` and `to` as its
+row:
+
+```vue
+<RouteTabs :tabs="tabs" :active="tab" :to="tabTo" />
+<SwipeTabs :tabs="tabs" :active="tab" :to="tabTo">
+  <div v-if="tab === 'cockpit'" class="scroll board">…</div>
+  <div v-else-if="tab === 'issues'" class="scroll board">…</div>
+</SwipeTabs>
+```
+
+- `tabs`, `active`, `to`: as on RouteTabs.
+- `disabled`: optional. When it is set, the surface ignores every pointer
+  and drops `touch-action`. It still wraps its slot, so the slot's content
+  is not remounted when `disabled` changes, for a row that is shown only at
+  some widths.
+
+Users: the project and milestone page (`Stream.vue`), around its `v-if`
+chain of `div.scroll.board`. The Overview, `TaskBody.vue` and the plan page
+follow in the next issue of the milestone.
+
+**Input.** Only `pointerType === 'touch'` with the primary pointer counts.
+Mouse, pen and trackpad never switch tabs. The root has
+`touch-action: pan-y`, so vertical scrolling stays native. So do the
+vertical scrollers in the slot: every `.scroll` and every element with an
+`overflow-y-auto` utility class (the Cockpit's pinned column from
+1024 px, chat logs). They need it too, because the browser lets a scroll
+container pan both ways whatever its ancestors' `touch-action` says. It
+would then take the sideways move and send `pointercancel`. A vertical
+scroller inside a surface uses `.scroll` or `overflow-y-auto`, or swipes
+that start on it do nothing. Sideways scrollers keep their own panning.
+
+**Ignored touches.** A touch is not a swipe when it starts:
+
+- in an element, between the target and the root, with
+  `scrollWidth > clientWidth` and `overflow-x` `auto` or `scroll` (tables,
+  the Timeline, code blocks), unless it is `touch-action: pan-y` as the
+  tab's own scroller, which does not pan sideways by touch;
+- in `input`, `textarea`, `select` or `[contenteditable]` (not `"false"`),
+  for example the composer;
+- on a RouteTabs strip inside the surface (`[data-route-tabs]`);
+- within 24 px of the viewport's left or right edge, where iOS has its own
+  back gesture;
+- while text is selected (`getSelection()`).
+
+An open sheet or dialog is teleported over the page and takes the touch
+itself.
+
+**Thresholds.** The numbers live in `web/src/tabSwipe.ts`, a pure module
+with unit tests (`web/test/tabSwipe.test.mjs`); SwipeTabs does not repeat
+them:
+
+- the direction locks after 10 px (`lockAxis`), sideways when
+  `|dx| >= 2·|dy|`; otherwise the rest of the touch is a normal scroll;
+- past the first or last tab the content moves at a third of the finger
+  (`dragOffset`), and there is no wrap-around;
+- on release (`settle`), the swipe switches when it travelled 60 px or more,
+  and either a third of the surface's width or at least 0.4 px/ms
+  (`releaseSpeed`, over the last 100 ms).
+
+Once the axis locks sideways, the surface captures the pointer, and the
+inner track moves with `transform: translateX` once per animation frame,
+with no layout reads per frame. The width is read once, at the start.
+
+**Placeholder.** While you drag toward an existing neighbour, a panel
+beside the track shows that tab's `label` over four `USkeleton` lines. It is
+`aria-hidden`, and the neighbour's content is not mounted: it loads when
+the swipe commits, as on a tap.
+
+**Release.** A switch finishes the slide in 200 ms, then calls
+`router.push(to(neighbour))`, the same as a tap on that tab, so Back
+returns to the previous tab. Once `active` changes, the track is reset
+without a transition (a `watch` with `flush: 'post'`). If the navigation
+does not happen, the content springs back. A shorter swipe springs back in
+200 ms, and so does `pointercancel`. If `active` changes during a drag (a
+tap or Back), the drag is dropped. At rest the track has no transform at
+all, so it is never the containing block of a fixed descendant.
+
+**Listeners.** The surface adds its pointer and click listeners with
+`addEventListener`, not with Vue's `@` bindings. Vue's event invoker
+stamps an event with `Date.now()` and skips handlers attached at or after
+that time. As the first Vue invoker on a click's path (in the capture
+phase), the surface would stamp every click in the tab. Under a frozen
+clock (the browser checks' `clock.setFixedTime`) the content's own
+handlers, attached at that same instant, would then never run.
+
+**Click.** After a sideways drag, the next `click` is swallowed in the
+capture phase on the root, so a link or card under the finger does not
+open. The flag clears on the next `pointerdown`, 400 ms after the
+release, or 1 s after the drag started, so a drag that ends in
+`pointercancel` swallows no later click.
+
+**Reduced motion.** With `prefers-reduced-motion: reduce`, the content
+still follows the finger, but the finishing slide and the spring-back are
+instant.
+
+**Layout.** The root and the track are `flex` columns with `flex: 1` and
+`min-height: 0`, so they keep the layout of what they wrap, and the inner
+`.scroll` scrollers work as before. Only while a sideways drag or its
+slide runs (the `moving` class) is the track `relative`, holding the
+panel, and the root clips it with `overflow-x: clip`. At rest the surface
+adds no positioning, clip or transform. `overflow: hidden` would make the root a scroll
+container and break the inner scrollers and sticky headers. Its styles
+are scoped CSS, not utilities, so they ship in the lazy route's chunk and
+not in the initial bundle ([Bundle budget](#bundle-budget)). The checks
+are in `web/e2e/tab-swipe.spec.ts`. They drive CDP
+`Input.dispatchTouchEvent` through its `swipe` and `hold` helpers.
 
 ### Truncated
 
