@@ -186,7 +186,7 @@ const routes: Route[] = [
       ready: (page) => expect(page.locator('main').getByText(milestoneReady[tab]).first()).toBeVisible(),
     }),
   ),
-  // The Issues tab's Lanes; Timeline is the default with history.
+  // The Issues tab's Lanes, its default view; the Timeline is a tab of its own.
   {
     name: 'stream-milestone-lanes',
     path: '/projects/team-a/shop/milestones/14?tab=issues&view=lanes',
@@ -962,7 +962,7 @@ for (const { width, height, labels } of [
 }
 
 // RouteTabs (src/ui/RouteTabs.vue): on a phone the milestone's tabs
-// (Issues · Cockpit with its badge · Decisions · Metrics · Retrospective) are still a
+// (Issues · Timeline · Cockpit with its badge · Decisions · Metrics · Retrospective) are still a
 // little wider than the screen. They scroll inside the strip's list, the
 // page does not, and the tab of ?tab=retrospective, the last one, is
 // scrolled into view on load, inside the list's visible box.

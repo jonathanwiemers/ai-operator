@@ -78,15 +78,16 @@ test('dashboard tabQuery: the Cockpit drops the parameter, Timeline sets it', ()
   assert.deepEqual(tabQuery({}, 'timeline', dashboardTabs), { tab: 'timeline' })
 })
 
-test('milestone tabs: Issues · Cockpit · Decisions · Metrics · Retrospective, Issues is the default', () => {
-  assert.deepEqual(milestoneTabs.map((t) => t.label), ['Issues', 'Cockpit', 'Decisions', 'Metrics', 'Retrospective'])
+test('milestone tabs: Issues · Timeline · Cockpit · Decisions · Metrics · Retrospective, Issues is the default', () => {
+  assert.deepEqual(milestoneTabs.map((t) => t.label), ['Issues', 'Timeline', 'Cockpit', 'Decisions', 'Metrics', 'Retrospective'])
   assert.equal(tabFromQuery('decisions', milestoneTabs), 'decisions')
   assert.deepEqual(tabQuery({}, 'decisions', milestoneTabs), { tab: 'decisions' })
   assert.equal(tabFromQuery(undefined, milestoneTabs), 'issues')
   assert.equal(tabFromQuery('', milestoneTabs), 'issues')
   assert.equal(tabFromQuery('cockpit', milestoneTabs), 'cockpit')
   assert.equal(tabFromQuery('issues', milestoneTabs), 'issues')
-  assert.equal(milestoneTabsFor(null)[0].id, 'issues')
+  assert.equal(milestoneTabsFor(null, true)[0].id, 'issues')
+  assert.deepEqual(tabQuery({}, 'timeline', milestoneTabs), { tab: 'timeline' })
 })
 
 test('milestone tabs: unknown values fall back to Issues', () => {
@@ -107,16 +108,27 @@ test('milestone tabQuery: Issues drops the parameter, Cockpit and Metrics set it
 })
 
 test('milestoneTabsFor: Retrospective once one exists, hidden while the milestone loads', () => {
-  const ids = (m) => milestoneTabsFor(m).map((t) => t.id)
+  const ids = (m) => milestoneTabsFor(m, false).map((t) => t.id)
   assert.deepEqual(ids({}), ['issues', 'cockpit', 'decisions', 'metrics'])
   assert.deepEqual(ids({ stored: true }), ['issues', 'cockpit', 'decisions', 'metrics'])
   assert.deepEqual(ids({ retrospective: { text: 'done' } }), ['issues', 'cockpit', 'decisions', 'metrics', 'retrospective'])
   assert.deepEqual(ids(null), ['issues', 'cockpit', 'decisions', 'metrics'])
 })
 
+test('milestoneTabsFor: Timeline after Issues with the history feature only', () => {
+  const ids = (m, history) => milestoneTabsFor(m, history).map((t) => t.id)
+  assert.deepEqual(ids({}, true), ['issues', 'timeline', 'cockpit', 'decisions', 'metrics'])
+  assert.deepEqual(ids({ retrospective: {} }, true), ['issues', 'timeline', 'cockpit', 'decisions', 'metrics', 'retrospective'])
+  assert.deepEqual(ids(null, true), ['issues', 'timeline', 'cockpit', 'decisions', 'metrics'])
+  assert.deepEqual(ids({ retrospective: {} }, false), ['issues', 'cockpit', 'decisions', 'metrics', 'retrospective'])
+  assert.equal(milestoneTabFromRoute('timeline', milestoneTabsFor({}, true)), 'timeline')
+  assert.equal(milestoneTabFromRoute('timeline', milestoneTabsFor({}, false)), 'issues', 'without history: Issues')
+  assert.equal(milestoneTabFromRoute('timeline'), 'timeline', 'read against all tabs while loading')
+})
+
 test('milestoneTabFromRoute: a hidden tab opens Issues once loaded, and waits while loading', () => {
-  assert.equal(milestoneTabFromRoute('retrospective', milestoneTabsFor({})), 'issues')
-  assert.equal(milestoneTabFromRoute('retrospective', milestoneTabsFor({ retrospective: {} })), 'retrospective')
+  assert.equal(milestoneTabFromRoute('retrospective', milestoneTabsFor({}, true)), 'issues')
+  assert.equal(milestoneTabFromRoute('retrospective', milestoneTabsFor({ retrospective: {} }, true)), 'retrospective')
   assert.equal(milestoneTabFromRoute('retrospective'), 'retrospective', 'read against all tabs while loading')
   assert.equal(milestoneTabFromRoute(undefined), 'issues')
   assert.equal(milestoneTabFromRoute('cockpit'), 'cockpit')
@@ -126,10 +138,10 @@ test('milestoneTabFromRoute: a hidden tab opens Issues once loaded, and waits wh
 
 test('milestoneTabFromRoute: removed tabs open where their content moved (R14)', () => {
   for (const old of ['activity', 'stream', 'needs', 'pilot']) {
-    assert.equal(milestoneTabFromRoute(old, milestoneTabsFor({})), 'cockpit', old)
+    assert.equal(milestoneTabFromRoute(old, milestoneTabsFor({}, true)), 'cockpit', old)
   }
-  assert.equal(milestoneTabFromRoute('decisions', milestoneTabsFor({})), 'decisions', 'a tab again')
-  assert.equal(milestoneTabFromRoute('board', milestoneTabsFor({})), 'issues')
+  assert.equal(milestoneTabFromRoute('decisions', milestoneTabsFor({}, true)), 'decisions', 'a tab again')
+  assert.equal(milestoneTabFromRoute('board', milestoneTabsFor({}, true)), 'issues')
   assert.equal(milestoneTabFromRoute(['needs', 'issues']), 'cockpit', 'the first value wins')
 })
 
@@ -153,6 +165,24 @@ test('milestoneAlias: current links need no change, the pilot drawer\'s ?pilot= 
   assert.deepEqual(milestoneAlias({ pilot: ['x', '1'] }), { tab: 'cockpit' })
   assert.deepEqual(milestoneAlias({ tab: 'pilot', pilot: '1', panel: 'queue' }), { tab: 'cockpit' })
   assert.deepEqual(milestoneAlias({ tab: 'board', pilot: '1' }), { tab: 'issues', view: 'board' }, 'a removed tab wins')
+})
+
+test('milestoneAlias: the Issues tab\'s old ?view=timeline opens the Timeline tab', () => {
+  assert.deepEqual(milestoneAlias({ view: 'timeline' }), { tab: 'timeline' })
+  assert.deepEqual(milestoneAlias({ tab: 'issues', view: 'timeline', q: 'x' }), { q: 'x', tab: 'timeline' })
+  assert.deepEqual(milestoneAlias({ tab: '', view: ['timeline', 'lanes'] }), { tab: 'timeline' })
+  assert.deepEqual(milestoneAlias({ view: 'timeline', panel: 'queue' }), { tab: 'timeline' })
+  assert.deepEqual(milestoneAlias({ view: 'timeline' }, '#prompt-Q3'), { tab: 'timeline' }, 'the view names the tab')
+  assert.equal(milestoneAlias({ tab: 'decisions', view: 'timeline' }), null, 'another tab stays')
+  // Without the history feature the Timeline tab is not there: Issues.
+  assert.equal(milestoneTabFromRoute(milestoneAlias({ view: 'timeline' }).tab, milestoneTabsFor({}, false)), 'issues')
+})
+
+test('milestoneAlias: ?view=lanes and ?view=board keep their meaning', () => {
+  for (const view of ['lanes', 'board']) {
+    assert.equal(milestoneAlias({ view }), null, view)
+    assert.equal(milestoneAlias({ tab: 'issues', view }), null, view)
+  }
 })
 
 test('tabAlias: the milestone aliases are not project aliases', () => {

@@ -214,16 +214,17 @@ for (const size of widths) {
   // as the way in.
   test(`Needs you: the Cockpit's badge and pinned cards, no tab of its own@${size.width}`, journeyAt(size.width), async ({ page, baseURL }) => {
     // The page opens on Issues, with the Cockpit as the second tab.
-    // quiet has a retrospective; without it the row is the four tabs.
+    // quiet has a retrospective; without it the row is the five tabs, the
+    // Timeline with the fixture's history feature.
     let problems = await open(page, baseURL, milestonePath, size, { milestone: { ...quiet, retrospective: undefined } })
     const view = page.getByRole('navigation', { name: 'View' })
-    await expect(view.getByRole('link')).toHaveText(['Issues', 'Cockpit', 'Decisions', 'Metrics'])
+    await expect(view.getByRole('link')).toHaveText(['Issues', 'Timeline', 'Cockpit', 'Decisions', 'Metrics'])
     await expect(tab(page, /^Issues/)).toHaveAttribute('aria-current', 'page')
     await expect(page).toHaveURL(/\/milestones\/14$/)
     expect(problems).toEqual([])
     // The compact pause card is on the Issues tab.
     problems = await open(page, baseURL, `${milestonePath}?tab=issues`, size, { milestone: budget })
-    await expect(view.getByRole('link')).toHaveText(['Issues', /^Cockpit\s*2$/, 'Decisions', 'Metrics', 'Retrospective'])
+    await expect(view.getByRole('link')).toHaveText(['Issues', 'Timeline', /^Cockpit\s*2$/, 'Decisions', 'Metrics', 'Retrospective'])
     await expect(badge(page)).toHaveText('2')
     const pause = page.locator('main .pause')
     await expect(pause).toBeVisible()

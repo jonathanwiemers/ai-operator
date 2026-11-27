@@ -285,20 +285,18 @@ test('milestoneGroups: one row per issue with a bar, empty waves dropped', () =>
   assert.match(groups[0].rows[0].lines[0][0].name, /^#11 Add parser, running 30 min, merged/)
 })
 
-test('issuesView: Timeline by default with history, Lanes without', () => {
-  assert.equal(issuesView(undefined, true), 'timeline')
-  assert.equal(issuesView('timeline', true), 'timeline')
+test('issuesView: Lanes by default, also for an old ?view=timeline', () => {
+  assert.equal(issuesView(undefined), 'lanes')
+  assert.equal(issuesView(undefined, true), 'lanes')
   assert.equal(issuesView('lanes', true), 'lanes')
-  assert.equal(issuesView('bogus', true), 'timeline')
-  assert.equal(issuesView('timeline', false), 'lanes')
-  assert.equal(issuesView(undefined, false), 'lanes')
+  assert.equal(issuesView('timeline', true), 'lanes')
+  assert.equal(issuesView('bogus', true), 'lanes')
 })
 
 test('issuesView: the Board by ?view=board while the milestone has its tasks', () => {
-  assert.equal(issuesView('board', true, true), 'board')
-  assert.equal(issuesView('board', false, true), 'board')
-  assert.equal(issuesView('board', true), 'timeline')
-  assert.equal(issuesView('board', false, false), 'lanes')
+  assert.equal(issuesView('board', true), 'board')
+  assert.equal(issuesView('board', false), 'lanes')
+  assert.equal(issuesView('board'), 'lanes')
 })
 
 test('overviewGroups: one row per project with bars, linked to the project', () => {

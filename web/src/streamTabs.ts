@@ -10,7 +10,8 @@ import { pinnedAnchor } from './inboxRoute.ts'
 // issues (with spec.looseIssues: the loose issues queue and the issues
 // without a milestone, R8 of "Loose issues") | Decisions | Metrics, and
 // Plans with the plans feature. Milestone pages: Issues (the default, D1)
-// | Cockpit | Decisions | Metrics, then Retrospective once one exists (R14;
+// | Timeline (with the history feature, D2) | Cockpit | Decisions |
+// Metrics, then Retrospective once one exists (R14;
 // Decisions is a tab again, R6 of "Desk: the Cockpit newest first by
 // issue"); the pilot's composer is on top of the milestone's Cockpit (R3).
 // Every link to a Cockpit card or thread says ?tab=cockpit; one without
@@ -25,7 +26,7 @@ import { pinnedAnchor } from './inboxRoute.ts'
 // milestone's removed tabs open where their content moved (projectAlias,
 // milestoneAlias).
 export type ProjectTab = 'cockpit' | 'milestones' | 'loose' | 'decisions' | 'metrics' | 'plans'
-export type MilestoneTab = 'cockpit' | 'issues' | 'decisions' | 'metrics' | 'retrospective'
+export type MilestoneTab = 'cockpit' | 'issues' | 'timeline' | 'decisions' | 'metrics' | 'retrospective'
 export type DashboardTab = 'cockpit' | 'timeline'
 export type TaskTab = 'overview' | 'live' | 'logs' | 'calls'
 // A plan's tabs on phones: Chat, Decisions, Draft. Tablet and wider keep
@@ -70,23 +71,26 @@ export function projectTabsFor(plans: boolean, loose = false): Tab<ProjectTab>[]
 }
 
 // milestoneTabs are all of a milestone's tabs, in their order: Issues
-// first, the default, then the Cockpit (D1). Needs you is the Cockpit's
+// first, the default, then the Timeline of the issues' runs (D2, once a
+// view of the Issues tab) and the Cockpit (D1). Needs you is the Cockpit's
 // pinned cards and the Board a view of the Issues tab (R14 of "Desk: the
 // Cockpit"; milestoneAlias).
 export const milestoneTabs: Tab<MilestoneTab>[] = [
   { id: 'issues', label: 'Issues' },
+  { id: 'timeline', label: 'Timeline' },
   { id: 'cockpit', label: 'Cockpit' },
   { id: 'decisions', label: 'Decisions' },
   { id: 'metrics', label: 'Metrics' },
   { id: 'retrospective', label: 'Retrospective' },
 ]
 
-// milestoneTabsFor are the tabs a milestone shows: no Retrospective until
-// one exists. Until the milestone has loaded (null) it stays hidden, so it
-// does not show and vanish; a link to it waits (Stream.vue reads ?tab=
-// against milestoneTabs while loading).
-export function milestoneTabsFor(m: { retrospective?: unknown } | null): Tab<MilestoneTab>[] {
-  return milestoneTabs.filter((t) => t.id !== 'retrospective' || !!m?.retrospective)
+// milestoneTabsFor are the tabs a milestone shows: Timeline only with the
+// history feature (history), no Retrospective until one exists. Until the
+// milestone has loaded (null) Retrospective stays hidden, so it does not
+// show and vanish; a link to either waits (Stream.vue reads ?tab= against
+// milestoneTabs while loading), then falls back to Issues without it.
+export function milestoneTabsFor(m: { retrospective?: unknown } | null, history: boolean): Tab<MilestoneTab>[] {
+  return milestoneTabs.filter((t) => (t.id !== 'retrospective' || !!m?.retrospective) && (t.id !== 'timeline' || history))
 }
 
 export const dashboardTabs: Tab<DashboardTab>[] = [
@@ -277,14 +281,30 @@ const taskTabAliases: TabAliases = { chat: { tab: 'overview' } }
 // old ?panel=decisions opens the Decisions tab (panelAliasQuery); the old
 // ?panel=issues and ?panel=queue go (nowPanelQuery). Given the link's
 // hash, a link to a Cockpit card without ?tab= gets ?tab=cockpit
-// (cockpitQuery).
+// (cockpitQuery). The Issues tab's old Timeline view opens the Timeline tab
+// (timelineViewQuery).
 export function milestoneAlias<V>(query: Record<string, V>, hash = ''): Record<string, V | string> | null {
   const { pilot: _, ...rest } = query
   const pilot = Object.hasOwn(query, 'pilot')
   const dropped = nowPanelQuery(rest)
-  const base = dropped ?? rest
+  const timeline = timelineViewQuery(dropped ?? rest)
+  const base = timeline ?? dropped ?? rest
   const cockpit = pilot && !hasTab(base) ? { ...base, tab: 'cockpit' } : cockpitQuery(base, hash)
-  return panelAliasQuery(base) ?? aliasQuery(base, milestoneTabAliases) ?? cockpit ?? (dropped || pilot ? base : null)
+  return panelAliasQuery(base) ?? aliasQuery(base, milestoneTabAliases) ?? cockpit ?? (dropped || pilot || timeline ? base : null)
+}
+
+// timelineViewQuery is the query of an old link to the Issues tab's
+// Timeline view (?view=timeline, without ?tab= or with ?tab=issues) at the
+// Timeline tab (D2 of "Desk: Milestones and Issues first"): ?view= goes,
+// ?tab=timeline replaces ?tab=. Without the history feature that tab is
+// not there and the page shows Issues, its first tab (D897-P2). null for
+// any other query; ?view=lanes and ?view=board stay.
+function timelineViewQuery<V>(query: Record<string, V>): Record<string, V | string> | null {
+  const view: unknown = Array.isArray(query.view) ? query.view[0] : query.view
+  const tab: unknown = Array.isArray(query.tab) ? query.tab[0] : query.tab
+  if (view !== 'timeline' || (hasTab(query) && tab !== 'issues')) return null
+  const { view: _v, tab: _t, ...rest } = query
+  return { ...rest, tab: 'timeline' }
 }
 
 // nowPanelQuery is the query of an old link to the milestone panel's

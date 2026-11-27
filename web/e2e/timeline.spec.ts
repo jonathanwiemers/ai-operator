@@ -1,6 +1,7 @@
-// The Timeline on a milestone's Issues tab (MilestoneIssues.vue,
-// ui/Timeline.vue, #666): with the history feature Timeline is the default
-// and a switch opens Lanes, kept in ?view=; without it only Lanes. The
+// A milestone's Timeline tab (MilestoneTimeline.vue, ui/Timeline.vue, #666;
+// a tab of its own since D2 of "Desk: Milestones and Issues first"): only
+// with the history feature. The Issues tab's switch keeps Lanes and Board,
+// kept in ?view=; an old ?view=timeline opens the Timeline tab. The
 // fixture (fixtures/timeline.ts) is milestone 14 with #11 and #12 side by
 // side in W1 and #13 after both in W2.
 // Run with npm run e2e (built UI, Chromium).
@@ -16,6 +17,7 @@ interface Opts {
   history?: boolean
   width?: number
   colorScheme?: 'light' | 'dark'
+  // query: the milestone page's query, the Timeline tab by default.
   query?: string
 }
 
@@ -42,44 +44,64 @@ async function open(page: Page, baseURL: string | undefined, opts: Opts = {}) {
     if (typeof body === 'string') return r.fulfill({ status: 200, contentType: 'text/plain; charset=utf-8', body })
     return r.fulfill({ status: 200, json: body })
   })
-  await page.goto(`${milestonePath}?tab=issues${opts.query ?? ''}`)
-  await expect(page.locator('main').getByText('Document the refund flow for support').first()).toBeVisible()
+  const query = opts.query ?? '?tab=timeline'
+  await page.goto(`${milestonePath}${query}`)
+  if (query.includes('timeline') && opts.history !== false) await expect(page.locator('main [data-timeline]')).toBeVisible()
+  else await expect(page.locator('main').getByText('Document the refund flow for support').first()).toBeVisible()
   return problems
 }
+
+// The milestone's tab row; a tab's text starts with its label, a badge
+// (the Cockpit's count of open needs) may follow.
+const tabs = (page: Page) => page.locator('main [data-route-tabs] a')
 
 const timeline = (page: Page) => page.locator('main [data-timeline]')
 const bar = (page: Page, iid: number) => timeline(page).locator(`a[href="${issuePath(iid)}"]`)
 const box = async (page: Page, iid: number) => (await bar(page, iid).boundingBox())!
 
-test('Timeline is the default; the switch opens Lanes and keeps it in ?view=@1280', async ({ page, baseURL }) => {
+test('the Timeline tab comes after Issues and shows the bars@1280', async ({ page, baseURL }) => {
   const problems = await open(page, baseURL)
-  const sw = page.locator('main [data-issues-view-switch]')
-  await expect(sw.getByRole('tab', { name: 'Timeline' })).toHaveAttribute('aria-selected', 'true')
-  await expect(timeline(page)).toBeVisible()
-  await expect(page.locator('main [data-queue]')).toHaveCount(0)
+  await expect(page).toHaveURL(/\?tab=timeline$/)
+  await expect(page.locator('main [data-milestone-timeline-tab]').getByRole('heading', { name: 'Timeline' })).toBeVisible()
+  await expect(bar(page, 11)).toBeVisible()
+  await expect(page.locator('main [data-issues-view-switch]')).toHaveCount(0)
+  // Milestone 14 has a retrospective.
+  await expect(tabs(page)).toHaveText(['Issues', 'Timeline', /^Cockpit/, 'Decisions', 'Metrics', 'Retrospective'])
+  await expect(tabs(page).filter({ hasText: 'Timeline' })).toHaveAttribute('aria-current', 'page')
+  expect(problems).toEqual([])
+})
 
+test('the Issues tab switches Lanes | Board, Lanes first and the default@1280', async ({ page, baseURL }) => {
+  const problems = await open(page, baseURL, { query: '' })
+  const sw = page.locator('main [data-issues-view-switch]')
+  await expect(sw.getByRole('tab')).toHaveText(['Lanes', 'Board'])
+  await expect(sw.getByRole('tab', { name: 'Lanes' })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.locator('main [data-queue]')).toBeVisible()
+  await expect(timeline(page)).toHaveCount(0)
+
+  await sw.getByRole('tab', { name: 'Board' }).click()
+  await expect(page).toHaveURL(/[?&]view=board(&|$)/)
   await sw.getByRole('tab', { name: 'Lanes' }).click()
   await expect(page).toHaveURL(/[?&]view=lanes(&|$)/)
-  await expect(page).toHaveURL(/[?&]tab=issues(&|$)/)
   await expect(page.locator('main [data-queue]')).toBeVisible()
-  await expect(timeline(page)).toHaveCount(0)
-
-  await sw.getByRole('tab', { name: 'Timeline' }).click()
-  await expect(page).toHaveURL(/[?&]view=timeline(&|$)/)
-  await expect(timeline(page)).toBeVisible()
   expect(problems).toEqual([])
 })
 
-test('?view=lanes opens Lanes@1280', async ({ page, baseURL }) => {
-  const problems = await open(page, baseURL, { query: '&view=lanes' })
-  await expect(page.locator('main [data-issues-view-switch]').getByRole('tab', { name: 'Lanes' })).toHaveAttribute('aria-selected', 'true')
-  await expect(page.locator('main [data-queue]')).toBeVisible()
-  await expect(timeline(page)).toHaveCount(0)
-  expect(problems).toEqual([])
-})
+for (const query of ['?view=timeline', '?tab=issues&view=timeline']) {
+  test(`an old ${query} link ends at ?tab=timeline@1280`, async ({ page, baseURL }) => {
+    const problems = await open(page, baseURL, { query })
+    await expect(page).toHaveURL(new RegExp(`${milestonePath}\\?tab=timeline$`))
+    await expect(bar(page, 11)).toBeVisible()
+    expect(problems).toEqual([])
+  })
+}
 
-test('without the history feature the tab shows Lanes, and the switch only Lanes and Board@1280', async ({ page, baseURL }) => {
-  const problems = await open(page, baseURL, { history: false, query: '&view=timeline' })
+test('without the history feature there is no Timeline tab, and Issues has no Timeline view@1280', async ({ page, baseURL }) => {
+  const problems = await open(page, baseURL, { history: false, query: '?view=timeline' })
+  // The alias names the Timeline tab, which falls back to Issues here.
+  await expect(page).not.toHaveURL(/[?&]view=/)
+  await expect(tabs(page)).toHaveText(['Issues', /^Cockpit/, 'Decisions', 'Metrics', 'Retrospective'])
+  await expect(tabs(page).filter({ hasText: 'Issues' })).toHaveAttribute('aria-current', 'page')
   await expect(page.locator('main [data-queue]')).toBeVisible()
   const views = page.locator('main [data-issues-view-switch]').getByRole('tab')
   await expect(views).toHaveText(['Lanes', 'Board'])
@@ -198,7 +220,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
     const problems = await open(page, baseURL, { colorScheme })
     await expect(timeline(page)).toBeVisible()
     const results = await new AxeBuilder({ page })
-      .include('main [data-issues-view]')
+      .include('main [data-milestone-timeline-tab]')
       .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
       .analyze()
     expect(results.violations.map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`)).toEqual([])

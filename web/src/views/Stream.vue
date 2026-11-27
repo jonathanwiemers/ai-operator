@@ -70,6 +70,9 @@ import { announceChange } from '../ui/useAnnounce'
 // page, not with the initial bundle (D662-P4).
 const ProjectQueue = defineAsyncComponent(() => import('../components/ProjectQueue.vue'))
 const LooseIssues = defineAsyncComponent(() => import('../components/LooseIssues.vue'))
+// The milestone's Timeline tab loads in its own chunk (D2 of "Desk:
+// Milestones and Issues first").
+const MilestoneTimeline = defineAsyncComponent(() => import('../components/MilestoneTimeline.vue'))
 
 const props = defineProps<{
   namespace: string
@@ -82,9 +85,10 @@ const props = defineProps<{
 const milestoneIID = computed(() => (props.iid ? Number(props.iid) : undefined))
 
 // tab: Milestones (the default), Cockpit, Metrics or Plans (feature plans)
-// on projects, Issues (the default), Cockpit, Metrics or Retrospective on
-// milestones, kept in ?tab= so it can be linked to (a #prompt-Q<n> link
-// without it opens the Cockpit, cockpitQuery). A milestone shows
+// on projects, Issues (the default), Timeline, Cockpit, Metrics or
+// Retrospective on milestones, kept in ?tab= so it can be linked to (a
+// #prompt-Q<n> link without it opens the Cockpit, cockpitQuery). A
+// milestone shows Timeline only with the history feature and
 // Retrospective only once it has one (milestoneTabsFor); a project's and a
 // milestone's removed tabs' links open where their content moved
 // (projectAlias, milestoneAlias). The milestone Cockpit tab's badge is the
@@ -96,14 +100,14 @@ const pageMilestone = computed(() => (milestone.value?.iid === milestoneIID.valu
 const needsCount = computed(() => (pageMilestone.value ? needsOpen(pageMilestone.value).count : 0))
 const tabs = computed(() => {
   if (!milestoneIID.value) return projectTabsFor(hasFeature('plans'), !!project.value?.looseIssues)
-  return milestoneTabsFor(pageMilestone.value)
+  return milestoneTabsFor(pageMilestone.value, hasFeature('history'))
 })
 // The header's Needs you count is the badge of the Cockpit tab: its link
 // opens the Cockpit, whose top is the pinned cards it counts (R10, R14 of
 // "Desk: the Cockpit").
 const tabBadges = computed(() => (milestoneIID.value && needsCount.value ? { cockpit: needsCount.value } : undefined))
 // A milestone's tab is read against all its tabs while it loads, so a
-// ?tab=retrospective link waits for it; once loaded, a hidden tab falls
+// ?tab=retrospective or ?tab=timeline link waits for it; once loaded, a hidden tab falls
 // back to the first one, Issues (Decision 7). A link to a Cockpit card
 // without ?tab= shows the Cockpit before the rewrite below names it.
 const tab = computed((): string => {
@@ -227,8 +231,11 @@ function followPanel() {
 // milestone's old Issues or Queue view, which milestoneAlias then drops)
 // opens the sheet where the panel is one; closing the sheet does not
 // reopen it. The old ?panel=decisions is the Decisions tab
-// (milestoneAlias, projectAlias) and opens no sheet.
-const panelColumn = computed(() => !milestoneIID.value || tab.value !== 'issues')
+// (milestoneAlias, projectAlias) and opens no sheet. On a milestone's
+// Issues and Timeline tabs the panel is a sheet at every width, so the
+// table and the time axis get the whole pane (D5 of "Desk: Milestones and
+// Issues first").
+const panelColumn = computed(() => !milestoneIID.value || (tab.value !== 'issues' && tab.value !== 'timeline'))
 watch(
   () => [milestoneIID.value, route.query.panel] as const,
   ([, panel]) => {
@@ -601,6 +608,14 @@ watch(
         />
         <UAlert v-else-if="milestoneFailed" :color="alertColor('danger')" variant="subtle" class="mt-3" description="The milestone could not be loaded." />
         <div v-else class="empty">Loading…</div>
+      </div>
+      <div v-else-if="tab === 'timeline'" class="scroll board">
+        <!-- The Timeline of the issues' runs (D2 of "Desk: Milestones and
+             Issues first"), with the history feature only. -->
+        <section v-if="namespace && name && milestoneIID && hasFeature('history')" aria-labelledby="milestone-timeline-head" data-milestone-timeline-tab>
+          <h2 id="milestone-timeline-head" class="h3 m-0 mb-2 text-[11.5px] font-semibold tracking-[0.06em] text-(--text-3) uppercase">Timeline</h2>
+          <MilestoneTimeline :namespace="namespace" :name="name" :milestone="milestoneIID" />
+        </section>
       </div>
       <div v-else-if="tab === 'decisions'" class="scroll board">
         <!-- The Decisions tab (R6 of "Desk: the Cockpit newest first by

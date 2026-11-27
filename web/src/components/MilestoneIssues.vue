@@ -3,9 +3,8 @@ import UDashboardToolbar from '@nuxt/ui/components/DashboardToolbar.vue'
 import UEmpty from '@nuxt/ui/components/Empty.vue'
 import UTabs from '@nuxt/ui/components/Tabs.vue'
 import UTooltip from '@nuxt/ui/components/Tooltip.vue'
-import { computed, defineAsyncComponent } from 'vue'
+import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { hasFeature } from '../api'
 import Badge from './Badge.vue'
 import Board from './Board.vue'
 import CompanionsList from './CompanionsList.vue'
@@ -37,8 +36,8 @@ import type { MilestoneIssueRow, MilestoneView } from '../types'
 // then one row per issue with its state, merge request, wall, agent and
 // paused time, cost and tokens, written and merged lines (R16), and the
 // version it shipped in. Releases are
-// rows between the issues (R12, decision 15). Below the table the Timeline
-// of the issues' runs, or the autopilot queue grouped by lane: running,
+// rows between the issues (R12, decision 15). Below the table the
+// autopilot queue grouped by lane, or the Board: running,
 // landing, ready to land, waiting, held (with Resume) and done (QueueList
 // grouped). The page header holds the
 // title. Titles, a release's why and reason are untrusted text and render
@@ -59,20 +58,16 @@ const pct = computed(() => progressPct({ progress: progress.value }))
 const waiting = computed(() => waitingForTurn(props.milestone.autopilot?.queuedBehind, props.milestones))
 const now = useNow()
 
-// Below the table: the Timeline, the Lanes or the Board (Decision 15; the
-// Board since R14 of "Desk: the Cockpit"), picked by a pill switch in the
-// section's toolbar and kept in ?view= (Timeline by default). The Timeline
-// needs the history feature, the Board the milestone's tasks (not once
-// stored); with one view left there is no switch. The Timeline loads in its
-// own chunk.
-const MilestoneTimeline = defineAsyncComponent(() => import('./MilestoneTimeline.vue'))
+// Below the table: the Lanes or the Board (the Board since R14 of "Desk:
+// the Cockpit"), picked by a pill switch in the section's toolbar and kept
+// in ?view= (Lanes by default). The Board needs the milestone's tasks (not
+// once stored); with one view left there is no switch. The Timeline is a
+// tab of its own (D2 of "Desk: Milestones and Issues first").
 const route = useRoute()
 const router = useRouter()
-const history = computed(() => hasFeature('history'))
 const board = computed(() => !props.milestone.stored)
-const view = computed(() => issuesView(route.query.view, history.value, board.value))
+const view = computed(() => issuesView(route.query.view, board.value))
 const viewItems = computed(() => [
-  ...(history.value ? [{ value: 'timeline', label: 'Timeline' }] : []),
   { value: 'lanes', label: 'Lanes' },
   ...(board.value ? [{ value: 'board', label: 'Board' }] : []),
 ])
@@ -293,8 +288,7 @@ const viewHead = `${headText} gap-2`
       <UDashboardToolbar class="mb-2 min-h-0 flex-wrap border-0 px-0 sm:px-0" :ui="{ left: 'min-w-0' }">
         <template #left>
           <h2 id="issues-view-head" :class="viewHead">
-            <template v-if="view === 'timeline'">Timeline</template>
-            <template v-else-if="view === 'board'">Board</template>
+            <template v-if="view === 'board'">Board</template>
             <template v-else>
               Queue
               <span v-if="queued">{{ queueDone(milestone.autopilot!.items!) }} / {{ milestone.autopilot!.items!.length }}</span>
@@ -315,8 +309,7 @@ const viewHead = `${headText} gap-2`
           />
         </template>
       </UDashboardToolbar>
-      <MilestoneTimeline v-if="view === 'timeline'" :namespace="namespace" :name="name" :milestone="milestone.iid" />
-      <Board v-else-if="view === 'board'" :tasks="milestone.tasks" />
+      <Board v-if="view === 'board'" :tasks="milestone.tasks" />
       <div v-else-if="queued" data-queue>
         <QueueList :namespace="namespace" :name="name" :milestone="milestone" grouped />
       </div>

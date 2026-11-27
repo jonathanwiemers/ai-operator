@@ -161,14 +161,25 @@ for (const [width, height] of [[390, 844], [1024, 768]] as const) {
       await lift(cdp)
     })
 
-    test('on a milestone, a right swipe on Issues keeps it, a left swipe opens its Cockpit', async ({ page, baseURL }) => {
+    // With the history feature (the fixture's) the Timeline tab follows
+    // Issues (D2 of "Desk: Milestones and Issues first").
+    test('on a milestone, a right swipe on Issues keeps it, a left swipe opens its Timeline', async ({ page, baseURL }) => {
       await open(page, baseURL, milestonePath)
       await expect(activeTab(page)).toHaveText(tabLabel('Issues'))
       await swipe(page, await at(page, 0.2), await at(page, 0.8))
       await keeps(page, /\/milestones\/14$/, 'Issues')
       await swipe(page, await at(page, 0.8), await at(page, 0.2))
-      await expect(page).toHaveURL(/\/milestones\/14\?tab=cockpit$/)
-      await expect(activeTab(page)).toHaveText(tabLabel('Cockpit'))
+      await expect(page).toHaveURL(/\/milestones\/14\?tab=timeline$/)
+      await expect(activeTab(page)).toHaveText(tabLabel('Timeline'))
+    })
+
+    test('a right swipe on the milestone Timeline outside the bars opens Issues', async ({ page, baseURL }) => {
+      await open(page, baseURL, `${milestonePath}?tab=timeline`)
+      await expect(page.locator('main [data-timeline]')).toBeVisible()
+      // at() starts the swipe on a row clear of the bars' sideways scroller.
+      await swipe(page, await at(page, 0.2), await at(page, 0.8))
+      await expect(page).toHaveURL(/\/milestones\/14$/)
+      await expect(activeTab(page)).toHaveText(tabLabel('Issues'))
     })
 
     test('the first and last tab keep the tab', async ({ page, baseURL }) => {
