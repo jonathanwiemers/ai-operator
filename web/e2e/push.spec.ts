@@ -87,7 +87,8 @@ async function open(page: Page, baseURL: string | undefined, opts: Opts = {}) {
     if (typeof body === 'string') return r.fulfill({ status: 200, contentType: 'text/plain; charset=utf-8', body })
     return r.fulfill({ status: 200, json: body })
   })
-  await page.goto('/')
+  // The Overview's Cockpit, where the Inbox's items are pinned.
+  await page.goto('/?tab=cockpit')
   await expect(page.getByText('Support refunds through the payment provider').first()).toBeVisible()
   const log = () => page.evaluate(() => (window as unknown as { __push: { subscribes: number; unsubscribes: number } }).__push)
   return { problems, sent, log }

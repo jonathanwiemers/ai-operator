@@ -34,6 +34,7 @@ test('upNext is sorted by queue position: three and the rest', () => {
   rows.push(ms('shop', 99, 'waiting', { queuePosition: 0 }), ms('shop', 98, 'waiting'))
   const { cards } = projectCards([proj('shop')], rows, [], [])
   assert.deepEqual(cards[0].upNext.map((m) => m.iid), [11, 12, 13])
+  assert.deepEqual(cards[0].upNext.map((m) => m.queuePosition), [1, 2, 3])
   assert.equal(cards[0].moreQueued, 1)
 })
 

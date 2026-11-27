@@ -105,25 +105,32 @@ async function costsReady(page: Page): Promise<void> {
 
 // Every named route has a case here, with a variant per tab.
 const routes: Route[] = [
-  // The Overview opens on its Cockpit (R16 of "Desk: the Cockpit"): the
-  // Inbox's items pinned, Working now in the panel.
+  // The Overview opens on its Projects tab (R5 of "Desk: Milestones and
+  // Issues first"): one card per project, Recently done below, Now & next in
+  // the panel.
   {
     name: 'overview',
     path: '/',
-    ready: (page) => expect(page.getByText('Support refunds through the payment provider').first()).toBeVisible(),
+    ready: (page) => expect(page.locator('main [data-project-card]').first()).toBeVisible(),
   },
   // The dark tokens (.dark in style.css), for the screenshots.
   {
     name: 'overview-dark',
     path: '/',
     colorScheme: 'dark',
-    ready: (page) => expect(page.getByText('Support refunds through the payment provider').first()).toBeVisible(),
+    ready: (page) => expect(page.locator('main [data-project-card]').first()).toBeVisible(),
   },
-  // The Timeline tab: the Timeline across projects and the milestone lists.
+  // The Timeline tab: only the Timeline across projects.
   {
     name: 'overview-timeline',
     path: '/?tab=timeline',
-    ready: (page) => expect(page.getByText('Checkout without account').first()).toBeVisible(),
+    ready: (page) => expect(page.locator('main [data-overview-timeline]')).toBeVisible(),
+  },
+  // The Cockpit tab (R16 of "Desk: the Cockpit"): the Inbox's items pinned.
+  {
+    name: 'overview-cockpit',
+    path: '/?tab=cockpit',
+    ready: (page) => expect(page.getByText('Support refunds through the payment provider').first()).toBeVisible(),
   },
   {
     name: 'inbox',
@@ -1047,7 +1054,8 @@ for (const { name, label, current } of [
 // Project tabs (R15 of "Desk: the Cockpit", D1 of "Desk: Milestones and
 // Issues first"): a project opens on Milestones, where the queue is, the
 // Cockpit is its second tab, and an old ?tab=stream link opens the Cockpit
-// on a project and on the dashboard (R16), whose tabs are Cockpit · Timeline.
+// on a project and on the dashboard (R16), whose tabs are Projects ·
+// Timeline · Cockpit (R5).
 test.describe('Cockpit, Milestones and Timeline tabs', () => {
   async function open(page: Page, baseURL: string | undefined, path: string): Promise<Problems> {
     const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
@@ -1086,22 +1094,26 @@ test.describe('Cockpit, Milestones and Timeline tabs', () => {
 
   test('/?tab=stream opens the Cockpit@1280', async ({ page, baseURL }) => {
     const problems = await open(page, baseURL, '/?tab=stream')
-    await expect(page).toHaveURL(/:\d+\/$/)
+    await expect(page).toHaveURL(/:\d+\/\?tab=cockpit$/)
     const strip = page.locator('main').getByRole('navigation', { name: 'View' })
     await expect(strip.locator('a[aria-current="page"]')).toHaveText(/^Cockpit/)
     await expect(page.locator('main [data-cockpit]')).toBeVisible()
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
   })
 
-  test('the dashboard tabs read Cockpit · Timeline@1280', async ({ page, baseURL }) => {
+  test('the dashboard tabs read Projects · Timeline · Cockpit@1280', async ({ page, baseURL }) => {
     const problems = await open(page, baseURL, '/')
     const tabs = page.locator('main').getByRole('navigation', { name: 'View' }).getByRole('link')
-    await expect(tabs).toHaveText(['Cockpit', 'Timeline'])
+    await expect(tabs).toHaveText(['Projects', 'Timeline', 'Cockpit'])
     await expect(tabs.nth(0)).toHaveAttribute('aria-current', 'page')
+    await expect(page.locator('main [data-project-cards]')).toBeVisible()
     await tabs.nth(1).click()
     await expect(page).toHaveURL(/\/\?tab=timeline$/)
     await expect(page.locator('main [data-overview-timeline]')).toBeVisible()
-    await expect(page.locator('main [data-cockpit]')).toHaveCount(0)
+    await expect(page.locator('main [data-cockpit], main [data-project-cards]')).toHaveCount(0)
+    await tabs.nth(2).click()
+    await expect(page).toHaveURL(/\/\?tab=cockpit$/)
+    await expect(page.locator('main [data-cockpit]')).toBeVisible()
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
   })
 })
@@ -3495,10 +3507,11 @@ test.describe('note thread', () => {
 // state on one line, the figures below.
 test.describe('milestone rows', () => {
   const pages = [
-    { name: 'overview-timeline', project: true },
-    { name: 'stream-project-dark', project: false },
+    // Across projects: the Overview's Recently done, below its project cards.
+    { name: 'overview', project: true, list: 'Recently done' },
+    { name: 'stream-project-dark', project: false, list: 'In progress' },
   ]
-  for (const { name, project } of pages) {
+  for (const { name, project, list: label } of pages) {
     for (const size of edgeWidths) {
       const stacked = size.width < 1180
 
@@ -3512,7 +3525,7 @@ test.describe('milestone rows', () => {
         await page.goto(route.path)
         await route.ready(page)
 
-        const list = page.locator('main ul[aria-label="In progress"]')
+        const list = page.locator(`main ul[aria-label="${label}"]`)
         await expect(list.locator('li').first()).toBeVisible()
         const heads = list.locator('xpath=preceding-sibling::*[@data-heads]')
         const layout = await list.evaluate((ul, project) => {

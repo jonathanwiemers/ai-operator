@@ -10,6 +10,8 @@ interface CardMilestone {
   title: string
   state: MilestoneState
   progress: MilestoneProgress
+  // Its place in the project's autopilot queue from 1, on Up next only.
+  queuePosition?: number
 }
 
 interface RunningIssue {
@@ -111,7 +113,7 @@ export function projectCards(
       needsYou: (ib.get(k) ?? []).filter((i) => i.kind !== 'plan').length,
       building,
       runningIssues: groupIssues(ws.get(k) ?? [], building, titles),
-      upNext: queued.slice(0, UP_NEXT).map(card),
+      upNext: queued.slice(0, UP_NEXT).map((m) => ({ ...card(m), queuePosition: m.queuePosition })),
       moreQueued: Math.max(0, queued.length - UP_NEXT),
       planned: rows.filter((m) => m.state === 'planned').length,
       finishing: p.settlingMilestones ?? 0,

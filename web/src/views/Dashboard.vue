@@ -6,22 +6,28 @@ import UPageHeader from '@nuxt/ui/components/PageHeader.vue'
 import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { alertColor } from '../badgeTone'
-import { getInbox, getOverview } from '../client'
+import { getInbox, getMilestones, getOverview, getProjects } from '../client'
 import ContextLayout from '../components/ContextLayout.vue'
 import Cockpit from '../components/cockpit/Cockpit.vue'
 import InboxList from '../components/InboxList.vue'
 import MilestoneSections from '../components/MilestoneSections.vue'
 import NowRail from '../components/NowRail.vue'
 import OverviewPanel from '../components/OverviewPanel.vue'
+import ProjectCards from '../components/ProjectCards.vue'
 import { useNow, useResource } from '../live'
 import { nowStripText, overviewNowAndNext } from '../nowAndNext'
 import { pageHeaderUi } from '../pageHeader'
+import { projectCards } from '../projectCards'
 import RouteTabs from '../ui/RouteTabs.vue'
 import { dashboardAlias, dashboardTabFromRoute, dashboardTabs, tabQuery, type DashboardTab } from '../streamTabs'
 import SwipeTabs from '../ui/SwipeTabs.vue'
 
-// The dashboard at / (R16 of "Desk: the Cockpit"): Cockpit, the default,
-// and Timeline (?tab=timeline). The Cockpit pins the Inbox's open items of
+// The dashboard at /: Projects, the default (R5 of "Desk: Milestones and
+// Issues first, a Timeline tab, and what each project builds"), Timeline
+// (?tab=timeline) and Cockpit (?tab=cockpit, R16 of "Desk: the Cockpit").
+// Projects is one card per project (ProjectCards: what it builds now, what
+// comes next, whether it needs you), the idle ones in one line, then
+// Recently done across projects. The Cockpit pins the Inbox's open items of
 // all projects (InboxList, each a link to its card in the milestone
 // Cockpit; nothing is answered here, D6), then the stream across projects
 // (merges and milestone state shown, the rest folded per project); no
@@ -29,9 +35,9 @@ import SwipeTabs from '../ui/SwipeTabs.vue'
 // spend tiles and the engine meters (OverviewPanel, R10 of "Desk: the
 // Cockpit newest first by issue"): a column from 1180 px that collapses to
 // a rail with the counts, below a slide-over that the Now strip under the
-// header opens, as on a milestone page. The Timeline tab is
-// the Timeline across projects and the milestone lists. An old ?tab=activity,
-// stream or overview opens the Cockpit (dashboardAlias, D791-P2).
+// header opens, as on a milestone page. The Timeline tab is only the
+// Timeline across projects. An old ?tab=activity or stream opens the
+// Cockpit, ?tab=overview Projects (dashboardAlias).
 const route = useRoute()
 const router = useRouter()
 const tab = computed(() => dashboardTabFromRoute(route.query.tab))
@@ -51,6 +57,17 @@ const OverviewTimeline = defineAsyncComponent(() => import('../components/Overvi
 const overview = useResource(() => getOverview, ['project', 'task'])
 const inbox = useResource(() => getInbox, ['project', 'task', 'plan'])
 const now = useNow()
+
+// The Projects tab's sources load only while it is shown (D899-P1).
+const onProjects = computed(() => tab.value === 'projects')
+const projects = useResource(() => (onProjects.value ? getProjects : null), ['project', 'task'])
+const milestones = useResource(() => (onProjects.value ? () => getMilestones({ state: 'open' }) : null), ['project', 'task'])
+const cards = computed(() =>
+  projects.data.value && milestones.data.value
+    ? projectCards(projects.data.value, milestones.data.value.milestones, overview.data.value?.working ?? [], inbox.data.value?.items ?? [])
+    : null,
+)
+const cardsError = computed(() => projects.error.value ?? milestones.error.value)
 const counts = computed(() => (overview.data.value ? overviewNowAndNext(overview.data.value.working, now.value).counts : null))
 const nowStrip = computed(() => (counts.value ? nowStripText(counts.value) : 'Now & next'))
 
@@ -108,7 +125,18 @@ function followPanel() {
              scroller; the Timeline scrolls sideways, so swipes there do
              nothing. -->
         <SwipeTabs :tabs="dashboardTabs" :active="tab" :to="tabTo">
-          <div v-if="tab === 'timeline'" class="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-10 tablet:px-7">
+          <div v-if="tab === 'projects'" class="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-10 tablet:px-7">
+            <section class="section" aria-labelledby="overview-projects-head">
+              <h2 id="overview-projects-head" class="sr-only">Projects</h2>
+              <UAlert v-if="cardsError" :color="alertColor('danger')" variant="subtle" :description="cardsError" data-project-cards-error />
+              <div v-else-if="!cards" class="empty">Loading…</div>
+              <UEmpty v-else-if="!projects.data.value?.length" icon="i-lucide-folder" title="No project yet." variant="naked" size="sm" />
+              <ProjectCards v-else :cards="cards.cards" :idle="cards.idle" />
+            </section>
+            <MilestoneSections done-only />
+          </div>
+
+          <div v-else-if="tab === 'timeline'" class="min-h-0 flex-1 overflow-y-auto px-4 pt-4 pb-10 tablet:px-7">
             <section class="section" aria-labelledby="overview-timeline-head">
               <h2 id="overview-timeline-head" class="text-[15px]">Timeline</h2>
               <!-- The load error shows here too: below 1180 px the panel's copy is in a closed sheet. -->
@@ -123,7 +151,6 @@ function followPanel() {
                 data-timeline-no-history
               />
             </section>
-            <MilestoneSections />
           </div>
 
           <div v-else class="min-h-0 flex-1 overflow-y-auto px-4 pt-[18px] pb-10 tablet:px-7">

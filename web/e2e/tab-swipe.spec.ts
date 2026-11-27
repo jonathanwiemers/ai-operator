@@ -281,12 +281,27 @@ for (const [width, height] of [[390, 844], [1024, 768]] as const) {
       await expect(activeTab(page)).toHaveText(tabLabel('Overview'))
     })
 
-    test('a left swipe on the Overview Cockpit opens the Timeline', async ({ page, baseURL }) => {
+    // The Overview's tabs are Projects · Timeline · Cockpit (R5 of "Desk:
+    // Milestones and Issues first").
+    test('a left swipe on the Overview Projects opens the Timeline, then the Cockpit', async ({ page, baseURL }) => {
       await open(page, baseURL, '/')
-      await expect(activeTab(page)).toHaveText(tabLabel('Cockpit'))
+      await expect(activeTab(page)).toHaveText(tabLabel('Projects'))
+      await expect(surface(page).locator('[data-project-card]').first()).toBeVisible()
       await swipe(page, await at(page, 0.8), await at(page, 0.2))
       await expect(page).toHaveURL(/\?tab=timeline$/)
       await expect(activeTab(page)).toHaveText(tabLabel('Timeline'))
+      // Outside the Timeline's sideways scroller: its heading row.
+      await expect(surface(page).locator('[data-timeline]')).toBeVisible()
+      await swipe(page, await at(page, 0.8, 0), await at(page, 0.2, 0))
+      await expect(page).toHaveURL(/\?tab=cockpit$/)
+      await expect(activeTab(page)).toHaveText(tabLabel('Cockpit'))
+    })
+
+    test('a right swipe on the Overview Projects keeps it', async ({ page, baseURL }) => {
+      await open(page, baseURL, '/')
+      await expect(surface(page).locator('[data-project-card]').first()).toBeVisible()
+      await swipe(page, await at(page, 0.2), await at(page, 0.8))
+      await keeps(page, /:\d+\/$/, 'Projects')
     })
 
     test('a swipe on the Overview Timeline keeps the tab', async ({ page, baseURL }) => {

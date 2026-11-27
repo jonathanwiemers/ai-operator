@@ -1,14 +1,15 @@
 // The Overview Cockpit (R16 of "Desk: the Cockpit", #791; R10 of "Desk: the
-// Cockpit newest first by issue", #823): the Overview at / opens on a
-// Cockpit across all projects. On top the Inbox's open items of every
+// Cockpit newest first by issue", #823): the Overview's Cockpit tab
+// (?tab=cockpit, its third tab since R5 of "Desk: Milestones and Issues
+// first"), a Cockpit across all projects. On top the Inbox's open items of every
 // project, pinned as the Inbox's rows, each a link to its card in the
 // milestone's Cockpit (nothing is answered here, D6); then one thread per
 // project, the newest on top, with merges and milestone state shown and the
 // rest folded; no composer and no live lines. The sidebar is Now & next per
 // project, then the summary and spend tiles and the engine meters: a column
 // at 1280 px that collapses to a rail, a slide-over from the Now strip under
-// the header at 390 px. The old ?tab=activity, stream and overview open the
-// Cockpit; Timeline is a tab. The fixture Inbox is team-a/shop's; this spec
+// the header at 390 px, on every tab. The old ?tab=activity and stream open
+// the Cockpit, ?tab=overview Projects; Timeline is a tab. The fixture Inbox is team-a/shop's; this spec
 // adds a proposal of team-b's project, so the pinned items come from two
 // projects. Run with npm run e2e (built UI, Chromium).
 import AxeBuilder from '@axe-core/playwright'
@@ -104,8 +105,8 @@ async function axe(page: Page, include: string) {
 }
 
 async function expectCockpit(page: Page) {
-  await expect(tabs(page)).toHaveText(['Cockpit', 'Timeline'])
-  await expect(tabs(page).first()).toHaveAttribute('aria-current', 'page')
+  await expect(tabs(page)).toHaveText(['Projects', 'Timeline', 'Cockpit'])
+  await expect(tabs(page).nth(2)).toHaveAttribute('aria-current', 'page')
 
   // Pinned: every open Inbox item, of both projects, each a link.
   await expect(pinned(page)).toHaveCount(twoProjects.items.length)
@@ -135,8 +136,8 @@ async function expectCockpit(page: Page) {
 }
 
 for (const width of [1280, 390]) {
-  test(`the Overview opens on a Cockpit with the Inbox items of two projects pinned@${width}`, journeyAt(width), async ({ page, baseURL }) => {
-    const problems = await open(page, baseURL, '/', width)
+  test(`the Overview's Cockpit pins the Inbox items of two projects@${width}`, journeyAt(width), async ({ page, baseURL }) => {
+    const problems = await open(page, baseURL, '/?tab=cockpit', width)
     await expectCockpit(page)
 
     // A group opens by keyboard.
@@ -222,7 +223,7 @@ test('the sidebar collapses to a rail with the counts, which stays after a reloa
 })
 
 test('the Now strip opens the sidebar as a slide-over, Escape closes it and focus returns@390', async ({ page, baseURL }) => {
-  const problems = await open(page, baseURL, '/', 390)
+  const problems = await open(page, baseURL, '/?tab=cockpit', 390)
   await expect(pinned(page).first()).toBeVisible()
   await expect(column(page), 'no column on a phone').toHaveCount(0)
   await expect(page.locator('main [data-sidebar-rail], main [data-rail-collapse]'), 'no rail on a phone').toHaveCount(0)
@@ -243,7 +244,7 @@ test('the Now strip opens the sidebar as a slide-over, Escape closes it and focu
 })
 
 test('a pinned item opens its card in the milestone Cockpit@1280', async ({ page, baseURL }) => {
-  const problems = await open(page, baseURL, '/', 1280)
+  const problems = await open(page, baseURL, '/?tab=cockpit', 1280)
   await pinned(page).filter({ hasText: 'Support refunds through the payment provider' }).getByRole('link').first().click()
   // #prompt-p-281-1 opens the prompt's problem thread among the pinned cards.
   await expect(page).toHaveURL(/\/projects\/team-a\/shop\/milestones\/14\/problems\/issue-281$/)
@@ -252,23 +253,34 @@ test('a pinned item opens its card in the milestone Cockpit@1280', async ({ page
   expect(problems).toEqual([])
 })
 
-// The old dashboard tabs open the Cockpit, and the URL drops them.
-for (const old of ['activity', 'stream', 'overview']) {
+// The old dashboard tabs: ?tab=activity and stream open the Cockpit and the
+// URL says so; ?tab=overview opens Projects, the first tab, and the URL drops it.
+for (const old of ['activity', 'stream']) {
   test(`?tab=${old} opens the Cockpit@1280`, async ({ page, baseURL }) => {
     const problems = await open(page, baseURL, `/?tab=${old}`, 1280)
-    await expect(page).toHaveURL(/:\d+\/$/)
-    await expect(tabs(page).first()).toHaveAttribute('aria-current', 'page')
+    await expect(page).toHaveURL(/:\d+\/\?tab=cockpit$/)
+    await expect(tabs(page).nth(2)).toHaveAttribute('aria-current', 'page')
     await expect(page.locator('main [data-cockpit]')).toBeVisible()
     expect(problems).toEqual([])
   })
 }
 
-test('Timeline is a tab: the Timeline across projects and the milestone lists@1280', async ({ page, baseURL }) => {
+test('?tab=overview opens Projects without ?tab=@1280', async ({ page, baseURL }) => {
+  const problems = await open(page, baseURL, '/?tab=overview', 1280)
+  await expect(page).toHaveURL(/:\d+\/$/)
+  await expect(tabs(page).first()).toHaveAttribute('aria-current', 'page')
+  await expect(page.locator('main [data-project-cards]')).toBeVisible()
+  await expect(page.locator('main [data-cockpit]')).toHaveCount(0)
+  expect(problems).toEqual([])
+})
+
+test('Timeline is a tab: only the Timeline across projects, no milestone lists@1280', async ({ page, baseURL }) => {
   const problems = await open(page, baseURL, '/', 1280)
   await tabs(page).nth(1).click()
   await expect(page).toHaveURL(/\/\?tab=timeline$/)
   await expect(page.locator('main [data-overview-timeline]')).toBeVisible()
-  await expect(page.locator('main ul[aria-label="In progress"]')).toBeVisible()
+  await expect(page.locator('main ul[aria-label="In progress"], main ul[aria-label="Recently done"]')).toHaveCount(0)
+  await expect(page.locator('main').getByRole('heading', { name: /^(In progress|Recently done)$/ })).toHaveCount(0)
   await expect(page.locator('main [data-cockpit]')).toHaveCount(0)
   expect(problems).toEqual([])
 })

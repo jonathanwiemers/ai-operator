@@ -13,8 +13,9 @@ import { sortInProgress } from '../milestoneRows'
 // page (namespace and name given): In progress, then Recently done, the
 // newest 10 until Show all loads up to 200 (the API's cap). Done
 // milestones need the research database: without it the section says so.
-// Both reload on project and task changes.
-const props = defineProps<{ namespace?: string; name?: string }>()
+// Both reload on project and task changes. doneOnly leaves out In progress
+// and its fetch (the Overview's Projects tab, whose cards say what is in work).
+const props = defineProps<{ namespace?: string; name?: string; doneOnly?: boolean }>()
 
 const RECENT = 10
 const ALL = 200
@@ -27,6 +28,7 @@ const showAll = ref(false)
 // loads again.
 const open = useResource(() => {
   const p = project.value
+  if (props.doneOnly) return null
   return () => getMilestones({ state: 'open', project: p })
 }, ['project', 'task'])
 const done = useResource(() => {
@@ -41,7 +43,7 @@ const more = computed(() => !showAll.value && doneRows.value.length >= RECENT)
 </script>
 
 <template>
-  <section class="section">
+  <section v-if="!doneOnly" class="section">
     <h2 class="text-[15px]">In progress</h2>
     <UAlert v-if="open.error.value" :color="alertColor('danger')" variant="subtle" class="mt-3" :description="open.error.value" />
     <p v-if="open.loading.value && !open.data.value" class="muted">Loading…</p>

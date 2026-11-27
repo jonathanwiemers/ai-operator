@@ -44,9 +44,10 @@ async function open(page: Page, baseURL: string | undefined, opts: Opts = {}) {
     if (typeof body === 'string') return r.fulfill({ status: 200, contentType: 'text/plain; charset=utf-8', body })
     return r.fulfill({ status: 200, json: body })
   })
-  // The Timeline is the Overview's second tab (R16 of "Desk: the Cockpit").
+  // The Timeline is the Overview's second tab (R16 of "Desk: the Cockpit";
+  // after Projects since R5 of "Desk: Milestones and Issues first").
   await page.goto(`/?tab=timeline${(opts.query ?? '').replace(/^\?/, '&')}`)
-  await expect(page.getByText('Checkout without account').first()).toBeVisible()
+  await expect(page.locator('main').getByRole('heading', { name: 'Timeline', exact: true })).toBeVisible()
   return { problems, windows }
 }
 
@@ -58,6 +59,8 @@ const bar = (page: Page, project: string, ms: number, iid: number) =>
 test('one row per project, bars on lines that do not overlap, legend and colours@1280', async ({ page, baseURL }) => {
   const { problems } = await open(page, baseURL)
   await expect(rows(page)).toHaveCount(2)
+  // The tab is only the Timeline: the milestone lists are on Projects.
+  await expect(page.locator('main').getByRole('heading', { name: /^(In progress|Recently done)$/ })).toHaveCount(0)
   const links = rows(page).locator('[data-timeline-row-link]')
   await expect(links).toHaveText(['team-a/shop', `team-b/${longProject}`])
   await expect(links.first()).toHaveAttribute('href', '/projects/team-a/shop')

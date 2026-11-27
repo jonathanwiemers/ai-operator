@@ -56,26 +56,34 @@ test('tabQuery: the first tab drops the parameter, other tabs set it', () => {
   assert.deepEqual(tabQuery({}, 'milestones', projectTabs), {})
 })
 
-test('dashboard tabs: Cockpit · Timeline, Cockpit is the default, the old Overview and Activity open it', () => {
-  assert.deepEqual(dashboardTabs.map((t) => t.label), ['Cockpit', 'Timeline'])
-  assert.equal(dashboardTabFromRoute(undefined), 'cockpit')
-  assert.equal(dashboardTabFromRoute(''), 'cockpit')
+test('dashboard tabs: Projects · Timeline · Cockpit, Projects is the default, the old Overview opens it, Activity the Cockpit', () => {
+  assert.deepEqual(dashboardTabs.map((t) => t.id), ['projects', 'timeline', 'cockpit'])
+  assert.deepEqual(dashboardTabs.map((t) => t.label), ['Projects', 'Timeline', 'Cockpit'])
+  assert.equal(dashboardTabFromRoute(undefined), 'projects')
+  assert.equal(dashboardTabFromRoute(''), 'projects')
   assert.equal(dashboardTabFromRoute('timeline'), 'timeline')
-  for (const old of ['activity', 'stream', 'overview', 'board']) assert.equal(dashboardTabFromRoute(old), 'cockpit', old)
+  assert.equal(dashboardTabFromRoute('cockpit'), 'cockpit')
+  assert.equal(dashboardTabFromRoute('overview'), 'projects')
+  assert.equal(dashboardTabFromRoute('board'), 'projects')
+  for (const old of ['activity', 'stream']) assert.equal(dashboardTabFromRoute(old), 'cockpit', old)
   assert.equal(dashboardTabFromRoute(['x', 'timeline']), 'timeline')
 })
 
-test('dashboardAlias: ?tab=activity, stream and overview go to the Cockpit, other parameters stay', () => {
-  for (const old of ['activity', 'stream', 'overview']) assert.deepEqual(dashboardAlias({ tab: old, q: 'x' }), { q: 'x' }, old)
-  assert.deepEqual(dashboardAlias({ tab: ['activity', 'timeline'] }), {})
+test('dashboardAlias: ?tab=activity and stream go to the Cockpit, overview to Projects, other parameters stay', () => {
+  for (const old of ['activity', 'stream']) assert.deepEqual(dashboardAlias({ tab: old, q: 'x' }), { q: 'x', tab: 'cockpit' }, old)
+  assert.deepEqual(dashboardAlias({ tab: 'overview', q: 'x' }), { q: 'x' })
+  assert.deepEqual(dashboardAlias({ tab: ['activity', 'timeline'] }), { tab: 'cockpit' })
+  assert.deepEqual(dashboardAlias({ tab: ['overview', 'timeline'] }), {})
   assert.equal(dashboardAlias({ tab: 'timeline' }), null)
+  assert.equal(dashboardAlias({ tab: 'cockpit' }), null)
   assert.equal(dashboardAlias({}), null)
   assert.equal(dashboardAlias({ tab: 'constructor' }), null)
 })
 
-test('dashboard tabQuery: the Cockpit drops the parameter, Timeline sets it', () => {
-  assert.deepEqual(tabQuery({ tab: 'timeline', window: '7d' }, 'cockpit', dashboardTabs), { window: '7d' })
+test('dashboard tabQuery: Projects drops the parameter, Timeline and Cockpit set it', () => {
+  assert.deepEqual(tabQuery({ tab: 'timeline', window: '7d' }, 'projects', dashboardTabs), { window: '7d' })
   assert.deepEqual(tabQuery({}, 'timeline', dashboardTabs), { tab: 'timeline' })
+  assert.deepEqual(tabQuery({}, 'cockpit', dashboardTabs), { tab: 'cockpit' })
 })
 
 test('milestone tabs: Issues · Timeline · Cockpit · Decisions · Metrics · Retrospective, Issues is the default', () => {
@@ -341,7 +349,7 @@ test('Metrics tab: the Spend tab renamed, ?tab=spend still opens it', () => {
   assert.equal(tabFromQuery(['x', 'spend'], milestoneTabs), 'metrics')
   assert.equal(milestoneTabFromRoute('spend', milestoneTabs), 'metrics')
   // Lists without the tab ignore the alias.
-  assert.equal(tabFromQuery('spend', dashboardTabs), 'cockpit')
+  assert.equal(tabFromQuery('spend', dashboardTabs), 'projects')
   assert.equal(taskTabFromRoute('spend', ''), 'overview')
   // New links use the new id.
   assert.deepEqual(tabQuery({ tab: 'spend', q: 'x' }, 'metrics', milestoneTabs), { q: 'x', tab: 'metrics' })

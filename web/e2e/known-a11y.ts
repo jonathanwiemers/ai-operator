@@ -21,6 +21,8 @@ export const knownA11y: Record<string, string> = {
   'overview@375': `${R6} R6: color-contrast`,
   'overview@1180': `${R6} R6: color-contrast`,
   'overview-dark@375': `${R6} R6: color-contrast`,
+  'overview-cockpit@375': `${R6} R6: color-contrast`,
+  'overview-cockpit@1180': `${R6} R6: color-contrast`,
   'overview-timeline@375': `${R6} R6: color-contrast`,
   'overview-timeline@1180': `${R6} R6: color-contrast`,
   'overview-timeline@1180-dark': `${R6} R6: color-contrast`,

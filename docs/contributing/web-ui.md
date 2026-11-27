@@ -414,6 +414,14 @@ build, so the CI `web` job enforces it. It prints
   and add no chunk; the overshoot is the entry's preload map, whose chunk
   hashes changed and compress 9 bytes worse. The cap rose to 144.0 kB and
   the raise was reported on its merge request.
+- 2026-11-27, the Overview's Projects tab (#899, R5 of the milestone
+  "Desk: Milestones and Issues first, a Timeline tab, and what each
+  project builds"): 144.007 kB, 7 bytes over the cap (main measured
+  143.991). `ProjectCards` loads lazily in the Dashboard chunk. The
+  overshoot is the entry's preload map: the Dashboard chunk gains four
+  dependencies (`Badge`, `Progress`, `RelTime`, `milestoneRows`) and new
+  hashes. The cap rose to 144.1 kB and the raise was reported on its merge
+  request.
 - The cap only drops. A change that breaks it is reported, not answered by
   raising it.
 
