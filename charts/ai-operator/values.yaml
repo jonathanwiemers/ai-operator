@@ -327,6 +327,14 @@ metrics:
 
 healthProbePort: 8081
 
+# GitLab's per-user rate limit, shared by the operator, the runner pods and
+# the Desk server. When the requests left this minute drop to reserve or
+# below, background reads (polls, discovery, Desk reads) wait for the reset
+# and leave the rest to work calls (runs, writes).
+gitlab:
+  rateLimit:
+    reserve: 20
+
 # Receiver for GitLab project webhooks (POST /hooks/gitlab), served by the
 # leader only. It does nothing until an AgentProject sets
 # spec.webhook.secretRef. Exposing it to GitLab (an HTTPRoute or Ingress to

@@ -20,6 +20,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
+	"github.com/jonathanwiemers/ai-operator/internal/gitlab"
 	"github.com/jonathanwiemers/ai-operator/internal/history"
 	"github.com/jonathanwiemers/ai-operator/internal/research/store"
 	"github.com/jonathanwiemers/ai-operator/internal/ui"
@@ -37,9 +38,12 @@ func main() {
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.DurationVar(&historyRetention, "history-retention", history.DefaultRetention, "How long Desk chat messages are kept (expires_at on insert); match the operator's --history-retention.")
 	flag.StringVar(&selfProject, "self-project", "", "Full path of the GitLab project this operator is built from (e.g. my-group/ai-operator); the project whose releases the Desk shows. Empty: the Desk shows no release.")
+	var rateLimitReserve int
+	flag.IntVar(&rateLimitReserve, "gitlab-ratelimit-reserve", 20, "Requests of GitLab's per-minute bucket that the Desk's background reads leave to work calls: at or below it they wait for the reset.")
 	opts := zap.Options{}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
+	gitlab.SetRateLimitReserve(rateLimitReserve)
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 	log := ctrl.Log.WithName("ui")
 

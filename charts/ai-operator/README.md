@@ -66,6 +66,7 @@ The CRDs are part of the templates, so they are upgraded too.
 | `metrics.service.enabled` | `false` | expose metrics through a Service |
 | `metrics.service.type`, `metrics.service.annotations` | `ClusterIP`, `{}` | |
 | `healthProbePort` | `8081` | |
+| `gitlab.rateLimit.reserve` | `20` | requests of GitLab's per-minute bucket that the operator's and the Desk's background reads (polls, discovery, Desk reads) leave to work calls: at or below it they wait for the reset |
 | `webhook.enabled` | `true` | serve the GitLab webhook receiver (`POST /hooks/gitlab`) and its Service `<release>-webhook`; see below |
 | `webhook.port` | `8082` | port of the receiver and of the Service |
 | `webhook.service.type`, `webhook.service.annotations` | `ClusterIP`, `{}` | |

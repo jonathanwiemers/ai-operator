@@ -106,6 +106,9 @@ type Client struct {
 	// the web UI) instead of a personal/project access token.
 	oauth bool
 	http  *http.Client
+	// limit is the token's rate limit reading, shared by every client of the
+	// process with the same base URL and token.
+	limit *tokenLimit
 
 	requests, retries atomic.Int64
 	// graphql counts the GraphQL requests; they are part of requests too.
@@ -185,10 +188,12 @@ var _ API = (*Client)(nil)
 
 // New creates a client for the GitLab instance at baseURL (e.g. https://gitlab.com).
 func New(baseURL, token string) *Client {
+	base := strings.TrimRight(baseURL, "/") + "/api/v4"
 	return &Client{
-		baseURL: strings.TrimRight(baseURL, "/") + "/api/v4",
+		baseURL: base,
 		token:   token,
 		http:    &http.Client{Timeout: 30 * time.Second},
+		limit:   limitFor(base, token),
 	}
 }
 
@@ -232,6 +237,10 @@ func IsTransient(err error) bool {
 				return false
 			}
 		}
+		return true
+	}
+	var pe *PacedError
+	if errors.As(err, &pe) {
 		return true
 	}
 	var ge *Error
@@ -328,6 +337,9 @@ func (c *Client) call(ctx context.Context, r request, out any) (*http.Response, 
 		if r.graphql {
 			c.graphql.Add(1)
 		}
+		if err := c.pace(ctx, r); err != nil {
+			return nil, err
+		}
 		c.countOp(r.graphql)
 		resp, data, err := c.send(ctx, r)
 		if err == nil && (resp.StatusCode < 200 || resp.StatusCode > 299) {
@@ -394,6 +406,9 @@ func (c *Client) send(ctx context.Context, r request) (*http.Response, []byte, e
 		return nil, nil, err
 	}
 	defer resp.Body.Close()
+	if c.limit != nil {
+		c.limit.observe(resp.Header, time.Now())
+	}
 	limit := int64(16 << 20)
 	if r.maxBody > 0 {
 		limit = r.maxBody + 1

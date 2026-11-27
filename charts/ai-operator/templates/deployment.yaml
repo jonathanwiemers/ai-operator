@@ -45,6 +45,7 @@ spec:
             - --webhook-bind-address=:{{ .Values.webhook.port }}
             {{- end }}
             - --zap-log-level={{ .Values.logLevel }}
+            - --gitlab-ratelimit-reserve={{ int .Values.gitlab.rateLimit.reserve }}
             {{- $agentLevels := list "debug" "info" "error" }}
             {{- if .Values.agent.logLevel }}
             {{- if not (has .Values.agent.logLevel $agentLevels) }}

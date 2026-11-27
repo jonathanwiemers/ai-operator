@@ -62,6 +62,7 @@ spec:
             {{- end }}
             - --health-probe-bind-address=:{{ $ui.healthProbePort }}
             - --zap-log-level={{ .Values.logLevel }}
+            - --gitlab-ratelimit-reserve={{ int .Values.gitlab.rateLimit.reserve }}
             {{- with .Values.selfProject }}
             - --self-project={{ . }}
             {{- end }}

@@ -86,7 +86,10 @@ func main() {
 	flag.DurationVar(&planCfg.IdleTimeout, "plan-idle-timeout", 30*time.Minute, "How long an AgentPlan pod stays after the last message before it ends (phase Idle).")
 	flag.DurationVar(&planCfg.Retention, "plan-retention", 720*time.Hour, "How long AgentPlans are kept after their last message or creation.")
 	flag.StringVar(&planCfg.MaxBudgetUSD, "plan-max-budget-usd", "5", "Default spend cap per AgentPlan in USD (decimal string).")
+	var rateLimitReserve int
+	flag.IntVar(&rateLimitReserve, "gitlab-ratelimit-reserve", 20, "Requests of GitLab's per-minute bucket that background reads leave to work calls: at or below it they wait for the reset.")
 	flag.Parse()
+	gitlab.SetRateLimitReserve(rateLimitReserve)
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 	setupLog := ctrl.Log.WithName("setup")
 	setupLog.Info("ai-operator starting", "version", version, "selfProject", selfProject)
