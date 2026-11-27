@@ -6,6 +6,7 @@ import Markdown from './Markdown.vue'
 import { computed } from 'vue'
 import { hasFeature } from '../api'
 import { ciLabel, ciTone, cost, deferringEngine, shortSHA } from '../format'
+import { deferralTail } from '../gitlabLimit'
 import { useNow } from '../live'
 import { queueDone } from '../milestoneQueue'
 import { useRoute } from 'vue-router'
@@ -198,7 +199,12 @@ const actions = computed(() => [
   <RouteTabs class="mt-2 w-fit" :tabs="tabs" :active="tab" :to="tabTo" :badges="badges" label="Task" />
 
   <!-- The task's banners, below the tabs (Decision 4). -->
-  <UAlert v-if="t.runPending && run.deferredUntil" :color="alertColor('warning')" variant="subtle" class="mt-3" data-task-alert title="Waiting for a usage limit">
+  <UAlert v-if="t.runPending && run.deferredUntil && run.blockReason === 'gitlab'" :color="alertColor('warning')" variant="subtle" class="mt-3" data-task-alert data-gitlab-deferral title="Rate limited by GitLab" :ui="{ description: 'opacity-100' }">
+    <template #description>
+      The run starts again <RelTime :time="run.deferredUntil" /> {{ deferralTail(run, now) }}
+    </template>
+  </UAlert>
+  <UAlert v-else-if="t.runPending && run.deferredUntil" :color="alertColor('warning')" variant="subtle" class="mt-3" data-task-alert title="Waiting for a usage limit">
     <template #description>
       {{ deferringEngine(run) ?? 'The engine' }} hit its limit; the run starts again
       <RelTime :time="run.deferredUntil" /> (deferred {{ run.deferrals ?? 1 }}×).

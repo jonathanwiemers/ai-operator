@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { milestoneIssueURL } from '../format'
+import { gitlabBadge } from '../gitlabLimit'
+import { useNow } from '../live'
 import UButton from '@nuxt/ui/components/Button.vue'
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -42,6 +44,7 @@ import LocalText from './LocalText.vue'
 // order; grouped (the Issues tab), the items are in lanes (laneGroups) and
 // keep their queue position.
 const props = defineProps<{ namespace: string; name: string; milestone: MilestoneView; grouped?: boolean }>()
+const now = useNow()
 
 const rows = computed(() =>
   queueRows(props.milestone.autopilot?.items ?? [], props.milestone.spec.status.autopilot?.items).map((q, n) => ({
@@ -170,7 +173,8 @@ const laneHead = 'm-0 mb-1 px-1.5 text-xs font-semibold tracking-normal text-(--
             data-wave
           >{{ waveChip(q.wave) }}</span>
           <Truncated class="min-w-0 flex-[1_1_12rem] [overflow-wrap:anywhere]" :lines="2" :text="q.title" />
-          <Badge class="ml-auto" :tone="queueTone(q.state)">{{ q.state.toLowerCase() }}</Badge>
+          <Badge v-if="gitlabBadge(q, now)" class="ml-auto tabular-nums" tone="warning" data-gitlab-limit>{{ gitlabBadge(q, now) }}</Badge>
+          <Badge :class="{ 'ml-auto': !gitlabBadge(q, now) }" :tone="queueTone(q.state)">{{ q.state.toLowerCase() }}</Badge>
         </div>
         <div
           v-if="q.mergeRequestIID || q.task || decisionsShown(q) || companion(q.iid) || q.lane === 'waiting'"

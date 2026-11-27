@@ -65,6 +65,7 @@ export type {
   ProblemView,
   ProblemList,
   ProblemThread,
+  Deferral,
 } from './generated/views'
 
 export type {
@@ -74,6 +75,7 @@ export type {
   TaskPhase,
   CIState,
   RunStatus,
+  GitLabRateLimitStatus,
   AutopilotItem,
   PauseKind,
   ReviewError,

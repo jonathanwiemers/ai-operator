@@ -12,6 +12,8 @@ import { getInbox, getMilestone, getProject, getProjectHistory, LoginRequiredErr
 import { setCrumbNames } from '../crumbNames'
 import ContextLayout from '../components/ContextLayout.vue'
 import CostChip from '../components/CostChip.vue'
+import GitLabUsage from '../components/GitLabUsage.vue'
+import { gitlabHeader } from '../gitlabLimit'
 import HeaderActions from '../components/HeaderActions.vue'
 import PauseCardCompact from '../components/PauseCardCompact.vue'
 import ProjectBoards from '../components/ProjectBoards.vue'
@@ -308,6 +310,10 @@ const pageProject = computed(() => {
   return p && p.namespace === props.namespace && p.name === props.name ? p : null
 })
 
+// gitlabHead: the GitLab usage and limit the header shows (R12 of
+// docs/specs/gitlab-rate-limit.spec.md), on the project's page only.
+const gitlabHead = computed(() => (milestoneIID.value ? null : gitlabHeader(pageProject.value, now.value)))
+
 // title: the milestone's title from the loaded milestone, else from the
 // project's list while it loads, else %<iid>; never the project's name.
 const title = computed(() => {
@@ -444,7 +450,12 @@ watch(
           <template v-if="status" #headline>
             <span :class="toneText[status.tone]" data-stream-status>{{ status.label }}</span>
           </template>
-          <template v-if="pageCost" #description><CostChip :cost="pageCost" data-header-cost /></template>
+          <template v-if="pageCost || gitlabHead" #description>
+            <span class="flex flex-wrap items-center gap-x-4 gap-y-1">
+              <CostChip v-if="pageCost" :cost="pageCost" data-header-cost />
+              <GitLabUsage v-if="gitlabHead" :usage="gitlabHead.usage" :limited="gitlabHead.limited" />
+            </span>
+          </template>
           <template #links>
             <HeaderActions :actions="links" :shown="0" />
           </template>

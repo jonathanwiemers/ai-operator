@@ -13,6 +13,8 @@ import ExtLink from './ExtLink.vue'
 import QueueList from './QueueList.vue'
 import RelTime from './RelTime.vue'
 import { costTooltip } from '../format'
+import { gitlabBadge } from '../gitlabLimit'
+import { useNow } from '../live'
 import { issuesView } from '../timeline'
 import { mergedLabel, mergedTooltip, writtenLabel } from '../lines'
 import { queueDone, waitingForTurn } from '../milestoneQueue'
@@ -55,6 +57,7 @@ const rows = computed(() => interleaveReleases(props.milestone.issues ?? [], pro
 const progress = computed(() => issueProgress(props.milestone.issues ?? []))
 const pct = computed(() => progressPct({ progress: progress.value }))
 const waiting = computed(() => waitingForTurn(props.milestone.autopilot?.queuedBehind, props.milestones))
+const now = useNow()
 
 // Below the table: the Timeline, the Lanes or the Board (Decision 15; the
 // Board since R14 of "Desk: the Cockpit"), picked by a pill switch in the
@@ -228,6 +231,9 @@ const viewHead = `${headText} gap-2`
                   <span v-if="row.issue.tier.why" class="sr-only">: {{ row.issue.tier.why }}</span>
                 </Badge>
               </UTooltip>
+              <Badge v-if="gitlabBadge(row.issue, now)" tone="warning" class="self-center tabular-nums" data-gitlab-limit>
+                {{ gitlabBadge(row.issue, now) }}
+              </Badge>
             </span>
           </span>
           <span class="flex min-w-0 basis-full flex-wrap items-center gap-x-3 gap-y-1.5 desktop:contents" role="none">
