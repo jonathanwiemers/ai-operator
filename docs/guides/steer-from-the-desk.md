@@ -18,7 +18,7 @@ Everything you do here, you can also do with a comment in GitLab; the
 
 ## The Cockpit
 
-A milestone page opens on its *Cockpit*: everything about the milestone,
+A milestone page has a *Cockpit* tab, after *Issues* and *Timeline*: everything about the milestone,
 read from the top like a pull request.
 
 - **The composer** comes first: the message box to the pilot, see
@@ -71,7 +71,7 @@ right. Escape closes it and puts the focus back on the strip.
 
 ### The project and the Overview
 
-A project page and the *Overview* open on a Cockpit of their own, with the
+A project page and the *Overview* have a Cockpit tab of their own, with the
 same pinned cards and threads, but no composer:
 
 - **A project's Cockpit** spans its milestones. Each pinned card shows its

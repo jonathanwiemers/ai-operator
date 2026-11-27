@@ -84,8 +84,7 @@ are in [Commands](../reference/commands.md#on-the-tracking-issue).
 
 ## The issue timeline
 
-A milestone's *Issues* tab has a switch: *Timeline* or *Lanes*. *Timeline*
-shows one row per issue, grouped by [wave](../concepts/glossary.md#wave),
+A milestone's *Timeline* tab (after *Issues*) shows one row per issue, grouped by [wave](../concepts/glossary.md#wave),
 on a time axis:
 
 ```
@@ -128,12 +127,11 @@ now", "in review since 14:05", "in CI since 14:05", "waiting since 14:05"
 or "held since 14:05". On a phone the issue names stay on the left and the
 time axis scrolls sideways.
 
-*Lanes* is the queue by lane, as before: *Running*, *Landing*, *Ready to
-land*, *Waiting*, *Held* and *Done*. Your choice is part of the address
-(`?view=timeline` or `?view=lanes`), so you can send a link to it.
+On the *Issues* tab, the switch under the table is *Lanes* or *Board*. *Lanes*, the default, is the queue by lane: *Running*, *Landing*, *Ready to
+land*, *Waiting*, *Held* and *Done*. The tab is in the address (`?tab=timeline`), so you can send a link to it. An old `?view=timeline` link opens the tab.
 
-The timeline needs the research database. Without it the tab shows
-*Lanes* and no switch. Holds are drawn from the operator version that
+The timeline needs the research database. Without it there is no *Timeline* tab
+and the *Issues* tab has no Timeline view. Holds are drawn from the operator version that
 records them; older issues show no held segments.
 
 A review shows once its reviewer is done; while the reviewers still work,

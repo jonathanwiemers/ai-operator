@@ -171,11 +171,12 @@ see [Notifications and the Desk on your phone](notifications.md).
 
 ## Overview
 
-*Overview* (`/`) has the tabs *Cockpit | Timeline* and opens on *Cockpit*,
-the [Cockpit](../concepts/glossary.md#cockpit) across all your projects:
+*Overview* (`/`) has the tabs *Projects | Timeline | Cockpit* and opens on *Projects*: one card per project. A card shows the project's name, a *Suspended* badge when it is, and *N need you* linking to its Cockpit. *Building now* lists the running or paused milestone with its progress and the issues running with their step; *Up next* the first three queued milestones and "N more"; the foot "N finishing" and "N planned without autopilot". Projects that
+need you come first, idle ones fold into one "Idle:" line, and *Recently done* sits below.
 
-- **Pinned**: the open items of the [Inbox](#inbox) of every project. A click
-  opens the item's card in its milestone's Cockpit, where you answer it.
+The *Cockpit* tab is the [Cockpit](../concepts/glossary.md#cockpit) across all your projects:
+
+- **Pinned**: the open items of the [Inbox](#inbox) of every project. A click opens the item's card in its milestone's Cockpit, where you answer it.
 - **The threads**: one per project, the newest activity on top, with merges
   and milestone state changes. The rest folds into closed lines; click one,
   or switch on *Expand all*.
@@ -198,23 +199,22 @@ and limits. The sidebar collapses to a rail with the counts, as on a
 milestone. On a narrow screen the one-line strip under the header, "1
 running · 2 waiting · next #278", opens it.
 
-*Timeline* (`/?tab=timeline`) shows the
+*Timeline* (`/?tab=timeline`) shows only the
 [Overview timeline](milestone-order-and-timeline.md#the-overview-timeline)
-(which issue ran when, in the last 6 h, 24 h or 7 d), *In progress* (milestones
-in work, those that need you first) and *Recently done* (*Show all* for more).
-A milestone row shows progress, open issues, cost (a dash when unknown), tokens
-and leftovers. Old `?tab=overview`, `activity` and `stream` links open *Cockpit*.
+(which issue ran when, in the last 6 h, 24 h or 7 d). *Recently done* (*Show all* for more)
+is a list of milestones with progress, open issues, cost (a dash when unknown), tokens
+and leftovers. Old `?tab=overview` links open *Projects*; `activity` and `stream` open *Cockpit*.
 
 ## A project
 
-A project page has the tabs *Cockpit | Milestones | Metrics*, and *Plans* with Desk chat. It opens on *Cockpit*:
+A project page has the tabs *Milestones | Cockpit | Decisions | Metrics*, and *Plans* with Desk chat. It opens on *Milestones*:
 
-- **Cockpit**: the stream of all the project's milestones. On top are the pinned cards of every milestone that waits for you, each under the milestone's name: its problems, proposals and questions, answered there.
-  *Talk to the pilot* opens that milestone's Cockpit, which has the message box; the project page has none.
-  Below come a line per running issue that links to its milestone, a search, and one thread per milestone and issue, the newest activity on top, with runs, CI and reviews folded into groups (open one, or *Expand all*).
 - **Milestones**: the project's [run-order queue](milestone-order-and-timeline.md#the-queue),
   which owners drag into order, the [milestones that are finishing](steer-from-the-desk.md#the-queue-and-finishing),
   and its milestones in progress and recently done. The switch on top shows the *Board* instead: one board per milestone, plus the issues without one (`?view=board`).
+- **Cockpit**: the stream of all the project's milestones. On top are the pinned cards of every milestone that waits for you, each under the milestone's name: its problems, proposals and questions, answered there.
+  *Talk to the pilot* opens that milestone's Cockpit, which has the message box; the project page has none.
+  Below come a line per running issue that links to its milestone, a search, and one thread per milestone and issue, the newest activity on top, with runs, CI and reviews folded into groups (open one, or *Expand all*).
 - **Decisions**: the [decisions](decisions.md) of all milestones, or of the one you pick in the *Milestone* select.
 - **Metrics**: what the project's agent calls cost, with its lines of code.
 - **Plans**: the project's [plans](write-a-milestone.md#draft-it-in-the-desk)
@@ -229,9 +229,9 @@ Old links open where their content is now: `?tab=activity` and `stream` open *Co
 
 ## A milestone
 
-A milestone page opens on *Cockpit*, which counts what waits for you. It starts with the [message box to the pilot](#message-the-pilot) and your latest exchange with it, then the problems, proposals and questions, pinned and answered there,
+A milestone page opens on *Issues*. Its tabs are *Issues | Timeline | Cockpit | Decisions | Metrics*, and *Retrospective* once written; *Timeline* (the issue timeline, full width) shows only with the research database. *Cockpit* counts what waits for you. It starts with the [message box to the pilot](#message-the-pilot) and your latest exchange with it, then the problems, proposals and questions, pinned and answered there,
 a search, and one thread per issue, the newest activity on top, with runs, CI and reviews folded into groups (open one, or *Expand all*).
-Then come *Issues*, *Decisions* and *Metrics*, and *Retrospective* once written. The tab is in the address, so you can link to it.
+The tab is in the address, so you can link to it; a link to a card (`#prompt-…`, `#issue-…`) without `?tab=` opens *Cockpit*.
 The *Now & next* sidebar on the right shows what runs (with the step and its time), what waits (for CI, or held with the reason), what comes next and the next milestones. A running or waiting row opens the issue's thread in the Cockpit. *Collapse Now & next* shrinks it to a rail with the counts, and your browser keeps that choice on every page. Below 1180 px, and on the Issues tab, a one-line strip under the header ("1 running · 2 waiting · next #717") opens it from the right; Escape closes it.
 
 Old links to the former tabs open where their content is now, and the address changes to match: `?tab=activity`, `stream`, `needs` and `pilot` open *Cockpit*, `?panel=decisions` the *Decisions* tab (`?tab=decisions`), and `?tab=board` the *Board* view of *Issues* (`?tab=issues&view=board`).

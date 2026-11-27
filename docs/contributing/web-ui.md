@@ -579,7 +579,7 @@ Every page has the same frame, from the outside in (decisions 3 to 6 of
      `<details>` menu there: `UDropdownMenu` would add 16 kB to its route
      (steering log of the spec).
 4. **Tabs.** One row of [RouteTabs](#routetabs) directly under the header,
-   also the dashboard's *Cockpit | Timeline*; never a second row: a tab's
+   also the dashboard's *Projects | Timeline | Cockpit*; never a second row: a tab's
    switches and filters sit in its [toolbar](#filters). A tab whose content
    is empty by definition is hidden (the milestone's *Retrospective* until
    one exists), and its `?tab=` falls back
@@ -950,7 +950,7 @@ Users:
 
 - the project and milestone page (`Stream.vue`), around its `v-if` chain
   of `div.scroll.board`;
-- the Overview (`Dashboard.vue`), around the *Cockpit* and *Timeline*
+- the Overview (`Dashboard.vue`), around the *Projects*, *Timeline* and *Cockpit*
   branches, each still its own `overflow-y-auto` scroller. The Timeline
   scrolls sideways, so a swipe that starts on it does nothing;
 - `TaskBody.vue`, around the *Overview*, *Live*, *Logs* and *Calls*
@@ -1476,7 +1476,7 @@ history's day cells in the project sidebar keep scoped CSS (`.cells` in
   title comes from the project's milestone list (`%<iid>` without it),
   never *Loading…*.
 - The [RouteTabs](#routetabs) row follows; the header block holds nothing
-  else. A project's default tab is its Cockpit (R15 of the Cockpit spec):
+  else. A project's default tab is Milestones, its Cockpit the second (D1 of "Desk: Milestones and Issues first", R15 of the Cockpit spec):
   `Cockpit.vue` over the project's stream, `ProjectPinned.vue` pinning each
   milestone's `MilestoneNeeds` that has open needs (the views of the
   milestones the Inbox names and of those whose autopilot is not done);
@@ -1541,10 +1541,22 @@ Tailwind utilities and Nuxt UI, without scoped CSS. It is a
 [ContextLayout](#context-panel-and-pause-history) with the panel
 `components/OverviewPanel.vue`.
 
-- *Cockpit* (default) and *Timeline* (`?tab=timeline`) are a
+- *Projects* (default), *Timeline* (`?tab=timeline`) and *Cockpit* are a
   [RouteTabs](#routetabs) strip under the heading; on a phone the strip's
   links are 44 px high. `dashboardAlias` (`streamTabs.ts`) rewrites the old
-  `?tab=activity`, `stream` and `overview` to the Cockpit on load.
+  `?tab=activity` and `stream` to the Cockpit on load, `overview` to Projects.
+- *Projects* is `components/ProjectCards.vue` over `projectCards.ts`, a pure
+  module (no DOM, no fetches) that builds one card per project from the
+  projects, the open milestone rows, the Overview's `working` and the Inbox:
+  `needsYou` (Inbox items without `kind: 'plan'`), `building` (running or
+  paused milestones), `runningIssues` grouped under their milestone or
+  *Loose issues*, `upNext` (waiting milestones by `queuePosition`, three, then
+  `moreQueued`), `planned`, `finishing` and `suspended`. Cards sort needs-you,
+  then building, then queued or paused, each by name; the rest come back as an
+  `idle` list for the "Idle:" line. `ProjectCards` is built from `UPageCard`,
+  `UBadge` and `UButton` links; titles render as text. *Recently done*
+  (`MilestoneSections`, which leaves *In progress* out here) sits below the
+  cards. e2e: `overview-projects.spec.ts`; unit: `test/projectCards.test.mjs`.
 - *Cockpit* is `Cockpit.vue` with an empty scope, so `cockpitThreads`
   runs with scope `all`: one thread per project, newest on top, where
   merges, closes, milestone state and releases are shown and the rest is
@@ -1579,8 +1591,8 @@ Tailwind utilities and Nuxt UI, without scoped CSS. It is a
 - *Timeline* is `OverviewTimeline.vue` with the [Timeline](#timeline), a
   `UTabs` pill switch *6 h / 24 h / 7 d* in a `UDashboardToolbar`
   (`?window=6h|24h|7d`, `overviewWindow` falls back to `24h`) and the
-  milestone legend, then the milestone lists (`MilestoneSections.vue`, the
-  shared milestone row grid of `MilestoneList.vue`; *Show all* is a
+  milestone legend; the milestone lists are on Projects (`MilestoneSections.vue`,
+  the shared milestone row grid of `MilestoneList.vue`; *Show all* is a
   `UButton`). Without `overview.history` it shows the same info `UAlert` as
   the milestone lists; over 500 issues (`truncated`) a note says the
   timeline is cut.
@@ -1714,10 +1726,14 @@ Tailwind utilities and Nuxt UI tokens, without scoped CSS.
 - Links in rows (issue title, merge request, release, pipeline) are at
   least 44 px high on phones.
 - Under the table, with the `history` feature, a `UTabs` pill switch
-  *Timeline / Lanes* (`?view=timeline|lanes`, `issuesView`; Timeline by
-  default) picks `MilestoneTimeline.vue` (the [Timeline](#timeline) from
-  `GET /api/v1/timeline?project=&milestone=`) or the `QueueList grouped`
-  lanes. Without the feature there is no switch and the lanes show.
+  *Lanes / Board* (`?view=lanes|board`, `issuesView`; Lanes by default)
+  picks the `QueueList grouped` lanes or the board. A milestone's *Timeline*
+  is its own tab (D2): `milestoneTabsFor(m, history)` lists it only with the
+  `history` feature, and `Stream.vue` renders `MilestoneTimeline.vue` (the
+  [Timeline](#timeline) from `GET /api/v1/timeline?project=&milestone=`, lazy)
+  there. `panelColumn` makes the context panel a slide-over on it, as on
+  Issues, so the time axis has the full width. `?view=timeline` becomes
+  `?tab=timeline` in `milestoneAlias`; without history the page shows Issues.
 
 The e2e cases `milestone issues › issues and releases@<width>` at 375, 768
 and 1280 px check the order of issues and releases, that numbers stay on
@@ -1794,8 +1810,8 @@ tab and in the context sheet) are Tailwind utilities and Nuxt UI tokens.
 - The pilot line: autonomy, cost and *Pilot task*, as the header of the
   Cockpit's composer. On phones the *Pilot task* link is 44 px high. The
   pilot drawer and its *Ask pilot* button are gone (R12 of "Desk: the
-  Cockpit"); `milestoneAlias` (`src/streamTabs.ts`) drops an old `?pilot=`
-  and turns `?tab=pilot` into the Cockpit on load.
+  Cockpit"); `milestoneAlias` (`src/streamTabs.ts`) turns an old `?pilot=` and
+  `?tab=pilot` into `?tab=cockpit` on load.
 
 - A queue item shows its position, its number (never wrapped), its title
   (two lines, the rest opens on tap) and its state, which wrap onto lines of
@@ -1839,7 +1855,8 @@ is the Cockpit with its composer.
 
 ### Cockpit
 
-A milestone page opens on the Cockpit (spec "Desk: the Cockpit", R9 and
+A milestone page has the Cockpit as its second tab, after Issues and Timeline (D1 of
+"Desk: Milestones and Issues first"; spec "Desk: the Cockpit", R9 and
 R10; the order from R3 of "Desk: the Cockpit newest first by issue"),
 `web/src/components/cockpit/Cockpit.vue`, built from Nuxt UI
 components only. Top to bottom: the composer, the latest exchange with
@@ -2564,8 +2581,8 @@ The tab lists, defaults and aliases are in `web/src/streamTabs.ts`
 (unit-tested in `test/streamTabs.test.mjs`); a tab is always `?tab=`, never
 a path (decision 13 of the header and tabs milestone).
 
-- **Dashboard** (`/`): *Cockpit* (default) and *Timeline* (`/?tab=timeline`);
-  the old `?tab=activity`, `stream` and `overview` open the Cockpit.
+- **Dashboard** (`/`): *Projects* (default), *Timeline* (`/?tab=timeline`) and *Cockpit*;
+  the old `?tab=activity` and `stream` open the Cockpit, `overview` Projects.
   The summary strip's spend is the UTC day and the last 7 days. *Recently
   done* shows the newest 10, *Show all* loads up to 200. A milestone row's
   cost is a dash when unknown, never $0. A user with research alone starts
@@ -2602,7 +2619,16 @@ a path (decision 13 of the header and tabs milestone).
   empty or repeated values fall back to the first known one, else the
   default (`tabFromQuery`).
 - The view tabs are one [RouteTabs](#routetabs) strip; the default tab
-  drops `?tab=` (`tabQuery`). Scope tabs keep a chosen view tab where the
+  drops `?tab=` (`tabQuery`). Project: Milestones first, the Cockpit second; milestone: Issues, Timeline, the Cockpit. An alias without a tab (`overview` on the dashboard) means the list's first tab.
+- **Links into the Cockpit (D6).** The Desk's own links to a Cockpit card or
+  thread carry `?tab=cockpit` (`inboxRoute.ts`, the Now & next rows,
+  `EventCard.vue`, `DecisionRevisit.vue`). A link without `?tab=` from outside
+  (a GitLab comment, an old notification, a bookmark) opens the Cockpit when its hash
+  starts with `#prompt-`, `#issue-` or `#problem-`, or is `#pinned`, or it has
+  `?live=1`: `cockpitQuery(query, hash)` in `streamTabs.ts`, which
+  `milestoneAlias` and `projectAlias` call with the hash, returns the query
+  with `tab: 'cockpit'`, and `Stream.vue` replaces the URL, keeping the hash.
+  A link with another `?tab=` keeps it; `liveless` drops `?live=` from links to other tabs. Scope tabs keep a chosen view tab where the
   target has it and open its default otherwise.
 - **Issue page** (`…/milestones/<iid>/issues/<issue>`): the *Task* section
   holds the task page's tabs by `?tab=`; its stream is `GET /api/v1/stream`

@@ -69,11 +69,11 @@ numbered requirements give the planner a clear split.
 
 ## 2. Watch it get planned
 
-Open the Desk. Your milestone shows up on the *Timeline* tab of *Overview* on the operator's next
+Open the Desk. Your milestone shows up on the *Projects* tab of *Overview* on the operator's next
 poll, with the state `running`. Click its title to open it.
 
-The milestone page opens on its [Cockpit](../concepts/glossary.md#cockpit):
-one stream of what happens, with what waits for you pinned on top and the
+The milestone page opens on its *Issues*. Its [Cockpit](../concepts/glossary.md#cockpit)
+tab is the second one: one stream of what happens, with what waits for you pinned on top and the
 message box to the pilot at the bottom. In GitLab, the operator opens a
 [tracking issue](../concepts/glossary.md#tracking-issue) for the milestone
 right away. It holds the milestone's status, and you can comment there.

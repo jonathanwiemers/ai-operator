@@ -38,11 +38,11 @@ inert: no mentions besides the owners', no quick actions.
 
 ## Talk to it in the Desk
 
-Open the milestone: its *Cockpit* starts with *Message the pilot*, the
+Open the milestone and its *Cockpit* tab: it starts with *Message the pilot*, the
 message box, under the pilot's autonomy, cost and a link to its task. Your
 message and the pilot's answer show right under it, as the latest exchange;
 *Show earlier* shows older ones. Old links with `?pilot=1` or
-`?tab=pilot` open the Cockpit.
+`?tab=pilot` open the Cockpit tab.
 Stuck issues have their [problem thread](#the-problem-thread) among the *Cockpit*'s pinned cards. Type your question there; the answer comes in the
 same thread.
 
