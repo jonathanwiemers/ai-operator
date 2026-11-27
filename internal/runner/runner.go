@@ -73,6 +73,9 @@ type Runner struct {
 	// projectStatus is the project's status at the start of the current
 	// run; it carries the project-wide usage limits.
 	projectStatus aiv1.AgentProjectStatus
+	// rateLimit is the current run's GitLab client for its token's rate
+	// limit reading (nil when the client has none, e.g. a fake).
+	rateLimit rateLimiter
 	// run records the steps of the current (or last) run.
 	run *runLog
 	// progress is the live progress comment of the current run, if any.
@@ -543,6 +546,7 @@ func (r *Runner) tick(ctx context.Context, wake <-chan struct{}) (bool, error) {
 
 // Step executes at most one pending run. It reports whether a run happened.
 func (r *Runner) Step(ctx context.Context) (bool, error) {
+	r.rateLimit = nil // set again for this run below; a stale one belongs to another start
 	task, project, err := r.load(ctx)
 	if err != nil || task == nil || !task.RunPending() {
 		return false, err
@@ -565,6 +569,10 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 			r.Log.V(1).Info("waiting for a pod with more memory", "has", r.AgentMemoryBytes, "wants", want.String())
 			return false, nil
 		}
+	}
+	if until, ok := projectGitLabLimit(project.Status, r.now()); ok {
+		// Another run of the project is deferred on GitLab: wait with it.
+		return false, r.deferForProjectLimit(ctx, until)
 	}
 	r.projectStatus = project.Status
 	r.usage, r.routed, r.sessionEngines = task.Status.Run.EngineUsage, task.Status.Run.UsageLimits, nil
@@ -617,6 +625,10 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	}
 	r.pilot = pilotAddressed(project, spec)
 	gl := r.guardedGitLab(spec, task)
+	r.rateLimit, _ = r.NewGitLab(spec.GitLab.URL, r.GitLabToken).(rateLimiter)
+	if err := r.postGitLabLimitNote(ctx, gl, spec, task); err != nil {
+		return false, err
+	}
 	var out *Outcome
 	var block aiv1.BlockReason
 	switch {

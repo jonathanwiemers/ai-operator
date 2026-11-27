@@ -95,6 +95,7 @@ func (r *Runner) patchRunWithCalls(ctx context.Context, mutate func(*aiv1.RunSta
 	}
 	err := r.patchRun(ctx, func(s *aiv1.RunStatus) {
 		aiv1.AppendCalls(s, pending...)
+		r.recordGitLabRateLimit(s)
 		if mutate != nil {
 			mutate(s)
 		}

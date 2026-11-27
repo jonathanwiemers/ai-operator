@@ -37,8 +37,26 @@ var projectSyncs = prometheus.NewCounterVec(prometheus.CounterOpts{
 	Help: "AgentProject reconciles by kind: full, light (milestones only) or skipped (covered by webhooks or the set)",
 }, []string{"namespace", "project", "kind"})
 
+// gitlabRateLimitRemaining is the bot's latest RateLimit-Remaining, by GitLab
+// user: the bucket is per user, so projects sharing a token share a series.
+var gitlabRateLimitRemaining = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+	Name: "ai_operator_gitlab_ratelimit_remaining",
+	Help: "GitLab API requests the user has left in the current rate limit window (RateLimit-Remaining)",
+}, []string{"user"})
+
+// gitlabPacedSeconds reads the operator's GitLab calls' waits for the rate
+// limit's reset, by priority.
+func gitlabPacedSeconds(p gitlab.Priority) prometheus.CounterFunc {
+	return prometheus.NewCounterFunc(prometheus.CounterOpts{
+		Name:        "ai_operator_gitlab_paced_seconds_total",
+		Help:        "Seconds the operator's GitLab calls waited for the rate limit's reset, by priority (background, work)",
+		ConstLabels: prometheus.Labels{"priority": p.String()},
+	}, func() float64 { return gitlab.PacedSeconds(p) })
+}
+
 func init() {
-	metrics.Registry.MustRegister(taskStalled, gitlabRequests, projectSyncs)
+	metrics.Registry.MustRegister(taskStalled, gitlabRequests, projectSyncs, gitlabRateLimitRemaining,
+		gitlabPacedSeconds(gitlab.Background), gitlabPacedSeconds(gitlab.Work))
 }
 
 // countGitLabRequests adds what a client sent to the counter. Call it once

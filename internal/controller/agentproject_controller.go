@@ -379,14 +379,21 @@ const syncTimeout = 2 * time.Minute
 func (r *AgentProjectReconciler) now() time.Time { return nowOr(r.Now) }
 
 func (r *AgentProjectReconciler) gitlabClient(ctx context.Context, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec) (gitlab.API, error) {
+	gl, _, err := r.gitlabClients(ctx, project, spec)
+	return gl, err
+}
+
+// gitlabClients is gitlabClient that also returns the unwrapped client, for
+// what the wrappers do not pass on (its token's rate limit reading).
+func (r *AgentProjectReconciler) gitlabClients(ctx context.Context, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec) (gitlab.API, gitlab.API, error) {
 	ref := spec.GitLab.TokenSecretRef
 	var secret corev1.Secret
 	if err := r.Get(ctx, types.NamespacedName{Namespace: project.Namespace, Name: ref.Name}, &secret); err != nil {
-		return nil, fmt.Errorf("reading GitLab token secret: %w", err)
+		return nil, nil, fmt.Errorf("reading GitLab token secret: %w", err)
 	}
 	token := strings.TrimSpace(string(secret.Data[ref.Key]))
 	if token == "" {
-		return nil, fmt.Errorf("secret %s has no key %q", ref.Name, ref.Key)
+		return nil, nil, fmt.Errorf("secret %s has no key %q", ref.Name, ref.Key)
 	}
 	base := strings.TrimRight(spec.GitLab.URL, "/")
 	if base == "" {
@@ -395,19 +402,20 @@ func (r *AgentProjectReconciler) gitlabClient(ctx context.Context, project *aiv1
 	// The merge/push guard: the bot's token reaches the whole group, the
 	// operator merges and writes merge requests only at home and in the
 	// valid companion targets.
-	guarded := gitlab.Guard(r.NewGitLab(spec.GitLab.URL, token), gitlab.NewPolicy(spec, r.CrossRepoAllowed, r.CrossRepoNever),
+	raw := r.NewGitLab(spec.GitLab.URL, token)
+	guarded := gitlab.Guard(raw, gitlab.NewPolicy(spec, r.CrossRepoAllowed, r.CrossRepoNever),
 		log.FromContext(ctx).WithName("guard"))
 	return r.History.WrapGitLab(guarded, history.Project{
 		Namespace: project.Namespace, Name: project.Name,
 		WebURL: base + "/" + spec.GitLab.Project,
 		Bot:    project.Status.BotUsername,
-	}), nil
+	}), raw, nil
 }
 
 // sync performs one GitLab poll.
 func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec) error {
 	started := r.now()
-	gl, err := r.gitlabClient(ctx, project, spec)
+	gl, raw, err := r.gitlabClients(ctx, project, spec)
 	if err != nil {
 		return err
 	}
@@ -432,6 +440,7 @@ func (r *AgentProjectReconciler) sync(ctx context.Context, project *aiv1.AgentPr
 	if err != nil {
 		return err
 	}
+	poll.rateLimit, _ = raw.(rateLimiter)
 	if err := poll.syncMilestones(ctx); err != nil {
 		return err
 	}

@@ -29,6 +29,9 @@ type projectPoll struct {
 	titleRE *regexp.Regexp
 	prefix  string
 	settled int // settling milestones this poll left alone
+	// rateLimit is the poll's unwrapped client, for its token's rate limit
+	// reading; nil when it has none.
+	rateLimit rateLimiter
 
 	tasks       aiv1.AgentTaskList
 	byMilestone map[int64]*aiv1.AgentTask
@@ -550,5 +553,6 @@ func (ph cleanupPhase) run(ctx context.Context) error {
 	// The runners read the limits from the project status, so a limit one
 	// run hit makes the others wait or fall back instead of hitting it again.
 	project.Status.UsageLimits = aiv1.ProjectUsageLimits(tasks.Items, researches, project.Name, r.now())
+	ph.recordGitLabRateLimit(tasks.Items)
 	return nil
 }

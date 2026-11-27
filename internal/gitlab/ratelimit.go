@@ -11,6 +11,10 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	aiv1 "github.com/jonathanwiemers/ai-operator/api/v1alpha1"
 )
 
 // Pacing. Every process that calls GitLab with a token shares that token's
@@ -73,6 +77,18 @@ func RateLimitReserve() int { return int(rateLimitReserve.Load()) }
 type RateLimitReading struct {
 	Limit, Remaining, Observed int
 	ResetAt, ReadAt            time.Time
+}
+
+// Status is the reading as the run and project status record it.
+func (r RateLimitReading) Status() aiv1.GitLabRateLimitReading {
+	s := aiv1.GitLabRateLimitReading{Observed: int32(r.Observed), Remaining: int32(max(r.Remaining, 0)), Limit: int32(r.Limit)} // #nosec G115 -- header counts are small
+	if !r.ResetAt.IsZero() {
+		s.ResetAt = &metav1.Time{Time: r.ResetAt}
+	}
+	if !r.ReadAt.IsZero() {
+		s.ReadAt = &metav1.Time{Time: r.ReadAt}
+	}
+	return s
 }
 
 // tokenLimit is the shared reading of one token at one GitLab.
