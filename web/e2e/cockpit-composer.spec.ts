@@ -18,6 +18,9 @@ import { paymentsMilestone } from './fixtures/stream'
 import { journeyAt } from './journey'
 
 const milestonePath = '/projects/team-a/shop/milestones/14'
+// The Cockpit is a milestone's second tab (D1 of "Desk: Milestones and
+// Issues first").
+const cockpitPath = `${milestonePath}?tab=cockpit`
 
 // A stream long enough to scroll on a phone: one merge per issue.
 const merges: StreamEvent[] = Array.from({ length: 24 }, (_, i) => ({
@@ -109,7 +112,7 @@ const withPerms = (perms: Partial<NonNullable<MilestoneView['permissions']>>): M
 })
 
 test('with the chat grant: the pilot line and the chat to the pilot, no Ask pilot and no drawer@1280', journeyAt(1280), async ({ page, baseURL }) => {
-  const { problems } = await open(page, baseURL, milestonePath)
+  const { problems } = await open(page, baseURL, cockpitPath)
   await expect(current(page)).toHaveText(/^Cockpit/)
   await expect(composer(page)).toHaveAttribute('aria-label', 'Message the pilot')
   const line = composer(page).locator('[data-pilot]')
@@ -135,7 +138,7 @@ const inOrder = (page: Page, selectors: string[]) =>
 
 for (const width of [390, 1280]) {
   test(`the Cockpit reads from the top: composer, latest exchange, pinned cards, threads, Load older@${width}`, journeyAt(width), async ({ page, baseURL }) => {
-    const { problems } = await open(page, baseURL, milestonePath, { width, events: [...exchanges, ...merges].sort((a, b) => Date.parse(b.at) - Date.parse(a.at)) })
+    const { problems } = await open(page, baseURL, cockpitPath, { width, events: [...exchanges, ...merges].sort((a, b) => Date.parse(b.at) - Date.parse(a.at)) })
     const conversation = page.locator('main [data-cockpit-conversation]')
     const threads = page.locator('main [data-cockpit-thread]')
     await expect(conversation.locator('[data-cockpit-exchange]')).toHaveCount(1)
@@ -182,7 +185,7 @@ for (const width of [390, 1280]) {
 
 test('a sent message shows as the latest exchange with its answer@1280', journeyAt(1280), async ({ page, baseURL }) => {
   const sent = [chat(6201, 0, 'Two issues are in review.', 6200), chat(6200, 0, 'What is #281 doing?')]
-  const { problems, posts } = await open(page, baseURL, milestonePath, { events: [...exchanges, ...merges].sort((a, b) => Date.parse(b.at) - Date.parse(a.at)), sent })
+  const { problems, posts } = await open(page, baseURL, cockpitPath, { events: [...exchanges, ...merges].sort((a, b) => Date.parse(b.at) - Date.parse(a.at)), sent })
   const box = composer(page).getByRole('textbox', { name: 'Message' })
   await box.fill('What is #281 doing?')
   await box.press('ControlOrMeta+Enter')
@@ -195,25 +198,25 @@ test('a sent message shows as the latest exchange with its answer@1280', journey
 })
 
 test('steer without the chat grant: a /pilot note; neither: the read-only line@1280', async ({ page, baseURL }) => {
-  let { problems } = await open(page, baseURL, milestonePath, { milestone: withPerms({ chat: false }) })
+  let { problems } = await open(page, baseURL, cockpitPath, { milestone: withPerms({ chat: false }) })
   await expect(composer(page).locator('.composer.note').getByRole('textbox')).toBeVisible()
   await expect(composer(page).locator('.composer.chat')).toHaveCount(0)
   // The note composer scrolls with the page too (R3), not sticky.
   expect(await composer(page).locator('.composer.note').evaluate((e) => getComputedStyle(e).position)).toBe('static')
   expect(problems).toEqual([])
-  ;({ problems } = await open(page, baseURL, milestonePath, { milestone: withPerms({ chat: false, steer: false }) }))
+  ;({ problems } = await open(page, baseURL, cockpitPath, { milestone: withPerms({ chat: false, steer: false }) }))
   await expect(composer(page)).toContainText("Read-only: only the milestone's owners can message the pilot.")
   await expect(composer(page).getByRole('textbox')).toHaveCount(0)
   expect(problems).toEqual([])
 })
 
 test('a milestone without a pilot says so; a stored milestone has no composer@1280', async ({ page, baseURL }) => {
-  let { problems } = await open(page, baseURL, milestonePath, { milestone: { ...paymentsMilestone, pilot: undefined } })
+  let { problems } = await open(page, baseURL, cockpitPath, { milestone: { ...paymentsMilestone, pilot: undefined } })
   await expect(composer(page)).toContainText('No pilot for this milestone.')
   await expect(composer(page).getByRole('textbox')).toHaveCount(0)
   expect(problems).toEqual([])
   const stored: MilestoneView = { ...paymentsMilestone, state: 'done', stored: true, autopilot: undefined, pilot: undefined, prompts: [] }
-  ;({ problems } = await open(page, baseURL, milestonePath, { milestone: stored }))
+  ;({ problems } = await open(page, baseURL, cockpitPath, { milestone: stored }))
   await expect(current(page)).toHaveText(/^Cockpit/)
   await expect(page.locator('main [data-cockpit-stream]')).toBeVisible()
   await expect(composer(page)).toHaveCount(0)
@@ -227,7 +230,7 @@ for (const [label, query] of [
 ] as const) {
   test(`an old ${label} link opens the Cockpit without the pilot parameters@1280`, async ({ page, baseURL }) => {
     const { problems } = await open(page, baseURL, `${milestonePath}${query}`)
-    await expect(page).toHaveURL(/\/milestones\/14$/)
+    await expect(page).toHaveURL(/\/milestones\/14\?tab=cockpit$/)
     await expect(current(page)).toHaveText(/^Cockpit/)
     await expect(composer(page).getByRole('textbox', { name: 'Message' })).toBeVisible()
     await expect(page.getByRole('dialog')).toHaveCount(0)
@@ -243,7 +246,7 @@ test('?pilot=1 on another tab keeps the tab and drops the parameter@1280', async
 })
 
 test('on a phone the composer is the top of the Cockpit and not sticky@390', async ({ page, baseURL }) => {
-  const { problems } = await open(page, baseURL, milestonePath, { width: 390 })
+  const { problems } = await open(page, baseURL, cockpitPath, { width: 390 })
   await expect(composer(page).getByRole('textbox', { name: 'Message' })).toBeVisible()
   const top = await page.locator('main [data-cockpit]').evaluate((e) => e.getBoundingClientRect().top)
   expect((await composer(page).boundingBox())!.y).toBeLessThanOrEqual(top + 0.5)
@@ -264,7 +267,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
     ] as const) {
       test(`axe is green with the ${name} composer in ${colorScheme}@${width}`, async ({ page, baseURL }) => {
         await page.emulateMedia({ colorScheme })
-        const { problems } = await open(page, baseURL, milestonePath, { width, milestone })
+        const { problems } = await open(page, baseURL, cockpitPath, { width, milestone })
         await expect(composer(page)).toBeVisible()
         const results = await new AxeBuilder({ page })
           .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])

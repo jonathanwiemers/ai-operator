@@ -63,13 +63,12 @@ const projectReady = {
 }
 // projectMilestonesReady: the project's Milestones tab has loaded.
 const projectMilestonesReady = (page: Page) => expect(page.locator('main [data-finishing-entry]').first()).toBeVisible()
-// projectCockpitReady: the project's default tab, the Cockpit, has its
+// projectCockpitReady: the project's Cockpit tab (?tab=cockpit) has its
 // pinned cards (%14's) and its stream's groups.
 async function projectCockpitReady(page: Page) {
   await expect(page.locator('main [data-pinned-milestone="14"] [data-problem]').first()).toBeVisible()
   await expect(page.locator('main [data-cockpit-stream] [data-cockpit-group]').first()).toBeVisible()
 }
-const projectCockpitPath = '/projects/team-a/shop'
 const milestoneReady = {
   cockpit: 'Split across captures',
   issues: 'Document the refund flow for support',
@@ -146,12 +145,13 @@ const routes: Route[] = [
     path: '/metrics?range=90d&group=model&kind=implement',
     ready: costsReady,
   },
-  // The project page's default tab, the Cockpit (R15 of "Desk: the
-  // Cockpit"): %14's pinned cards and the stream across the milestones. The
-  // old ?panel=decisions link is checked in project-cockpit.spec.ts.
+  // The project page's Cockpit tab (R15 of "Desk: the Cockpit", the second
+  // tab since "Desk: Milestones and Issues first"): %14's pinned cards and
+  // the stream across the milestones. The old ?panel=decisions link is
+  // checked in project-cockpit.spec.ts.
   {
     name: 'stream-project-cockpit',
-    path: '/projects/team-a/shop',
+    path: '/projects/team-a/shop?tab=cockpit',
     ready: projectCockpitReady,
   },
   // The Milestones tab's Board view (the old Board tab).
@@ -172,11 +172,11 @@ const routes: Route[] = [
     colorScheme: 'dark',
     ready: projectMilestonesReady,
   },
-  // The milestone's default tab, the Cockpit: its pinned cards (once the
-  // Needs you tab) and its stream (once Activity), R14 of "Desk: the Cockpit".
+  // The milestone's Cockpit tab: its pinned cards (once the Needs you tab)
+  // and its stream (once Activity), R14 of "Desk: the Cockpit".
   {
     name: 'stream-milestone-cockpit',
-    path: '/projects/team-a/shop/milestones/14',
+    path: '/projects/team-a/shop/milestones/14?tab=cockpit',
     ready: (page) => expect(page.locator('main').getByText(milestoneReady.cockpit).first()).toBeVisible(),
   },
   ...(['issues', 'metrics', 'retrospective'] as const).map(
@@ -320,7 +320,7 @@ const routes: Route[] = [
 // e2e/cockpit.spec.ts and e2e/cockpit-composer.spec.ts.
 const pilotRoute: Route = {
   name: 'stream-milestone-pilot',
-  path: '/projects/team-a/shop/milestones/14',
+  path: '/projects/team-a/shop/milestones/14?tab=cockpit',
   ready: (page) => expect(page.locator('main [data-cockpit-composer]').getByRole('textbox', { name: 'Message' })).toBeVisible(),
 }
 
@@ -962,7 +962,7 @@ for (const { width, height, labels } of [
 }
 
 // RouteTabs (src/ui/RouteTabs.vue): on a phone the milestone's tabs
-// (Cockpit with its badge · Issues · Decisions · Metrics · Retrospective) are still a
+// (Issues · Cockpit with its badge · Decisions · Metrics · Retrospective) are still a
 // little wider than the screen. They scroll inside the strip's list, the
 // page does not, and the tab of ?tab=retrospective, the last one, is
 // scrolled into view on load, inside the list's visible box.
@@ -1044,9 +1044,10 @@ for (const { name, label, current } of [
   })
 }
 
-// Project tabs (R15 of "Desk: the Cockpit"): a project opens on its
-// Cockpit, the queue is on Milestones, and an old ?tab=stream link opens
-// the Cockpit on a project and on the dashboard (R16), whose tabs are Cockpit · Timeline.
+// Project tabs (R15 of "Desk: the Cockpit", D1 of "Desk: Milestones and
+// Issues first"): a project opens on Milestones, where the queue is, the
+// Cockpit is its second tab, and an old ?tab=stream link opens the Cockpit
+// on a project and on the dashboard (R16), whose tabs are Cockpit · Timeline.
 test.describe('Cockpit, Milestones and Timeline tabs', () => {
   async function open(page: Page, baseURL: string | undefined, path: string): Promise<Problems> {
     const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
@@ -1058,25 +1059,25 @@ test.describe('Cockpit, Milestones and Timeline tabs', () => {
     return problems
   }
 
-  test('a project opens on the Cockpit, the queue is on Milestones@1280', async ({ page, baseURL }) => {
-    const problems = await open(page, baseURL, projectCockpitPath)
-    await projectCockpitReady(page)
-    const tabs = page.locator('main').getByRole('navigation', { name: 'View' }).getByRole('link')
-    await expect(tabs).toHaveText(['Cockpit', 'Milestones', 'Decisions', 'Metrics'])
-    await expect(tabs.nth(0)).toHaveAttribute('aria-current', 'page')
-    await expect(page.getByRole('searchbox', { name: 'Search the Cockpit' })).toBeVisible()
-    await tabs.nth(1).click()
-    await expect(page).toHaveURL(/\/projects\/team-a\/shop\?tab=milestones$/)
+  test('a project opens on Milestones with the queue, the Cockpit is the second tab@1280', async ({ page, baseURL }) => {
+    const problems = await open(page, baseURL, '/projects/team-a/shop')
     await projectMilestonesReady(page)
+    const tabs = page.locator('main').getByRole('navigation', { name: 'View' }).getByRole('link')
+    await expect(tabs).toHaveText(['Milestones', 'Cockpit', 'Decisions', 'Metrics'])
+    await expect(tabs.nth(0)).toHaveAttribute('aria-current', 'page')
     await expect(page.locator('main [data-queue-entry]').first()).toBeVisible()
     await expect(page.locator('main ul[aria-label="In progress"]')).toBeVisible()
     await expect(page.locator('main [data-cockpit]')).toHaveCount(0)
+    await tabs.nth(1).click()
+    await expect(page).toHaveURL(/\/projects\/team-a\/shop\?tab=cockpit$/)
+    await projectCockpitReady(page)
+    await expect(page.getByRole('searchbox', { name: 'Search the Cockpit' })).toBeVisible()
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
   })
 
   test('/projects/team-a/shop?tab=stream opens the Cockpit@1280', async ({ page, baseURL }) => {
     const problems = await open(page, baseURL, '/projects/team-a/shop?tab=stream')
-    await expect(page).toHaveURL(/\/projects\/team-a\/shop$/)
+    await expect(page).toHaveURL(/\/projects\/team-a\/shop\?tab=cockpit$/)
     const strip = page.locator('main').getByRole('navigation', { name: 'View' })
     await expect(strip.locator('a[aria-current="page"]')).toHaveText(/^Cockpit/)
     await expect(page.locator('main [data-cockpit]')).toBeVisible()
@@ -1887,7 +1888,7 @@ for (const { width, height } of [widths[0]!, widths[2]!]) {
     await budget.locator('[data-long-pause]').click()
     // The pause link is the server's old ?tab=pilot: the Cockpit, with the
     // composer to the pilot at its bottom.
-    await expect(page).toHaveURL(/\/projects\/team-a\/shop\/milestones\/14$/)
+    await expect(page).toHaveURL(/\/projects\/team-a\/shop\/milestones\/14\?tab=cockpit$/)
     await expect(page.locator('main [data-cockpit-composer]')).toBeVisible()
 
     problems.csp.push(...(await page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations)))
@@ -2277,9 +2278,10 @@ test.describe('rail sheet', () => {
 
     sheet = await openSheet(page)
     await sheet.getByRole('link', { name: /^shop/ }).click()
+    // The sidebar's link has no ?tab=: the project opens on Milestones.
     await expect(page).toHaveURL(/\/projects\/team-a\/shop$/)
     await expect(sheet).toBeHidden()
-    await projectCockpitReady(page)
+    await projectMilestonesReady(page)
     expect(await page.evaluate(() => (history.state as Record<string, unknown> | null)?.__sheet)).toBeUndefined()
     // The new page's h1 has the focus, not the button that opened the sheet.
     await expect(page.locator('main h1')).toBeFocused()
@@ -2783,8 +2785,9 @@ test.describe('landmarks and route focus', () => {
     const problems = await load(page, baseURL, overview, { width: 1280, height: 800 })
     await expect(page).toHaveTitle(/^\(\d+\) .+ · Desk$/)
     await page.locator('.rail').getByRole('link', { name: /^shop/ }).click()
+    // No ?tab=: the project's first tab, Milestones.
     await expect(page).toHaveURL(/\/projects\/team-a\/shop$/)
-    await projectCockpitReady(page)
+    await projectMilestonesReady(page)
     await landedOn(page)
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
   })
@@ -3366,7 +3369,7 @@ test.describe('prompt card', () => {
       await expect(row.locator('.md-inline strong')).toHaveText('partial refund')
       await expect(row.getByText('open', { exact: true })).toBeVisible()
       const link = row.getByRole('link', { name: `${refundsPrompt.id} asked:` })
-      await expect(link).toHaveAttribute('href', `/projects/team-a/shop/milestones/14#prompt-${refundsPrompt.id}`)
+      await expect(link).toHaveAttribute('href', `/projects/team-a/shop/milestones/14?tab=cockpit#prompt-${refundsPrompt.id}`)
       if (phone) expect((await link.boundingBox())!.height, 'link height').toBeGreaterThanOrEqual(44)
       await expect(row.getByRole('button')).toHaveCount(0)
       await noSidewaysScroll(page)
@@ -3910,7 +3913,7 @@ test.describe('milestone decisions', () => {
     release()
     await expect(block.getByRole('status')).toContainText('Q9 opened for D280-2.')
     const go = block.getByRole('link', { name: 'Go to Q9' })
-    await expect(go).toHaveAttribute('href', '/projects/team-a/shop/milestones/14#prompt-Q9')
+    await expect(go).toHaveAttribute('href', '/projects/team-a/shop/milestones/14?tab=cockpit#prompt-Q9')
     // The other cards keep their own state.
     await expect(page.locator('main #D281-2 [role=status]')).toHaveCount(0)
     expect(problems).toEqual({ unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] })
@@ -4113,9 +4116,11 @@ test.describe('milestone decisions', () => {
 
 // The milestone's pilot composer (CockpitComposer.vue) and the queue
 // (QueueList.vue, R12), utilities only. A prompt link without ?tab= opens
-// the Needs you tab, unfolds Earlier questions for a closed prompt and scrolls
-// to its card. The queue keeps its order, numbers stay on one line, and on
-// a phone the links and the fold are 44 px high.
+// the Cockpit (?tab=cockpit, D6 of "Desk: Milestones and Issues first"),
+// whose pinned cards open the prompt's problem, unfold Earlier questions
+// for a closed prompt and scroll to its card. The queue keeps its order,
+// numbers stay on one line, and on a phone the links and the fold are 44 px
+// high.
 test.describe('milestone pilot', () => {
   async function open(page: Page, baseURL: string | undefined, name: string, size: { width: number; height: number }, path?: string) {
     const route = [...routes, pilotRoute].find((r) => r.name === name)!
@@ -4336,8 +4341,8 @@ test.describe('milestone retrospective', () => {
     const shot = (outputDir: string, name: string) => join(outputDir, '..', 'screenshots', `${name}@${size.width}.png`)
 
     // Decision 12: a milestone without a retrospective has no Retrospective
-    // tab, and a ?tab=retrospective link opens the default tab, the Cockpit.
-    test(`no retrospective: no tab, the link opens the Cockpit@${size.width}`, async ({ page, baseURL }) => {
+    // tab, and a ?tab=retrospective link opens the default tab, Issues.
+    test(`no retrospective: no tab, the link opens Issues@${size.width}`, async ({ page, baseURL }) => {
       const route = routes.find((r) => r.name === 'stream-milestone-retrospective')!
       const problems: Problems = { unknownAPI: [], otherOrigin: [], csp: [], pageErrors: [] }
       await page.setViewportSize(size)
@@ -4351,9 +4356,9 @@ test.describe('milestone retrospective', () => {
       )
       await page.goto(route.path)
       const main = page.locator('main')
-      await expect(main.getByText(milestoneReady.cockpit).first()).toBeVisible()
+      await expect(main.getByText(milestoneReady.issues).first()).toBeVisible()
       const tabs = main.getByRole('navigation', { name: 'View' })
-      await expect(tabs.getByRole('link', { name: 'Cockpit' })).toHaveAttribute('aria-current', 'page')
+      await expect(tabs.getByRole('link', { name: 'Issues' })).toHaveAttribute('aria-current', 'page')
       await expect(tabs.getByRole('link', { name: 'Retrospective' })).toHaveCount(0)
       await expect(tabs.getByRole('link', { name: /^Needs you/ })).toHaveCount(0)
       await expect(tabs.getByRole('link', { name: 'Pilot' })).toHaveCount(0)
@@ -5429,9 +5434,9 @@ test.describe('screen reader flows', () => {
         - navigation "View":
           - list:
             - listitem:
-              - link /^Cockpit\\s*3$/
-            - listitem:
               - link "Issues"
+            - listitem:
+              - link /^Cockpit\\s*3$/
         - region "Pinned":
           - heading "Problems 3" [level=2]
           - navigation "Problems"
@@ -5501,9 +5506,9 @@ test.describe('screen reader flows', () => {
         - navigation "View":
           - list:
             - listitem:
-              - link /^Cockpit\\s*3$/
-            - listitem:
               - link "Issues"
+            - listitem:
+              - link /^Cockpit\\s*3$/
             - listitem:
               - link "Metrics"
             - listitem:

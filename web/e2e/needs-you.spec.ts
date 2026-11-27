@@ -14,6 +14,9 @@ const widths = [
   { width: 1280, height: 800 },
 ]
 const milestonePath = '/projects/team-a/shop/milestones/14'
+// The Cockpit is a milestone's second tab (D1 of "Desk: Milestones and
+// Issues first").
+const cockpitPath = `${milestonePath}?tab=cockpit`
 const milestoneAPI = '/projects/team-a/shop/milestones/14'
 const pilotPath = '/projects/team-a/shop/tasks/shop-m14-pilot'
 const pilotChatPath = `${pilotPath}/chat`
@@ -124,7 +127,7 @@ for (const size of widths) {
   })
 
   test(`the problem list shows each problem once with its status@${size.width}`, async ({ page, baseURL }) => {
-    const problems = await open(page, baseURL, milestonePath, size, { milestone: running })
+    const problems = await open(page, baseURL, cockpitPath, size, { milestone: running })
     await expect(tab(page, /^Cockpit/)).toHaveAttribute('aria-current', 'page')
     await expect(badge(page)).toHaveText('1')
     await expect(list(page).locator('[data-problem]')).toHaveCount(1)
@@ -136,7 +139,7 @@ for (const size of widths) {
   })
 
   test(`one bar only for pause+prompts@${size.width}`, async ({ page, baseURL }) => {
-    const problems = await open(page, baseURL, milestonePath, size, { milestone: stuck })
+    const problems = await open(page, baseURL, cockpitPath, size, { milestone: stuck })
     const t = thread(page, 281)
     await expect(t.locator('[data-prompt]')).toHaveCount(1)
     await expect(t.locator('[data-pause-card]')).toHaveCount(0)
@@ -144,7 +147,7 @@ for (const size of widths) {
   })
 
   test(`mainRed pause prompt once in the bar@${size.width}`, async ({ page, baseURL }) => {
-    const problems = await open(page, baseURL, milestonePath, size, { milestone: mainRed })
+    const problems = await open(page, baseURL, cockpitPath, size, { milestone: mainRed })
     const t = thread(page, 0)
     await expect(t.locator('[data-prompt]')).toHaveCount(1)
     await expect(t.locator('[data-pause-card]')).toHaveCount(0)
@@ -152,7 +155,7 @@ for (const size of widths) {
   })
 
   test(`#558 cause + facts in the thread header@${size.width}`, async ({ page, baseURL }) => {
-    const problems = await open(page, baseURL, milestonePath, size, { milestone: incident558 })
+    const problems = await open(page, baseURL, cockpitPath, size, { milestone: incident558 })
     const t = thread(page, 558)
     await expect(t.locator('[data-problem-cause]')).toHaveText(`the run failed: ${incidentError}`)
     const facts = t.locator('[data-problem-facts]')
@@ -166,11 +169,11 @@ for (const size of widths) {
   })
 
   test(`#558 consequences and retry warning@${size.width}`, async ({ page, baseURL }) => {
-    let problems = await open(page, baseURL, milestonePath, size, { milestone: incident558 })
+    let problems = await open(page, baseURL, cockpitPath, size, { milestone: incident558 })
     await expect(thread(page, 558).locator('[data-consequence]').first()).toContainText('starts a new run')
     await expect(thread(page, 558).locator('[data-retry-warning]')).toHaveCount(0)
     expect(problems).toEqual([])
-    problems = await open(page, baseURL, milestonePath, size, { milestone: incident558Dirty })
+    problems = await open(page, baseURL, cockpitPath, size, { milestone: incident558Dirty })
     await expect(thread(page, 558).locator('[data-retry-warning]').first()).toBeVisible()
     expect(await overflow(page)).toBeLessThanOrEqual(0)
     expect(problems).toEqual([])
@@ -178,7 +181,7 @@ for (const size of widths) {
 
   test(`composer posts problem: #558 and shows sent@${size.width}`, journeyAt(size.width), async ({ page, baseURL }) => {
     const warms: string[] = [], posts: unknown[] = []
-    const problems = await open(page, baseURL, milestonePath, size, { milestone: incident558, warms })
+    const problems = await open(page, baseURL, cockpitPath, size, { milestone: incident558, warms })
     await pilotPOST(page, posts)
     const t = thread(page, 558)
     await t.getByRole('textbox').fill('retry with the saved WIP')
@@ -192,7 +195,7 @@ for (const size of widths) {
 
   test(`milestone problem prefix and no-chat rights@${size.width}`, async ({ page, baseURL }) => {
     const posts: unknown[] = []
-    let problems = await open(page, baseURL, milestonePath, size, { milestone: mainRed })
+    let problems = await open(page, baseURL, cockpitPath, size, { milestone: mainRed })
     await pilotPOST(page, posts)
     await thread(page, 0).getByRole('textbox').fill('revert it')
     await thread(page, 0).getByRole('textbox').press('Enter')
@@ -200,7 +203,7 @@ for (const size of widths) {
     expect(problems).toEqual([])
     const warms: string[] = []
     const noChat: MilestoneView = { ...incident558, permissions: { ...incident558.permissions!, chat: false } }
-    problems = await open(page, baseURL, milestonePath, size, { milestone: noChat, warms })
+    problems = await open(page, baseURL, cockpitPath, size, { milestone: noChat, warms })
     await expect(thread(page, 558).getByRole('textbox')).toHaveCount(0)
     expect(warms).toEqual([])
     expect(problems).toEqual([])
@@ -210,27 +213,29 @@ for (const size of widths) {
   // badge, its cards are pinned there; Issues keeps the compact pause card
   // as the way in.
   test(`Needs you: the Cockpit's badge and pinned cards, no tab of its own@${size.width}`, journeyAt(size.width), async ({ page, baseURL }) => {
-    // The page opens on the Cockpit, with Issues as a tab of its own.
-    // quiet has a retrospective; without it the row is the three tabs.
+    // The page opens on Issues, with the Cockpit as the second tab.
+    // quiet has a retrospective; without it the row is the four tabs.
     let problems = await open(page, baseURL, milestonePath, size, { milestone: { ...quiet, retrospective: undefined } })
     const view = page.getByRole('navigation', { name: 'View' })
-    await expect(view.getByRole('link')).toHaveText(['Cockpit', 'Issues', 'Decisions', 'Metrics'])
+    await expect(view.getByRole('link')).toHaveText(['Issues', 'Cockpit', 'Decisions', 'Metrics'])
+    await expect(tab(page, /^Issues/)).toHaveAttribute('aria-current', 'page')
+    await expect(page).toHaveURL(/\/milestones\/14$/)
     expect(problems).toEqual([])
     // The compact pause card is on the Issues tab.
     problems = await open(page, baseURL, `${milestonePath}?tab=issues`, size, { milestone: budget })
-    await expect(view.getByRole('link')).toHaveText([/^Cockpit\s*2$/, 'Issues', 'Decisions', 'Metrics', 'Retrospective'])
+    await expect(view.getByRole('link')).toHaveText(['Issues', /^Cockpit\s*2$/, 'Decisions', 'Metrics', 'Retrospective'])
     await expect(badge(page)).toHaveText('2')
     const pause = page.locator('main .pause')
     await expect(pause).toBeVisible()
     await pause.getByRole('link', { name: 'Open', exact: true }).click()
-    await expect(page).toHaveURL(/\/milestones\/14$/)
+    await expect(page).toHaveURL(/\/milestones\/14\?tab=cockpit$/)
     await expect(tab(page, /^Cockpit/)).toHaveAttribute('aria-current', 'page')
     await expect(page.locator('main [data-cockpit-pinned] [data-needs-problems]')).toBeVisible()
     expect(problems).toEqual([])
   })
 
   test(`budget pause ways out; hold on #284@${size.width}`, async ({ page, baseURL }) => {
-    const problems = await open(page, baseURL, milestonePath, size, { milestone: budget })
+    const problems = await open(page, baseURL, cockpitPath, size, { milestone: budget })
     await expect(badge(page)).toHaveText('2')
     await expect(thread(page, 0).locator('[data-pause-card]')).toHaveCount(1)
     await expect(thread(page, 0).locator('[data-prompt]')).toHaveCount(0)
@@ -241,14 +246,14 @@ for (const size of widths) {
 
   test(`an old ?tab=pilot link opens the Cockpit with the composer to the pilot; proposals Accept/Reject@${size.width}`, async ({ page, baseURL }) => {
     let problems = await open(page, baseURL, `${milestonePath}?tab=pilot`, size)
-    await expect(page).toHaveURL(/\/milestones\/14$/)
+    await expect(page).toHaveURL(/\/milestones\/14\?tab=cockpit$/)
     await expect(page.locator('main nav[aria-label="View"] a[aria-current="page"]')).toHaveText(/^Cockpit/)
     const composer = page.locator('main [data-cockpit-composer]')
     await expect(composer.getByRole('textbox')).toBeVisible()
     await expect(composer.locator('[data-prompt]')).toHaveCount(0)
     await expect(composer.locator('[data-pauses]')).toHaveCount(0)
     expect(problems).toEqual([])
-    problems = await open(page, baseURL, milestonePath, size)
+    problems = await open(page, baseURL, cockpitPath, size)
     const p7 = page.locator('[data-needs-proposals] [data-proposal="7"]')
     await expect(p7.getByRole('button', { name: 'Accept', exact: true })).toBeVisible()
     await expect(p7.getByRole('button', { name: 'Reject', exact: true })).toBeVisible()
@@ -269,7 +274,7 @@ for (const size of widths) {
     // thread there.
     for (const milestone of [stored, quiet]) {
       problems = await open(page, baseURL, `${milestonePath}?tab=needs`, size, { milestone })
-      await expect(page).toHaveURL(/\/milestones\/14$/)
+      await expect(page).toHaveURL(/\/milestones\/14\?tab=cockpit$/)
       await expect(tab(page, /^Cockpit/)).toHaveAttribute('aria-current', 'page')
       await expect(tab(page, /^Needs you/)).toHaveCount(0)
       await expect(page.locator('main [data-cockpit-pinned]')).toBeVisible()
@@ -280,14 +285,14 @@ for (const size of widths) {
     await expect(tab(page, /^Cockpit/)).toHaveAttribute('aria-current', 'page')
     await expect(list(page).locator('[data-problem]').first()).toBeVisible()
     expect(problems).toEqual([])
-    problems = await open(page, baseURL, milestonePath, size, { milestone: running, history: false })
+    problems = await open(page, baseURL, cockpitPath, size, { milestone: running, history: false })
     await expect(thread(page, 0).locator('[data-history-off]')).toContainText('History is off')
     expect(problems).toEqual([])
   })
 
   test(`no reaction after 60 s with Task logs@${size.width}`, async ({ page, baseURL }) => {
     const posts: unknown[] = []
-    const problems = await open(page, baseURL, milestonePath, size, { milestone: incident558, history: false })
+    const problems = await open(page, baseURL, cockpitPath, size, { milestone: incident558, history: false })
     await pilotPOST(page, posts)
     const t = thread(page, 558)
     await t.getByRole('textbox').fill('ping')
@@ -303,7 +308,7 @@ for (const size of widths) {
   // The thread is a chat: history oldest first, opened at its newest
   // message, the text box below the history.
   test(`thread reads like a chat@${size.width}`, async ({ page, baseURL }) => {
-    const problems = await open(page, baseURL, milestonePath, size, { milestone: incident558 })
+    const problems = await open(page, baseURL, cockpitPath, size, { milestone: incident558 })
     const t = thread(page, 558)
     const log = t.getByRole('log')
     const mine = log.getByText('retry with a JSON hint', { exact: true })
@@ -319,7 +324,7 @@ for (const size of widths) {
   })
 
   test(`list and thread layout@${size.width}`, async ({ page, baseURL }) => {
-    const problems = await open(page, baseURL, milestonePath, size, { milestone: incident558 })
+    const problems = await open(page, baseURL, cockpitPath, size, { milestone: incident558 })
     await expect(thread(page, 558)).toBeVisible()
     await expect(list(page)).toBeVisible()
     const layout = await page.evaluate(() => {
@@ -348,7 +353,7 @@ for (const shot of [
 ]) {
   test(`screenshot ${shot.name}`, async ({ page, baseURL }, testInfo) => {
     await page.emulateMedia({ colorScheme: shot.colorScheme })
-    const problems = await open(page, baseURL, milestonePath, shot.size, { milestone: incident558Dirty })
+    const problems = await open(page, baseURL, cockpitPath, shot.size, { milestone: incident558Dirty })
     const t = thread(page, 558)
     await expect(t.locator('[data-retry-warning]').first()).toBeVisible()
     const path = join(testInfo.project.outputDir, '..', 'screenshots', `${shot.name}.png`)

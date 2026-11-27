@@ -33,7 +33,7 @@ const promptTo = computed(() => {
   if (!promptID.value) return undefined
   const { namespace, name, decision } = props
   const params = { namespace, name, iid: String(decision.milestoneIID) }
-  return { name: 'stream-milestone' as const, params, hash: `#prompt-${promptID.value}` }
+  return { name: 'stream-milestone' as const, params, query: { tab: 'cockpit' }, hash: `#prompt-${promptID.value}` }
 })
 
 // comment: one comment at a time; the box empties when it is posted.

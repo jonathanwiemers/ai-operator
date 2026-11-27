@@ -40,7 +40,7 @@ function milestoneTo(iid: number) {
 }
 function rowTo(row: NowRow, running: boolean, group: NowGroup) {
   const live = running && !!row.run && !!props.milestone?.permissions?.transcript
-  return { ...milestoneTo(Number(group.key)), query: live ? { live: '1' } : {}, hash: `#issue-${row.iid}` }
+  return { ...milestoneTo(Number(group.key)), query: live ? { tab: 'cockpit', live: '1' } : { tab: 'cockpit' }, hash: `#issue-${row.iid}` }
 }
 // "+N more" of Up next: the Issues tab of the milestone it is of.
 const moreTo = computed(() => (nn.value.nextOf ? { ...milestoneTo(nn.value.nextOf), query: { tab: 'issues' } } : undefined))

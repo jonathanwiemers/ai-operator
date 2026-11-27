@@ -76,7 +76,7 @@ const section = 'mt-9 min-w-0 first:mt-0'
       :reason="m.spec.status.autopilot.pausedReason"
       :issue="m.spec.status.autopilot.pausedFor"
       :waiting="autopilotWaitingFor(m.spec.status.autopilot, m.tasks)"
-      :to="{ name: 'stream-milestone', params: { namespace, name, iid: String(m.iid) } }"
+      :to="{ name: 'stream-milestone', params: { namespace, name, iid: String(m.iid) }, query: { tab: 'cockpit' } }"
     />
 
     <RouterLink

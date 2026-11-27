@@ -43,6 +43,9 @@ function withRunning(p: ProjectDetail): ProjectDetail {
 }
 
 const projectPath = '/projects/team-a/shop'
+// The Cockpit is a project's second tab, after Milestones (D1 of "Desk:
+// Milestones and Issues first").
+const cockpitPath = `${projectPath}?tab=cockpit`
 
 async function open(page: Page, baseURL: string | undefined, path: string, width: number): Promise<string[]> {
   const origin = new URL(baseURL ?? '').origin
@@ -94,9 +97,9 @@ async function axe(page: Page, include: string) {
 }
 
 async function expectCockpit(page: Page) {
-  // Cockpit · Milestones · Decisions · Metrics (Plans follows with the plans feature).
-  for (const [n, label] of ['Cockpit', 'Milestones', 'Decisions', 'Metrics'].entries()) await expect(tabs(page).nth(n)).toHaveText(label)
-  await expect(tabs(page).first()).toHaveAttribute('aria-current', 'page')
+  // Milestones · Cockpit · Decisions · Metrics (Plans follows with the plans feature).
+  for (const [n, label] of ['Milestones', 'Cockpit', 'Decisions', 'Metrics'].entries()) await expect(tabs(page).nth(n)).toHaveText(label)
+  await expect(tabs(page).nth(1)).toHaveAttribute('aria-current', 'page')
 
   // Both milestones' pinned cards, each under its milestone's name, in the
   // project's order, with a link to its Cockpit.
@@ -107,8 +110,8 @@ async function expectCockpit(page: Page) {
   await expect(checkout.getByRole('heading', { level: 2 }).first()).toHaveText('Checkout without account')
   await expect(payments.locator('[data-problem]').first()).toBeVisible()
   await expect(checkout.locator('[data-proposal="4"]')).toContainText('Split #278')
-  await expect(checkout.locator('[data-pinned-cockpit]')).toHaveAttribute('href', `${projectPath}/milestones/12`)
-  await expect(payments.locator('[data-pinned-cockpit]')).toHaveAttribute('href', `${projectPath}/milestones/14`)
+  await expect(checkout.locator('[data-pinned-cockpit]')).toHaveAttribute('href', `${projectPath}/milestones/12?tab=cockpit`)
+  await expect(payments.locator('[data-pinned-cockpit]')).toHaveAttribute('href', `${projectPath}/milestones/14?tab=cockpit`)
 
   // One thread per milestone and issue, the newest on top: #277 of %12
   // (3 min ago), then the others with #281 of %14 below it; each folds its
@@ -130,8 +133,8 @@ async function expectCockpit(page: Page) {
 }
 
 for (const width of [1280, 390]) {
-  test(`a project opens on its Cockpit with both milestones' cards and groups, no composer@${width}`, journeyAt(width), async ({ page, baseURL }) => {
-    const problems = await open(page, baseURL, projectPath, width)
+  test(`a project's Cockpit shows both milestones' cards and groups, no composer@${width}`, journeyAt(width), async ({ page, baseURL }) => {
+    const problems = await open(page, baseURL, cockpitPath, width)
     await expectCockpit(page)
 
     // A group opens by keyboard and shows its event cards.
@@ -163,8 +166,8 @@ async function expectNowNext(scope: ReturnType<Page['locator']>) {
   const running = scope.locator('[data-now-section="running"]')
   await expect(running.locator('h4')).toHaveText([paymentsMilestone.title, checkoutMilestone.title])
   await expect(running.locator('[data-now-row="282"]')).toContainText('#282 implementing · 4 min')
-  await expect(running.locator('[data-now-row="282"]')).toHaveAttribute('href', `${projectPath}/milestones/14?live=1#issue-282`)
-  await expect(running.locator('[data-now-row="277"]')).toHaveAttribute('href', `${projectPath}/milestones/12#issue-277`)
+  await expect(running.locator('[data-now-row="282"]')).toHaveAttribute('href', `${projectPath}/milestones/14?tab=cockpit&live=1#issue-282`)
+  await expect(running.locator('[data-now-row="277"]')).toHaveAttribute('href', `${projectPath}/milestones/12?tab=cockpit#issue-277`)
   const waiting = scope.locator('[data-now-section="waiting"]')
   await expect(waiting.locator('h4')).toHaveText([paymentsMilestone.title])
   await expect(waiting.locator('[data-now-row="281"]')).toContainText('#281 held: CI failed 3 times')
@@ -176,7 +179,7 @@ async function expectNowNext(scope: ReturnType<Page['locator']>) {
 }
 
 test('the sidebar is Now & next across the milestones, History pages the Cockpit, it collapses to a rail@1280', journeyAt(1280), async ({ page, baseURL }) => {
-  const problems = await open(page, baseURL, projectPath, 1280)
+  const problems = await open(page, baseURL, cockpitPath, 1280)
   await expect(panel(page)).toBeVisible()
   await expect(page.locator('main [data-panel-open]'), 'no strip beside the column').toHaveCount(0)
   await expectNowNext(panel(page))
@@ -207,7 +210,7 @@ test('the sidebar is Now & next across the milestones, History pages the Cockpit
 })
 
 test('the Now strip opens the sidebar as a slide-over, Escape closes it and focus returns@390', journeyAt(390), async ({ page, baseURL }) => {
-  const problems = await open(page, baseURL, projectPath, 390)
+  const problems = await open(page, baseURL, cockpitPath, 390)
   await expect(panel(page), 'no column on a phone').toHaveCount(0)
   await expect(strip(page)).toHaveText('2 running · 1 waiting · next #278')
   await expect(strip(page)).toHaveAttribute('aria-expanded', 'false')
@@ -239,8 +242,8 @@ test('?panel=queue opens the sidebar@390', async ({ page, baseURL }) => {
 for (const old of ['activity', 'stream']) {
   test(`?tab=${old} opens the Cockpit@1280`, async ({ page, baseURL }) => {
     const problems = await open(page, baseURL, `${projectPath}?tab=${old}`, 1280)
-    await expect(page).toHaveURL(new RegExp(`${projectPath}$`))
-    await expect(tabs(page).first()).toHaveAttribute('aria-current', 'page')
+    await expect(page).toHaveURL(new RegExp(`${projectPath}\\?tab=cockpit$`))
+    await expect(tabs(page).nth(1)).toHaveAttribute('aria-current', 'page')
     await expect(page.locator('main [data-cockpit]')).toBeVisible()
     expect(problems).toEqual([])
   })
@@ -268,5 +271,21 @@ test('?tab=board opens the Board view of Milestones@1280', async ({ page, baseUR
   await views.getByRole('tab', { name: 'Milestones', exact: true }).click()
   await expect(page).toHaveURL(new RegExp(`${projectPath}\\?tab=milestones$`))
   await expect(page.locator('main [data-board-milestone]')).toHaveCount(0)
+  expect(problems).toEqual([])
+})
+
+// D1 of "Desk: Milestones and Issues first": a project opens on Milestones
+// without ?tab=; the Cockpit is the second tab and says ?tab=cockpit.
+test('a project opens on Milestones, its Cockpit is the second tab@1280', async ({ page, baseURL }) => {
+  const problems = await open(page, baseURL, projectPath, 1280)
+  await expect(page).toHaveURL(new RegExp(`${projectPath}$`))
+  await expect(tabs(page).first()).toHaveText('Milestones')
+  await expect(tabs(page).first()).toHaveAttribute('aria-current', 'page')
+  await expect(page.locator('main [data-cockpit]')).toHaveCount(0)
+  await tabs(page).nth(1).click()
+  await expect(page).toHaveURL(new RegExp(`${projectPath}\\?tab=cockpit$`))
+  await expect(page.locator('main [data-cockpit]')).toBeVisible()
+  await tabs(page).first().click()
+  await expect(page).toHaveURL(new RegExp(`${projectPath}$`))
   expect(problems).toEqual([])
 })

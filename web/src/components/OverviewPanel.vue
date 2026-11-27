@@ -55,7 +55,7 @@ function milestoneTo(p: OverviewProjectNow) {
 }
 function rowTo(p: OverviewProjectNow) {
   return (row: NowRow, _running: boolean, group: NowGroup) => {
-    if (group.key !== '0') return { ...milestoneTo(p)(Number(group.key)), hash: `#issue-${row.iid}` }
+    if (group.key !== '0') return { ...milestoneTo(p)(Number(group.key)), query: { tab: 'cockpit' }, hash: `#issue-${row.iid}` }
     if (row.task) return { name: 'task' as const, params: { ...project(p).params, task: row.task } }
     return project(p)
   }

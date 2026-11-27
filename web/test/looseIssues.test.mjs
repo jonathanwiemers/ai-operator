@@ -6,12 +6,12 @@ import { commandLabel } from '../src/chatState.ts'
 import { answerToast, filterIssues, itemActions, itemReason, itemState, ownersNote, queueNeeds, selectionOrder, takeCommand } from '../src/looseIssues.ts'
 import { projectTabFromRoute, projectTabsFor } from '../src/streamTabs.ts'
 
-test('projectTabsFor: Loose issues right after Milestones only with the flag', () => {
-  assert.deepEqual(projectTabsFor(false).map((t) => t.id), ['cockpit', 'milestones', 'decisions', 'metrics'])
-  assert.deepEqual(projectTabsFor(false, true).map((t) => t.id), ['cockpit', 'milestones', 'loose', 'decisions', 'metrics'])
-  assert.deepEqual(projectTabsFor(true, true).map((t) => t.label), ['Cockpit', 'Milestones', 'Loose issues', 'Decisions', 'Metrics', 'Plans'])
+test('projectTabsFor: Loose issues after the Cockpit only with the flag', () => {
+  assert.deepEqual(projectTabsFor(false).map((t) => t.id), ['milestones', 'cockpit', 'decisions', 'metrics'])
+  assert.deepEqual(projectTabsFor(false, true).map((t) => t.id), ['milestones', 'cockpit', 'loose', 'decisions', 'metrics'])
+  assert.deepEqual(projectTabsFor(true, true).map((t) => t.label), ['Milestones', 'Cockpit', 'Loose issues', 'Decisions', 'Metrics', 'Plans'])
   assert.equal(projectTabFromRoute('loose', projectTabsFor(false, true)), 'loose')
-  assert.equal(projectTabFromRoute('loose', projectTabsFor(true, false)), 'cockpit')
+  assert.equal(projectTabFromRoute('loose', projectTabsFor(true, false)), 'milestones')
 })
 
 const items = [

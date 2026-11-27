@@ -55,6 +55,8 @@ import {
   milestoneTabFromRoute,
   milestoneTabs,
   milestoneTabsFor,
+  cockpitQuery,
+  liveless,
   milestoneAlias,
   projectAlias,
   projectTabFromRoute,
@@ -79,10 +81,10 @@ const props = defineProps<{
 
 const milestoneIID = computed(() => (props.iid ? Number(props.iid) : undefined))
 
-// tab: Cockpit (the default), Milestones, Metrics or Plans (feature plans) on
-// projects, Cockpit (the default), Issues, Metrics or Retrospective on
+// tab: Milestones (the default), Cockpit, Metrics or Plans (feature plans)
+// on projects, Issues (the default), Cockpit, Metrics or Retrospective on
 // milestones, kept in ?tab= so it can be linked to (a #prompt-Q<n> link
-// without it opens the Cockpit). A milestone shows
+// without it opens the Cockpit, cockpitQuery). A milestone shows
 // Retrospective only once it has one (milestoneTabsFor); a project's and a
 // milestone's removed tabs' links open where their content moved
 // (projectAlias, milestoneAlias). The milestone Cockpit tab's badge is the
@@ -102,21 +104,25 @@ const tabs = computed(() => {
 const tabBadges = computed(() => (milestoneIID.value && needsCount.value ? { cockpit: needsCount.value } : undefined))
 // A milestone's tab is read against all its tabs while it loads, so a
 // ?tab=retrospective link waits for it; once loaded, a hidden tab falls
-// back to the first one, the Cockpit (Decision 7).
+// back to the first one, Issues (Decision 7). A link to a Cockpit card
+// without ?tab= shows the Cockpit before the rewrite below names it.
 const tab = computed((): string => {
   if (props.problem) return 'cockpit'
+  const v = cockpitQuery(route.query, route.hash)?.tab ?? route.query.tab
   if (milestoneIID.value) {
     const loaded = milestone.value?.iid === milestoneIID.value || milestoneFailed.value
-    return milestoneTabFromRoute(route.query.tab, loaded ? tabs.value : milestoneTabs)
+    return milestoneTabFromRoute(v, loaded ? tabs.value : milestoneTabs)
   }
   // Likewise a project's ?tab=loose waits for the project (looseIssues).
   const loaded = !!project.value || notFound.value || !!error.value
-  return projectTabFromRoute(route.query.tab, loaded ? tabs.value : projectTabsFor(hasFeature('plans'), true))
+  return projectTabFromRoute(v, loaded ? tabs.value : projectTabsFor(hasFeature('plans'), true))
 })
 // tabTo: a tab's link; from a problem's thread it leads back to the
 // milestone's route.
+// ?live= (a Now & next row's Live transcript) belongs to the Cockpit: a
+// link to another tab drops it, or the D6 rewrite would send it back.
 function tabTo(id: string) {
-  const query = tabQuery(route.query, id, tabs.value)
+  const query = tabQuery(id === 'cockpit' ? route.query : liveless(route.query), id, tabs.value)
   if (!props.problem) return { query }
   return { name: 'stream-milestone' as const, params: { namespace: props.namespace, name: props.name, iid: props.iid }, query }
 }
@@ -256,7 +262,7 @@ const pauseProps = computed(() => {
     prompt: pausePrompt(m.autopilot?.pauseKind, m.prompts),
     namespace: props.namespace,
     projectName: props.name,
-    to: { name: 'stream-milestone', params: { namespace: props.namespace, name: props.name, iid: String(m.iid) } },
+    to: { name: 'stream-milestone', params: { namespace: props.namespace, name: props.name, iid: String(m.iid) }, query: { tab: 'cockpit' } },
   }
 })
 
@@ -360,12 +366,14 @@ const links = computed(() => {
 // board) or to the pilot drawer (?pilot=1) opens where its content moved
 // (milestoneAlias, R12 and R14), and so does an old link to a removed
 // project tab (?tab=activity, board; projectAlias, R15) or to the panel's
-// old Decisions view (?panel=decisions, the Decisions tab): the URL is
-// replaced on load, the hash (#<decision-id>) stays.
+// old Decisions view (?panel=decisions, the Decisions tab), and a link to
+// a Cockpit card or thread without ?tab= (#prompt-Q<n>, #issue-<iid>,
+// #pinned, ?live=1: D6) gets ?tab=cockpit: the URL is replaced on load,
+// the hash (#<decision-id>, #prompt-Q<n>) stays.
 watch(
-  () => [milestoneIID.value, route.query] as const,
-  ([iid, query]) => {
-    const next = iid ? milestoneAlias(query) : projectAlias(query)
+  () => [milestoneIID.value, route.query, route.hash] as const,
+  ([iid, query, hash]) => {
+    const next = iid ? milestoneAlias(query, hash) : projectAlias(query, hash)
     if (next) void router.replace({ query: next, hash: route.hash })
   },
   { immediate: true },

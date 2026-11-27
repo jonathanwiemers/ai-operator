@@ -101,9 +101,9 @@ for (const width of [375, 1280]) {
   test(`an owner hands #350 and #421 to autopilot and drops one@${width}`, async ({ page, baseURL }) => {
     const s = server()
     await open(page, baseURL, s, width)
-    // The tab sits right after Milestones.
+    // The tab sits right after the Cockpit.
     const tabs = page.locator('main').getByRole('navigation', { name: 'View' }).getByRole('link')
-    await expect(tabs).toHaveText(['Cockpit', 'Milestones', 'Loose issues', 'Decisions', 'Metrics'])
+    await expect(tabs).toHaveText(['Milestones', 'Cockpit', 'Loose issues', 'Decisions', 'Metrics'])
 
     await expect(takeButton(page)).toHaveText('Hand to autopilot (0)')
     await expect(takeButton(page)).toBeDisabled()

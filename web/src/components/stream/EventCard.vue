@@ -45,13 +45,13 @@ const isPrompt = computed(() => !!e.value?.kind.startsWith('prompt.'))
 const isRelease = computed(() => !!e.value && isReleaseEvent(e.value))
 const releaseBadge = computed(() => (e.value ? releaseEventBadge(e.value) : undefined))
 
-// promptTo: the stream of the prompt's milestone (or project), at its card.
+// promptTo: the Cockpit of the prompt's milestone (or project), at its card.
 function promptTo(ev: StreamEvent) {
   const hash = '#prompt-' + (ev.data.promptID ?? '')
   const params = { namespace: ev.namespace, name: ev.project }
   return ev.milestoneIID
-    ? { name: 'stream-milestone' as const, params: { ...params, iid: ev.milestoneIID }, hash }
-    : { name: 'stream-project' as const, params, hash }
+    ? { name: 'stream-milestone' as const, params: { ...params, iid: ev.milestoneIID }, query: { tab: 'cockpit' }, hash }
+    : { name: 'stream-project' as const, params, query: { tab: 'cockpit' }, hash }
 }
 // retroTo: the Retrospective tab of the event's milestone.
 function retroTo(ev: StreamEvent) {

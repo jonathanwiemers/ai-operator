@@ -53,11 +53,11 @@ export function handledSubject(item: HandledItem): string {
 
 export type HandledRoute =
   | { name: 'problem'; params: { namespace: string; name: string; iid: string; problem: string } }
-  | { name: 'stream-project'; params: { namespace: string; name: string }; hash?: string }
+  | { name: 'stream-project'; params: { namespace: string; name: string }; query: { tab: 'cockpit' }; hash?: string }
 
 // handledRoute opens the row's problem thread in the milestone's Cockpit
 // (pinned cards); a
-// row without a milestone opens the project page at the prompt.
+// row without a milestone opens the project's Cockpit at the prompt.
 export function handledRoute(item: HandledItem): HandledRoute {
   const base = { namespace: item.namespace, name: item.project }
   if (item.milestoneIID) {
@@ -66,5 +66,5 @@ export function handledRoute(item: HandledItem): HandledRoute {
       params: { ...base, iid: String(item.milestoneIID), problem: `issue-${item.issueIID ?? 0}` },
     }
   }
-  return { name: 'stream-project', params: base, hash: item.promptID ? `#prompt-${item.promptID}` : undefined }
+  return { name: 'stream-project', params: base, query: { tab: 'cockpit' }, hash: item.promptID ? `#prompt-${item.promptID}` : undefined }
 }

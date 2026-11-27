@@ -127,7 +127,11 @@ async function keeps(page: Page, url: RegExp, label: string) {
 
 const projectPath = '/projects/team-a/shop'
 const milestonePath = '/projects/team-a/shop/milestones/14'
-const cockpitURL = /\/projects\/team-a\/shop(\?|$)/
+// A project opens on Milestones, a milestone on Issues; the Cockpit is the
+// second tab of both (D1 of "Desk: Milestones and Issues first").
+const projectCockpitPath = `${projectPath}?tab=cockpit`
+const milestonesURL = /\/projects\/team-a\/shop$/
+const cockpitURL = /\/projects\/team-a\/shop\?tab=cockpit$/
 const taskPath = '/projects/team-a/shop/tasks/shop-281-implement'
 
 for (const [width, height] of [[390, 844], [1024, 768]] as const) {
@@ -136,39 +140,41 @@ for (const [width, height] of [[390, 844], [1024, 768]] as const) {
 
     test('a left swipe opens the next tab, Back returns', async ({ page, baseURL }) => {
       await open(page, baseURL, projectPath)
-      await expect(activeTab(page)).toHaveText(tabLabel('Cockpit'))
-      await swipe(page, await at(page, 0.8), await at(page, 0.2))
-      await expect(page).toHaveURL(/\?tab=milestones$/)
       await expect(activeTab(page)).toHaveText(tabLabel('Milestones'))
-      await expect(page.locator('[data-milestones-view-switch]')).toBeVisible()
-      await expect.poll(() => track(page).evaluate((e) => e.style.transform)).toBe('')
-      await page.goBack()
+      await swipe(page, await at(page, 0.8), await at(page, 0.2))
       await expect(page).toHaveURL(cockpitURL)
       await expect(activeTab(page)).toHaveText(tabLabel('Cockpit'))
+      await expect(page.locator('main [data-cockpit]')).toBeVisible()
+      await expect.poll(() => track(page).evaluate((e) => e.style.transform)).toBe('')
+      await page.goBack()
+      await expect(page).toHaveURL(milestonesURL)
+      await expect(activeTab(page)).toHaveText(tabLabel('Milestones'))
     })
 
     test('mid-drag the neighbour is a placeholder', async ({ page, baseURL }) => {
       await open(page, baseURL, projectPath)
       const cdp = await hold(page, await at(page, 0.8), await at(page, 0.45))
       const placeholder = page.locator('[data-swipe-panel]')
-      await expect(placeholder).toHaveText('Milestones')
+      await expect(placeholder).toHaveText('Cockpit')
       await expect(placeholder).toHaveAttribute('aria-hidden', 'true')
-      await expect(page.locator('[data-milestones-view-switch]')).toHaveCount(0)
+      await expect(page.locator('main [data-cockpit]')).toHaveCount(0)
       await lift(cdp)
     })
 
-    test('a right swipe on a milestone Issues opens its Cockpit', async ({ page, baseURL }) => {
-      await open(page, baseURL, `${milestonePath}?tab=issues`)
+    test('on a milestone, a right swipe on Issues keeps it, a left swipe opens its Cockpit', async ({ page, baseURL }) => {
+      await open(page, baseURL, milestonePath)
       await expect(activeTab(page)).toHaveText(tabLabel('Issues'))
       await swipe(page, await at(page, 0.2), await at(page, 0.8))
-      await expect(page).toHaveURL(/\/milestones\/14$/)
+      await keeps(page, /\/milestones\/14$/, 'Issues')
+      await swipe(page, await at(page, 0.8), await at(page, 0.2))
+      await expect(page).toHaveURL(/\/milestones\/14\?tab=cockpit$/)
       await expect(activeTab(page)).toHaveText(tabLabel('Cockpit'))
     })
 
     test('the first and last tab keep the tab', async ({ page, baseURL }) => {
       await open(page, baseURL, projectPath)
       await swipe(page, await at(page, 0.2), await at(page, 0.8))
-      await keeps(page, cockpitURL, 'Cockpit')
+      await keeps(page, milestonesURL, 'Milestones')
       const links = page.locator('main [data-stream-head] nav a')
       const last = links.last()
       const label = (await last.textContent())!.trim()
@@ -180,14 +186,14 @@ for (const [width, height] of [[390, 844], [1024, 768]] as const) {
     })
 
     test('a 40 px drag springs back', async ({ page, baseURL }) => {
-      await open(page, baseURL, projectPath)
+      await open(page, baseURL, projectCockpitPath)
       const from = await at(page, 0.6)
       await swipe(page, from, { x: from.x - 40, y: from.y }, { steps: 4, ms: 40 })
       await keeps(page, cockpitURL, 'Cockpit')
     })
 
     test('a vertical drag scrolls and keeps the tab', async ({ page, baseURL }) => {
-      await open(page, baseURL, projectPath)
+      await open(page, baseURL, projectCockpitPath)
       const scroller = surface(page).locator('.scroll')
       // Content taller than any fixture's, so the content can scroll: in
       // the tab's scroller, or the window where that grows with it.
@@ -204,7 +210,7 @@ for (const [width, height] of [[390, 844], [1024, 768]] as const) {
     })
 
     test('a swipe on the tab strip keeps the tab', async ({ page, baseURL }) => {
-      await open(page, baseURL, projectPath)
+      await open(page, baseURL, projectCockpitPath)
       const box = (await page.locator('main [data-stream-head] nav').boundingBox())!
       const x = box.x + box.width * 0.6
       const y = box.y + box.height / 2
@@ -237,18 +243,18 @@ for (const [width, height] of [[390, 844], [1024, 768]] as const) {
     })
 
     test('a swipe in the milestone composer keeps the tab', async ({ page, baseURL }) => {
-      await open(page, baseURL, milestonePath)
+      await open(page, baseURL, `${milestonePath}?tab=cockpit`)
       const field = page.locator('main [data-cockpit-composer] textarea')
       await expect(field).toBeVisible()
       const box = (await field.boundingBox())!
       const y = box.y + box.height / 2
       const x = Math.min(box.x + box.width - 20, width * 0.8)
       await swipe(page, { x, y }, { x: x - 200, y })
-      await keeps(page, /\/milestones\/14$/, 'Cockpit')
+      await keeps(page, /\/milestones\/14\?tab=cockpit$/, 'Cockpit')
     })
 
     test('a swipe from the screen edge keeps the tab', async ({ page, baseURL }) => {
-      await open(page, baseURL, projectPath)
+      await open(page, baseURL, projectCockpitPath)
       const { y } = await at(page, 0.5)
       await swipe(page, { x: width - 10, y }, { x: width - 260, y })
       await keeps(page, cockpitURL, 'Cockpit')
@@ -347,7 +353,7 @@ test.describe('a mouse', () => {
   test.use({ hasTouch: false, viewport: { width: 1280, height: 800 } })
 
   test('a mouse drag never switches the tab', async ({ page, baseURL }) => {
-    await open(page, baseURL, projectPath)
+    await open(page, baseURL, projectCockpitPath)
     const from = await at(page, 0.7)
     await page.mouse.move(from.x, from.y)
     await page.mouse.down()

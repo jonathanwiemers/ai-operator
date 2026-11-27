@@ -49,6 +49,7 @@ const pinned = computed((): MilestoneView[] =>
 const cockpitTo = (m: MilestoneView) => ({
   name: 'stream-milestone' as const,
   params: { namespace: props.namespace, name: props.name, iid: String(m.iid) },
+  query: { tab: 'cockpit' },
 })
 </script>
 

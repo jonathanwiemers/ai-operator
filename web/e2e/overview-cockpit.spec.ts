@@ -112,7 +112,7 @@ async function expectCockpit(page: Page) {
   await expect(pinned(page).filter({ hasText: 'shop' }).first()).toBeVisible()
   const b = pinned(page).filter({ hasText: 'Add a health check to the setup' })
   await expect(b).toContainText(teamB)
-  await expect(b.getByRole('link')).toHaveAttribute('href', `/projects/team-b/${teamB}/milestones/3#pinned`)
+  await expect(b.getByRole('link')).toHaveAttribute('href', `/projects/team-b/${teamB}/milestones/3?tab=cockpit#pinned`)
   // Nothing is answered here: no answer form, no proposal buttons.
   await expect(page.locator('main [data-cockpit-pinned] form, main [data-cockpit-pinned] textarea')).toHaveCount(0)
 
@@ -173,7 +173,7 @@ async function expectSidebar(panel: Locator) {
   await expect(running).toHaveCount(1)
   await expect(running).toContainText('#277 implementing · 4 min')
   // A Running row opens the issue's thread in its milestone's Cockpit.
-  await expect(running).toHaveAttribute('href', '/projects/team-a/shop/milestones/12#issue-277')
+  await expect(running).toHaveAttribute('href', '/projects/team-a/shop/milestones/12?tab=cockpit#issue-277')
   await expect(shop.locator('[data-now-section="waiting"] [data-now-row]')).toHaveText([
     /#279 held: CI failed 3 times/,
     /#280 waiting for CI/,

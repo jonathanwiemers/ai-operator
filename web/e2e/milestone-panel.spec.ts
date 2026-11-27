@@ -23,6 +23,9 @@ import type { MilestoneView } from '../src/generated/views'
 import type { StreamEvent } from '../src/types'
 
 const milestonePath = '/projects/team-a/shop/milestones/14'
+// The Cockpit is a milestone's second tab (D1 of "Desk: Milestones and
+// Issues first").
+const cockpitPath = `${milestonePath}?tab=cockpit`
 
 // withNow: #282 runs its implementer (captures, 4 min), #281 waits for the
 // pipeline of its pushed head, #283 comes after #282, and the stream has
@@ -131,22 +134,22 @@ test('the sidebar is a column beside the Cockpit with its four sections, a Runni
 
   // From another tab the row opens the Cockpit at the thread.
   await section(page, 'running').getByRole('link').click()
-  await expect(page).toHaveURL(new RegExp(`${milestonePath}\\?live=1#issue-282$`))
+  await expect(page).toHaveURL(new RegExp(`${milestonePath}\\?tab=cockpit&live=1#issue-282$`))
   const thread = page.locator('main #issue-282')
   await expect(thread).toBeInViewport()
   await expect(thread.getByRole('button', { name: 'Live transcript' })).toHaveAttribute('aria-expanded', 'true')
   await expect(thread.getByText('Switching to the retry helper.')).toBeVisible()
   // A Waiting row opens its thread without the transcript.
   await section(page, 'waiting').getByRole('link').first().click()
-  await expect(page).toHaveURL(new RegExp(`${milestonePath}#issue-281$`))
+  await expect(page).toHaveURL(new RegExp(`${milestonePath}\\?tab=cockpit#issue-281$`))
 
   expect(problems).toEqual([])
 })
 
 test('without the transcript grant a Running row opens the thread only@1280', async ({ page, baseURL }) => {
-  const problems = await open(page, baseURL, milestonePath, 1280, false)
+  const problems = await open(page, baseURL, cockpitPath, 1280, false)
   await section(page, 'running').getByRole('link').click()
-  await expect(page).toHaveURL(new RegExp(`${milestonePath}#issue-282$`))
+  await expect(page).toHaveURL(new RegExp(`${milestonePath}\\?tab=cockpit#issue-282$`))
   await expect(page.locator('main #issue-282')).toBeInViewport()
   expect(problems).toEqual([])
 })
@@ -155,7 +158,7 @@ test('without the transcript grant a Running row opens the thread only@1280', as
 // button, and the state outlives a reload (localStorage, the same on every
 // page). Focus moves to the counterpart button after each toggle.
 test('the sidebar collapses to a rail with the counts, which stays after a reload@1280', async ({ page, baseURL }) => {
-  const problems = await open(page, baseURL, milestonePath, 1280)
+  const problems = await open(page, baseURL, cockpitPath, 1280)
   await expect(panel(page)).toBeVisible()
   await expect(strip(page), 'no strip beside a column').toHaveCount(0)
   await page.locator('main').getByRole('button', { name: 'Collapse Now & next' }).click()
@@ -196,7 +199,7 @@ test('on the Issues tab the sidebar is a slide-over at every width@1280', async 
 })
 
 test('the Now strip opens the slide-over, Escape closes it and focus returns@390', async ({ page, baseURL }) => {
-  const problems = await open(page, baseURL, milestonePath, 390)
+  const problems = await open(page, baseURL, cockpitPath, 390)
   await expect(panel(page), 'no column on a phone').toHaveCount(0)
   await expect(page.locator('main [data-stream-head] [data-panel-open]'), 'one opener: the strip').toHaveCount(1)
   const button = strip(page)
@@ -226,12 +229,12 @@ test('the Now strip opens the slide-over, Escape closes it and focus returns@390
 })
 
 test('a Running row in the slide-over closes it and opens the thread@390', async ({ page, baseURL }) => {
-  const problems = await open(page, baseURL, milestonePath, 390)
+  const problems = await open(page, baseURL, cockpitPath, 390)
   await strip(page).click()
   const sheet = page.getByRole('dialog', { name: 'Now & next' })
   await sheet.getByRole('link', { name: /^#282 implementing/ }).click()
   await expect(sheet).toBeHidden()
-  await expect(page).toHaveURL(new RegExp(`${milestonePath}\\?live=1#issue-282$`))
+  await expect(page).toHaveURL(new RegExp(`${milestonePath}\\?tab=cockpit&live=1#issue-282$`))
   await expect(page.locator('main #issue-282')).toBeInViewport()
   expect(problems).toEqual([])
 })
@@ -239,12 +242,13 @@ test('a Running row in the slide-over closes it and opens the thread@390', async
 // Every link of the sidebar closes the slide-over, also one that keeps the
 // page (this milestone's own link).
 test('a milestone link in the slide-over closes it@390', async ({ page, baseURL }) => {
-  const problems = await open(page, baseURL, milestonePath, 390)
+  const problems = await open(page, baseURL, cockpitPath, 390)
   await strip(page).click()
   const sheet = page.getByRole('dialog', { name: 'Now & next' })
   await expect(sheet).toBeVisible()
   await sheet.locator('[data-now-milestone="14"]').getByRole('link').click()
   await expect(sheet).toBeHidden()
+  // The milestone's link opens its default tab, Issues.
   await expect(page).toHaveURL(new RegExp(`${milestonePath}$`))
   expect(problems).toEqual([])
 })
@@ -263,9 +267,15 @@ for (const view of ['issues', 'queue']) {
     expect(problems).toEqual([])
   })
 
-  test(`an old ?panel=${view} link shows the column@1280`, async ({ page, baseURL }) => {
-    const problems = await open(page, baseURL, `${milestonePath}?panel=${view}`, 1280)
+  // It opens the default tab, Issues, where the sidebar is a slide-over
+  // at every width; on the Cockpit it is the column.
+  test(`an old ?panel=${view} link opens the slide-over on Issues, the column on the Cockpit@1280`, async ({ page, baseURL }) => {
+    let problems = await open(page, baseURL, `${milestonePath}?panel=${view}`, 1280)
     await expect(page).toHaveURL(new RegExp(`${milestonePath}$`))
+    await expect(page.getByRole('dialog', { name: 'Now & next' })).toBeVisible()
+    expect(problems).toEqual([])
+    problems = await open(page, baseURL, `${milestonePath}?tab=cockpit&panel=${view}`, 1280)
+    await expect(page).toHaveURL(new RegExp(`${milestonePath}\\?tab=cockpit$`))
     await expect(panel(page)).toBeVisible()
     await expect(page.getByRole('dialog')).toHaveCount(0)
     expect(problems).toEqual([])
@@ -307,5 +317,15 @@ test('an old ?panel=decisions#<id> link lands on the Decisions tab at the card@3
   const problems = await open(page, baseURL, `${milestonePath}?panel=decisions#D280-1`, 390)
   await landsOnCard(page)
   expect(await axe(page, '[data-decisions]')).toEqual([])
+  expect(problems).toEqual([])
+})
+
+// ?live=1 belongs to the Cockpit: the Issues tab's link drops it, or D6
+// would send the page back to the Cockpit.
+test('from a live thread the Issues tab opens Issues without ?live=@1280', async ({ page, baseURL }) => {
+  const problems = await open(page, baseURL, `${milestonePath}?tab=cockpit&live=1#issue-282`, 1280)
+  await page.locator('main [data-stream-head]').getByRole('navigation', { name: 'View' }).getByRole('link', { name: 'Issues' }).click()
+  await expect(page).toHaveURL(new RegExp(`${milestonePath}$`))
+  await expect(page.locator('main [data-stream-head] nav a[aria-current="page"]')).toHaveText('Issues')
   expect(problems).toEqual([])
 })

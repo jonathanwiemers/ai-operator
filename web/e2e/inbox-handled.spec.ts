@@ -94,7 +94,7 @@ for (const size of widths) {
   test(`an Open proposal opens the milestone's Cockpit at the pinned cards@${size.width}`, async ({ page, baseURL }) => {
     const problems = await open(page, baseURL, '/inbox', size)
     await openRow(page, 'Split the address form into its own component').click()
-    await expect(page).toHaveURL(/\/projects\/team-a\/shop\/milestones\/12#pinned$/)
+    await expect(page).toHaveURL(/\/projects\/team-a\/shop\/milestones\/12\?tab=cockpit#pinned$/)
     await expect(page.getByRole('navigation', { name: 'View' }).getByRole('link', { name: 'Cockpit' })).toHaveAttribute('aria-current', 'page')
     await expect(page.locator('#pinned')).toBeInViewport()
     expect(problems).toEqual([])

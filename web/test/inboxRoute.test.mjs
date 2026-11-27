@@ -9,7 +9,7 @@ const item = (kind, over = {}) => ({ namespace: 'team', project: 'shop', kind, .
 
 const thread = (problem) => ({ name: 'problem', params: { namespace: 'team', name: 'shop', iid: '3', problem } })
 
-const cockpit = (hash) => ({ name: 'stream-milestone', params: { namespace: 'team', name: 'shop', iid: '3' }, hash })
+const cockpit = (hash) => ({ name: 'stream-milestone', params: { namespace: 'team', name: 'shop', iid: '3' }, query: { tab: 'cockpit' }, hash })
 
 test('inboxRoute: pauses and problems open their problem thread in the Cockpit', () => {
   assert.deepEqual(inboxRoute(item('pause', { task: 'shop-spec-m3', milestoneIID: 3 })), thread('issue-0'))
@@ -26,7 +26,7 @@ test('inboxRoute: proposals open the Cockpit at their prompt, else at the pinned
 test('inboxRoute: no milestone entry leads to a removed tab', () => {
   for (const kind of ['pause', 'problem', 'proposal', 'prompt']) {
     const r = inboxRoute(item(kind, { task: 'shop-spec-m3', milestoneIID: 3, issueIID: 12, promptID: 'Q4' }))
-    assert.equal(r.query, undefined, kind)
+    assert.ok(r.query === undefined || r.query.tab === 'cockpit', kind)
   }
 })
 
@@ -37,10 +37,11 @@ test('inboxRoute: tasks open the task page, even with a milestone', () => {
   })
 })
 
-test('inboxRoute: other items with a milestone open its stream', () => {
+test('inboxRoute: other items with a milestone open its Cockpit', () => {
   assert.deepEqual(inboxRoute(item('task', { milestoneIID: 3 })), {
     name: 'stream-milestone',
     params: { namespace: 'team', name: 'shop', iid: '3' },
+    query: { tab: 'cockpit' },
   })
 })
 
@@ -71,7 +72,7 @@ test('inboxRoute: a ready companion opens its home task, without one its milesto
     name: 'task',
     params: { namespace: 'team', name: 'shop', task: 'shop-impl-12' },
   })
-  assert.deepEqual(inboxRoute(ready()), { name: 'stream-milestone', params: { namespace: 'team', name: 'shop', iid: '3' } })
+  assert.deepEqual(inboxRoute(ready()), { name: 'stream-milestone', params: { namespace: 'team', name: 'shop', iid: '3' }, query: { tab: 'cockpit' } })
   assert.deepEqual(inboxRoute(ready({ milestoneIID: undefined })), { name: 'stream-project', params: { namespace: 'team', name: 'shop' } })
 })
 
@@ -82,11 +83,11 @@ test('inboxRoute: an issue budget warning opens its implement task, without one 
     name: 'task',
     params: { namespace: 'team', name: 'shop', task: 'shop-impl-12' },
   })
-  assert.deepEqual(inboxRoute(warning()), { name: 'stream-milestone', params: { namespace: 'team', name: 'shop', iid: '3' } })
+  assert.deepEqual(inboxRoute(warning()), { name: 'stream-milestone', params: { namespace: 'team', name: 'shop', iid: '3' }, query: { tab: 'cockpit' } })
 })
 
 test("milestoneRoute: a milestone's Cockpit, without one the project", () => {
-  assert.deepEqual(milestoneRoute('team', 'shop', 3), { name: 'stream-milestone', params: { namespace: 'team', name: 'shop', iid: '3' } })
+  assert.deepEqual(milestoneRoute('team', 'shop', 3), { name: 'stream-milestone', params: { namespace: 'team', name: 'shop', iid: '3' }, query: { tab: 'cockpit' } })
   assert.deepEqual(milestoneRoute('team', 'shop', 0), { name: 'stream-project', params: { namespace: 'team', name: 'shop' } })
   assert.deepEqual(milestoneRoute('team', 'shop'), { name: 'stream-project', params: { namespace: 'team', name: 'shop' } })
 })

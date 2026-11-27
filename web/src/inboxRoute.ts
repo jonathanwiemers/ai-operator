@@ -1,10 +1,11 @@
 import type { InboxItem } from './types'
 
-// MilestoneRoute is a milestone's Cockpit (the default tab), with a card's
-// anchor in hash.
+// MilestoneRoute is a milestone's Cockpit (?tab=cockpit, its second tab),
+// with a card's anchor in hash.
 type MilestoneRoute = {
   name: 'stream-milestone'
   params: { namespace: string; name: string; iid: string }
+  query: { tab: 'cockpit' }
   hash?: string
 }
 
@@ -70,15 +71,16 @@ export function inboxRoute(item: InboxItem): InboxRoute {
   return milestoneRoute(item.namespace, item.project, item.milestoneIID)
 }
 
-// milestoneRoute is a milestone's Cockpit, without a milestone (iid 0 or
-// none) the project's stream. A click on an event's notification opens it.
+// milestoneRoute is a milestone's Cockpit, where its events are; without a
+// milestone (iid 0 or none) the project's page, its Milestones tab. A click
+// on an event's notification opens it.
 export function milestoneRoute(namespace: string, name: string, iid?: number): InboxRoute {
-  if (iid) return { name: 'stream-milestone', params: { namespace, name, iid: String(iid) } }
+  if (iid) return { name: 'stream-milestone', params: { namespace, name, iid: String(iid) }, query: { tab: 'cockpit' } }
   return { name: 'stream-project', params: { namespace, name } }
 }
 
 function cockpit(base: { namespace: string; name: string }, iid: number, hash: string): MilestoneRoute {
-  return { name: 'stream-milestone', params: { ...base, iid: String(iid) }, hash }
+  return { name: 'stream-milestone', params: { ...base, iid: String(iid) }, query: { tab: 'cockpit' }, hash }
 }
 
 function problemThread(base: { namespace: string; name: string }, iid: number, issue = 0): ProblemRoute {

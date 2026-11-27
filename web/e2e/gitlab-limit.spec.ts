@@ -127,7 +127,7 @@ test('project header: GitLab usage, low at the reserve, and the limit@1440', asy
 })
 
 test('project header: no GitLab line without a fresh reading@1440', async ({ page, baseURL }) => {
-  const problems = await open(page, baseURL, shopPath, rateLimit({ observed: 90, limit: 100, resetAt: at(-2) }))
+  const problems = await open(page, baseURL, `${shopPath}?tab=cockpit`, rateLimit({ observed: 90, limit: 100, resetAt: at(-2) }))
   await expect(page.locator('main [data-stream-head] h1')).toBeVisible()
   await expect(page.locator('main [data-pinned-milestone="14"]').first()).toBeVisible()
   await expect(page.locator('main [data-gitlab-usage]')).toHaveCount(0)

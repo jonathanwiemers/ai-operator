@@ -18,6 +18,9 @@ import { ago } from './fixtures/clock'
 import type { StreamEvent, StreamKind } from '../src/types'
 
 const milestonePath = '/projects/team-a/shop/milestones/14'
+// The Cockpit is a milestone's second tab (D1 of "Desk: Milestones and
+// Issues first").
+const cockpitPath = `${milestonePath}?tab=cockpit`
 
 let nextID = 4000
 let events: StreamEvent[] = []
@@ -149,7 +152,7 @@ const row = (page: Page, iid: number) =>
 
 for (const width of [375, 1280]) {
   test(`the milestone opens on the Cockpit: pinned cards, then the threads newest on top with closed groups@${width}`, journeyAt(width), async ({ page, baseURL }) => {
-    const { problems } = await open(page, baseURL, milestonePath, width)
+    const { problems } = await open(page, baseURL, cockpitPath, width)
     await expect(view(page).getByRole('link', { name: /^Cockpit/ })).toHaveAttribute('aria-current', 'page')
     await expect(row(page, 281)).toBeVisible()
     await expect(groups(page)).toHaveCount(3)
@@ -181,7 +184,7 @@ for (const width of [375, 1280]) {
   })
 
   test(`a group opens with Enter and Space on its trigger@${width}`, async ({ page, baseURL }) => {
-    const { problems } = await open(page, baseURL, milestonePath, width)
+    const { problems } = await open(page, baseURL, cockpitPath, width)
     await trigger(page, 0).focus()
     await page.keyboard.press('Enter')
     await expect(trigger(page, 0)).toHaveAttribute('aria-expanded', 'true')
@@ -197,7 +200,7 @@ for (const width of [375, 1280]) {
   })
 
   test(`two groups of one issue, split by a shown event, open on their own@${width}`, async ({ page, baseURL }) => {
-    const { problems } = await open(page, baseURL, milestonePath, width, splitIssue)
+    const { problems } = await open(page, baseURL, cockpitPath, width, splitIssue)
     await expect(groups(page)).toHaveCount(2)
     await toggle(page, 0)
     await expect(trigger(page, 0)).toHaveAttribute('aria-expanded', 'true')
@@ -212,7 +215,7 @@ for (const width of [375, 1280]) {
   // R4: a thread shows its newest 3 items, Show N more the rest; Expand
   // all opens the rest and every group.
   test(`a thread with 5 items shows 3, Show 2 more the rest, Expand all all of them@${width}`, async ({ page, baseURL }) => {
-    const { problems } = await open(page, baseURL, milestonePath, width, fiveItems)
+    const { problems } = await open(page, baseURL, cockpitPath, width, fiveItems)
     const thread = stream(page).locator('#issue-281')
     const items = thread.locator('ol.items > li')
     await expect(items).toHaveCount(3)
@@ -234,7 +237,9 @@ for (const width of [375, 1280]) {
   })
 
   test(`#issue-<iid> scrolls to its thread and opens it fully@${width}`, async ({ page, baseURL }) => {
+    // Without ?tab= the thread link opens the Cockpit and says so (D6).
     const { problems } = await open(page, baseURL, `${milestonePath}#issue-279`, width)
+    await expect(page).toHaveURL(/\/milestones\/14\?tab=cockpit#issue-279$/)
     const thread = stream(page).locator('#issue-279')
     await expect(thread).toBeInViewport()
     await expect(page.locator('main #issue-281')).toHaveAttribute('aria-label', `#281 · ${refundsTitle}`)
@@ -246,6 +251,7 @@ for (const width of [375, 1280]) {
 
   test(`a running issue's header shows its step, ?live=1 opens its Live transcript@${width}`, async ({ page, baseURL }) => {
     const opened = await open(page, baseURL, `${milestonePath}?live=1#issue-282`, width, withRunning, { transcript: true })
+    await expect(page).toHaveURL(/\/milestones\/14\?live=1&tab=cockpit#issue-282$/)
     const thread = stream(page).locator('#issue-282')
     await expect(thread.locator('[data-cockpit-thread-step]')).toHaveText('Implementing · 4 min')
     await expect(thread).toHaveAttribute('aria-label', '#282 · Partial captures for split shipments')
@@ -275,7 +281,7 @@ for (const width of [375, 1280]) {
   })
 
   test(`Expand all opens every group, search narrows the stream@${width}`, async ({ page, baseURL }) => {
-    const opened = await open(page, baseURL, milestonePath, width)
+    const opened = await open(page, baseURL, cockpitPath, width)
     await expect(groups(page)).toHaveCount(3)
     await stream(page).getByRole('switch', { name: 'Expand all' }).click()
     for (let i = 0; i < 3; i++) await expect(trigger(page, i)).toHaveAttribute('aria-expanded', 'true')
@@ -313,7 +319,7 @@ for (const width of [375, 1280]) {
   // Cockpit newest first by issue"): #282's running implementer is in the
   // Now & next sidebar (milestone-panel.spec.ts) and its thread.
   test(`a running issue loads no transcript in the Cockpit@${width}`, async ({ page, baseURL }) => {
-    const opened = await open(page, baseURL, milestonePath, width, oldestFirst, { transcript: true })
+    const opened = await open(page, baseURL, cockpitPath, width, oldestFirst, { transcript: true })
     await expect(groups(page)).toHaveCount(3)
     await expect(pinned(page)).toBeVisible()
     expect(opened.transcripts).toEqual([])
@@ -323,13 +329,13 @@ for (const width of [375, 1280]) {
   // R14: a removed milestone tab's old link opens where its content moved,
   // and the address shows the new place (D789-P1).
   for (const [old, want, check] of [
-    ['activity', '', '[data-cockpit-stream]'],
-    ['stream', '', '[data-cockpit-stream]'],
-    ['needs', '', '[data-cockpit-pinned]'],
-    ['pilot', '', '[data-cockpit-composer]'],
+    ['activity', '?tab=cockpit', '[data-cockpit-stream]'],
+    ['stream', '?tab=cockpit', '[data-cockpit-stream]'],
+    ['needs', '?tab=cockpit', '[data-cockpit-pinned]'],
+    ['pilot', '?tab=cockpit', '[data-cockpit-composer]'],
     ['board', '?tab=issues&view=board', '[data-board]'],
   ] as const) {
-    test(`?tab=${old} opens ${want || 'the Cockpit'}@${width}`, async ({ page, baseURL }) => {
+    test(`?tab=${old} opens ${want}@${width}`, async ({ page, baseURL }) => {
       const { problems } = await open(page, baseURL, `${milestonePath}?tab=${old}`, width)
       await expect(page).toHaveURL(new URL(`${milestonePath}${want}`, baseURL).href)
       await expect(page.locator(check).first()).toBeVisible()
@@ -349,7 +355,7 @@ for (const width of [375, 1280]) {
   for (const colorScheme of ['light', 'dark'] as const) {
     test(`axe is green on the Cockpit in ${colorScheme}@${width}`, async ({ page, baseURL }) => {
       await page.emulateMedia({ colorScheme })
-      const { problems } = await open(page, baseURL, milestonePath, width, oldestFirst, { transcript: true })
+      const { problems } = await open(page, baseURL, cockpitPath, width, oldestFirst, { transcript: true })
       await expect(groups(page)).toHaveCount(3)
       await expect(row(page, 281)).toBeVisible()
       await toggle(page, 0)

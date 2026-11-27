@@ -10,7 +10,10 @@ const widths = [
   { width: 1280, height: 800 },
 ]
 
-const cockpit = '/projects/team-a/shop/milestones/14'
+const milestonePath = '/projects/team-a/shop/milestones/14'
+// The Cockpit is a milestone's second tab (D1 of "Desk: Milestones and
+// Issues first").
+const cockpit = `${milestonePath}?tab=cockpit`
 const chatPath = `/api/v1/projects/team-a/shop/tasks/${refundsPrompt.target.task}/chat`
 
 interface Problems {
@@ -123,6 +126,33 @@ for (const size of widths) {
     await row.getByRole('link', { name: `${refundsPrompt.id} asked:` }).click()
     await expect(page).toHaveURL(/\/milestones\/14\/problems\/issue-281$/)
     await expect(page.locator(`#prompt-${refundsPrompt.id}`)).toBeVisible()
+    expect(problems).toEqual(clean)
+  })
+
+  // A GitLab comment's Desk link (desklink) is the milestone with the
+  // prompt's anchor and no ?tab= (D6 of "Desk: Milestones and Issues
+  // first"): it opens the Cockpit, not Issues, with the card in view. A
+  // listed prompt opens its problem thread there; another one stays on the
+  // Cockpit, whose address then says ?tab=cockpit.
+  test(`a GitLab comment's #prompt- link opens the Cockpit with the card in view@${size.width}`, journeyAt(size.width), async ({ page, baseURL }) => {
+    const { problems } = await open(page, baseURL, `${milestonePath}#prompt-${refundsPrompt.id}`, size)
+    await expect(page).toHaveURL(/\/milestones\/14\/problems\/issue-281$/)
+    await expect(page.locator('main nav[aria-label="View"] a[aria-current="page"]')).toHaveText(/^Cockpit/)
+    // The problem thread scrolls its row into view (MilestoneNeeds). On a wide
+    // screen the card beside it is in view too; on a phone the thread is
+    // below the list, with the card in it.
+    const card = page.locator(`#prompt-${refundsPrompt.id}`)
+    await expect(page.locator('main a[data-problem][aria-current="page"]')).toBeInViewport()
+    if (size.width >= 1024) await expect(card).toBeInViewport()
+    else await expect(card).toBeVisible()
+    expect(problems).toEqual(clean)
+  })
+
+  test(`a #prompt- link of a prompt the milestone does not list says ?tab=cockpit@${size.width}`, async ({ page, baseURL }) => {
+    const { problems } = await open(page, baseURL, `${milestonePath}#prompt-Q999`, size, undefined, false)
+    await expect(page).toHaveURL(/\/milestones\/14\?tab=cockpit#prompt-Q999$/)
+    await expect(page.locator('main nav[aria-label="View"] a[aria-current="page"]')).toHaveText(/^Cockpit/)
+    await expect(page.locator('main [data-cockpit]')).toBeVisible()
     expect(problems).toEqual(clean)
   })
 }

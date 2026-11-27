@@ -37,10 +37,10 @@ const shots: Shot[] = [
   { name: 'dashboard', path: '/', ready: text('Support refunds through the payment provider') },
   { name: 'dashboard-dark', path: '/', colorScheme: 'dark', ready: text('Support refunds through the payment provider') },
   // The project's Cockpit (R15 of "Desk: the Cockpit"): %14's pinned cards, the stream, the panel.
-  { name: 'project-stream', path: shop, ready: (page) => expect(page.locator('main [data-pinned-milestone="14"] [data-problem]').first()).toBeVisible() },
+  { name: 'project-stream', path: `${shop}?tab=cockpit`, ready: (page) => expect(page.locator('main [data-pinned-milestone="14"] [data-problem]').first()).toBeVisible() },
   { name: 'milestone-issues', path: `${shop}/milestones/14?tab=issues`, ready: text('Document the refund flow for support') },
   // The milestone's Cockpit (R10–R12 of "Desk: the Cockpit"): pinned cards, the stream, the panel.
-  { name: 'milestone-pilot', path: `${shop}/milestones/14`, ready: text('Split across captures') },
+  { name: 'milestone-pilot', path: `${shop}/milestones/14?tab=cockpit`, ready: text('Split across captures') },
   {
     name: 'milestone-retrospective',
     path: `${shop}/milestones/14?tab=retrospective`,

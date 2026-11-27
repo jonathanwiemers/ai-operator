@@ -14,6 +14,9 @@ import { ago } from './fixtures/clock'
 import type { StreamEvent, StreamEventData } from '../src/types'
 
 const milestonePath = '/projects/team-a/shop/milestones/14'
+// The Cockpit is a milestone's second tab (D1 of "Desk: Milestones and
+// Issues first").
+const cockpitPath = `${milestonePath}?tab=cockpit`
 
 let nextID = 5000
 const decision = (minutes: number, issueIID: number, data: StreamEventData): StreamEvent => ({
@@ -118,7 +121,7 @@ const item = (page: Page, iid: number, id: string) =>
 
 test.describe('decisions in Cockpit threads', () => {
   test('a decision shows in its issue thread with its ID, title and choice', journeyAt(1280), async ({ page, baseURL }) => {
-    const { problems } = await open(page, baseURL, milestonePath)
+    const { problems } = await open(page, baseURL, cockpitPath)
     const d = item(page, 281, 'D281-2')
     await expect(d).toBeVisible()
     await expect(d).toContainText('Refund in the order currency')
@@ -128,14 +131,14 @@ test.describe('decisions in Cockpit threads', () => {
   })
 
   test('a superseded decision says Superseded by', async ({ page, baseURL }) => {
-    const { problems } = await open(page, baseURL, milestonePath)
+    const { problems } = await open(page, baseURL, cockpitPath)
     await expect(item(page, 280, 'D280-1').locator('[data-superseded]')).toHaveText('Superseded by D281-2')
     await expect(item(page, 280, 'D280-2').locator('[data-superseded]')).toHaveCount(0)
     expect(problems).toEqual([])
   })
 
   test('a decision the store no longer has shows the event without Revisit', async ({ page, baseURL }) => {
-    const { problems } = await open(page, baseURL, milestonePath)
+    const { problems } = await open(page, baseURL, cockpitPath)
     const d = page.locator('main #issue-279 [data-cockpit-decision]')
     await expect(d).toContainText('D279-1')
     await expect(d).toContainText('One endpoint per refund')
@@ -148,7 +151,7 @@ test.describe('decisions in Cockpit threads', () => {
     await page.locator('main #D280-2').getByRole('button', { name: 'Revisit D280-2' }).click()
     await expect.poll(() => posts.length).toBe(1)
 
-    await page.goto(milestonePath)
+    await page.goto(cockpitPath)
     await item(page, 280, 'D280-2').getByRole('button', { name: 'Revisit D280-2' }).click()
     await expect.poll(() => posts.length).toBe(2)
     const [tab, thread] = posts as [Post, Post]
@@ -163,7 +166,7 @@ test.describe('decisions in Cockpit threads', () => {
   })
 
   test('the ID opens the Decisions tab at the card', journeyAt(1280), async ({ page, baseURL }) => {
-    const { problems } = await open(page, baseURL, milestonePath)
+    const { problems } = await open(page, baseURL, cockpitPath)
     await item(page, 280, 'D280-2').getByRole('link', { name: 'D280-2', exact: true }).click()
     await expect(page).toHaveURL(/\?tab=decisions#D280-2$/)
     await expect(page.locator('main #D280-2[data-decision]')).toBeInViewport()
@@ -174,7 +177,7 @@ test.describe('decisions in Cockpit threads', () => {
   // rule (cockpit.spec.ts).
   for (const width of [1280, 390]) {
     test(`axe is green with decisions in the threads@${width}`, async ({ page, baseURL }) => {
-      const { problems } = await open(page, baseURL, milestonePath, width)
+      const { problems } = await open(page, baseURL, cockpitPath, width)
       await expect(item(page, 281, 'D281-2')).toBeVisible()
       const results = await new AxeBuilder({ page })
         .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])

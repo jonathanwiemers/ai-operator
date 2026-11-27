@@ -38,11 +38,11 @@ test('handledSubject: the issue or the milestone', () => {
   assert.equal(handledSubject(row()), 'Milestone')
 })
 
-test('handledRoute: the problem thread, else the prompt on the project page', () => {
+test('handledRoute: the problem thread, else the prompt in the project Cockpit', () => {
   assert.deepEqual(handledRoute(row({ milestoneIID: 3, issueIID: 12, promptID: 'Q4' })), {
     name: 'problem',
     params: { namespace: 'team', name: 'shop', iid: '3', problem: 'issue-12' },
   })
   assert.equal(handledRoute(row({ kind: 'acted', milestoneIID: 3 })).params.problem, 'issue-0')
-  assert.deepEqual(handledRoute(row({ promptID: 'Q4' })), { name: 'stream-project', params: { namespace: 'team', name: 'shop' }, hash: '#prompt-Q4' })
+  assert.deepEqual(handledRoute(row({ promptID: 'Q4' })), { name: 'stream-project', params: { namespace: 'team', name: 'shop' }, query: { tab: 'cockpit' }, hash: '#prompt-Q4' })
 })
