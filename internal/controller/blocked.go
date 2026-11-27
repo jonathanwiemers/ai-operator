@@ -61,7 +61,7 @@ func (r *AgentProjectReconciler) unblock(ctx context.Context, gl gitlab.API, spe
 // a run deferred by a usage limit, or one that gave up for an outside reason.
 // Each report blocks once. A new run (running, or pending and not deferred)
 // lifts any block, also when the label move of its request failed; a quota
-// block is also lifted when the run ended otherwise. An infra block gets one
+// or gitlab block is also lifted when the run ended otherwise. An infra block gets one
 // itself after lifecycle.infraRetryAfter, once per run request.
 func (r *AgentProjectReconciler) syncRunBlock(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, is gitlab.Issue, task *aiv1.AgentTask) error {
 	run := task.Status.Run
@@ -76,7 +76,7 @@ func (r *AgentProjectReconciler) syncRunBlock(ctx context.Context, gl gitlab.API
 	case b != nil && newRun:
 		b.RestoreLabel = spec.Workflow.WorkingLabel // what a run request shows
 		return r.unblock(ctx, gl, spec, is, task)
-	case b != nil && b.Reason == aiv1.BlockQuota && reason != aiv1.BlockQuota:
+	case b != nil && b.Reason.Defers() && reason != b.Reason:
 		return r.unblock(ctx, gl, spec, is, task)
 	case reason == "" || run.LastActivityTime == nil:
 		return nil
@@ -104,7 +104,7 @@ func (r *AgentProjectReconciler) syncRunBlock(ctx context.Context, gl gitlab.API
 // a human lifted is dropped: an applied one whose issue lost the blocked
 // label, or one not applied yet whose issue moved on from the label it
 // would replace or got a run (moved on the board, or `/agent …`); a deferred
-// run is pending too, but waits.
+// run (quota, gitlab) is pending too, but waits.
 func (r *AgentProjectReconciler) syncBlocked(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, is gitlab.Issue, task *aiv1.AgentTask) error {
 	b := task.Status.Blocked
 	if b == nil {
@@ -114,7 +114,7 @@ func (r *AgentProjectReconciler) syncBlocked(ctx context.Context, gl gitlab.API,
 	reasonLabel := wf.BlockedReasonPrefix + string(b.Reason)
 	switch {
 	case b.Applied && !is.HasLabel(wf.BlockedLabel),
-		!b.Applied && (task.RunPending() && b.Reason != aiv1.BlockQuota || b.RestoreLabel != "" && !is.HasLabel(b.RestoreLabel)):
+		!b.Applied && (task.RunPending() && !b.Reason.Defers() || b.RestoreLabel != "" && !is.HasLabel(b.RestoreLabel)):
 		if _, err := gl.UpdateIssue(ctx, spec.GitLab.Project, is.IID, gitlab.UpdateIssueOptions{RemoveLabels: []string{reasonLabel}}); err != nil {
 			return fmt.Errorf("removing the block reason of issue #%d: %w", is.IID, err)
 		}
@@ -125,7 +125,7 @@ func (r *AgentProjectReconciler) syncBlocked(ctx context.Context, gl gitlab.API,
 	// Not applied yet, or applied with a new reason (or a reason label
 	// removed by hand): the blocked label stays or comes back.
 	remove := []string{wf.ReadyLabel, wf.WorkingLabel, wf.NeedsInputLabel, wf.ReviewLabel}
-	for _, reason := range []aiv1.BlockReason{aiv1.BlockInfra, aiv1.BlockMainRed, aiv1.BlockQuota} {
+	for _, reason := range []aiv1.BlockReason{aiv1.BlockInfra, aiv1.BlockMainRed, aiv1.BlockQuota, aiv1.BlockGitLab} {
 		if reason != b.Reason { // the reason of an earlier block
 			remove = append(remove, wf.BlockedReasonPrefix+string(reason))
 		}

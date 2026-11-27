@@ -136,6 +136,21 @@ func (p *progress) flush(ctx context.Context) {
 	}
 }
 
+// abandon ends the live view without a GitLab call, for a run deferred on a
+// GitLab limit: the comment stays until the next run's startProgress removes
+// it. It waits for an edit in flight.
+func (p *progress) abandon() {
+	p.mu.Lock()
+	p.closed = true
+	if p.timer != nil {
+		p.timer.Stop()
+		p.timer = nil
+	}
+	p.mu.Unlock()
+	p.send.Lock()
+	defer p.send.Unlock()
+}
+
 // close ends the live view: without a headline the comment is deleted, with
 // one it keeps the final run log under that headline. It waits for an edit
 // in flight, so that edit cannot overwrite the final state.

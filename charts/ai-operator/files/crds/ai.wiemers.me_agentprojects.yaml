@@ -3182,6 +3182,56 @@ spec:
                   - observedAt
                   type: object
                 type: array
+              gitLab:
+                description: |-
+                  GitLab is the state of the project's GitLab API use: the bot token's
+                  rate limit.
+                properties:
+                  rateLimit:
+                    description: RateLimit is the bot token's rate limit.
+                    properties:
+                      limit:
+                        description: 'Limit is RateLimit-Limit: the requests allowed
+                          per window.'
+                        format: int32
+                        type: integer
+                      limitedUntil:
+                        description: |-
+                          LimitedUntil is set by a run deferred on a GitLab limit: runs of the
+                          project that would start before then defer to it without calling
+                          GitLab.
+                        format: date-time
+                        type: string
+                      observed:
+                        description: 'Observed is RateLimit-Observed: the requests
+                          counted in the window.'
+                        format: int32
+                        type: integer
+                      peakAt:
+                        description: PeakAt is when PeakObserved was read.
+                        format: date-time
+                        type: string
+                      peakObserved:
+                        description: PeakObserved is the highest Observed count seen
+                          recently.
+                        format: int32
+                        type: integer
+                      readAt:
+                        description: ReadAt is when the headers were read.
+                        format: date-time
+                        type: string
+                      remaining:
+                        description: 'Remaining is RateLimit-Remaining: the requests
+                          left in the window.'
+                        format: int32
+                        type: integer
+                      resetAt:
+                        description: 'ResetAt is RateLimit-Reset: when the window
+                          starts again.'
+                        format: date-time
+                        type: string
+                    type: object
+                type: object
               lastSyncTime:
                 description: LastSyncTime is when GitLab was last polled successfully.
                 format: date-time

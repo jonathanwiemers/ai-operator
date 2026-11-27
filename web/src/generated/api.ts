@@ -2219,6 +2219,12 @@ export interface AgentProjectStatus {
    */
   webhook?: WebhookStatus;
   /**
+   * GitLab is the state of the project's GitLab API use: the bot token's
+   * rate limit.
+   * +optional
+   */
+  gitLab?: GitLabProjectStatus;
+  /**
    * CommandReplies tracks the replies to "/agent" and "/pilot" comments
    * the operator does not act on, so each gets one.
    * +optional
@@ -3950,7 +3956,7 @@ export const NeedsInputAgentQuestion: NeedsInputCause = "agentQuestion";
 export const NeedsInputNothingPushed: NeedsInputCause = "nothingPushed";
 /**
  * BlockReason is why an issue is blocked; it is the suffix of its reason label.
- * +kubebuilder:validation:Enum=infra;main-red;quota
+ * +kubebuilder:validation:Enum=infra;main-red;quota;gitlab
  */
 export type BlockReason = string;
 /**
@@ -3965,6 +3971,10 @@ export const BlockMainRed: BlockReason = "main-red";
  * BlockQuota: a usage limit defers the run.
  */
 export const BlockQuota: BlockReason = "quota";
+/**
+ * BlockGitLab: a GitLab rate limit or outage (429, 5xx) defers the run.
+ */
+export const BlockGitLab: BlockReason = "gitlab";
 /**
  * BlockedStatus is an issue's block.
  */
@@ -6395,11 +6405,32 @@ export interface RunStatus {
    * BlockReason is why the issue waits for something outside it: quota
    * while the run is deferred by a usage limit or after it gave up on
    * one; infra after it failed because the agent pod or container was
-   * lost (also out of memory) or it was interrupted too often. The
+   * lost (also out of memory) or it was interrupted too often; gitlab
+   * while the run is deferred by a GitLab rate limit or outage. The
    * operator blocks the issue with it.
    * +optional
    */
   blockReason?: BlockReason;
+  /**
+   * FailureKind is set when the last run ended Failed for a recorded
+   * outside cause: gitlab for a transient GitLab error (429 or 5xx),
+   * also once the GitLab deferrals ran out. Empty otherwise.
+   * +optional
+   */
+  failureKind?: FailureKind;
+  /**
+   * GitLabLimitedAt is when GitLab first deferred the current chain of
+   * deferrals of this run request. The note posted when the run starts
+   * again reads and clears it.
+   * +optional
+   */
+  gitLabLimitedAt?: string;
+  /**
+   * GitLabRateLimit is the runner's latest reading of the GitLab rate
+   * limit headers of the bot token, reported with the run status.
+   * +optional
+   */
+  gitLabRateLimit?: GitLabRateLimitReading;
   /**
    * EngineUsage is the newest usage reading per engine the runner got
    * from an agent call of this task (claude only); the project collects
@@ -6894,6 +6925,83 @@ export interface CompanionStatus {
    * +optional
    */
   mergeRefusals?: number /* int32 */;
+}
+
+//////////
+// source: gitlab_ratelimit_types.go
+
+/**
+ * FailureKind is the recorded outside cause of a failed run.
+ * +kubebuilder:validation:Enum=gitlab
+ */
+export type FailureKind = string;
+/**
+ * FailureGitLab: the run failed on a transient GitLab error (429 or 5xx).
+ */
+export const FailureGitLab: FailureKind = "gitlab";
+/**
+ * GitLabRateLimitReading is one reading of GitLab's RateLimit-* response
+ * headers for the bot token.
+ */
+export interface GitLabRateLimitReading {
+  /**
+   * Observed is RateLimit-Observed: the requests counted in the window.
+   * +optional
+   */
+  observed?: number /* int32 */;
+  /**
+   * Remaining is RateLimit-Remaining: the requests left in the window.
+   * +optional
+   */
+  remaining?: number /* int32 */;
+  /**
+   * Limit is RateLimit-Limit: the requests allowed per window.
+   * +optional
+   */
+  limit?: number /* int32 */;
+  /**
+   * ResetAt is RateLimit-Reset: when the window starts again.
+   * +optional
+   */
+  resetAt?: string;
+  /**
+   * ReadAt is when the headers were read.
+   * +optional
+   */
+  readAt?: string;
+}
+/**
+ * GitLabRateLimitStatus is a project's view of the bot token's GitLab rate
+ * limit: the latest reading, the limit that defers runs and the peak.
+ */
+export interface GitLabRateLimitStatus extends GitLabRateLimitReading {
+  /**
+   * LimitedUntil is set by a run deferred on a GitLab limit: runs of the
+   * project that would start before then defer to it without calling
+   * GitLab.
+   * +optional
+   */
+  limitedUntil?: string;
+  /**
+   * PeakObserved is the highest Observed count seen recently.
+   * +optional
+   */
+  peakObserved?: number /* int32 */;
+  /**
+   * PeakAt is when PeakObserved was read.
+   * +optional
+   */
+  peakAt?: string;
+}
+/**
+ * GitLabProjectStatus is the state of a project's GitLab API use.
+ */
+export interface GitLabProjectStatus {
+  /**
+   * RateLimit is the bot token's rate limit.
+   * +optional
+   */
+  rateLimit?: GitLabRateLimitStatus;
 }
 
 //////////

@@ -777,6 +777,11 @@ type AgentProjectStatus struct {
 	// +optional
 	Webhook *WebhookStatus `json:"webhook,omitempty"`
 
+	// GitLab is the state of the project's GitLab API use: the bot token's
+	// rate limit.
+	// +optional
+	GitLab *GitLabProjectStatus `json:"gitLab,omitempty"`
+
 	// CommandReplies tracks the replies to "/agent" and "/pilot" comments
 	// the operator does not act on, so each gets one.
 	// +optional

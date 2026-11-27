@@ -733,10 +733,28 @@ type RunStatus struct {
 	// BlockReason is why the issue waits for something outside it: quota
 	// while the run is deferred by a usage limit or after it gave up on
 	// one; infra after it failed because the agent pod or container was
-	// lost (also out of memory) or it was interrupted too often. The
+	// lost (also out of memory) or it was interrupted too often; gitlab
+	// while the run is deferred by a GitLab rate limit or outage. The
 	// operator blocks the issue with it.
 	// +optional
 	BlockReason BlockReason `json:"blockReason,omitempty"`
+
+	// FailureKind is set when the last run ended Failed for a recorded
+	// outside cause: gitlab for a transient GitLab error (429 or 5xx),
+	// also once the GitLab deferrals ran out. Empty otherwise.
+	// +optional
+	FailureKind FailureKind `json:"failureKind,omitempty"`
+
+	// GitLabLimitedAt is when GitLab first deferred the current chain of
+	// deferrals of this run request. The note posted when the run starts
+	// again reads and clears it.
+	// +optional
+	GitLabLimitedAt *metav1.Time `json:"gitLabLimitedAt,omitempty"`
+
+	// GitLabRateLimit is the runner's latest reading of the GitLab rate
+	// limit headers of the bot token, reported with the run status.
+	// +optional
+	GitLabRateLimit *GitLabRateLimitReading `json:"gitLabRateLimit,omitempty"`
 
 	// EngineUsage is the newest usage reading per engine the runner got
 	// from an agent call of this task (claude only); the project collects

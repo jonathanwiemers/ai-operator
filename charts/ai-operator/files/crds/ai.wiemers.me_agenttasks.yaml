@@ -2275,6 +2275,7 @@ spec:
                     - infra
                     - main-red
                     - quota
+                    - gitlab
                     type: string
                   restoreLabel:
                     description: RestoreLabel is the workflow label the blocked label
@@ -4296,12 +4297,14 @@ spec:
                       BlockReason is why the issue waits for something outside it: quota
                       while the run is deferred by a usage limit or after it gave up on
                       one; infra after it failed because the agent pod or container was
-                      lost (also out of memory) or it was interrupted too often. The
+                      lost (also out of memory) or it was interrupted too often; gitlab
+                      while the run is deferred by a GitLab rate limit or outage. The
                       operator blocks the issue with it.
                     enum:
                     - infra
                     - main-red
                     - quota
+                    - gitlab
                     type: string
                   blockingFindings:
                     description: |-
@@ -4753,6 +4756,51 @@ spec:
                       - observedAt
                       type: object
                     type: array
+                  failureKind:
+                    description: |-
+                      FailureKind is set when the last run ended Failed for a recorded
+                      outside cause: gitlab for a transient GitLab error (429 or 5xx),
+                      also once the GitLab deferrals ran out. Empty otherwise.
+                    enum:
+                    - gitlab
+                    type: string
+                  gitLabLimitedAt:
+                    description: |-
+                      GitLabLimitedAt is when GitLab first deferred the current chain of
+                      deferrals of this run request. The note posted when the run starts
+                      again reads and clears it.
+                    format: date-time
+                    type: string
+                  gitLabRateLimit:
+                    description: |-
+                      GitLabRateLimit is the runner's latest reading of the GitLab rate
+                      limit headers of the bot token, reported with the run status.
+                    properties:
+                      limit:
+                        description: 'Limit is RateLimit-Limit: the requests allowed
+                          per window.'
+                        format: int32
+                        type: integer
+                      observed:
+                        description: 'Observed is RateLimit-Observed: the requests
+                          counted in the window.'
+                        format: int32
+                        type: integer
+                      readAt:
+                        description: ReadAt is when the headers were read.
+                        format: date-time
+                        type: string
+                      remaining:
+                        description: 'Remaining is RateLimit-Remaining: the requests
+                          left in the window.'
+                        format: int32
+                        type: integer
+                      resetAt:
+                        description: 'ResetAt is RateLimit-Reset: when the window
+                          starts again.'
+                        format: date-time
+                        type: string
+                    type: object
                   interruptions:
                     description: |-
                       Interruptions counts runs of the current request started again because

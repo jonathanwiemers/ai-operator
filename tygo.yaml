@@ -32,6 +32,7 @@ packages:
       - agenttask_chat_types.go
       - agenttask_types.go
       - crossrepo.go
+      - gitlab_ratelimit_types.go
       - pause.go
       - prompt.go
       - release.go

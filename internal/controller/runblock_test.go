@@ -333,3 +333,55 @@ func TestAnInfraRetryWhoseLabelMoveFailedStillLifts(t *testing.T) {
 		t.Fatalf("the pending retry lifts the block, and no second one: labels = %v, %+v", labels, got.Spec)
 	}
 }
+
+// deferredOnGitLab plays the runner deferring the issue's pending run on a
+// GitLab rate limit at at.
+func (e *projectEnv) deferredOnGitLab(iid int64, at time.Time) {
+	e.t.Helper()
+	e.patchStatus(e.taskOf(iid), func(s *aiv1.AgentTaskStatus) {
+		s.Run.ActiveRunRequest = s.Run.ObservedRunRequest
+		s.Run.DeferredUntil = &metav1.Time{Time: at.Add(6 * time.Minute)}
+		s.Run.Deferrals++
+		s.Run.BlockReason = aiv1.BlockGitLab
+		s.Run.LastResult, s.Run.LastActivityTime = aiv1.RunResultDeferred, &metav1.Time{Time: at}
+	})
+}
+
+func TestGitLabLimitBlocksUntilTheRunStartsAgain(t *testing.T) {
+	e := newRunBlockEnv(t, 42)
+	e.deferredOnGitLab(42, e.r.Now())
+	e.reconcile()
+	blocked := []string{"agent-blocked::gitlab", "agent::blocked"}
+	if got := e.labelsOf(42); !slices.Equal(got, blocked) {
+		t.Fatalf("a run deferred on GitLab blocks the issue (gitlab): labels = %v", got)
+	}
+	if b := e.tasks()[e.taskOf(42)].Status.Blocked; b == nil || b.Reason != aiv1.BlockGitLab || !b.Applied {
+		t.Fatalf("blocked status = %+v", b)
+	}
+	e.reconcile() // the deferred run is pending, but keeps the block
+	if got := e.labelsOf(42); !slices.Equal(got, blocked) {
+		t.Fatalf("a run still deferred stays blocked: labels = %v", got)
+	}
+
+	e.started(42)
+	e.reconcile()
+	if got := e.labelsOf(42); !slices.Equal(got, []string{"agent::working"}) {
+		t.Fatalf("the run started again: working comes back, labels = %v", got)
+	}
+	if b := e.tasks()[e.taskOf(42)].Status.Blocked; b != nil {
+		t.Fatalf("the block must be lifted: %+v", b)
+	}
+}
+
+func TestGitLabBlockGivesWayToAnotherReason(t *testing.T) {
+	e := newRunBlockEnv(t, 42)
+	e.deferredOnGitLab(42, e.r.Now())
+	e.reconcile()
+	// The deferral cap: the run fails as infra.
+	e.ended(42, e.r.Now().Add(time.Hour), aiv1.RunResultFailed, aiv1.BlockInfra)
+	e.reconcile()
+	e.reconcile()
+	if got := e.labelsOf(42); !slices.Equal(got, []string{"agent-blocked::infra", "agent::blocked"}) {
+		t.Fatalf("the gitlab block gives way to infra: labels = %v", got)
+	}
+}

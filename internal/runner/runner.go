@@ -646,6 +646,16 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 	}
 	r.run.finish(err)
 	moreMemory := r.oomRetry(err, task, spec)
+	var lost *AgentLostError
+	_, usageLimited := AsUsageLimit(err)
+	onGitLab := gitLabTransient(err) && !errors.As(err, &lost) && !usageLimited && !isBudgetStop(err) && moreMemory == ""
+	deferOnGitLab := onGitLab && task.Status.Run.Deferrals < MaxDeferrals
+	if r.progress != nil && deferOnGitLab {
+		// Nothing goes to GitLab while its limit holds; the next run removes
+		// the live comment.
+		r.progress.abandon()
+		r.progress = nil
+	}
 	if r.progress != nil {
 		// The report replaced the live view; otherwise say how it ended.
 		// Also when the pod is stopping: the comment must not stay "working".
@@ -682,8 +692,17 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 		err = fmt.Errorf("giving up after %d usage limit deferrals: %w", task.Status.Run.Deferrals, err)
 		block = aiv1.BlockQuota
 	}
-	var lost *AgentLostError
-	if errors.As(err, &lost) || task.Spec.Type == aiv1.TaskTypeSpec && block == "" && gitlab.IsTransient(err) {
+	if deferOnGitLab {
+		return false, r.deferForGitLab(ctx, spec, task, out, err)
+	}
+	var failureKind aiv1.FailureKind
+	if onGitLab {
+		err = fmt.Errorf("giving up after %d deferrals for GitLab and usage limits: %w", task.Status.Run.Deferrals, err)
+	}
+	if block == "" && gitLabTransient(err) && !errors.As(err, &lost) {
+		failureKind = aiv1.FailureGitLab
+	}
+	if errors.As(err, &lost) || failureKind == aiv1.FailureGitLab || task.Spec.Type == aiv1.TaskTypeSpec && block == "" && gitlab.IsTransient(err) {
 		block = aiv1.BlockInfra // its pod or container was lost (or GitLab), not the work
 	}
 	if err != nil {
@@ -725,6 +744,8 @@ func (r *Runner) Step(ctx context.Context) (bool, error) {
 		s.ClearDeferringLimit()
 		s.Deferrals = 0
 		s.BlockReason = block
+		s.FailureKind = failureKind
+		s.GitLabLimitedAt = nil
 		s.OOMRetries = 0
 		s.Interruptions = 0
 		s.LastActivityTime = &metav1.Time{Time: r.now()}

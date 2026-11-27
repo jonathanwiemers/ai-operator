@@ -333,7 +333,9 @@ func (r *AgentTaskReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	if waiting && !blocked && !task.Spec.Suspend {
 		task.Status.Phase = aiv1.TaskPhaseWaiting
 		reason := "agent ran out of memory, more memory"
-		if l, limited := task.Status.Run.DeferringLimit(); limited {
+		if task.Status.Run.BlockReason == aiv1.BlockGitLab {
+			reason = "GitLab rate limit"
+		} else if l, limited := task.Status.Run.DeferringLimit(); limited {
 			reason = fmt.Sprintf("%s usage limit", l.Engine)
 		} else if task.Status.Run.BlockReason == aiv1.BlockQuota {
 			// Deferred by a release that kept the engine in a field that is

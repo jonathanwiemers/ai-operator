@@ -659,7 +659,7 @@ const (
 )
 
 // BlockReason is why an issue is blocked; it is the suffix of its reason label.
-// +kubebuilder:validation:Enum=infra;main-red;quota
+// +kubebuilder:validation:Enum=infra;main-red;quota;gitlab
 type BlockReason string
 
 const (
@@ -669,7 +669,15 @@ const (
 	BlockMainRed BlockReason = "main-red"
 	// BlockQuota: a usage limit defers the run.
 	BlockQuota BlockReason = "quota"
+	// BlockGitLab: a GitLab rate limit or outage (429, 5xx) defers the run.
+	BlockGitLab BlockReason = "gitlab"
 )
+
+// Defers is true for the reasons a pending deferred run keeps: the run
+// waits for a limit to pass (quota, gitlab) and starts again by itself.
+func (b BlockReason) Defers() bool {
+	return b == BlockQuota || b == BlockGitLab
+}
 
 // BlockedStatus is an issue's block.
 type BlockedStatus struct {

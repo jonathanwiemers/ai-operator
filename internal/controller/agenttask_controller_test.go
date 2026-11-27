@@ -869,3 +869,23 @@ func TestPilotOutsideRunCapacity(t *testing.T) {
 		t.Fatalf("second implementer: message %q, want it to wait for the first only", got)
 	}
 }
+
+func TestGitLabDeferredTaskWaits(t *testing.T) {
+	until := t0.Add(6 * time.Minute)
+	task := deferredTask("x", until)
+	task.Status.Run.ClearDeferringLimit()
+	task.Status.Run.BlockReason = aiv1.BlockGitLab
+	e := newTaskEnv(t, task)
+
+	e.reconcile("x")
+	var pod corev1.Pod
+	want := "GitLab rate limit; retrying at " + until.UTC().Format(time.RFC3339)
+	if got := e.task("x").Status; got.Phase != aiv1.TaskPhaseWaiting || got.Message != want || e.exists(&pod, "x") {
+		t.Fatalf("the task waits without a pod: phase %s, %q", got.Phase, got.Message)
+	}
+	e.now = until.Add(time.Second)
+	e.reconcile("x")
+	if got := e.task("x").Status.Phase; got != aiv1.TaskPhaseRunning || !e.exists(&pod, "x") {
+		t.Fatalf("task should run after the retry time, phase %s", got)
+	}
+}
