@@ -172,7 +172,11 @@ func (a *autopilot) resumeItem(ctx context.Context, it *aiv1.AutopilotItem, p it
 		return nil
 	}
 	stalled := p.kind == aiv1.PauseStalled
-	switch g := a.gateCheck(it, is, task); {
+	g := a.gateCheck(it, is, task)
+	if g.stranded && p.kind == aiv1.PauseRunFailed {
+		a.moveStranded(ctx, it.IID) // its label move failed on an earlier poll
+	}
+	switch {
 	case stalled && g.kind == aiv1.PauseStalled:
 		return nil // still stalled: only the ages in the reason grew
 	case stalled && (g.state == gateWaiting || g.state == gateCIUnfinished):

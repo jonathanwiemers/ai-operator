@@ -56,8 +56,13 @@ func (r *Runner) reportFailure(ctx context.Context, gl gitlab.API, spec aiv1.Age
 		body += "\n\n" + saved
 	}
 	body += r.run.markdown(out.CostUSD)
-	note, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, task.Spec.Issue.IID, body)
-	if err != nil {
+	// Retried on 429/5xx: a lost note and label move would strand the issue
+	// on the working label (on autopilot the gate's backstop catches that).
+	var note *gitlab.Note
+	if err := gitlab.RetryTransient(ctx, func() (err error) {
+		note, err = gl.CreateIssueNote(ctx, spec.GitLab.Project, task.Spec.Issue.IID, body)
+		return err
+	}); err != nil {
 		r.log().Error(err, "posting failure note")
 	}
 	// Every failed run records its cause, also a blocked one, so a hold
@@ -72,8 +77,11 @@ func (r *Runner) reportFailure(ctx context.Context, gl gitlab.API, spec aiv1.Age
 	if block != "" {
 		return
 	}
-	if _, err := gl.UpdateIssue(ctx, spec.GitLab.Project, task.Spec.Issue.IID, gitlab.UpdateIssueOptions{
-		AddLabels: []string{wf.NeedsInputLabel}, RemoveLabels: []string{wf.WorkingLabel},
+	if err := gitlab.RetryTransient(ctx, func() error {
+		_, err := gl.UpdateIssue(ctx, spec.GitLab.Project, task.Spec.Issue.IID, gitlab.UpdateIssueOptions{
+			AddLabels: []string{wf.NeedsInputLabel}, RemoveLabels: []string{wf.WorkingLabel},
+		})
+		return err
 	}); err != nil {
 		r.log().Error(err, "updating labels after failure")
 	}
@@ -111,7 +119,10 @@ func (r *Runner) reportSpecFailure(ctx context.Context, gl gitlab.API, spec aiv1
 		body += notify.Mention(task.Spec.Owners)
 	}
 	body += r.run.markdown(out.CostUSD)
-	if _, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, ap.TrackingIssueIID, body); err != nil {
+	if err := gitlab.RetryTransient(ctx, func() error {
+		_, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, ap.TrackingIssueIID, body)
+		return err
+	}); err != nil {
 		r.log().Error(err, "posting planning failure note", "issue", ap.TrackingIssueIID)
 	}
 }

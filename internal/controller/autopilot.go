@@ -691,6 +691,9 @@ func (a *autopilot) drive(ctx context.Context, it *aiv1.AutopilotItem) error {
 	case gateReReview:
 		return a.reReview(ctx, it, task)
 	case gateFailed:
+		if g.stranded {
+			return a.stranded(ctx, it, is, task, g)
+		}
 		if it.RebasedFrom == "" || g.kind != aiv1.PauseCIRed || task.Status.CI.State != aiv1.CIStateBaseFailing {
 			return a.failGate(ctx, it, is, task, g)
 		}

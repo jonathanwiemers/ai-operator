@@ -587,6 +587,16 @@ on a pushed head still goes to review.
 or its report on the merge request. Status first, then the label, so the
 operator never sees the label without its cause. A run or CI loop that ends
 without needs-input clears both; tasks of an older release have neither.
+The runner retries the failure note and the label move on 429/5xx
+(`gitlab.RetryTransient`). If the move is still lost, the issue is
+stranded on the working label. That means its task is idle and unblocked,
+the run asked for no block (`blockReason` empty), and the last run `Failed`
+with `runFailed`. On autopilot the merge gate catches it: it pauses
+`runFailed` and moves the issue to needs-input, and a poll after a failed
+move tries again. A run that failed on GitLab (`failureKind: gitlab`) is
+never stranded. The runner asks for an `infra` block, and the operator
+blocks the issue and starts one new run after `lifecycle.infraRetryAfter`,
+once per run request (`source.infraRetry`).
 
 The runner never sets the blocked labels. It reports why a run waits or
 gave up in `status.run.blockReason` (`quota` while deferred by a usage limit

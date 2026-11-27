@@ -39,6 +39,22 @@ type gateResult struct {
 	byRun bool
 	// block: the pause also blocks the issue, for no human's fault.
 	block aiv1.BlockReason
+	// stranded: the issue is still on the working label after a failed run
+	// that is over (strandedRun); the caller retries or moves the label.
+	stranded bool
+}
+
+// strandedRun reports whether task's last run failed and recorded its cause,
+// and no run is pending, running or blocked, nor asked to be blocked: its
+// issue should have left the working label.
+func strandedRun(task *aiv1.AgentTask) bool {
+	if task == nil {
+		return false
+	}
+	run := task.Status.Run
+	// A failure with a block reason leaves the labels to syncRunBlock on purpose.
+	return !task.RunPending() && run.ActiveRunRequest <= run.ObservedRunRequest && task.Status.Blocked == nil && run.BlockReason == "" &&
+		run.LastResult == aiv1.RunResultFailed && run.NeedsInputCause == aiv1.NeedsInputRunFailed
 }
 
 // gateCheck checks the active issue's run, review and CI against the merge
@@ -64,6 +80,13 @@ func (a *autopilot) gateCheck(it *aiv1.AutopilotItem, is gitlab.Issue, task *aiv
 		return failed(false, aiv1.PauseConfig, "#%d is open but has no workflow label any more; move it back to `%s` or close it", it.IID, wf.ReviewLabel)
 	case stalled != "":
 		return failed(true, aiv1.PauseStalled, "%s", stalled)
+	case is.HasLabel(wf.WorkingLabel) && strandedRun(task):
+		// The failure report could not move the label (GitLab was down or
+		// rate-limited): the caller retries the run or moves the label.
+		reason, _ := needsInputReason(it.IID, task)
+		g := failed(true, aiv1.PauseRunFailed, "%s", reason)
+		g.stranded = true
+		return g
 	case !is.HasLabel(wf.ReviewLabel) || task == nil || task.RunPending() || task.Status.Blocked != nil:
 		return gateResult{state: gateWaiting} // blocked: waits for an outside reason
 	}
