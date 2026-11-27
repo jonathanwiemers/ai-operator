@@ -513,7 +513,7 @@ stateDiagram-v2
     Pending --> Running: run requested
     Pending --> Queued: maxConcurrentRuns reached
     Queued --> Running: a slot is free
-    Running --> Waiting: usage limit
+    Running --> Waiting: usage or GitLab limit
     Waiting --> Running: limit resets
     Running --> Idle: run done
     Idle --> Running: new run request
@@ -601,7 +601,9 @@ once per run request (`source.infraRetry`).
 The runner never sets the blocked labels. It reports why a run waits or
 gave up in `status.run.blockReason` (`quota` while deferred by a usage limit
 and after giving up on one; `infra` when the agent pod or container was
-lost, also out of memory, or the run was interrupted too often), and the operator's poll turns each report into
+lost, also out of memory, or the run was interrupted too often, and after
+GitLab deferrals ran out; `gitlab` while deferred by GitLab's
+[rate limit](#gitlab-rate-limit) or a GitLab 5xx), and the operator's poll turns each report into
 `status.blocked` once (`status.runBlockedAt` remembers which, so a block
 lifted by hand stays lifted) and applies the labels. A new run lifts any
 block and shows `working`: in progress (`activeRunRequest` ahead of
@@ -1575,6 +1577,80 @@ makes at most 4 GitLab requests and none when nothing is pending. Steps
 of all projects are at least 15 s apart, and a step skips while another
 project's runs, so the backfill makes at most 16 requests a minute however
 often webhooks wake the polls, well below GitLab's 100 per user.
+
+## GitLab rate limit
+
+All GitLab API traffic of the operator, the runner pods and the UI server
+goes through `gitlab.Client`, and all of it counts against one bucket per
+GitLab user (100 requests a minute on GitLab Free), together with git
+HTTPS fetches and pushes with the same token. Spec:
+[gitlab-rate-limit](../specs/gitlab-rate-limit.spec.md).
+
+* **Pacing** (`internal/gitlab/ratelimit.go`). Each process keeps the latest
+  `RateLimit-Remaining`/`-Limit`/`-Observed`/`-Reset` reading per base URL
+  and token hash (`limitFor`), in memory, with no coordination between
+  processes: GitLab's headers already count the other pods' calls. Each
+  sent request counts one off until the next response, and a 429 sets the
+  reading to 0 until its reset. A call is `gitlab.Work` unless a read runs
+  under `gitlab.WithPriority(ctx, gitlab.Background)`; writes are always
+  work, so a missed call site errs toward running. Background reads wait
+  for the reset at or below the reserve (`--gitlab-ratelimit-reserve`, Helm
+  `gitlab.rateLimit.reserve`), every call at 0, at most `maxPaceWait`
+  (65 s). A wait past the context's deadline is not sent and returns
+  `*gitlab.PacedError`, which is transient, so the poll loop retries on its
+  next poll. `PacedSeconds` feeds
+  `ai_operator_gitlab_paced_seconds_total{priority}`. The background call
+  sites are the project and set polls, discovery, webhook heartbeats and
+  checks, and the Desk's reads.
+* **429 inside the call** (`retry.go`). A 429 waits for `Retry-After`
+  (seconds or a date) or `RateLimit-Reset`, else the next full minute plus
+  1–5 s, up to `max429Attempts` (5) and `max429Total` (2 min) per call,
+  writes included: GitLab applied nothing. 5xx keeps the old rules (3
+  attempts, reads only). `RateLimitReset(err)` returns the latest reset a
+  429 in a (wrapped or joined) error carried.
+* **Run failure flow** (`internal/runner/runner.go`, `gitlab_defer.go`,
+  `gitlab_limit.go`). A run whose error is `gitLabTransient` (an API 429 or
+  5xx, a `PacedError`, or git reporting HTTP 429/5xx) and not a lost pod,
+  usage limit, budget stop or OOM retry is deferred while
+  `status.run.deferrals < MaxDeferrals` (20, shared with usage limits):
+  `deferForGitLab` keeps the request pending and the checkpoint, abandons
+  the live progress comment, sets `blockReason: gitlab`, `LastResult:
+  Deferred`, `gitLabLimitedAt` (the chain's first deferral) and
+  `deferredUntil` = reset + 10–40 s, else `Lifecycle.Backoff(deferrals)`.
+  The poll's `limitedUntil` (the latest future `deferredUntil` of the
+  project's `gitlab`-blocked tasks) makes a run that would start earlier
+  defer to it before any GitLab call (`deferForProjectLimit`), without
+  counting a deferral. The first run after the chain clears
+  `gitLabLimitedAt`, then posts the ⏳ note on an implement issue, so a
+  failed status write loses the note rather than posting it twice. At the
+  cap the run fails with `BlockInfra` and `failureKind: gitlab`.
+* **Status and metrics.** Runner pods report their reading in
+  `status.run.gitLabRateLimit` with the run patch they already make. The
+  project poll writes `status.gitLab.rateLimit` once per poll from the
+  freshest reading by `readAt` (its own and its tasks'), with
+  `limitedUntil` and the peak `observed` of the last hour, and sets
+  `ai_operator_gitlab_ratelimit_remaining{user}` (the full limit once the
+  last reading's window has reset).
+* **Pilot** (`internal/controller/pilot_gitlab.go`). A `gitlab` block is
+  the event `gitlab/<iid>/<last activity>`; the pilot does nothing while it
+  is deferred, and `validRetry` refuses a retry then. After the cap (an
+  `infra` block with `failureKind: gitlab`), a counted `retry` is valid
+  once the project's `limitedUntil` has passed. Three or more `gitlab`
+  events within an hour add one line, marked `gitlab-pattern/<hour>`, to
+  the pilot's next status note.
+* **Gate backstop.** See the end of
+  [Lifecycle of long-lived issues](#lifecycle-of-long-lived-issues): a run
+  that failed on GitLab is blocked `infra` and retried once after
+  `lifecycle.infraRetryAfter`; another failure whose label move was lost is
+  caught by the merge gate (`strandedRun`, `moveStranded`), which pauses
+  `runFailed` and moves the issue to needs-input.
+* **Desk comment box** (`internal/ui/note_commands.go`). With a fixed
+  `ui.gitlab.tokenUser` token of the bot (`postsAsBot`), a comment of bare
+  `<commandPrefix> <word>` lines whose words are all in `deskCommands` goes
+  to the same chat commands as the pause card's buttons, with their grants,
+  and nothing is posted. Any other command line answers 400
+  (`commentBoxRefusal`), shown under the composer. Other tokens post as
+  before.
 
 ## GitLab webhooks
 

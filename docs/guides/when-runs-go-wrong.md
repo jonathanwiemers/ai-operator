@@ -146,8 +146,12 @@ reports none.
 GitLab has rate limits too, and gitlab.com sometimes answers slowly or with
 an error. The operator and the runners retry on their own:
 
-- A request GitLab rate-limits is sent again after the wait GitLab asks for,
-  up to a minute. Longer waits are left to the next poll.
+- Calls pace themselves. When few requests are left this minute, the
+  polls and the Desk's reads wait for the reset, so the runs' work goes
+  first. See [GitLab's rate limit](../concepts/how-it-works.md#gitlabs-rate-limit).
+- A request GitLab rate-limits (HTTP 429) is sent again after the wait
+  GitLab asks for, or at the next full minute, up to 5 times and 2 minutes
+  in all. That holds for writes too: GitLab did nothing with it.
 - A read that hits a server error, a timeout or a broken connection is tried
   twice more. Writes are not, since GitLab may have applied them.
 - A poll that still fails logs one line, "GitLab sync failed, trying again
@@ -156,6 +160,73 @@ an error. The operator and the runners retry on their own:
 - An error on one issue does not stop the poll. The other issues, main
   health and autopilot still run, and `Synced` names the issue
   (`issue #12: …`).
+
+### When GitLab limits a run
+
+A run that still meets a 429 or a GitLab server error after these waits is
+**put off, not failed**, whatever the task. That includes a git fetch or
+push that GitLab refused with 429 or 5xx.
+
+- The issue moves to `agent::blocked` and `agent-blocked::gitlab`. Nothing
+  is posted while the limit holds, so nobody is pinged.
+- The run's work is kept as a [checkpoint](#when-a-run-is-cut-off).
+- The run starts again shortly after the reset GitLab named. Without one,
+  it waits like after a [usage limit](#usage-limits).
+- The limit holds for the whole project: other runs that would start
+  before then wait for the same time, without calling GitLab.
+- When the run starts again, the issue gets one comment:
+
+  ```text
+  ⏳ GitLab rate-limited the run at 2026-11-26 23:35 UTC; it waited until
+  2026-11-26 23:41 UTC and runs again.
+  ```
+
+- Put-offs by GitLab and by usage limits count together. After 20 of one
+  run, it fails and the issue is blocked with `agent-blocked::infra`. The
+  operator starts one new run after `lifecycle.infraRetryAfter`.
+
+In the Desk the task shows "Rate limited by GitLab. The run starts again in
+12 min (at 07:42, deferred 2×).", and the issue row and the queue show a
+badge "GitLab limit · 07:42". The project header shows the bot's usage,
+"GitLab API 63/100 this minute", in the warning colour when little is left,
+and "GitLab rate limit until 07:42" while runs wait. The fields behind it
+are in [GitLab rate limit](../reference/status-and-history.md#gitlab-rate-limit).
+
+On [autopilot](../concepts/glossary.md#autopilot) a put-off run is no
+pause. The [pilot](../concepts/glossary.md#pilot) leaves it to the
+operator. After the 20 put-offs it retries the issue itself once the
+project's limit has passed, counted like its other retries. If GitLab
+limits runs three times or more in an hour, the pilot's next status note on
+the tracking issue says so, with the times and the peak requests per
+minute.
+
+### When the failure report is lost
+
+A run that fails posts a failure note and moves the issue to
+`agent::needs-input`. Both are retried while GitLab answers 429 or 5xx. If
+the move is still lost, the issue stays on `agent::working` although
+nothing runs. On autopilot the merge gate notices on its next poll: it
+pauses the milestone as [`runFailed`](pauses.md#runfailed), moves the issue
+to `agent::needs-input`, and the Desk shows the pause card.
+
+### Commands from the Desk comment box
+
+The Desk's comment box posts to GitLab with the Desk's token. On many
+installs that is the bot's own token, and the operator ignores `/agent`
+comments of the bot. So with the bot's token the Desk does not post
+command lines:
+
+- A comment of bare lines such as `/agent retry` goes straight to the
+  operator, like the buttons on the pause card: `resume`, `skip`, `retry`,
+  `review`, `merge` and `restart`. On an issue they act on that issue, on
+  the milestone on the paused issue. `merge` and `restart` need an
+  [owner](../concepts/glossary.md#owner), as on the buttons.
+- Any other command, a command with more words, or commands mixed with
+  text are refused under the box, and your text stays: "Commands from the
+  Desk comment box are posted as the bot and ignored. Use the buttons or
+  comment in GitLab as yourself."
+
+With a token of another user, the comment is posted as it is.
 
 ## Issues that stay open
 

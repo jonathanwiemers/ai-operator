@@ -122,6 +122,34 @@ note on the issue (or the tracking issue) saying who restarted the run and
 in which step. Only a planning run of a milestone without autopilot is
 restarted without a note.
 
+### GitLab's rate limit
+
+GitLab allows each user a number of requests per minute, the
+[rate limit](glossary.md#rate-limit). Every call with the bot's token counts
+against it: the operator's polls, the runners' reads, writes and git pushes,
+and the Desk. The operator manages that budget so you never retry by hand:
+
+- **Pacing.** Every part reads from each GitLab answer how many requests
+  are left this minute and when the count resets. When few are left,
+  background calls (polls, discovery, heartbeats, webhook checks, Desk
+  reads) wait for the reset, and the work of runs and every write go first.
+  At zero, every call waits. A poll that waits too long tries again on the
+  next poll. See [pacing](glossary.md#pacing).
+- **Short limits inside the run.** A run that GitLab still turns away waits
+  until the reset GitLab names, or the next full minute, and goes on.
+- **Long limits defer the run.** If the limit outlasts that wait, the run
+  is put off, not failed: the issue is blocked with
+  `agent-blocked::gitlab`, its work is kept, and the run starts again at the
+  reset by itself. The other runs of the project wait for the same reset.
+  When the run starts again, the issue gets one ⏳ comment.
+- **The pilot.** It does nothing while a run is put off. After too many
+  put-offs of one run, it retries the issue itself once GitLab is healthy
+  again, so no owner is asked. If it sees the limit often, its status note
+  on the tracking issue says so.
+
+[When runs go wrong](../guides/when-runs-go-wrong.md#when-gitlab-limits-a-run)
+has the details.
+
 ### Steering it
 
 You do not have to wait for a pause to have a say:

@@ -157,6 +157,13 @@ the pilot's proposals. See [The Desk](../guides/desk.md#the-pinned-cards).
 
 The sidebar beside a [Cockpit](#cockpit) in the [Desk](#desk): what is going on and what comes next. *Running* lists the issues an agent works on, with step and time; *Waiting* the issues that wait for CI or a review and the held ones; *Up next* the next issues; *Milestones* the milestone and the ones after it. It collapses to a rail with counts; below 1180 px a one-line strip under the header opens it. See [The Cockpit](../guides/steer-from-the-desk.md#the-cockpit).
 
+### Pacing
+
+How the operator, the runners and the Desk spread their GitLab calls over
+GitLab's per-minute [rate limit](#rate-limit): when few requests are left,
+background reads wait for the reset and the work of runs goes first. See
+[How it works](how-it-works.md#gitlabs-rate-limit).
+
 ### Pause
 
 Autopilot stops the whole milestone: nothing new starts until the pause
@@ -231,6 +238,13 @@ A device's permission to get [Desk](#desk) notifications while no Desk tab
 is open. It is made in the Notifications dialog, stored with your user name
 and roles, and deleted when you turn notifications off, sign out or don't
 open the Desk for 30 days. See [Notifications](../reference/notifications.md#push).
+
+### Rate limit
+
+GitLab's budget of requests per minute for one user, shared by every call
+made with the bot's token. A run that GitLab limits is deferred, blocked
+with `agent-blocked::gitlab`, and starts again at the reset by itself. See
+[When runs go wrong](../guides/when-runs-go-wrong.md#when-gitlab-limits-a-run).
 
 ### Read gate
 

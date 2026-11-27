@@ -1,7 +1,12 @@
 # ai-operator manages GitLab's rate limit
 
-Status: the milestone's spec, run by autopilot. Narrowed requirements and
-requirements without an issue go into the [Steering log](#steering-log).
+Status: archived; the milestone's spec, run by autopilot and implemented.
+Narrowed requirements and requirements without an issue are in the
+[Steering log](#steering-log). The docs describe the result:
+[GitLab's rate limit](../concepts/how-it-works.md#gitlabs-rate-limit),
+[When GitLab limits a run](../guides/when-runs-go-wrong.md#when-gitlab-limits-a-run),
+[GitLab rate limit fields](../reference/status-and-history.md#gitlab-rate-limit)
+and the [design notes](../contributing/design.md#gitlab-rate-limit).
 
 ## Goal
 
@@ -146,3 +151,26 @@ Spec tasks, and the usage-limit deferral (`deferRun`) as the model to copy.
   hour; the remaining gauge is labelled `user` and shows the full limit
   once the last reading's window has reset. This spec was added in #886
   because the Desk issues already linked to it; R14 completes the docs.
+- R1: only reads honour `gitlab.Background`; a write is always `work`,
+  whatever its context says.
+- R2: the no-header wait is the next full minute plus 1–5 s. 5xx keeps 3
+  attempts, for reads only.
+- R5: the late ⏳ note is posted on implement tasks of an issue only.
+- R6 (Decision 8): a run that fails on GitLab never reaches the gate's
+  backstop. At the deferral cap the runner records `failureKind: gitlab`
+  and asks for an `infra` block, and the operator's existing infra retry
+  starts the one new run after `lifecycle.infraRetryAfter`, once per run
+  request (`source.infraRetry`). So the acceptance's "a new run starts
+  within one poll" became "after `infraRetryAfter`". The gate's backstop
+  (`strandedRun`) handles the other causes and pauses `runFailed`.
+- R7: the pattern line is added at most once an hour (`gitlab-pattern/<hour>`).
+- R10: only a comment made of bare `/agent <word>` lines is routed. A
+  command with arguments (`/agent skip #12`), commands mixed with text, or
+  any command while Desk chat is off get the 400 refusal.
+- R12 #890 (D890-P1): the usage bar hides once its reading's window reset
+  more than a minute ago, since "this minute" would be wrong.
+- R14 #892: no reference page lists Helm values and metrics, so
+  `gitlab.rateLimit.reserve` and the two metrics are in the status
+  reference's *GitLab rate limit* section, with `status.gitLab.rateLimit`.
+  The comment box is described in *When runs go wrong*. No follow-up
+  issue was opened in this milestone.

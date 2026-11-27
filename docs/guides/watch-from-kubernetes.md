@@ -52,6 +52,9 @@ kubectl -n agents get agenttask shop-42-add-paypal-button -o jsonpath='{.status.
 - `currentStep`: the step in progress, while a run goes on.
 - `interruptions`: how often the run was started again after its pod was
   lost, see [When the whole pod is lost](#when-the-whole-pod-is-lost).
+- `deferredUntil`, `deferrals` and `blockReason`: when a put-off run starts
+  again and why, see
+  [GitLab rate limit](../reference/status-and-history.md#gitlab-rate-limit).
 
 The result of the last review is there too:
 

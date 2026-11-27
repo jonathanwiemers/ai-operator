@@ -33,7 +33,7 @@ issue: you, or the agent.
 | `agent::working` | A run is in progress, or CI is checking the agent's push. | The operator only |
 | `agent::needs-input` | The agent asked questions, a run failed for a reason in the issue, or CI stayed red after the fix rounds. You answer. | The operator only |
 | `agent::review` | The merge request is pushed and CI is green, or there is no pipeline. Your review. | The operator only |
-| `agent::blocked` | Something outside the issue stops it, for example a red `main` or a quota. | The operator only |
+| `agent::blocked` | Something outside the issue stops it, for example a red `main`, a quota or GitLab's rate limit. | The operator only |
 | `agent::done` | Finished. The task, pod and workspace are removed. | You, autopilot after it merges, or the pilot when it closes an issue |
 
 `agent::draft` and `agent::done` mean the agent does nothing on the issue.
@@ -77,6 +77,7 @@ With `agent::blocked` the operator also sets a reason label,
 | `agent-blocked::infra` | The run failed for a reason outside the agent, for example the cluster. It is retried after a while. |
 | `agent-blocked::main-red` | The default branch is red, so the issue waits. |
 | `agent-blocked::quota` | The model provider's rate limit or quota was hit. |
+| `agent-blocked::gitlab` | GitLab's [rate limit](../concepts/glossary.md#rate-limit) or a GitLab server error put the run off. It starts again at the reset by itself, see [When runs go wrong](../guides/when-runs-go-wrong.md#when-gitlab-limits-a-run). |
 
 If you remove the reason label alone, the operator sets it again.
 

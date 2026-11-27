@@ -199,7 +199,9 @@ page.
 #### `runFailed`
 
 An issue's run failed. It ends by itself like `needsInput`. The pilot reads
-the run's report and log, and may retry on its own when it manages.
+the run's report and log, and may retry on its own when it manages. Autopilot
+also pauses so when the failure report never reached GitLab, see
+[When runs go wrong](when-runs-go-wrong.md#when-the-failure-report-is-lost).
 
 - `/agent retry` on the issue, or *Retry*: the agent runs again.
 - `/agent skip #N`, or *Skip*: the issue is skipped.

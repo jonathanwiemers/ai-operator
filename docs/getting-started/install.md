@@ -55,6 +55,7 @@ PROJECT=my-group%2Fshop              # the project path, with / as %2F
 for label in agent::draft agent::ready agent::working agent::needs-input \
   agent::review agent::blocked agent::done \
   agent-blocked::infra agent-blocked::main-red agent-blocked::quota \
+  agent-blocked::gitlab \
   agent-profile::fast agent-profile::strong \
   ai-generated ci::main-red ci::flaky ci::main-canceled; do
   curl -fsS -o /dev/null -X POST -H "PRIVATE-TOKEN: $GITLAB_TOKEN" \

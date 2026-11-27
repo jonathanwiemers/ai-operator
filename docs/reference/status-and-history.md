@@ -4,7 +4,8 @@ This page is for scripts and dashboards that read what the operator
 records about merges, pauses, owner messages and the run order: the
 `mergedLines` status fields of an AgentTask and an AgentProject, an issue
 task's owner messages and their deliveries, the project's
-`milestoneOrder`, and the history events in the research
+`milestoneOrder`, the [GitLab rate limit](#gitlab-rate-limit) with its
+status fields and metrics, and the history events in the research
 database that the Desk's figures come from. How the Desk shows them is in
 [Lines of code](../guides/budgets-and-spend.md#lines-of-code).
 
@@ -208,6 +209,61 @@ status:
 
 The email is the user's commit email, or the GitLab noreply address when the
 user has none. See [Commit identity](../concepts/security.md#commit-identity).
+
+## GitLab rate limit
+
+What the operator knows about GitLab's
+[rate limit](../concepts/glossary.md#rate-limit) for the bot's token, and
+how a run waits for it. The project's reading is on the AgentProject, read
+only, written by the poll at most once per poll:
+
+```yaml
+status:
+  gitLab:
+    rateLimit:
+      observed: 63
+      remaining: 37
+      limit: 100
+      resetAt: "2026-11-26T23:36:00Z"
+      readAt: "2026-11-26T23:35:41Z"
+      limitedUntil: "2026-11-26T23:41:27Z"
+      peakObserved: 100
+      peakAt: "2026-11-26T23:35:02Z"
+```
+
+| Field | Meaning |
+|-------|---------|
+| `observed`, `remaining`, `limit`, `resetAt` | GitLab's `RateLimit-Observed`, `RateLimit-Remaining`, `RateLimit-Limit` and `RateLimit-Reset` headers of the freshest reading, from the operator or a runner. A count of 0 is left out. |
+| `readAt` | When that reading was taken. |
+| `limitedUntil` | Set while a run of the project is put off by GitLab. A run that would start before then is put off to the same time without calling GitLab. That wait does not count as a put-off. |
+| `peakObserved`, `peakAt` | The highest `observed` count of the last hour, and when it was read. |
+
+The Desk shows the reading in the project header ("GitLab API 63/100 this
+minute") and `limitedUntil` as "GitLab rate limit until 23:41".
+
+On the issue's AgentTask, `status.run` says how its run waits:
+
+| Field | Meaning |
+|-------|---------|
+| `blockReason: gitlab` | The run is put off by a GitLab rate limit or server error. The operator blocks the issue with `agent-blocked::gitlab`. |
+| `deferredUntil` | When the run starts again: GitLab's reset plus 10–40 s, so the project's runs do not start at the same second. Without a reset it starts at [`lifecycle.usageLimitBackoff`](lifecycle-and-ci.md#speclifecycle) and doubles with each put-off, up to `maxUsageLimitBackoff`. |
+| `deferrals` | Put-offs of this run request, usage limits and GitLab together. After 20 the run fails with `blockReason: infra`. |
+| `failureKind: gitlab` | The last run failed on GitLab: a 429 or 5xx that outlasted the put-offs. The operator starts one new run after [`lifecycle.infraRetryAfter`](lifecycle-and-ci.md#speclifecycle). Empty for other failures. |
+| `gitLabLimitedAt` | When GitLab first put off this run request. The ⏳ comment of the restarted run names it, then the field is cleared. |
+| `gitLabRateLimit` | The runner's latest reading, with the same fields as above. The poll folds it into the project's status. |
+
+**Pacing.** The Helm value `gitlab.rateLimit.reserve` (default `20`) is the
+number of requests a minute that background reads leave to the work of
+runs and to writes. At or below it, the operator's and the Desk's
+background reads wait for the reset. See
+[Pacing](../concepts/glossary.md#pacing).
+
+**Metrics.** The operator exports two metrics for the limit:
+
+| Metric | Meaning |
+|--------|---------|
+| `ai_operator_gitlab_ratelimit_remaining{user}` | The requests left this minute for the bot user `user`, from the latest reading. Once that reading's window has reset, it shows the full limit. |
+| `ai_operator_gitlab_paced_seconds_total{priority}` | Seconds the operator's calls waited for the limit, by `priority`: `background` or `work`. A rising `background` count means pacing kept the polls off the limit. |
 
 ## AgentPlan status
 
