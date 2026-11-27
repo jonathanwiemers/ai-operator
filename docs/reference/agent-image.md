@@ -59,6 +59,22 @@ readable for uid 1000, and put them on `PATH`. For a preinstalled Rust
 toolchain, set `RUSTUP_HOME` to where you installed it and leave
 `CARGO_HOME` on the workspace, where cargo writes its caches.
 
+To run browser checks, build an image `FROM` the agent image that has
+Chromium. Install it as root into a directory outside `$HOME` that uid 1000
+owns, so `npx playwright install chromium` finds it and downloads nothing:
+
+```dockerfile
+FROM registry.gitlab.com/jo.wiemers/ai-operator/agent:<release>
+USER root
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+RUN npx -y playwright@<version> install --with-deps chromium \
+    && chown -R 1000:1000 /opt/ms-playwright
+USER 1000
+```
+
+`<version>` must match your project's `@playwright/test`, or the browser
+revision differs from the one your checks expect.
+
 ## How the pod runs
 
 The same image runs both containers of an agent pod: the runner, which

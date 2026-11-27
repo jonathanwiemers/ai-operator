@@ -152,6 +152,24 @@ it never cancels a release, running or queued. It:
    notes, or creates the release for a bare tag. The notes are untrusted
    text: the job only passes them on as JSON (`jq`), never evaluates them.
 
+The job `release-agent-web` runs after `release` (`needs: [release]`), on
+GitLab only, with `allow_failure: true` and `interruptible: false`. It
+rewrites `ARG AGENT_IMAGE` in `Dockerfile.agent-web` to the agent image of
+the same version, builds it for amd64 and publishes
+`registry.gitlab.com/jo.wiemers/ai-operator/agent-web:<version>` and
+`:latest`. The image is the agent image plus Chromium at the Playwright
+version of `web/package.json`, its libraries and fonts, and `cwebp`.
+
+A failure of `release-agent-web` never blocks the operator image, the agent
+image, the chart or the release notes. To retry it, use the job's Retry
+button in the tag pipeline.
+
+ai-operator's own agents pull `agent-web:latest` with
+`imagePullPolicy: Always` (set in `jo.wiemers/infra/cluster`). Their runner
+can be a release ahead of the operator until the cluster deploys the new
+operator. A failed `release-agent-web` leaves them one release behind until
+it is retried.
+
 Everything uses `CI_JOB_TOKEN`; no project CI/CD variables are needed. The
 operator's token needs the Developer role or more, enough to create tags on
 `main` (Maintainer if tags are protected). The chart's

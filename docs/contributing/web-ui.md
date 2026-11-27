@@ -186,10 +186,19 @@ cd web && npm run e2e:journey   # the journey set only
 cd web && npx playwright test -g inbox   # one route
 ```
 
-Chromium needs system libraries and fonts. Install them once with
-`npx playwright install-deps chromium` (as root). Without fonts, text has no
-width and every check fails as "hidden". `npm run e2e` type-checks
-`web/e2e` with `web/e2e/tsconfig.json` first.
+In agent pods, ai-operator's agents run the `agent-web` image: the agent
+image plus Chromium, its system libraries and fonts, and `cwebp`. So
+`make ui-e2e`, `make ui-e2e-journey` and `make docs-screenshots` run there,
+and `npx playwright install chromium` downloads nothing
+(`PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright`). `PLAYWRIGHT_VERSION` in
+`Dockerfile.agent-web` is bumped together with `@playwright/test`: `npm test`
+fails when they differ, and Renovate bumps both in one merge request. See
+[Releasing](releasing.md) for how the image is built.
+
+On a local machine, Chromium needs system libraries and fonts. Install them
+once with `npx playwright install-deps chromium` (as root). Without fonts,
+text has no width and every check fails as "hidden". `npm run e2e`
+type-checks `web/e2e` with `web/e2e/tsconfig.json` first.
 
 How it works:
 
@@ -303,7 +312,7 @@ and `cwebp` turns them into 1920 px wide WebP. It answers the API like the
 checks do and renames the fixtures' user and long test project to `sam`
 and `storefront`, so the docs show plausible names. Everything is invented:
 no real projects, users or tokens. Re-run it after a visible Desk change and
-commit the WebP files that changed.
+commit the WebP files that changed. `cwebp` is present in agent pods.
 
 ## Bundle budget
 
