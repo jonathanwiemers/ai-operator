@@ -214,7 +214,7 @@ func TestPilotEventsFoldAPauseAndItsNeedsInputLabel(t *testing.T) {
 	task := &aiv1.AgentTask{Status: aiv1.AgentTaskStatus{Run: aiv1.RunStatus{PushedSHA: "sha3"},
 		CI: &aiv1.CIStatus{SHA: "sha3", State: aiv1.CIStateFailed, PipelineID: 77}}}
 	issues := map[int64]gitlab.Issue{1: {IID: 1, Milestone: m, Labels: []string{"agent::needs-input"}}}
-	evs := pilotEvents(spec, nil, st, issues, map[int64]*aiv1.AgentTask{1: task}, true, nil, time.Time{})
+	evs := pilotEvents(spec, nil, time.Time{}, st, issues, map[int64]*aiv1.AgentTask{1: task}, true, nil, time.Time{})
 	if len(evs) != 1 || evs[0].Key != "stuck/1/sha3" || evs[0].Text != "Autopilot paused: #1 needs input" || evs[0].PipelineID != 77 {
 		t.Fatalf("a pause over #1 and its needs-input label are one event: %+v", evs)
 	}
@@ -241,7 +241,7 @@ func TestPilotEventsOnePerHeldIssue(t *testing.T) {
 	tasks := map[int64]*aiv1.AgentTask{1: task("sha1"), 2: task("sha2"), 3: task("sha3")}
 	issues := map[int64]gitlab.Issue{1: {IID: 1, Milestone: m, Labels: []string{"agent::needs-input"}}, 2: {IID: 2, Milestone: m}, 3: {IID: 3, Milestone: m}}
 	events := func() []aiv1.PilotEvent {
-		return pilotEvents(spec, nil, st, issues, tasks, true, nil, time.Time{})
+		return pilotEvents(spec, nil, time.Time{}, st, issues, tasks, true, nil, time.Time{})
 	}
 
 	evs := events()
@@ -446,7 +446,7 @@ func TestStalledEventNeedsAPause(t *testing.T) {
 		"an owner's pause":  {Phase: aiv1.AutopilotPaused, PauseKind: aiv1.PauseOwner, PausedAt: &long, StateChangedAt: &long},
 	} {
 		st := &aiv1.AgentTask{Spec: aiv1.AgentTaskSpec{Milestone: &aiv1.MilestoneRef{IID: 3}}, Status: aiv1.AgentTaskStatus{Autopilot: ap}}
-		if evs := pilotEvents(spec, nil, st, nil, nil, true, nil, now); slices.ContainsFunc(evs, aiv1.StalledEvent) {
+		if evs := pilotEvents(spec, nil, time.Time{}, st, nil, nil, true, nil, now); slices.ContainsFunc(evs, aiv1.StalledEvent) {
 			t.Errorf("%s: no stalled event: %+v", name, evs)
 		}
 	}
@@ -513,10 +513,10 @@ func TestRunStalledEvent(t *testing.T) {
 	}
 	st := &aiv1.AgentTask{Spec: aiv1.AgentTaskSpec{Milestone: &aiv1.MilestoneRef{IID: 3}}}
 	issues := map[int64]gitlab.Issue{7: {IID: 7, Milestone: &gitlab.Milestone{IID: 3}}}
-	if evs := pilotEvents(aiv1.AgentProjectSpec{}, nil, st, issues, map[int64]*aiv1.AgentTask{7: task}, false, nil, now); len(evs) != 0 {
+	if evs := pilotEvents(aiv1.AgentProjectSpec{}, nil, time.Time{}, st, issues, map[int64]*aiv1.AgentTask{7: task}, false, nil, now); len(evs) != 0 {
 		t.Errorf("not stalled: %+v", evs)
 	}
-	evs := pilotEvents(aiv1.AgentProjectSpec{}, nil, st, issues, map[int64]*aiv1.AgentTask{7: stalled(start)}, false,
+	evs := pilotEvents(aiv1.AgentProjectSpec{}, nil, time.Time{}, st, issues, map[int64]*aiv1.AgentTask{7: stalled(start)}, false,
 		map[int64]stallEvidence{7: {AgentLog: "last tool use"}}, now)
 	if len(evs) != 1 || !strings.HasPrefix(evs[0].Key, aiv1.RunStalledEventPrefix) || !strings.Contains(evs[0].Text, "last tool use") {
 		t.Errorf("a stalled task of the milestone wakes the pilot with its evidence: %+v", evs)
@@ -566,7 +566,7 @@ func TestStallEvidenceOf(t *testing.T) {
 	if logs.tails != 2 || !slices.Equal(e.gl.BranchGets, []string{"agent/7-x"}) {
 		t.Errorf("reads: %d log tails, branches %v", logs.tails, e.gl.BranchGets)
 	}
-	evs := pilotEvents(spec, nil, st, issues, tasks, false, got, now)
+	evs := pilotEvents(spec, nil, time.Time{}, st, issues, tasks, false, got, now)
 	i := slices.IndexFunc(evs, func(ev aiv1.PilotEvent) bool { return ev.IssueIID == 7 })
 	if i < 0 {
 		t.Fatalf("no event for #7: %+v", evs)
@@ -592,7 +592,7 @@ func TestStallEvidenceOf(t *testing.T) {
 	if ev := got[7]; ev.AgentLog != "" || ev.RunnerLog == "" || ev.RemoteHead != "" || ev.PodPhase != "Running" {
 		t.Errorf("failed reads leave their part empty: %+v", ev)
 	}
-	if evs := pilotEvents(spec, nil, st, issues, tasks, false, got, now); !slices.ContainsFunc(evs, func(ev aiv1.PilotEvent) bool {
+	if evs := pilotEvents(spec, nil, time.Time{}, st, issues, tasks, false, got, now); !slices.ContainsFunc(evs, func(ev aiv1.PilotEvent) bool {
 		return ev.IssueIID == 7 && strings.Contains(ev.Text, "step started 18 push") && strings.Contains(ev.Text, "remote head unknown")
 	}) {
 		t.Errorf("the event comes without the agent log: %+v", evs)

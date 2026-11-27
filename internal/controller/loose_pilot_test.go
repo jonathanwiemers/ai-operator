@@ -143,11 +143,11 @@ func TestQueuePilotScope(t *testing.T) {
 	}
 	// The queue: its unfinished item only; not the milestone's issue, not a
 	// finished item, not main red.
-	if got := keys(pilotEvents(spec, mh, qt, issues, tasks, false, nil, now)); !slices.Equal(got, []string{"infra/6/a"}) {
+	if got := keys(pilotEvents(spec, mh, time.Time{}, qt, issues, tasks, false, nil, now)); !slices.Equal(got, []string{"infra/6/a"}) {
 		t.Errorf("queue pilot events: %v", got)
 	}
 	// The milestone's pilot gets what it got before.
-	if got := keys(pilotEvents(spec, mh, st, issues, tasks, true, nil, now)); !slices.Equal(got, []string{"infra/7/b", "main-red/50"}) {
+	if got := keys(pilotEvents(spec, mh, time.Time{}, st, issues, tasks, true, nil, now)); !slices.Equal(got, []string{"infra/7/b", "main-red/50"}) {
 		t.Errorf("milestone pilot events: %v", got)
 	}
 }

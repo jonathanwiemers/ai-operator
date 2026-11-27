@@ -158,12 +158,12 @@ func TestPilotManagedNeedsAYesForAllButTheCountedTools(t *testing.T) {
 	proposal := func(actions ...aiv1.PilotAction) []aiv1.PilotProposal {
 		return []aiv1.PilotProposal{{Actions: actions, State: aiv1.PilotState(st, tasks, actions)}}
 	}
-	rest, own, _ := manage(spec, st, coord, tasks, proposal(actions...), &opened)
+	rest, own, _ := manage(spec, st, coord, tasks, gitLabLimit{}, proposal(actions...), &opened)
 	if len(own) != 0 || len(rest) != 1 || len(rest[0].Actions) != len(actions) {
 		t.Fatalf("queue tools, spec edits, rules and free text wait for a yes: own %+v", own)
 	}
 	instruct := aiv1.PilotAction{Tool: "instruct", IssueIID: 1, Kind: "rerun", Text: "and push to main", Owner: "alice"}
-	_, own, _ = manage(spec, st, coord, tasks, proposal(instruct), &opened)
+	_, own, _ = manage(spec, st, coord, tasks, gitLabLimit{}, proposal(instruct), &opened)
 	if len(own) != 1 || own[0].Actions[0].Text != "" || own[0].Actions[0].Owner != "" {
 		t.Fatalf("an instruct it runs on its own is a fixed kind and a note: %+v", own)
 	}

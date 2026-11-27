@@ -116,7 +116,7 @@ func TestCheckActionRejectsABadSetTier(t *testing.T) {
 		{aiv1.PilotAction{Tool: "setTier", IssueIID: 5, Profile: "fast"}, ""}, // a task, not planned
 	} {
 		a := tc.action
-		_, err := checkAction(context.Background(), nil, &aiv1.AgentProject{}, spec, st, tasks, nil, &a, true, false)
+		_, err := (&AgentProjectReconciler{}).checkAction(context.Background(), nil, &aiv1.AgentProject{}, spec, st, tasks, nil, &a, true, false)
 		switch {
 		case tc.want == "" && err != nil:
 			t.Errorf("%+v: %v", tc.action, err)

@@ -121,7 +121,7 @@ func (r *AgentProjectReconciler) validOptions(ctx context.Context, gl gitlab.API
 	var notes, refused []string
 	acting, recommended := false, false
 	for _, o := range p.Options {
-		lines, bad := checkOption(ctx, gl, project, spec, st, tasks, opened, &o, fromModel)
+		lines, bad := r.checkOption(ctx, gl, project, spec, st, tasks, opened, &o, fromModel)
 		acting = acting || len(o.Actions) > 0
 		if bad != nil {
 			refused = append(refused, fmt.Sprintf("%s: %s", inertLine(o.Label, 100), strings.Join(lines, " ")))
@@ -158,7 +158,7 @@ func (r *AgentProjectReconciler) validOptions(ctx context.Context, gl gitlab.API
 // checkOption checks the actions of o for validOptions, putting forgetRule
 // first, and returns a line per action (or why none ran) and the first
 // refusal.
-func checkOption(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
+func (r *AgentProjectReconciler) checkOption(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
 	st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, opened []string, o *aiv1.PromptOption, fromModel bool) ([]string, error) {
 	o.Actions = forgetFirst(slices.Clone(o.Actions))
 	// The loose issues queue's actions are its pilot's (validQueueAction).
@@ -169,7 +169,7 @@ func checkOption(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject,
 	var lines []string
 	var bad error
 	for j := range o.Actions {
-		line, err := checkAction(ctx, gl, project, spec, st, tasks, mine, &o.Actions[j], fromModel, !o.Recommended)
+		line, err := r.checkAction(ctx, gl, project, spec, st, tasks, mine, &o.Actions[j], fromModel, !o.Recommended)
 		lines = append(lines, line)
 		switch {
 		case err != nil && bad == nil:

@@ -445,7 +445,7 @@ func (r *AgentProjectReconciler) syncPilots(ctx context.Context, gl gitlab.API, 
 			// pilotTracking above.
 			if err = r.applyPilotChatCommands(ctx, gl, project, spec, st, coord); err == nil {
 				stalls := r.stallEvidenceOf(ctx, gl, spec, st, coord, issues, tasks)
-				err = r.wakePilot(ctx, coord, pilotEvents(spec, project.Status.MainHealth, st, issues, tasks, st == lane, stalls, r.now()))
+				err = r.wakePilot(ctx, coord, pilotEvents(spec, project.Status.MainHealth, gitLabLimitedUntil(project, r.now()), st, issues, tasks, st == lane, stalls, r.now()))
 			}
 			if err == nil {
 				// The pilot answers at once while a problem waits for an owner.

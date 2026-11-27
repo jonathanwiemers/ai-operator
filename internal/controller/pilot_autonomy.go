@@ -29,7 +29,7 @@ var countedTools = []string{"retry", "reReview", "instruct", "openIssue", "fixFl
 // assessment of a stuck pause (a stalled event), nothing. It
 // returns the proposals left to post, those to run (accepted by nobody)
 // and the new counts, nil when the pilot only proposes.
-func manage(spec aiv1.AgentProjectSpec, st, coord *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, proposed []aiv1.PilotProposal,
+func manage(spec aiv1.AgentProjectSpec, st, coord *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, limit gitLabLimit, proposed []aiv1.PilotProposal,
 	opened *[]string) (rest, own []aiv1.PilotProposal, counts map[string]aiv1.PilotIntervention) {
 	if spec.Pilot.AutonomyOf(coord) != aiv1.PilotManaged {
 		return proposed, nil, nil
@@ -65,7 +65,7 @@ func manage(spec aiv1.AgentProjectSpec, st, coord *aiv1.AgentTask, tasks map[int
 			if c.Head != head {
 				c = aiv1.PilotIntervention{Head: head}
 			}
-			if !slices.Contains(countedTools, a.Tool) || validAction(a, st, tasks, tried) != nil || c.Count >= spec.Pilot.MaxInterventionsPerIssue {
+			if !slices.Contains(countedTools, a.Tool) || validAction(a, st, tasks, tried) != nil || validRetry(a, tasks, limit) != nil || c.Count >= spec.Pilot.MaxInterventionsPerIssue {
 				left = append(left, a)
 				continue
 			}

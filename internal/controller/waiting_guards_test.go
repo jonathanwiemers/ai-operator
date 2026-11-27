@@ -69,7 +69,7 @@ func TestPilotEventsSkipAWaitingMilestonesPause(t *testing.T) {
 		st := &aiv1.AgentTask{Spec: aiv1.AgentTaskSpec{Milestone: &aiv1.MilestoneRef{IID: 9}, Autopilot: true, QueuedBehind: []int64{7}},
 			Status: aiv1.AgentTaskStatus{Autopilot: &aiv1.AutopilotStatus{Phase: aiv1.AutopilotPaused, PauseKind: kind,
 				PausedReason: "paused by @alice", PausedAt: long, StateChangedAt: long}}}
-		if evs := pilotEvents(spec, nil, st, nil, nil, false, nil, now); len(evs) != 0 {
+		if evs := pilotEvents(spec, nil, time.Time{}, st, nil, nil, false, nil, now); len(evs) != 0 {
 			t.Fatalf("%s: a milestone whose planning never ran wakes no pilot: %+v", kind, evs)
 		}
 
@@ -80,7 +80,7 @@ func TestPilotEventsSkipAWaitingMilestonesPause(t *testing.T) {
 		if kind != aiv1.PauseOwner {
 			want = 2
 		}
-		if evs := pilotEvents(spec, nil, st, nil, nil, false, nil, now); len(evs) != want {
+		if evs := pilotEvents(spec, nil, time.Time{}, st, nil, nil, false, nil, now); len(evs) != want {
 			t.Fatalf("%s: a planned milestone's pause wakes the pilot: %+v", kind, evs)
 		}
 	}

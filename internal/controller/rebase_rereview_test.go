@@ -255,12 +255,12 @@ func TestPilotHearsOfTheReReview(t *testing.T) {
 	task := &aiv1.AgentTask{}
 	task.Status.Run.PushedSHA, task.Status.Run.ReviewedSHA = "head2", "head1"
 	tasks := map[int64]*aiv1.AgentTask{1: task}
-	evs := pilotEvents(aiv1.AgentProjectSpec{}, nil, st, nil, tasks, false, nil, time.Time{})
+	evs := pilotEvents(aiv1.AgentProjectSpec{}, nil, time.Time{}, st, nil, tasks, false, nil, time.Time{})
 	if len(evs) != 1 || evs[0].Key != "rereview/1/head2" || !strings.Contains(evs[0].Text, "re-reviews the rebased head") {
 		t.Fatalf("events %+v", evs)
 	}
 	task.Status.Run.ReviewedSHA = "head2"
-	if evs := pilotEvents(aiv1.AgentProjectSpec{}, nil, st, nil, tasks, false, nil, time.Time{}); len(evs) != 0 {
+	if evs := pilotEvents(aiv1.AgentProjectSpec{}, nil, time.Time{}, st, nil, tasks, false, nil, time.Time{}); len(evs) != 0 {
 		t.Fatalf("reviewed, the event ends: %+v", evs)
 	}
 }

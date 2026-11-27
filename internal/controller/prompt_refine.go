@@ -137,7 +137,7 @@ func (r *AgentProjectReconciler) addRefined(ctx context.Context, gl gitlab.API, 
 	if len(o.Actions) == 0 {
 		return fmt.Sprintf("The pilot's option for %s was not added: it has no actions.", id), nil
 	}
-	if lines, err := checkOption(ctx, gl, project, spec, st, tasks, opened, &o, true); err != nil {
+	if lines, err := r.checkOption(ctx, gl, project, spec, st, tasks, opened, &o, true); err != nil {
 		return fmt.Sprintf("The pilot's option for %s was not added:\n\n%s", id, strings.Join(lines, "\n")), nil
 	}
 	return r.addFromAnswer(ctx, st, id, o, "the pilot's option")

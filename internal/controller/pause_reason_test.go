@@ -173,7 +173,7 @@ func TestPilotEventNamesTheNeedsInputCause(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.run.PushedSHA = "sha2"
-			evs := pilotEvents(spec, nil, st, issues, map[int64]*aiv1.AgentTask{2: {Status: aiv1.AgentTaskStatus{Run: tc.run}}}, true, nil, time.Time{})
+			evs := pilotEvents(spec, nil, time.Time{}, st, issues, map[int64]*aiv1.AgentTask{2: {Status: aiv1.AgentTaskStatus{Run: tc.run}}}, true, nil, time.Time{})
 			if !slices.EqualFunc(evs, []aiv1.PilotEvent{{Key: "stuck/2/sha2", IssueIID: 2, Text: tc.want}}, func(a, b aiv1.PilotEvent) bool { return a == b }) {
 				t.Fatalf("got %+v, want the text %q", evs, tc.want)
 			}
@@ -199,7 +199,7 @@ func TestPilotEventLinksTheFailureOfABlockedRun(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.run.PushedSHA = "sha2"
-			evs := pilotEvents(spec, nil, st, issues, map[int64]*aiv1.AgentTask{2: {Status: aiv1.AgentTaskStatus{Run: tc.run, Blocked: blocked}}}, true, nil, time.Time{})
+			evs := pilotEvents(spec, nil, time.Time{}, st, issues, map[int64]*aiv1.AgentTask{2: {Status: aiv1.AgentTaskStatus{Run: tc.run, Blocked: blocked}}}, true, nil, time.Time{})
 			if len(evs) != 1 || evs[0].IssueIID != 2 || evs[0].Text != tc.want {
 				t.Fatalf("got %+v, want the text %q", evs, tc.want)
 			}

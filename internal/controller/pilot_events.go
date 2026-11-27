@@ -24,12 +24,13 @@ import (
 
 // pilotEvents lists the events in the scope of st (a milestone, or the loose
 // issues queue of a Queue task; inPilotScope) that hold now: an autopilot
-// pause, a held issue, an issue that needs input or is blocked by infra or quota, and on
+// pause, a held issue, an issue that needs input or is blocked by infra, quota
+// or GitLab (gitLabUntil: the project's limit, zero once passed), and on
 // the main-red lane (lane: the autopilot milestone that drives the main-red
 // issue) a red or flaky default branch, so the owners get one prompt for it;
 // and a stalled run of an Implement task, with its evidence from stalls (by
 // issue IID; nil or no entry: status only).
-func pilotEvents(spec aiv1.AgentProjectSpec, mh *aiv1.MainHealthStatus, st *aiv1.AgentTask, issues map[int64]gitlab.Issue, tasks map[int64]*aiv1.AgentTask, lane bool,
+func pilotEvents(spec aiv1.AgentProjectSpec, mh *aiv1.MainHealthStatus, gitLabUntil time.Time, st *aiv1.AgentTask, issues map[int64]gitlab.Issue, tasks map[int64]*aiv1.AgentTask, lane bool,
 	stalls map[int64]stallEvidence, now time.Time) []aiv1.PilotEvent {
 	var out []aiv1.PilotEvent
 	add := func(kind string, iid int64, text string) {
@@ -101,8 +102,13 @@ func pilotEvents(spec aiv1.AgentProjectSpec, mh *aiv1.MainHealthStatus, st *aiv1
 			}
 		}
 		switch b := t.Status.Blocked; {
+		case b != nil && b.Reason == aiv1.BlockGitLab:
+			out = append(out, gitLabEvent(iid, t))
 		case b != nil && (b.Reason == aiv1.BlockInfra || b.Reason == aiv1.BlockQuota):
 			text := fmt.Sprintf("#%d is blocked (%s): %s", iid, b.Reason, b.Message)
+			if gitLabCapped(t) {
+				text = gitLabCappedText(iid, gitLabUntil)
+			}
 			if t.Status.Run.NeedsInputCause == aiv1.NeedsInputRunFailed {
 				text += linked(t.Status.Run.NeedsInputURL) // the failure note
 			}

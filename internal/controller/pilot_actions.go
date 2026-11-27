@@ -99,7 +99,7 @@ func (r *AgentProjectReconciler) postProposals(ctx context.Context, gl gitlab.AP
 	}
 	opened := slices.Clone(ps.OpenedIssues)
 	fromChat := slices.DeleteFunc(slices.Clone(ps.Proposed), func(p aiv1.PilotProposal) bool { return p.ChatMessageID == 0 })
-	proposed, own, counts := manage(spec, st, coord, tasks, slices.DeleteFunc(slices.Clone(ps.Proposed), func(p aiv1.PilotProposal) bool { return p.ChatMessageID != 0 }), &opened)
+	proposed, own, counts := manage(spec, st, coord, tasks, r.gitLabLimitOf(project), slices.DeleteFunc(slices.Clone(ps.Proposed), func(p aiv1.PilotProposal) bool { return p.ChatMessageID != 0 }), &opened)
 	// Run as the owner who asked in a problem chat, else put; never by autonomy.
 	var chat []aiv1.PilotProposal
 	mark := ps.LastChatAccepted
@@ -143,7 +143,7 @@ func (r *AgentProjectReconciler) postProposals(ctx context.Context, gl gitlab.AP
 		var valid []aiv1.PilotAction
 		p.Actions = forgetFirst(p.Actions)
 		for j := range p.Actions {
-			note, err := checkAction(ctx, gl, project, spec, st, tasks, opened, &p.Actions[j], fromRun, false)
+			note, err := r.checkAction(ctx, gl, project, spec, st, tasks, opened, &p.Actions[j], fromRun, false)
 			if err == nil {
 				valid = append(valid, p.Actions[j])
 				if p.Actions[j].Tool == "openIssue" {
@@ -182,7 +182,7 @@ func (r *AgentProjectReconciler) postProposals(ctx context.Context, gl gitlab.AP
 		return "", err
 	}
 	for _, body := range bodies {
-		if _, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, tracking, body); err != nil {
+		if err := r.postPilotNote(ctx, gl, project, spec, coord, tracking, body); err != nil {
 			log.FromContext(ctx).Info("could not post the pilot's proposal", "issue", tracking, "error", err.Error())
 		}
 	}
@@ -306,7 +306,7 @@ func (r *AgentProjectReconciler) optionsPrompt(ctx context.Context, gl gitlab.AP
 // on. byOwner: only an owner's choice runs it (an option that is not
 // recommended), so a flaky issue needs one failure, not two. It returns the
 // action's line for a comment.
-func checkAction(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
+func (r *AgentProjectReconciler) checkAction(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject, spec aiv1.AgentProjectSpec,
 	st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask, opened []string, a *aiv1.PilotAction, fromModel, byOwner bool) (string, error) {
 	if fromModel {
 		a.Owner, a.Text = "", ""
@@ -317,6 +317,9 @@ func checkAction(ctx context.Context, gl gitlab.API, project *aiv1.AgentProject,
 	}
 	*a = withRuleText(*a, st)
 	err := validAction(*a, st, tasks, opened)
+	if err == nil {
+		err = validRetry(*a, tasks, r.gitLabLimitOf(project))
+	}
 	if err == nil && a.Tool == "setTier" {
 		err = validProfile(spec, a.Profile)
 	}
@@ -601,10 +604,14 @@ func (r *AgentProjectReconciler) runAccepted(ctx context.Context, gl gitlab.API,
 	}
 	accepted, opened := ps.Accepted, slices.Clone(ps.OpenedIssues)
 	errs := make([][]error, len(accepted))
+	limit := r.gitLabLimitOf(project)
 	for i, p := range accepted {
 		errs[i] = make([]error, len(p.Actions))
 		for j, a := range p.Actions {
-			if errs[i][j] = validAction(a, st, tasks, opened); errs[i][j] == nil && a.Tool == "fixFlaky" {
+			if errs[i][j] = validAction(a, st, tasks, opened); errs[i][j] == nil {
+				errs[i][j] = validRetry(a, tasks, limit)
+			}
+			if errs[i][j] == nil && a.Tool == "fixFlaky" {
 				_, errs[i][j] = checkFlaky(ctx, gl, spec, project.Status.BotUserID, project.Status.MainHealth, a.IssueIID, flakyMilestone(spec, st), p.AcceptedBy != "")
 			} else if errs[i][j] == nil && a.Tool == "retryPipeline" {
 				errs[i][j] = checkRetryPipeline(project.Status.MainHealth, a.PipelineID)
@@ -675,7 +682,7 @@ func (r *AgentProjectReconciler) runAccepted(ctx context.Context, gl gitlab.API,
 		if p.AcceptedBy == "" {
 			body = auditNote(spec, coord, tasks, p, lines)
 		}
-		if _, err := gl.CreateIssueNote(ctx, spec.GitLab.Project, tracking, body); err != nil {
+		if err := r.postPilotNote(ctx, gl, project, spec, coord, tracking, body); err != nil {
 			log.FromContext(ctx).Info("could not post the outcome of a proposal", "issue", tracking, "error", err.Error())
 		}
 	}

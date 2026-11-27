@@ -198,7 +198,7 @@ func (r *AgentProjectReconciler) syncQueuePilot(ctx context.Context, gl gitlab.A
 		func() error { return r.applyPilotChatCommands(ctx, gl, project, spec, qt, coord) },
 		func() error {
 			stalls := r.stallEvidenceOf(ctx, gl, spec, qt, coord, issues, tasks)
-			return r.wakePilot(ctx, coord, pilotEvents(spec, project.Status.MainHealth, qt, issues, tasks, false, stalls, r.now()))
+			return r.wakePilot(ctx, coord, pilotEvents(spec, project.Status.MainHealth, gitLabLimitedUntil(project, r.now()), qt, issues, tasks, false, stalls, r.now()))
 		},
 		func() error {
 			return r.warmPilot(ctx, coord, qt.Status.Autopilot, spec.Lifecycle.ProblemWarmMax.Duration)
