@@ -185,20 +185,20 @@ func TestRetryTransientStopsAtTheDeadline(t *testing.T) {
 	}
 }
 
-func TestRateLimitWait(t *testing.T) {
+func TestRateLimitReset(t *testing.T) {
 	now := time.Date(2026, 10, 21, 8, 0, 0, 0, time.UTC)
 	for _, tc := range []struct {
 		h    http.Header
-		want time.Duration
+		want time.Time
 		ok   bool
 	}{
-		{http.Header{"Retry-After": {"12"}}, 12 * time.Second, true},
-		{http.Header{"Retry-After": {now.Add(5 * time.Second).Format(http.TimeFormat)}}, 5 * time.Second, true},
-		{http.Header{"Ratelimit-Reset": {fmt.Sprint(now.Add(30 * time.Second).Unix())}}, 30 * time.Second, true},
-		{http.Header{"Ratelimit-Reset": {fmt.Sprint(now.Add(-time.Minute).Unix())}}, 0, true},
-		{http.Header{}, 0, false},
+		{http.Header{"Retry-After": {"12"}}, now.Add(12 * time.Second), true},
+		{http.Header{"Retry-After": {now.Add(5 * time.Second).Format(http.TimeFormat)}}, now.Add(5 * time.Second), true},
+		{http.Header{"Ratelimit-Reset": {fmt.Sprint(now.Add(30 * time.Second).Unix())}}, now.Add(30 * time.Second), true},
+		{http.Header{"Ratelimit-Reset": {fmt.Sprint(now.Add(-time.Minute).Unix())}}, now.Add(-time.Minute), true},
+		{http.Header{}, time.Time{}, false},
 	} {
-		if got, ok := rateLimitWait(tc.h, now); got != tc.want || ok != tc.ok {
+		if got, ok := rateLimitReset(tc.h, now); !got.Equal(tc.want) || ok != tc.ok {
 			t.Errorf("%v: got %s %v, want %s %v", tc.h, got, ok, tc.want, tc.ok)
 		}
 	}

@@ -218,6 +218,9 @@ type Error struct {
 	Method     string
 	Path       string
 	Body       string
+	// Reset is when GitLab lets a 429's client try again, from its
+	// Retry-After or RateLimit-Reset header; zero without one.
+	Reset time.Time
 }
 
 func (e *Error) Error() string {
@@ -285,15 +288,13 @@ func projectPath(project string) string {
 	return "/projects/" + url.PathEscape(project)
 }
 
-// Retries. A rate-limited request (429) did not run, so it is retried
-// whatever its method, after the wait GitLab asks for. Server errors and
-// broken connections are retried for reads only: a write may have been
-// applied. Waits beyond maxRetryWait, or past the context's deadline, are not
-// waited out; the caller's next poll tries again.
+// Retries, as retryState.next says. Server errors and broken connections are
+// retried for reads only: a write may have been applied. A rate-limited
+// request did not run, so it is retried whatever its method. Waits past the
+// context's deadline are not started; the caller's next poll tries again.
 var (
 	maxAttempts  = 3
 	retryBackoff = time.Second
-	maxRetryWait = time.Minute
 )
 
 func (c *Client) do(ctx context.Context, method, path string, query url.Values, body, out any) (*http.Response, error) {
@@ -330,10 +331,12 @@ type request struct {
 // the caller's limit.
 var ErrTooLarge = errors.New("gitlab: download exceeds the size limit")
 
-// call sends r, retrying as retryWait says, and decodes a 2xx body into out.
+// call sends r, retrying as retryState.next says, and decodes a 2xx body
+// into out.
 func (c *Client) call(ctx context.Context, r request, out any) (*http.Response, error) {
 	method, path := r.method, r.path
-	for attempt := 1; ; attempt++ {
+	var retry retryState
+	for {
 		if r.graphql {
 			c.graphql.Add(1)
 		}
@@ -347,22 +350,26 @@ func (c *Client) call(ctx context.Context, r request, out any) (*http.Response, 
 			if len(msg) > 512 {
 				msg = msg[:512]
 			}
-			err = &Error{StatusCode: resp.StatusCode, Method: method, Path: path, Body: msg}
+			ge := &Error{StatusCode: resp.StatusCode, Method: method, Path: path, Body: msg}
+			if ge.StatusCode == http.StatusTooManyRequests {
+				ge.Reset = c.rateLimited(resp.Header)
+			}
+			err = ge
 		}
 		if err != nil {
-			wait, ok := retryWait(r.safe, resp, err, attempt)
-			if !ok || attempt >= maxAttempts || ctx.Err() != nil {
+			wait, ok := retry.next(r.safe, err, time.Now())
+			if !ok || ctx.Err() != nil {
 				return resp, err
 			}
 			if d, has := ctx.Deadline(); has && time.Until(d) < wait {
 				return resp, err
 			}
-			t := time.NewTimer(wait)
-			select {
-			case <-ctx.Done():
-				t.Stop()
+			sleep := sleepCtx
+			if StatusCode(err) == http.StatusTooManyRequests {
+				sleep = limitSleep
+			}
+			if sleep(ctx, wait) != nil {
 				return resp, err
-			case <-t.C:
 			}
 			c.retries.Add(1)
 			continue
@@ -421,6 +428,23 @@ func (c *Client) send(ctx context.Context, r request) (*http.Response, []byte, e
 		return resp, nil, ErrTooLarge
 	}
 	return resp, data, nil
+}
+
+// rateLimited reads a 429's reset from its headers and tells the token's
+// shared reading that nothing is left until then (the next full minute
+// without a header), so the process's other calls wait too. It returns the
+// reset, zero without a header.
+func (c *Client) rateLimited(h http.Header) time.Time {
+	now := time.Now()
+	reset, ok := rateLimitReset(h, now)
+	if c.limit != nil {
+		shared := reset
+		if !ok {
+			shared = nextMinute(now)
+		}
+		c.limit.limited(shared, now)
+	}
+	return reset
 }
 
 // maxPages bounds pagination so a misconfigured filter cannot stall a sync.

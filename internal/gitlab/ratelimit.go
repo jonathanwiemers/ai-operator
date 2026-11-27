@@ -122,6 +122,17 @@ func (l *tokenLimit) sent() {
 	l.mu.Unlock()
 }
 
+// limited takes a 429: nothing is left until reset (or a later reset already
+// known), so the process's other calls wait for it too.
+func (l *tokenLimit) limited(reset, now time.Time) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if !l.known || !now.Before(l.r.ResetAt) || reset.After(l.r.ResetAt) {
+		l.r.ResetAt = reset
+	}
+	l.r.Remaining, l.r.ReadAt, l.known = 0, now, true
+}
+
 // wait is how long a call of priority p waits before it is sent.
 func (l *tokenLimit) wait(p Priority, now time.Time) time.Duration {
 	l.mu.Lock()
@@ -169,16 +180,7 @@ func (e *PacedError) Error() string {
 }
 
 // paceSleep waits d or until ctx is done; tests replace it.
-var paceSleep = func(ctx context.Context, d time.Duration) error {
-	t := time.NewTimer(d)
-	defer t.Stop()
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case <-t.C:
-		return nil
-	}
-}
+var paceSleep = sleepCtx
 
 // pace waits as the token's reading says before r is sent, and counts the
 // request off it. Only reads honour a Background context.
