@@ -6,6 +6,7 @@ import { errorMessage } from './format'
 import { computed, reactive, ref, watch } from 'vue'
 import { getGitLabStatus, LoginRequiredError, postMilestoneNote, postTaskNote } from './client'
 import { keepThroughSignIn } from './signInDraft'
+import { noteNotice } from './noteNotice'
 import { keepNoteTarget, noteDisabledReason, noteHint, notePlaceholder, noteTargets, type NoteTarget } from './stream'
 import type { GitLabStatus, ProjectDetail } from './types'
 
@@ -28,6 +29,8 @@ export function useStreamNote(source: () => StreamNoteSource, onPosted?: () => v
   keepThroughSignIn(() => `note:${source().namespace}/${source().name}`, body)
   const sending = ref(false)
   const error = ref('')
+  // sent: what became of Desk commands the server sent instead of posting.
+  const sent = ref('')
   const target = ref<NoteTarget | null>(null)
 
   const targets = computed(() => noteTargets(source().project, source().milestoneIID))
@@ -45,7 +48,7 @@ export function useStreamNote(source: () => StreamNoteSource, onPosted?: () => v
     const back = window.location.pathname + window.location.search
     return `${s.login}?return=${encodeURIComponent(back)}`
   })
-  const hint = computed(() => disabledReason.value || noteHint(target.value))
+  const hint = computed(() => disabledReason.value || sent.value || noteHint(target.value))
   const placeholder = computed(() => notePlaceholder(target.value))
 
   async function send() {
@@ -54,9 +57,14 @@ export function useStreamNote(source: () => StreamNoteSource, onPosted?: () => v
     const { namespace, name } = source()
     sending.value = true
     error.value = ''
+    sent.value = ''
     try {
-      if (t.type === 'pilot') await postMilestoneNote(namespace, name, t.milestoneIID, body.value)
-      else await postTaskNote(namespace, name, t.task, 'issue', body.value)
+      // A refusal (400) keeps the text and shows as the error.
+      const r =
+        t.type === 'pilot'
+          ? await postMilestoneNote(namespace, name, t.milestoneIID, body.value)
+          : await postTaskNote(namespace, name, t.task, 'issue', body.value)
+      sent.value = noteNotice(r)
       body.value = ''
       onPosted?.()
     } catch (e) {

@@ -11,6 +11,7 @@ import { keepThroughSignIn } from '../signInDraft'
 import ExtLink from './ExtLink.vue'
 import NoteThread from './NoteThread.vue'
 import { fromGitLabNotes } from '../noteThread'
+import { noteNotice } from '../noteNotice'
 import type { GitLabStatus, NoteView, ThreadPart } from '../types'
 
 // Conversation shows the task's issue, merge request and tracking issue
@@ -37,6 +38,8 @@ const body = ref('')
 keepThroughSignIn(() => `comment:${props.namespace}/${props.name}/${props.task ?? ''}/${props.milestone ?? ''}`, body)
 const sending = ref(false)
 const sendError = ref('')
+// sent: what became of Desk commands the server sent instead of posting.
+const sent = ref('')
 
 // loadParts and postNote reach the milestone's or the task's routes.
 function loadParts() {
@@ -116,8 +119,10 @@ async function send() {
   if (!body.value.trim() || sending.value) return
   sending.value = true
   sendError.value = ''
+  sent.value = ''
   try {
-    await postNote(body.value)
+    // A refusal (400) keeps the text and shows under the box.
+    sent.value = noteNotice(await postNote(body.value))
     body.value = ''
     await loadThread()
   } catch (e) {
@@ -216,7 +221,8 @@ watch(() => props.stamp, loadThread)
           @keydown.ctrl.enter="send"
         />
         <div class="flex items-center gap-2">
-          <span v-if="sendError" class="text-[13px] text-(--tone-danger-fg)">{{ sendError }}</span>
+          <span v-if="sendError" role="alert" class="text-[13px] text-(--tone-danger-fg)">{{ sendError }}</span>
+          <span v-else-if="sent" role="status" class="text-[13px] text-(--text-2)">{{ sent }}</span>
           <span class="flex-1" />
           <UButton
             type="submit"

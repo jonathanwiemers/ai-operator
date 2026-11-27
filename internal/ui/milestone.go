@@ -929,6 +929,11 @@ func (s *Server) postMilestoneNote(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// trackingIssue has parsed the milestone's IID.
+	iid, _ := strconv.ParseInt(r.PathValue("iid"), 10, 64)
+	if s.routeNoteCommands(w, r, ap, tok, req.Body, milestoneNoteRoute(iid)) {
+		return
+	}
 	s.createNote(w, r, ap, gl, tok, part, toPilot(req.Body, ap.Spec.Workflow.WithDefaults().PilotPrefix))
 }
 

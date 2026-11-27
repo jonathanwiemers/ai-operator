@@ -112,6 +112,7 @@ packages:
       - metrics_pauses.go
       - milestone.go
       - milestones.go
+      - note_commands.go
       - oidc.go
       - oneoff.go
       - overview.go

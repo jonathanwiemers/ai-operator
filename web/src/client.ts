@@ -54,6 +54,11 @@ import type {
   TimelineView,
 } from './generated/views'
 import type { ResearchAgent, ResearchDepth, ResearchView } from './generated/api'
+import type { NoteCommandsResponse } from './generated/views'
+
+// NotePosted answers a posted comment: the note, or the Desk commands it
+// was sent as.
+type NotePosted = NoteView | NoteCommandsResponse
 import { decisionsSearch, type DecisionParams } from './decisions'
 import { draftConflictFrom } from './planConflict'
 import { plansPath } from './plansPath'
@@ -348,9 +353,10 @@ export function getMilestoneThread(namespace: string, name: string, iid: number)
 
 // postMilestoneNote: POST .../milestones/{iid}/notes, a message to the
 // milestone's pilot on its tracking issue, in the user's GitLab name (the
-// server adds the pilot prefix).
-export function postMilestoneNote(namespace: string, name: string, iid: number, body: string): Promise<NoteView> {
-  return post<NoteView>(`${milestonePath(namespace, name, iid)}/notes`, { body })
+// server adds the pilot prefix). With the bot's token, Desk commands go as
+// chat commands instead (NoteCommandsResponse, noteNotice).
+export function postMilestoneNote(namespace: string, name: string, iid: number, body: string): Promise<NotePosted> {
+  return post<NotePosted>(`${milestonePath(namespace, name, iid)}/notes`, { body })
 }
 
 // createFollowUp: POST .../milestones/{iid}/followup, a milestone made of
@@ -589,8 +595,8 @@ export function postTaskNote(
   task: string,
   target: ThreadPart['target'],
   body: string,
-): Promise<NoteView> {
-  return post<NoteView>(`${taskPath(namespace, name, task)}/notes`, { target, body })
+): Promise<NotePosted> {
+  return post<NotePosted>(`${taskPath(namespace, name, task)}/notes`, { target, body })
 }
 
 // getTaskChat: GET .../tasks/{task}/chat, the task's Desk chat (newest

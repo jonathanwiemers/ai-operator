@@ -1332,6 +1332,17 @@ export interface MilestoneList {
 }
 
 //////////
+// source: note_commands.go
+
+/**
+ * NoteCommandsResponse answers a comment whose command lines went to their
+ * tasks as Desk chat commands instead of to GitLab: the words, in order.
+ */
+export interface NoteCommandsResponse {
+  routed: string[];
+}
+
+//////////
 // source: oidc.go
 
 /**

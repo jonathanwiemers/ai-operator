@@ -400,8 +400,9 @@ const (
 )
 
 // postNote writes a comment on the task's issue, merge request or tracking
-// issue, in the user's GitLab name. The UI does not interpret it: the
-// operator handles it like any comment written in GitLab.
+// issue, in the user's GitLab name. The operator handles it like any
+// comment written in GitLab; only command lines going out with the bot's
+// token are routed or refused (routeNoteCommands).
 func (s *Server) postNote(w http.ResponseWriter, r *http.Request) {
 	if !s.granted(w, r, s.authz.CanSteer, "steering") {
 		return
@@ -411,7 +412,7 @@ func (s *Server) postNote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ap, task, gl, tok, ok := s.steeringTask(w, r)
-	if !ok {
+	if !ok || s.routeNoteCommands(w, r, ap, tok, req.Body, taskNoteRoute(task)) {
 		return
 	}
 	var target *ThreadPart

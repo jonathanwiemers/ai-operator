@@ -3404,11 +3404,15 @@ test.describe('note thread', () => {
       await watch(page, new URL(baseURL ?? '').origin, problems)
       await mockAPI(page, route, problems)
       const posts: unknown[] = []
+      const refusal = 'Commands from the Desk comment box are posted as the bot and ignored. Use the buttons or comment in GitLab as yourself.'
       await page.route(
         (url) => url.pathname.endsWith('/tasks/shop-281-implement/notes'),
         async (r) => {
-          posts.push(r.request().postDataJSON())
-          return r.fulfill({ status: 200, json: {} })
+          const post = r.request().postDataJSON()
+          posts.push(post)
+          // With the bot's token: Desk commands are sent, others refused.
+          if (post.body === '/agent pause') return r.fulfill({ status: 400, json: { error: refusal } })
+          return r.fulfill({ status: 200, json: { routed: ['retry'] } })
         },
       )
       await page.goto(route.path)
@@ -3435,6 +3439,14 @@ test.describe('note thread', () => {
       await form.getByRole('button', { name: '/agent retry' }).click()
       await form.getByRole('button', { name: 'Post comment' }).click()
       await expect.poll(() => posts).toEqual([{ target: 'mr', body: '/agent retry' }])
+      const box = form.locator('textarea')
+      await expect(box).toHaveValue('')
+      await expect(form.getByRole('status')).toHaveText(/^Sent retry as a Desk command/)
+      // A refused command shows under the box and keeps the text.
+      await box.fill('/agent pause')
+      await form.getByRole('button', { name: 'Post comment' }).click()
+      await expect(form.getByRole('alert')).toHaveText(refusal)
+      await expect(box).toHaveValue('/agent pause')
 
       const shot = join(testInfo.project.outputDir, '..', 'screenshots', `note-thread-task@${size.width}.png`)
       await page.screenshot({ path: shot, fullPage: true })
