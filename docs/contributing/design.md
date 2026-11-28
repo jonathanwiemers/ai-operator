@@ -1881,6 +1881,16 @@ recorded. A loop that is not final while the issue is in review (a CI fix run
 that pushed nothing ends in review) also goes back to working, where it
 finishes.
 
+An issue in `agent::needs-input` with `needsInputCause: ciRed` is watched
+too (`syncHeldCI`, `internal/controller/ci_held.go`). It uses the same
+head pipeline of the pushed commit, plus one `GetMergeRequest` for a red
+companion. A red tree's state follows that pipeline, without retries or fix
+runs. The failed jobs are listed again only when it turns failed or is
+another pipeline. Once no tree is red, `status.ci.recoveredAt` is set and
+`finishCI` moves the issue to review (it removes needs-input too) with one
+note. The autopilot hold has `ResumeWhenReady` and ends on its next gate
+pass.
+
 ### Main health
 
 The project controller also watches the default branch

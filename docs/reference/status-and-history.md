@@ -265,6 +265,30 @@ background reads wait for the reset. See
 | `ai_operator_gitlab_ratelimit_remaining{user}` | The requests left this minute for the bot user `user`, from the latest reading. Once that reading's window has reset, it shows the full limit. |
 | `ai_operator_gitlab_paced_seconds_total{priority}` | Seconds the operator's calls waited for the limit, by `priority`: `background` or `work`. A rising `background` count means pacing kept the polls off the limit. |
 
+## CI status
+
+On the issue's AgentTask, `status.ci` follows the pipeline of the pushed
+commit. A new push starts a new `status.ci`.
+
+```yaml
+status:
+  ci:
+    sha: 3f2a9c1
+    state: Success
+    pipelineID: 8812
+    pipelineURL: https://gitlab.example.com/group/app/-/pipelines/8812
+    retried: true
+    recoveredAt: "2026-11-27T12:25:04Z"
+```
+
+| Field | Meaning |
+|-------|---------|
+| `state` | Where the CI loop stands, see [`spec.ci`](lifecycle-and-ci.md#specci). |
+| `failedJobs` | The jobs that fail the latest failed pipeline. |
+| `retried` | The failed jobs were retried once. |
+| `recoveredAt` | When the pipeline turned green while the issue was held for red CI (`needsInputCause: ciRed`), and the hold lifted. |
+| `companion` | The same for the companion's pushed head. |
+
 ## AgentPlan status
 
 An AgentPlan is a [plan](../concepts/glossary.md#plan-draft) of the Desk.

@@ -2407,6 +2407,13 @@ spec:
                     type: integer
                   pipelineURL:
                     type: string
+                  recoveredAt:
+                    description: |-
+                      RecoveredAt is when the operator saw the pipelines of these heads turn
+                      green while the issue was held for red CI (needsInputCause: ciRed), and
+                      lifted the hold. A new push starts a new status, without it.
+                    format: date-time
+                    type: string
                   retried:
                     description: Retried is set once the failed jobs of the pipeline
                       were retried.

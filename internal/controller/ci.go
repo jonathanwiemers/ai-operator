@@ -52,6 +52,9 @@ func (r *AgentProjectReconciler) syncCI(ctx context.Context, gl gitlab.API, spec
 	if is.HasLabel(spec.Workflow.ReviewLabel) {
 		return r.syncReviewCI(ctx, gl, spec, is, task, head)
 	}
+	if is.HasLabel(spec.Workflow.NeedsInputLabel) {
+		return r.syncHeldCI(ctx, gl, spec, is, task, mr, head)
+	}
 	if !is.HasLabel(spec.Workflow.WorkingLabel) {
 		return nil
 	}
@@ -546,8 +549,12 @@ func (r *AgentProjectReconciler) finishCI(ctx context.Context, gl gitlab.API, sp
 			return fmt.Errorf("recording the needs-input cause: %w", err)
 		}
 	}
+	remove := []string{wf.WorkingLabel}
+	if !failed {
+		remove = append(remove, wf.NeedsInputLabel) // a ciRed hold that lifted
+	}
 	if _, err := gl.UpdateIssue(ctx, spec.GitLab.Project, is.IID, gitlab.UpdateIssueOptions{
-		AddLabels: []string{next}, RemoveLabels: []string{wf.WorkingLabel},
+		AddLabels: []string{next}, RemoveLabels: remove,
 	}); err != nil {
 		return fmt.Errorf("moving issue #%d to %q: %w", is.IID, next, err)
 	}

@@ -56,6 +56,11 @@ type CIStatus struct {
 	// fails, the comment is posted again without it.
 	// +optional
 	PingedFor NotifyEvent `json:"pingedFor,omitempty"`
+	// RecoveredAt is when the operator saw the pipelines of these heads turn
+	// green while the issue was held for red CI (needsInputCause: ciRed), and
+	// lifted the hold. A new push starts a new status, without it.
+	// +optional
+	RecoveredAt *metav1.Time `json:"recoveredAt,omitempty"`
 	// Companion is the pipeline of the companion's pushed head
 	// (status.run.companion.pushedSHA); unset without a pushed companion.
 	// +optional

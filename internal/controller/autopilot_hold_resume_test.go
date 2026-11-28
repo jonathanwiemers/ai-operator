@@ -182,3 +182,42 @@ func TestLaterRunViaForAHeldItem(t *testing.T) {
 		t.Fatalf("a held issue's run is recorded while running: %+v", ap.Items[0].Hold)
 	}
 }
+
+// The incident: #1 is held in needs-input for red CI, its failed jobs are
+// retried, and the MR's head pipeline turns green. One sync moves #1 to
+// review and ends the hold, with no run and no /agent retry.
+func TestAutopilotHoldCIRedLiftsWhenTheHeadPipelineTurnsGreen(t *testing.T) {
+	e := newParallelEnv(t, 2, false)
+	e.reconcile()
+	e.reconcile()
+	name := e.redRun(1, "sha-1")
+	mr := e.gl.MRs[e.tasks()[name].Status.Run.MergeRequestIID]
+	pid := e.gl.AddPipeline("sha-1", "agent/sha-1", "failed", failedTest())
+	mr.HeadPipeline = &gitlab.Pipeline{ID: pid}
+	e.patchStatus(name, func(s *aiv1.AgentTaskStatus) {
+		s.Run.NeedsInputCause = aiv1.NeedsInputCIRed
+		s.CI.PipelineID = pid
+	})
+	e.gl.SetLabels(1, "ai-generated", "agent::needs-input")
+	e.reconcile()
+	if h := e.wantHeld("held in needs-input for red CI", 1, aiv1.PauseNeedsInput); !h.ResumeWhenReady {
+		t.Fatalf("the gate can end the hold: %+v", h)
+	}
+	runs := e.tasks()[name].Spec.RunRequest
+
+	e.gl.SetPipelineStatus(pid, "success")
+	e.reconcile()
+	if !e.gl.Issues[1].HasLabel("agent::review") || e.gl.Issues[1].HasLabel("agent::needs-input") {
+		t.Fatalf("#1 moves to review: %v", e.gl.Labels(1))
+	}
+	e.wantUnheld("green CI ends the hold", 1, "▶️ #1 goes on: #1 is reviewed and green again")
+	if e.tasks()[name].Spec.RunRequest != runs {
+		t.Fatal("lifting the hold starts no run")
+	}
+	for range 3 {
+		e.reconcile()
+	}
+	if got := e.states(); got[1] != merged || e.autopilot().Phase != aiv1.AutopilotRunning {
+		t.Fatalf("#1 lands once its hold ended: %v %+v", got, e.autopilot())
+	}
+}

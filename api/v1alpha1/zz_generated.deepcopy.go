@@ -1208,6 +1208,10 @@ func (in *CIStatus) DeepCopyInto(out *CIStatus) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.RecoveredAt != nil {
+		in, out := &in.RecoveredAt, &out.RecoveredAt
+		*out = (*in).DeepCopy()
+	}
 	if in.Companion != nil {
 		in, out := &in.Companion, &out.Companion
 		*out = new(CompanionCI)

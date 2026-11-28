@@ -82,6 +82,24 @@ request's head is the pushed commit, which covers merge request and
 *merged results* pipelines (GitLab Premium). Otherwise it takes the newest
 pipeline of the pushed commit, such as a branch pipeline.
 
+When the fix rounds are used up, the issue is held in `agent::needs-input`
+with `status.run.needsInputCause: ciRed`. The operator keeps following the
+merge request's head pipeline while the merge request's head is still the
+pushed commit. You can retry the failed jobs on the same pipeline or start a
+new pipeline for that commit. Once the pipeline is green (or waits for
+manual jobs), the hold lifts by itself:
+
+- the issue moves to `agent::review`, as if CI had been green the first time;
+- the operator comments "✅ CI is green again (pipeline …), so #42 moves to
+  review.";
+- autopilot goes on with the issue, with no agent run and no `/agent retry`.
+
+A red [companion](../concepts/glossary.md#companion-repository) pipeline lifts the same
+way, from its merge request's head. While the hold waits, `status.ci`
+records what the pipeline does: `Running` while it runs, `Failed` with the
+failed jobs when it fails again. A commit that someone else pushes to the
+merge request keeps the hold. Holds for other causes do not lift this way.
+
 A milestone can change `maxFixRounds` and `retryFailedJobs` for its issues
 with a rule, see [`spec.pilot`](agentproject.md#specpilot).
 
