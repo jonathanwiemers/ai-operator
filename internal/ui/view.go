@@ -239,6 +239,9 @@ type Task struct {
 	// state of the project's status once the home change is merged; the
 	// issue and merge request cards show it as a chip.
 	Companion *CompanionView `json:"companion,omitempty"`
+	// CIGreenSinceHold: the issue is still held while its pipeline turned
+	// green since the hold (ciGreenSinceHold); the CI card shows it.
+	CIGreenSinceHold bool `json:"ciGreenSinceHold,omitempty"`
 }
 
 func gitLabRef(p *aiv1.AgentProject) GitLabRef {

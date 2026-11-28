@@ -121,11 +121,13 @@ func (s *Server) task(w http.ResponseWriter, r *http.Request) {
 			if t.Spec.Type == aiv1.TaskTypeImplement {
 				prompts = promptViews(t, t.Name, p.Username, chat)
 			}
+			view := taskView(t, ap, now)
+			view.CIGreenSinceHold = ciGreenSinceHold(t, taskHold(tasks, t))
 			project := summarize(ap, tasks, now)
 			project.Cost = s.scopeCost(r.Context(), store.SpendScope{Namespace: ap.Namespace, Project: ap.Name}, project.Cost)
 			writeJSON(w, http.StatusOK, TaskResponse{
 				Project: project,
-				Task:    taskView(t, ap, now),
+				Task:    view,
 				Prompts: prompts,
 				Cost: s.scopeCost(r.Context(), store.SpendScope{Namespace: ap.Namespace, Project: ap.Name, Task: name},
 					tasksCost(aiv1.CostOf(tasks[i].Status.Run.CostUSD))),

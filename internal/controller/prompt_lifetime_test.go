@@ -308,6 +308,57 @@ func TestPauseOverRecordsWhoEndedThePause(t *testing.T) {
 	}
 }
 
+func TestAssessmentOfARedCIHoldClosesWhenItLifts(t *testing.T) {
+	now := time.Date(2026, 11, 27, 12, 0, 0, 0, time.UTC)
+	at := func(d time.Duration) *metav1.Time { return &metav1.Time{Time: now.Add(d)} }
+	posted := at(-time.Hour)
+	stuck := aiv1.Prompt{PostedAt: posted, Source: aiv1.PromptSource{Kind: aiv1.PromptAssessment, IssueIID: 1, Key: "event/stuck/1/sha1@3"}}
+	task := func(recovered *metav1.Time, cause aiv1.NeedsInputCause) map[int64]*aiv1.AgentTask {
+		return map[int64]*aiv1.AgentTask{1: {Status: aiv1.AgentTaskStatus{
+			Run: aiv1.RunStatus{PushedSHA: "sha1", NeedsInputCause: cause},
+			CI:  &aiv1.CIStatus{SHA: "sha1", State: aiv1.CIStateSuccess, RecoveredAt: recovered}}}}
+	}
+	lifted := task(at(-time.Minute), "")
+	held := func(kind aiv1.PauseKind, since *metav1.Time) *aiv1.AutopilotStatus {
+		return &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning, Items: []aiv1.AutopilotItem{
+			{IID: 1, State: aiv1.AutopilotItemActive, Hold: &aiv1.ItemHold{Kind: kind, Reason: "held", Since: *since}}}}
+	}
+	running := &aiv1.AutopilotStatus{Phase: aiv1.AutopilotRunning, Items: []aiv1.AutopilotItem{{IID: 1, State: aiv1.AutopilotItemActive}}}
+	issues := map[int64]gitlab.Issue{1: {IID: 1}}
+	never := func(int64) bool { return false }
+
+	for _, tc := range []struct {
+		name  string
+		p     aiv1.Prompt
+		ap    *aiv1.AutopilotStatus
+		tasks map[int64]*aiv1.AgentTask
+		want  aiv1.PromptClosedReason // "": kept
+	}{
+		{"the hold lifted", stuck, running, lifted, aiv1.ClosedCIGreen},
+		{"the hold lifted, no autopilot", stuck, nil, lifted, aiv1.ClosedCIGreen},
+		{"the hold is still there", stuck, held(aiv1.PauseCIRed, at(-2*time.Hour)), lifted, ""},
+		{"held again for another reason", stuck, held(aiv1.PauseFindings, at(-2*time.Hour)), lifted, ""},
+		{"paused for the issue", stuck, &aiv1.AutopilotStatus{Phase: aiv1.AutopilotPaused, PausedFor: 1, PausedAt: at(-2 * time.Hour)}, lifted, ""},
+		{"still in needs-input for red CI", stuck, running, task(at(-time.Minute), aiv1.NeedsInputCIRed), ""},
+		{"no CI recovery", stuck, running, task(nil, ""), ""},
+		{"posted after the recovery", stuck, running, task(at(-2*time.Hour), ""), ""},
+		{"another head's event", aiv1.Prompt{PostedAt: posted, Source: aiv1.PromptSource{Kind: aiv1.PromptAssessment, IssueIID: 1, Key: "event/stuck/1/sha0@3"}}, nil, lifted, ""},
+		{"not a stuck event", aiv1.Prompt{PostedAt: posted, Source: aiv1.PromptSource{Kind: aiv1.PromptAssessment, IssueIID: 1, Key: "event/reviewRounds/1/sha1@3"}}, running, lifted, ""},
+	} {
+		st := &aiv1.AgentTask{Status: aiv1.AgentTaskStatus{Autopilot: tc.ap}}
+		got, ok := promptResolved(now, nil, issues, tc.tasks, st, never)(tc.p)
+		if tc.want == "" {
+			if ok {
+				t.Errorf("%s: closed as %+v, want it kept", tc.name, got)
+			}
+			continue
+		}
+		if want := (promptClose{State: aiv1.PromptSuperseded, Reason: tc.want, By: aiv1.ResolvedByOperator}); !ok || got != want {
+			t.Errorf("%s: got %+v %v, want %+v", tc.name, got, ok, want)
+		}
+	}
+}
+
 func TestPromptResolved(t *testing.T) {
 	now := time.Date(2026, 11, 4, 12, 0, 0, 0, time.UTC)
 	posted := metav1.NewTime(now.Add(-time.Hour))

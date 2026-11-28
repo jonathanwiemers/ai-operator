@@ -213,6 +213,7 @@ const laneHead = 'm-0 mb-1 px-1.5 text-xs font-semibold tracking-normal text-(--
         </div>
         <div v-if="q.lane === 'held' && q.hold" class="ml-[26px] flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs" data-hold>
           <span class="min-w-0 flex-[1_1_12rem] [overflow-wrap:anywhere] text-(--tone-warning-fg)"><LocalText :text="q.hold.reason || 'Held.'" /></span>
+          <Badge v-if="q.ciGreenSinceHold" tone="success" data-ci-green-since-hold>CI green since the hold</Badge>
           <UButton
             v-if="canResume"
             color="neutral"

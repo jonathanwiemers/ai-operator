@@ -4215,6 +4215,7 @@ test.describe('milestone pilot', () => {
           positions: items.map((i) => i.querySelector('[data-position]')!.textContent!.trim()),
           waiting: [...q.querySelectorAll('[data-waiting]')].map((w) => w.textContent!.trim()),
           hold: q.querySelector('[data-hold] > span')!.textContent!.trim(),
+          greenSinceHold: q.querySelector('[data-hold] [data-ci-green-since-hold]')?.textContent!.trim(),
           // One line box per number: a range over its text has one rect.
           iidsOneLine: items.every((i) => {
             const text = [...i.querySelector('[data-iid]')!.childNodes].find((c) => c.nodeType === 3 && c.textContent!.trim())!
@@ -4235,6 +4236,7 @@ test.describe('milestone pilot', () => {
       expect(layout.positions).toEqual(['3', '4', '5', '6', '1', '2'])
       expect(layout.waiting).toEqual(['after #281', 'for a free slot'])
       expect(layout.hold).toBe('CI failed on !306 (job docs-lint).')
+      expect(layout.greenSinceHold).toBe('CI green since the hold')
       expect(layout.iidsOneLine, 'issue numbers on one line').toBe(true)
       expect(layout.inside, 'no sideways scroll in the queue').toBe(true)
       if (phone) for (const h of layout.links) expect(h, 'link height on a phone').toBeGreaterThanOrEqual(44)

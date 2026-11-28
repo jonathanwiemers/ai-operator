@@ -80,6 +80,7 @@ const closeCauses: Record<string, string> = {
   agentRanAgain: 'the agent ran again without the answer',
   budgetResolved: 'the budget is no longer short',
   pauseOver: 'the pause ended',
+  ciGreen: 'CI is green again, so the hold lifted',
   stateChanged: 'the milestone moved on',
 }
 

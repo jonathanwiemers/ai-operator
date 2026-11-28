@@ -301,6 +301,7 @@ const actions = computed(() => [
               <ExtLink v-if="t.status.ci.pipelineURL" :href="t.status.ci.pipelineURL" class="ml-2">
                 #{{ t.status.ci.pipelineID }}
               </ExtLink>
+              <Badge v-if="t.ciGreenSinceHold" tone="success" class="ml-2" data-ci-green-since-hold>CI green since the hold</Badge>
             </dd>
             <dt :class="dt">Commit</dt>
             <dd :class="[dd, 'mono']">{{ shortSHA(t.status.ci.sha) }}</dd>

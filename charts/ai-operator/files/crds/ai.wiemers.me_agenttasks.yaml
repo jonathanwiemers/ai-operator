@@ -4100,6 +4100,7 @@ spec:
                       - pauseOver
                       - issueDone
                       - replaced
+                      - ciGreen
                       type: string
                     context:
                       description: Context is markdown evidence for the question.

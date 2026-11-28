@@ -7218,7 +7218,7 @@ export const PromptExpired: PromptState = "expired";
 /**
  * PromptClosedReason is why a prompt closed (status prompts' closedReason).
  * Prompts closed before it was recorded have none.
- * +kubebuilder:validation:Enum=answered;expired;stateChanged;mainHealthy;agentRanAgain;budgetResolved;pauseOver;issueDone;replaced
+ * +kubebuilder:validation:Enum=answered;expired;stateChanged;mainHealthy;agentRanAgain;budgetResolved;pauseOver;issueDone;replaced;ciGreen
  */
 export type PromptClosedReason = string;
 /**
@@ -7258,6 +7258,10 @@ export const ClosedIssueDone: PromptClosedReason = "issueDone";
  * (ReplacedBy).
  */
 export const ClosedReplaced: PromptClosedReason = "replaced";
+/**
+ * ClosedCIGreen: CI turned green, so the hold over the issue lifted.
+ */
+export const ClosedCIGreen: PromptClosedReason = "ciGreen";
 export const MaxPrompts = 20;
 export const MaxPromptQuestion = 1000;
 export const MaxPromptContext = 8 << 10;

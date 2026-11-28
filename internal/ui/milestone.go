@@ -405,7 +405,10 @@ type QueueItem struct {
 	WaitingFor []int64        `json:"waitingFor,omitempty"`
 	Hold       *aiv1.ItemHold `json:"hold,omitempty"`
 	ReadyAt    *metav1.Time   `json:"readyAt,omitempty"`
-	Deferral   `tstype:",extends"`
+	// CIGreenSinceHold: the held issue's pipeline turned green since the
+	// hold (ciGreenSinceHold).
+	CIGreenSinceHold bool `json:"ciGreenSinceHold,omitempty"`
+	Deferral         `tstype:",extends"`
 }
 
 // queueLane is the lane of the item it of the autopilot ap.
@@ -672,6 +675,7 @@ func milestoneView(p *aiv1.AgentProject, tasks []aiv1.AgentTask, st, coord *aiv1
 			it := &ap.Items[i]
 			q := QueueItem{IID: it.IID, Title: titles[it.IID], State: it.State, MergeRequestIID: it.MergeRequestIID, MergeRequestURL: it.MergeRequestURL, Task: byIssue[it.IID],
 				Lane: queueLane(ap, it), Wave: waves[it.IID], Hold: it.Hold, ReadyAt: it.ReadyAt, Deferral: deferred[it.IID]}
+			q.CIGreenSinceHold = it.State == aiv1.AutopilotItemActive && ciGreenSinceHold(issueTask(tasks, it.IID), it.Hold)
 			for _, d := range deps[it.IID] {
 				// Met as in the controller's startable: merged, not in the
 				// queue, or skipped for an item an owner let start anyway.

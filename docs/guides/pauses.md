@@ -244,14 +244,13 @@ itself like `needsInput`.
 
 #### `ciRed`
 
-The merge request's pipeline is red, or the companion's is, and the CI fix
-rounds did not make it green. The reason names the failing jobs, and says so
-when they also fail on the default branch. It ends by itself like
-`needsInput`. If the failing jobs also fail on the default branch, and that
-branch is green again at a commit the merge request is not based on,
-autopilot rebases the merge request once and says so ("`main` is green at
-…: rebasing !34"). The new pipeline decides. The pilot may rebase or retry
-on its own.
+The merge request's pipeline is red, or the companion's is, and the CI fix rounds did not make it green.
+The reason names the failing jobs, and says so when they also fail on the default branch. It ends by
+itself like `needsInput`, or when the pipeline of the pushed commit turns green. In the Desk, the issue's
+*Held* row and its task page show *CI green since the hold* from then until the hold ends.
+If the failing jobs also fail on the default branch, and that branch is green again at a commit the
+merge request is not based on, autopilot rebases the merge request once and says so ("`main` is green
+at …: rebasing !34"). The new pipeline decides. The pilot may rebase or retry on its own.
 
 - `/agent rebase #N`: GitLab rebases the merge request onto the default
   branch and the pause ends. The review holds if the change is the same; the

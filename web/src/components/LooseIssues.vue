@@ -118,6 +118,9 @@ const selectable = { enableRowSelection: (row: { original: LooseIssue }) => !row
           </template>
           <template #reason-cell="{ row }">
             <span class="[overflow-wrap:anywhere] whitespace-normal text-(--text-2)">{{ itemReason(row.original) }}</span>
+            <Badge v-if="row.original.ciGreenSinceHold && itemReason(row.original)" tone="success" class="ms-2" :data-ci-green-since-hold="row.original.iid">
+              CI green since the hold
+            </Badge>
           </template>
           <template #mr-cell="{ row }">
             <ExtLink v-if="row.original.mergeRequestURL" :href="row.original.mergeRequestURL" class="font-mono text-xs">!{{ row.original.mergeRequestIID }}</ExtLink>

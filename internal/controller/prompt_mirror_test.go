@@ -337,6 +337,7 @@ func TestStateLineSaysWhyThePromptClosed(t *testing.T) {
 		{"an owner ended the pause", closed(sup, aiv1.ClosedPauseOver, aiv1.ResolvedByOwner, ""), "", "⏹️ Handled by an owner: the pause ended"},
 		{"self-healed", closed(sup, aiv1.ClosedPauseOver, aiv1.ResolvedBySelfHealed, ""), "", "⏹️ Resolved on its own: the pause ended"},
 		{"a later run", closed(sup, aiv1.ClosedPauseOver, aiv1.ResolvedByLaterRun, ""), "", "⏹️ Resolved on its own: the pause ended"},
+		{"CI is green", closed(sup, aiv1.ClosedCIGreen, op, ""), "", "⏹️ Resolved on its own: CI is green again, so the hold lifted"},
 		{"no resolver", closed(sup, aiv1.ClosedIssueDone, "", ""), "", "⏹️ Resolved on its own: the issue was merged or closed"},
 		{"expired", closed(aiv1.PromptExpired, aiv1.ClosedExpired, op, ""), "", "⌛ Expired: nobody answered in time"},
 		{"answered", answered, "", "✅ Answered by `@alice` in the Desk: Retry"},

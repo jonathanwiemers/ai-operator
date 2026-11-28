@@ -101,7 +101,7 @@ func TestPromptValidateClosed(t *testing.T) {
 		return p
 	}
 	for _, r := range []PromptClosedReason{ClosedAnswered, ClosedExpired, ClosedStateChanged, ClosedMainHealthy,
-		ClosedAgentRanAgain, ClosedBudgetResolved, ClosedPauseOver, ClosedIssueDone, ClosedReplaced} {
+		ClosedAgentRanAgain, ClosedBudgetResolved, ClosedPauseOver, ClosedIssueDone, ClosedReplaced, ClosedCIGreen} {
 		if err := closed(func(p *Prompt) { p.ClosedReason, p.ClosedBy = r, ResolvedByOperator }).Validate(); err != nil {
 			t.Errorf("closedReason %s: %v", r, err)
 		}

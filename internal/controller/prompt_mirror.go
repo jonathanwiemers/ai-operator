@@ -303,6 +303,8 @@ func closedCause(r aiv1.PromptClosedReason) string {
 		return "the budget is no longer short"
 	case aiv1.ClosedPauseOver:
 		return "the pause ended"
+	case aiv1.ClosedCIGreen:
+		return "CI is green again, so the hold lifted"
 	case aiv1.ClosedStateChanged:
 		return "the milestone moved on"
 	}

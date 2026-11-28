@@ -65,7 +65,7 @@ Every closed question says who closed it and why:
 |-------|---------|
 | *Answered by @login* | An owner answered, with the choice. |
 | *Handled by the pilot* | The pilot closed it, with the cause. |
-| *Resolved on its own: <cause>* | The cause went away: main is green again, the issue was merged or closed, the agent ran again without the answer, the budget is no longer short, the pause ended or the milestone moved on. |
+| *Resolved on its own: <cause>* | The cause went away: main is green again, the issue was merged or closed, the agent ran again without the answer, the budget is no longer short, the pause ended, CI is green again so the hold lifted, or the milestone moved on. |
 | *Replaced by Q14* | A newer question of the same kind and subject took its place. The label links to it. |
 | *Expired: nobody answered in time* | The proposal ran out of time. |
 

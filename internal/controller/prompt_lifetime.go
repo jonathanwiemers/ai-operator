@@ -140,6 +140,9 @@ func promptResolved(now time.Time, mh *aiv1.MainHealthStatus, issues map[int64]g
 			// resolves nothing.
 			return promptClose{}, false
 		case aiv1.PromptAssessment:
+			if ciHoldLifted(p, st, tasks) {
+				return superseded(aiv1.ClosedCIGreen)
+			}
 			if pauseOver(p, st, tasks) {
 				c, ok := superseded(aiv1.ClosedPauseOver)
 				c.By = pauseEndedBy(p, st)
@@ -204,6 +207,32 @@ func pauseOver(p aiv1.Prompt, st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTas
 		return t != nil && !strings.HasSuffix(key, "/"+t.Status.Run.PushedSHA)
 	}
 	return false
+}
+
+// ciHoldLifted reports whether assessment p, of a stuck event, is about a
+// red-CI hold that lifted by itself: the pipeline of the same head turned
+// green after p was posted (status.ci.recoveredAt), and the issue is no
+// longer held, paused for or in needs-input for red CI. A hold that stays,
+// or comes back for another reason, keeps p.
+func ciHoldLifted(p aiv1.Prompt, st *aiv1.AgentTask, tasks map[int64]*aiv1.AgentTask) bool {
+	key, _, _ := strings.Cut(strings.TrimPrefix(p.Source.Key, "event/"), "@")
+	iid := p.Source.IssueIID
+	t := tasks[iid]
+	if !strings.HasPrefix(key, "stuck/") || t == nil || p.PostedAt == nil {
+		return false
+	}
+	run, ci := t.Status.Run, t.Status.CI
+	if ci == nil || ci.RecoveredAt == nil || run.PushedSHA == "" || ci.SHA != run.PushedSHA ||
+		!strings.HasSuffix(key, "/"+run.PushedSHA) || !p.PostedAt.Before(ci.RecoveredAt) ||
+		run.NeedsInputCause == aiv1.NeedsInputCIRed {
+		return false
+	}
+	if st == nil || st.Status.Autopilot == nil {
+		return true
+	}
+	ap := st.Status.Autopilot
+	paused := ap.Phase == aiv1.AutopilotPaused && ap.PausedAt != nil && ap.PausedFor == iid
+	return heldItem(ap, iid) == nil && !paused
 }
 
 // proposalState is PilotState of the milestone and the actions of p's

@@ -86,6 +86,9 @@ type LooseItem struct {
 	MergedAt        *metav1.Time            `json:"mergedAt,omitempty"`
 	Task            string                  `json:"task,omitempty"`
 	HeadSHA         string                  `json:"headSHA,omitempty"`
+	// CIGreenSinceHold: the held issue's pipeline turned green since the
+	// hold (ciGreenSinceHold).
+	CIGreenSinceHold bool `json:"ciGreenSinceHold,omitempty"`
 }
 
 // LooseIssue is an open GitLab issue without a milestone. InQueue: it is a
@@ -197,6 +200,7 @@ func looseItems(ap *aiv1.AgentProject, tasks []aiv1.AgentTask, items []aiv1.Auto
 		}
 		if t := issueTask(tasks, it.IID); t != nil {
 			v.Task, v.HeadSHA = t.Name, t.Status.Run.PushedSHA
+			v.CIGreenSinceHold = it.State == aiv1.AutopilotItemActive && ciGreenSinceHold(t, it.Hold)
 			if v.Title == "" {
 				v.Title = t.Spec.Issue.Title
 			}

@@ -47,7 +47,7 @@ const (
 
 // PromptClosedReason is why a prompt closed (status prompts' closedReason).
 // Prompts closed before it was recorded have none.
-// +kubebuilder:validation:Enum=answered;expired;stateChanged;mainHealthy;agentRanAgain;budgetResolved;pauseOver;issueDone;replaced
+// +kubebuilder:validation:Enum=answered;expired;stateChanged;mainHealthy;agentRanAgain;budgetResolved;pauseOver;issueDone;replaced;ciGreen
 type PromptClosedReason string
 
 const (
@@ -70,13 +70,15 @@ const (
 	// ClosedReplaced: a newer prompt with the same Kind and Key replaced it
 	// (ReplacedBy).
 	ClosedReplaced PromptClosedReason = "replaced"
+	// ClosedCIGreen: CI turned green, so the hold over the issue lifted.
+	ClosedCIGreen PromptClosedReason = "ciGreen"
 )
 
 // Known reports whether r is one of the PromptClosedReason values.
 func (r PromptClosedReason) Known() bool {
 	switch r {
 	case ClosedAnswered, ClosedExpired, ClosedStateChanged, ClosedMainHealthy, ClosedAgentRanAgain,
-		ClosedBudgetResolved, ClosedPauseOver, ClosedIssueDone, ClosedReplaced:
+		ClosedBudgetResolved, ClosedPauseOver, ClosedIssueDone, ClosedReplaced, ClosedCIGreen:
 		return true
 	}
 	return false

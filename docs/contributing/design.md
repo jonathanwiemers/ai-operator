@@ -3446,10 +3446,13 @@ A closed prompt records why (`closedReason`) and who closed it
 deciding it. An answer records `answered` by `owner`. The lifetime check
 (`promptResolved` in `prompt_lifetime.go`, run by `syncPrompts`) records
 `expired`, `stateChanged`, `mainHealthy`, `agentRanAgain`,
-`budgetResolved`, `pauseOver` or `issueDone`, by `operator`; a `pauseOver`
+`budgetResolved`, `pauseOver`, `ciGreen` or `issueDone`, by `operator`; a `pauseOver`
 of a `pause-` or stalled event takes the milestone's
 `status.autopilot.resumedBy` once it is no longer paused (a hold records
-no resolver, so a `stuck/` event stays `operator`). `addPrompt` records
+no resolver, so a `stuck/` event stays `operator`). `ciGreen` (`ciHoldLifted`, checked
+first) closes a `stuck/` assessment once `status.ci.recoveredAt` of its head
+is after the prompt and the issue is no longer held, paused for or `ciRed`.
+`addPrompt` records
 `replaced`, `operator` and `replacedBy` (the newer `Q<n>`) on the prompt a
 newer one with the same kind and key supersedes. Prompts `boundPrompts`
 drops leave the status without them; prompts closed before the fields
@@ -3509,7 +3512,8 @@ way.
   come from one function, `closedCause` (`prompt_mirror.go`): "main is
   green again", "the issue was merged or closed", "the agent ran again
   without the answer", "the budget is no longer short", "the pause
-  ended", "the milestone moved on". A prompt closed before the reason was
+  ended", "CI is green again, so the hold lifted", "the milestone moved
+  on". A prompt closed before the reason was
   recorded keeps the old line, "⏹️ Superseded: …" or "⌛ Expired". A
   prompt that closed before it was posted is not posted.
 * Edits carry no mention (GitLab would notify again). Bodies are cut below

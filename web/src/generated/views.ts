@@ -678,6 +678,11 @@ export interface LooseItem {
   mergedAt?: string;
   task?: string;
   headSHA?: string;
+  /**
+   * CIGreenSinceHold: the held issue's pipeline turned green since the
+   * hold (ciGreenSinceHold).
+   */
+  ciGreenSinceHold?: boolean;
 }
 /**
  * LooseIssue is an open GitLab issue without a milestone. InQueue: it is a
@@ -1204,6 +1209,11 @@ export interface QueueItem extends Deferral {
   waitingFor?: number /* int64 */[];
   hold?: aiv1.ItemHold;
   readyAt?: string;
+  /**
+   * CIGreenSinceHold: the held issue's pipeline turned green since the
+   * hold (ciGreenSinceHold).
+   */
+  ciGreenSinceHold?: boolean;
 }
 /**
  * TrackingIssueRef is the milestone's tracking issue, its chat.
@@ -2741,4 +2751,9 @@ export interface Task {
    * issue and merge request cards show it as a chip.
    */
   companion?: CompanionView;
+  /**
+   * CIGreenSinceHold: the issue is still held while its pipeline turned
+   * green since the hold (ciGreenSinceHold); the CI card shows it.
+   */
+  ciGreenSinceHold?: boolean;
 }

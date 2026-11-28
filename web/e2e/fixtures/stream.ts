@@ -391,6 +391,7 @@ export const paymentsMilestone: MilestoneView = {
         lane: 'held',
         wave: 2,
         hold: { kind: 'ciRed', reason: 'CI failed on !306 (job docs-lint).', since: ago(25) },
+        ciGreenSinceHold: true,
       },
     ],
   },
