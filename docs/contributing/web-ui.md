@@ -3117,12 +3117,30 @@ handler and caches nothing: no offline use.
   context and shows every notification with
   `registration.showNotification(title, { body, tag, data: { open } })`.
   Without an active worker it falls back to `new Notification`.
-- **Click.** The worker closes the notification and picks a window with
-  `clickTarget`: a focused Desk window first, then a visible one, then
-  any of its origin. It focuses that window and posts `{ open }`; the app
-  runs `router.push(inboxRoute(item))`. Without a window it opens
-  `/?open=<JSON>`, which the app reads once and replaces with the item's
-  route, so the query goes.
+- **Click.** The worker closes the notification and runs `clickOpen`
+  (`notifyOpen.ts`, pure and free of DOM). It picks a window with
+  `clickTarget`: a focused Desk window first, then a visible one, then any
+  of its origin. It focuses that window and posts `{ open }` with a
+  `MessageChannel` reply port, inside `e.waitUntil`, and waits up to
+  `clickReplyMs` (1000 ms) for `{ opened: true }`. The page answers once
+  `router.push(openRoute(open))` has routed; a duplicated navigation (the
+  window already is there) counts as opened, a failed one does not. A
+  message without a port routes and answers nothing. Without an answer
+  (the window is frozen or discarded, or the lazy listener is not loaded)
+  the worker navigates the window to `openURL(open)`; if navigate rejects
+  or returns null (an uncontrolled window), it opens a new window there.
+  Without a window it opens `/?open=<JSON>`, which the app reads once and
+  replaces with the route, so the query goes. A notification without `open`
+  only focuses. `openURL`, `parseOpen` and the `?open=` format did not
+  change, so notifications already in the tray keep working. An item opens
+  `inboxRoute(item)`; an event opens `eventRoute(event)`: the milestone's
+  Cockpit (`?tab=cockpit`) or, without a milestone, the project's, with
+  `#event-<id>`. `EventCard.vue` has `id="event-<id>"` and `tabindex="-1"`.
+  `CockpitThread.vue` follows the hash once per change: `eventPlace` finds
+  the item, the thread opens Show N more and the group, then scrolls,
+  focuses and highlights the card (`event-highlight`, about 2 s, a static
+  ring with reduced motion). An id not on the loaded page leaves the
+  Cockpit at its top. `cockpitQuery` and `scrollBehavior` know `#event-`.
 - **Install.** `public/manifest.webmanifest` (`display: standalone`, start
   and scope `/`) and the `apple-touch-icon` and `theme-color` tags in
   `index.html` make the Desk installable. The server sends the manifest as
@@ -3132,10 +3150,15 @@ handler and caches nothing: no offline use.
   Playwright's Chromium; run `node scripts/icons.mjs` by hand after the
   logo or the light theme's `--surface` changes. It is not part of the
   build.
-- **Checks.** `test/notifyOpen.test.mjs` covers the click target and the
-  `?open=` round trip, `e2e/service-worker.spec.ts` the registration and
-  the `?open=` landing, `e2e/installable.spec.ts` the manifest and its
-  icons.
+- **Checks.** `test/notifyOpen.test.mjs` covers the click target, the
+  `clickOpen` cases (answered, silent, navigate rejected or null, no
+  window, no `open`) and the `?open=` round trip; `test/inboxRoute.test.mjs`
+  `eventRoute`, `test/cockpitThread.test.mjs` `eventPlace` and
+  `test/signInAgain.test.mjs` `returnPath`. `e2e/service-worker.spec.ts`
+  covers the registration, the `?open=` landing and a click message with a
+  reply port; `e2e/cockpit.spec.ts` an event card behind Show N more, an
+  absent `#event-<id>` and a release without a milestone;
+  `e2e/installable.spec.ts` the manifest and its icons.
 
 ### History
 
@@ -3332,8 +3355,10 @@ chart buckets (they are in UTC on purpose).
   the provider if it supports RP-initiated logout.
 - **Redirects.** After the login the browser only goes back to a path on
   the UI's own host; login errors reach the sign-in page as codes.
+  `safeReturn` keeps an escaped fragment on an allowed path, after all its
+  checks, so `#prompt-Q5` and `#event-<id>` survive the login.
 - **Signing in again.** On a 401 the Desk goes to
-  `/oauth2/login?return=<current route>` once (`signInAgain.ts`): a
+  `/oauth2/login?return=<current route with its hash>` once (`signInAgain.ts`): a
   `sessionStorage` marker stops another attempt for 60 seconds, and a
   `login_error` or a browser without `sessionStorage` stops it too. Unsent
   composer text is kept in `sessionStorage`

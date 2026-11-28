@@ -78,11 +78,23 @@ place as its Inbox row:
   [Cockpit](../concepts/glossary.md#cockpit);
 - a task opens the task page;
 - a ready plan opens the plan;
-- a milestone or release notification opens the milestone.
+- a milestone started, milestone done or release notification opens that
+  event's own card in the milestone's Cockpit. The card scrolls into view
+  and is highlighted briefly. A release without a milestone opens its card
+  in the Cockpit of the project page.
+
+The release card still links the GitLab release; the click does not open
+GitLab. If the card is no longer among the loaded events, the Cockpit
+stays at its top.
 
 If a Desk window is open, the click brings that window forward and opens
 the item there. It does not open a second window. Only without an open Desk
 window does the browser open a new one.
+
+A click opens its place also when the Desk was in the background for a long
+time: if the window does not answer within a second, the Desk reloads it on
+the place, or opens a new window. When you have to sign in first, you land
+on the same place, the card included, after the sign-in.
 
 ## With the Desk closed
 
