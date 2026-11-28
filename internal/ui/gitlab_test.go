@@ -436,3 +436,18 @@ func TestFixedTokenConfig(t *testing.T) {
 		t.Fatal("gitlab.url needs clientID or tokenUser")
 	}
 }
+
+func TestWithGitLabError(t *testing.T) {
+	for _, c := range []struct{ ret, want string }{
+		{"/", "/?gitlab_error=denied"},
+		{"/projects/a/b?tab=chat", "/projects/a/b?tab=chat&gitlab_error=denied"},
+		{"/m/x#prompt-Q5", "/m/x?gitlab_error=denied#prompt-Q5"},
+		{"/m/x?tab=cockpit#prompt-Q5", "/m/x?tab=cockpit&gitlab_error=denied#prompt-Q5"},
+		{safeReturn("/m/x#a?b"), "/m/x?gitlab_error=denied#a?b"},
+		{safeReturn("/m/x#a#b"), "/m/x?gitlab_error=denied#a%23b"},
+	} {
+		if got := withGitLabError(c.ret, "denied"); got != c.want {
+			t.Errorf("withGitLabError(%q) = %q, want %q", c.ret, got, c.want)
+		}
+	}
+}

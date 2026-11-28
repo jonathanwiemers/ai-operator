@@ -107,6 +107,22 @@ func (g *gitlabConn) login(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, g.oauth2Config().AuthCodeURL(st.State, oauth2.S256ChallengeOption(st.Verifier)), http.StatusFound)
 }
 
+// withGitLabError adds gitlab_error=code to the query of ret, a safeReturn
+// target, before its fragment, so the error reaches the page and the
+// anchor stays.
+func withGitLabError(ret, code string) string {
+	path, frag, hasFrag := strings.Cut(ret, "#")
+	sep := "?"
+	if strings.Contains(path, "?") {
+		sep = "&"
+	}
+	path += sep + "gitlab_error=" + url.QueryEscape(code)
+	if hasFrag {
+		path += "#" + frag
+	}
+	return path
+}
+
 // callback redeems GitLab's code and keeps the token.
 func (g *gitlabConn) callback(s *Server) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -120,11 +136,7 @@ func (g *gitlabConn) callback(s *Server) http.HandlerFunc {
 				ret = "/"
 			}
 			if code != "" {
-				sep := "?"
-				if strings.Contains(ret, "?") {
-					sep = "&"
-				}
-				ret += sep + "gitlab_error=" + url.QueryEscape(code)
+				ret = withGitLabError(ret, code)
 			}
 			http.Redirect(w, r, ret, http.StatusFound)
 		}

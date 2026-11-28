@@ -270,7 +270,9 @@ func (o *oidcClient) fail(w http.ResponseWriter, r *http.Request, code string) {
 
 // safeReturn only allows paths on this host as the target after login.
 // Browsers drop tabs and newlines from URLs, so "/\t/evil.com" would turn
-// into "//evil.com": control characters are refused before parsing.
+// into "//evil.com": control characters are refused before parsing. A
+// fragment on an allowed path is kept, escaped, so a deep link such as
+// "#prompt-Q5" survives the login.
 func safeReturn(s string) string {
 	if strings.ContainsFunc(s, func(r rune) bool { return r < 0x20 || r == 0x7f || r == '\\' }) {
 		return "/"
@@ -284,6 +286,9 @@ func safeReturn(s string) string {
 	out := u.EscapedPath()
 	if u.RawQuery != "" {
 		out += "?" + u.RawQuery
+	}
+	if u.Fragment != "" {
+		out += "#" + u.EscapedFragment()
 	}
 	return out
 }

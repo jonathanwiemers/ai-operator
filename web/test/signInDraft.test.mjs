@@ -17,7 +17,7 @@ function fakeBrowser(pathname, search = '', items = {}, broken = false) {
     removeItem: (k) => (check(), store.delete(k)),
   }
   globalThis.sessionStorage = storage
-  globalThis.window = { location: { pathname, search, assign: (url) => calls.push(url) }, sessionStorage: storage }
+  globalThis.window = { location: { pathname, search, hash: '', assign: (url) => calls.push(url) }, sessionStorage: storage }
   return { store, calls }
 }
 

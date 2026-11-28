@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { loginURL, onBeforeSignIn, shouldSignInAgain, signInAgain } from '../src/signInAgain.ts'
+import { loginURL, onBeforeSignIn, returnPath, shouldSignInAgain, signInAgain } from '../src/signInAgain.ts'
 
 const now = Date.parse('2026-11-12T10:00:00Z')
 
@@ -25,13 +25,14 @@ test('shouldSignInAgain: login_error in the URL blocks', () => {
 })
 
 // fakeWindow stands in for the browser's location and sessionStorage.
-function fakeWindow(search, items = {}, broken = false) {
+function fakeWindow(search, items = {}, broken = false, hash = '') {
   const store = new Map(Object.entries(items))
   const calls = []
   globalThis.window = {
     location: {
       pathname: '/projects/team-a/shop',
       search,
+      hash,
       assign: (url) => calls.push(`assign ${url}`),
     },
     sessionStorage: {
@@ -48,6 +49,15 @@ function fakeWindow(search, items = {}, broken = false) {
 test('loginURL returns to the current route', () => {
   fakeWindow('?tab=chat')
   assert.equal(loginURL(), '/oauth2/login?return=%2Fprojects%2Fteam-a%2Fshop%3Ftab%3Dchat')
+  fakeWindow('?tab=cockpit', {}, false, '#prompt-Q5')
+  assert.equal(loginURL(), '/oauth2/login?return=%2Fprojects%2Fteam-a%2Fshop%3Ftab%3Dcockpit%23prompt-Q5')
+})
+
+test('returnPath keeps path, query and hash', () => {
+  assert.equal(returnPath('/m/x', '', ''), '/m/x')
+  assert.equal(returnPath('/m/x', '?tab=cockpit', ''), '/m/x?tab=cockpit')
+  assert.equal(returnPath('/m/x', '?tab=cockpit', '#prompt-Q5'), '/m/x?tab=cockpit#prompt-Q5')
+  assert.equal(returnPath('/m/x', '', '#event-7'), '/m/x#event-7')
 })
 
 test('signInAgain: a fresh marker leaves it to the sign-in page', () => {

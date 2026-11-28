@@ -5,10 +5,16 @@
 const markerKey = 'desk-sign-in-again'
 const guardMs = 60_000
 
+// returnPath is where the login comes back to: path, query and hash, so a
+// deep link such as "#prompt-Q5" keeps its anchor.
+export function returnPath(pathname: string, search: string, hash: string): string {
+  return pathname + search + hash
+}
+
 // loginURL is the login that comes back to the current route.
 export function loginURL(): string {
-  const back = window.location.pathname + window.location.search
-  return `/oauth2/login?return=${encodeURIComponent(back)}`
+  const { pathname, search, hash } = window.location
+  return `/oauth2/login?return=${encodeURIComponent(returnPath(pathname, search, hash))}`
 }
 
 // shouldSignInAgain: no attempt in the last minute (marker, a timestamp in
