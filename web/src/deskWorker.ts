@@ -1,5 +1,5 @@
 import type { Router } from 'vue-router'
-import { inboxRoute, milestoneRoute } from './inboxRoute.ts'
+import { eventRoute, inboxRoute } from './inboxRoute.ts'
 import { localTimesText } from './localTime.ts'
 import { parseOpen, type NotifyOpen } from './notifyOpen.ts'
 import { eventKey, eventPoller, eventText } from './eventNotify.ts'
@@ -109,9 +109,9 @@ function openNotified(open: NotifyOpen, port?: MessagePort) {
 }
 
 // openRoute is where a notification leads: an Inbox item's card, an
-// event's milestone.
+// event's own card in the Cockpit (#event-<id>).
 function openRoute(open: NotifyOpen) {
-  return 'item' in open ? inboxRoute(open.item) : milestoneRoute(open.event.namespace, open.event.project, open.event.milestoneIID)
+  return 'item' in open ? inboxRoute(open.item) : eventRoute(open.event)
 }
 
 // A window the worker opened on `/?open=…` lands on the item, and the query

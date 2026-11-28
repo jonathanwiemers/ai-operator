@@ -2,7 +2,7 @@ import { liveLines, type LiveLine } from './cockpitLive.ts'
 import type { Tone } from './format.ts'
 import type { MilestoneIssueRow, QueueItem, Task } from './generated/views.ts'
 import { panelIssueBadge, panelIssueState } from './milestoneRows.ts'
-import type { CockpitScope, CockpitThread } from './stream.ts'
+import type { CockpitGroup, CockpitItem, CockpitScope, CockpitThread } from './stream.ts'
 
 // The header of a Cockpit thread (R4 of "Desk: the Cockpit newest first by
 // issue"): "#712 · Add the provider · Running · Implementing · 4 min".
@@ -74,4 +74,23 @@ export function threadHeader(t: CockpitThread, ctx: ThreadHeaderContext): Thread
     label: [ref, title, milestoneTitle].filter(Boolean).join(' · '),
     anchor: `issue-${iid}`,
   }
+}
+
+// EventPlace is where an event sits in a thread's items: the item's index
+// (at or past the thread's newest, behind Show N more) and, inside a folded
+// group, that group.
+export interface EventPlace {
+  index: number
+  group?: CockpitGroup
+}
+
+// eventPlace finds the event with id among a thread's items, the target of
+// an #event-<id> link (D906-P4): a shown event or one in a group, never a
+// note thread's. Null when the thread does not hold it.
+export function eventPlace(items: readonly CockpitItem[], id: number): EventPlace | null {
+  for (const [index, item] of items.entries()) {
+    if (item.type === 'event' && item.event.id === id) return { index }
+    if (item.type === 'group' && item.events.some((e) => e.id === id)) return { index, group: item }
+  }
+  return null
 }

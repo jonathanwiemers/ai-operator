@@ -68,6 +68,28 @@ const fiveItems: StreamEvent[] = [
   ev('pilot.acted', 24, 281, 'Pilot asked #281 to retry again'),
   ev('run.started', 20, 281, 'Run 2 started on #281'),
 ]
+// milestoneEvent: an event of the milestone (no issue), or with project of
+// the project alone (no milestone either).
+const milestoneEvent = (kind: StreamKind, minutes: number, summary: string, data: StreamEvent['data'] = {}, project = false): StreamEvent => {
+  const { issueIID: _i, task: _t, milestoneIID, ...e } = ev(kind, minutes, 0, summary, data)
+  return project ? e : { ...e, milestoneIID }
+}
+// released: the notified release.ended event, the oldest of the Milestone
+// thread's 4 items, so its card sits behind Show 1 more.
+const releaseData = { releaseID: 3, state: 'Released', version: '2026.11.4', releaseURL: 'https://gitlab.example.com/team-a/shop/-/releases/2026.11.4' }
+const released = milestoneEvent('release.ended', 90, 'Released 2026.11.4', releaseData)
+const withReleases: StreamEvent[] = [
+  released,
+  ...oldestFirst,
+  milestoneEvent('release.decided', 8, 'Release 4 after #281', { releaseID: 4, afterIssue: 281 }),
+  milestoneEvent('autopilot.paused', 6, 'Autopilot paused'),
+  milestoneEvent('autopilot.resumed', 5, 'Autopilot resumed'),
+]
+// projectRelease: a release of the project without a milestone, served as
+// the project page's stream (projectEvents).
+const projectRelease = milestoneEvent('release.ended', 50, 'Released 2026.11.5', { ...releaseData, releaseID: 5, version: '2026.11.5' }, true)
+let projectEvents: StreamEvent[] | null = null
+
 // withRunning: the stream with an event of #282, whose implementer runs
 // with Live.
 const withRunning: StreamEvent[] = [...oldestFirst, ev('run.started', 4, 282, 'Run 3 started on #282')]
@@ -110,6 +132,10 @@ async function open(
       if (q) opened.searches.push(q)
       const found = events.filter((e) => !q || e.summary.toLowerCase().includes(q.toLowerCase()))
       return r.fulfill({ status: 200, json: { events: found, newest: `c-${events[0]!.id}`, history: true } })
+    }
+    if (projectEvents && p === '/stream' && url.searchParams.get('project') === 'team-a/shop' && !url.searchParams.has('milestone')) {
+      if (url.searchParams.has('after')) return r.fulfill({ status: 200, json: { events: [], history: true } })
+      return r.fulfill({ status: 200, json: { events: projectEvents, newest: `c-${projectEvents[0]!.id}`, history: true } })
     }
     if (live && p === `/projects/team-a/shop/tasks/${captures.name}/transcript`) {
       opened.transcripts.push(p)
@@ -247,6 +273,60 @@ for (const width of [375, 1280]) {
     await page.evaluate(() => (location.hash = '#issue-281'))
     await expect(page.locator('main #issue-281')).toBeInViewport()
     expect(problems).toEqual([])
+  })
+
+  // R4 of "Desk: a notification click opens the event it is about": a
+  // release notification's window (/?open=) lands on the event's card,
+  // behind Show 1 more of the Milestone thread: in view, focused and
+  // highlighted for about 2 s. Its link to the GitLab release stays.
+  test(`an event notification opens its card behind Show N more@${width}`, async ({ page, baseURL }) => {
+    const { problems } = await open(page, baseURL, `/?open=${encodeURIComponent(JSON.stringify({ event: released }))}`, width, withReleases)
+    await expect(page).toHaveURL(new RegExp(`/milestones/14\\?tab=cockpit#event-${released.id}$`))
+    const card = page.locator(`main #event-${released.id}`)
+    await expect(card).toBeInViewport()
+    await expect(card).toBeFocused()
+    await expect(card).toHaveClass(/event-highlight/)
+    await expect(card.getByRole('link', { name: /release 2026\.11\.4/ })).toHaveAttribute('href', releaseData.releaseURL)
+    await page.clock.runFor(2500)
+    await expect(card).not.toHaveClass(/event-highlight/)
+
+    // A new #event- hash on the page is followed again: a folded CI event
+    // opens its group.
+    const ci = oldestFirst.find((e) => e.summary === 'Pipeline passed on #280')!
+    await page.evaluate((id) => (location.hash = `#event-${id}`), ci.id)
+    const ciCard = page.locator(`main #event-${ci.id}`)
+    await expect(ciCard).toBeInViewport()
+    await expect(ciCard).toBeFocused()
+    expect(problems).toEqual([])
+  })
+
+  test(`an #event- link to an event not on the page leaves the Cockpit at its top@${width}`, async ({ page, baseURL }) => {
+    const { problems } = await open(page, baseURL, `${milestonePath}#event-999999`, width, withReleases)
+    await expect(page).toHaveURL(/\/milestones\/14\?tab=cockpit#event-999999$/)
+    await expect(stream(page).locator('[data-cockpit-thread]').first()).toBeVisible()
+    await expect(stream(page).getByRole('button', { name: 'Show 1 more' })).toHaveAttribute('aria-expanded', 'false')
+    expect(await page.evaluate(() => window.scrollY)).toBe(0)
+    await expect(page.locator('.event-highlight')).toHaveCount(0)
+    expect(problems).toEqual([])
+  })
+
+  // With reduced motion the highlight is a static ring (no animation).
+  test(`a release without a milestone opens its card in the project Cockpit, a static ring with reduced motion@${width}`, async ({ page, baseURL }) => {
+    projectEvents = [projectRelease]
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    try {
+      const { problems } = await open(page, baseURL, `/?open=${encodeURIComponent(JSON.stringify({ event: projectRelease }))}`, width)
+      await expect(page).toHaveURL(new RegExp(`/projects/team-a/shop\\?tab=cockpit#event-${projectRelease.id}$`))
+      const card = page.locator(`main #event-${projectRelease.id}`)
+      await expect(card).toBeInViewport()
+      await expect(card).toBeFocused()
+      await expect(card).toHaveClass(/event-highlight/)
+      await expect(card).toHaveCSS('animation-name', 'none')
+      await expect(card).toHaveCSS('outline-style', 'solid')
+      expect(problems).toEqual([])
+    } finally {
+      projectEvents = null
+    }
   })
 
   test(`a running issue's header shows its step, ?live=1 opens its Live transcript@${width}`, async ({ page, baseURL }) => {

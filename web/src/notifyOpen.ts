@@ -5,7 +5,7 @@ import type { InboxItem, StreamEvent } from './types'
 // worker's `{ open }` message to an open Desk window, and the `?open=` query
 // of a window the worker opens. Keep it free of DOM and Vue: the worker is
 // built from it into one file (vite.sw.config.ts). The route comes from
-// inboxRoute() in the app, for an event its milestone (milestoneRoute());
+// inboxRoute() in the app, for an event its card (eventRoute());
 // the worker has no route logic.
 export type NotifyOpen = { item: InboxItem } | { event: StreamEvent }
 

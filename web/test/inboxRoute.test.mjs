@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
-import { inboxRoute, milestoneRoute, pinnedAnchor } from '../src/inboxRoute.ts'
+import { eventRoute, inboxRoute, milestoneRoute, pinnedAnchor } from '../src/inboxRoute.ts'
 import { looseAnchor } from '../src/looseIssues.ts'
 
 const item = (kind, over = {}) => ({ namespace: 'team', project: 'shop', kind, ...over })
@@ -98,10 +98,10 @@ test('inboxRoute: the Inbox rows and the notification click both route with it',
   // A notification click, from the service worker's message or a plain
   // Notification, and a window opened on ?open= (deskWorker.ts).
   const worker = read('../src/deskWorker.ts')
-  // Both go through openRoute: an item's inboxRoute, an event's milestone.
+  // Both go through openRoute: an item's inboxRoute, an event's card (eventRoute).
   assert.match(worker, /router\?\.push\(openRoute\(open\)\)/)
   assert.match(worker, /r\.replace\(open \? openRoute\(open\)/)
-  assert.match(worker, /'item' in open \? inboxRoute\(open\.item\) : milestoneRoute\(/)
+  assert.match(worker, /'item' in open \? inboxRoute\(open\.item\) : eventRoute\(open\.event\)/)
   assert.doesNotMatch(read('../src/App.vue'), /router\.push\(/)
   // The open items are InboxList's rows (the Inbox and the Overview Cockpit).
   const inbox = read('../src/components/InboxList.vue')
@@ -137,4 +137,17 @@ test('inboxRoute: a ready plan opens its plan page', () => {
     name: 'plans',
     params: { namespace: 'team', name: 'shop', plan: 'shop-plan-x7k2' },
   })
+})
+
+// R3 of "Desk: a notification click opens the event it is about".
+test('eventRoute: an event opens its card in the milestone Cockpit, without a milestone in the project Cockpit', () => {
+  const release = { id: 2008, kind: 'release.ended', namespace: 'team', project: 'shop', at: '2026-11-28T10:00:00Z' }
+  assert.deepEqual(eventRoute({ ...release, milestoneIID: 3 }), cockpit('#event-2008'))
+  assert.deepEqual(eventRoute(release), {
+    name: 'stream-project',
+    params: { namespace: 'team', name: 'shop' },
+    query: { tab: 'cockpit' },
+    hash: '#event-2008',
+  })
+  assert.deepEqual(eventRoute({ ...release, milestoneIID: 0 }).query, { tab: 'cockpit' })
 })

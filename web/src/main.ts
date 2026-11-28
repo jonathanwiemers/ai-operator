@@ -104,11 +104,12 @@ const router = createRouter({
   // decision card's link to its successor) does not scroll: the card the
   // hash names scrolls itself into view (MilestoneDecisions.vue). Nor does
   // a thread link on the same page (Now & next's rows, with or without
-  // ?live=1): the thread scrolls itself into view (CockpitThread.vue).
+  // ?live=1): the thread scrolls itself into view (CockpitThread.vue), as it
+  // scrolls an event's card into view (#event-<id>).
   scrollBehavior: (to, from, saved) => {
     if (saved) return saved
     if (to.hash.startsWith('#prompt-') || to.hash === pinnedAnchor) return { el: to.hash, top: 12 }
-    if (to.hash.startsWith('#issue-') && to.path === from.path) return false
+    if ((to.hash.startsWith('#issue-') || to.hash.startsWith('#event-')) && to.path === from.path) return false
     if (to.hash && to.hash !== from.hash && to.fullPath.split('#')[0] === from.fullPath.split('#')[0]) return false
     return { top: 0 }
   },

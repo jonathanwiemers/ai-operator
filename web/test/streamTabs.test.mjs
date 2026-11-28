@@ -372,7 +372,7 @@ test('milestoneAlias: ?panel=issues and ?panel=queue go, other parameters stay',
 // (a GitLab comment's #prompt-Q<n>, an old notification, a bookmark) that
 // points at a Cockpit card or thread without ?tab= opens the Cockpit.
 test('cockpitQuery: a card or thread link without ?tab= opens the Cockpit, ?live= stays', () => {
-  for (const hash of ['#prompt-Q3', '#issue-712', '#pinned', '#problem-281']) {
+  for (const hash of ['#prompt-Q3', '#issue-712', '#pinned', '#problem-281', '#event-2008']) {
     assert.deepEqual(cockpitQuery({}, hash), { tab: 'cockpit' }, hash)
     assert.deepEqual(cockpitQuery({ tab: '' }, hash), { tab: 'cockpit' }, hash)
     assert.deepEqual(cockpitQuery({ tab: [] }, hash), { tab: 'cockpit' }, hash)

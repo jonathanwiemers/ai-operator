@@ -1,7 +1,7 @@
 // Tests of src/cockpitThread.ts: npm test (node --test, no extra dependencies).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { threadHeader } from '../src/cockpitThread.ts'
+import { eventPlace, threadHeader } from '../src/cockpitThread.ts'
 
 const now = Date.parse('2026-11-24T10:00:00Z')
 const thread = (extra) => ({ key: 'k', namespace: 'ns', project: 'shop', milestoneIID: 5, at: '', items: [], ...extra })
@@ -89,4 +89,24 @@ test('the project scope shows the milestone title, and a running issue without r
 test('with scope all the header is the project', () => {
   const h = threadHeader(thread({ issueIID: 712 }), { ...ctx, scope: 'all' })
   assert.deepEqual(h, { ref: 'shop', title: '', label: 'shop' })
+})
+
+// R4 of "Desk: a notification click opens the event it is about": where an
+// #event-<id> link's card sits in a thread.
+test('eventPlace: a shown event, one behind Show N more, one in a group, a note thread and an absent id', () => {
+  const ev = (id, kind = 'release.ended') => ({ id, kind, namespace: 'ns', project: 'shop', at: '' })
+  const group = { type: 'group', key: 'g', namespace: 'ns', project: 'shop', from: '', to: '', events: [ev(7, 'ci'), ev(8, 'ci')], summary: '' }
+  const items = [
+    { type: 'event', event: ev(1) },
+    { type: 'thread', key: 't', at: '', notes: [ev(2, 'note')] },
+    group,
+    { type: 'event', event: ev(3) },
+    { type: 'event', event: ev(4) },
+  ]
+  assert.deepEqual(eventPlace(items, 1), { index: 0 })
+  assert.deepEqual(eventPlace(items, 4), { index: 4 }, 'behind Show N more')
+  assert.deepEqual(eventPlace(items, 8), { index: 2, group })
+  assert.equal(eventPlace(items, 2), null, 'a note thread is no target')
+  assert.equal(eventPlace(items, 99), null)
+  assert.equal(eventPlace([], 1), null)
 })

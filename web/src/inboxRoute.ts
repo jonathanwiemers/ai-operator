@@ -1,4 +1,4 @@
-import type { InboxItem } from './types'
+import type { InboxItem, StreamEvent } from './types'
 
 // MilestoneRoute is a milestone's Cockpit (?tab=cockpit, its second tab),
 // with a card's anchor in hash.
@@ -32,6 +32,16 @@ export type InboxRoute =
   | LooseRoute
   | { name: 'plans'; params: { namespace: string; name: string; plan: string } }
   | { name: 'stream-project'; params: { namespace: string; name: string } }
+  | ProjectCockpitRoute
+
+// ProjectCockpitRoute is a project's Cockpit tab (its default tab is
+// Milestones), with an event card's anchor in hash.
+type ProjectCockpitRoute = {
+  name: 'stream-project'
+  params: { namespace: string; name: string }
+  query: { tab: 'cockpit' }
+  hash: string
+}
 
 // pinnedAnchor is the hash of the Cockpit's pinned cards (Cockpit.vue).
 export const pinnedAnchor = '#pinned'
@@ -72,11 +82,21 @@ export function inboxRoute(item: InboxItem): InboxRoute {
 }
 
 // milestoneRoute is a milestone's Cockpit, where its events are; without a
-// milestone (iid 0 or none) the project's page, its Milestones tab. A click
-// on an event's notification opens it.
+// milestone (iid 0 or none) the project's page, its Milestones tab.
 export function milestoneRoute(namespace: string, name: string, iid?: number): InboxRoute {
   if (iid) return { name: 'stream-milestone', params: { namespace, name, iid: String(iid) }, query: { tab: 'cockpit' } }
   return { name: 'stream-project', params: { namespace, name } }
+}
+
+// eventRoute is where an event's notification leads (milestone started,
+// done, a release): its own card in the milestone's Cockpit (#event-<id>),
+// without a milestone in the project's Cockpit. The thread that holds the
+// card opens, scrolls to and highlights it (CockpitThread.vue).
+export function eventRoute(e: StreamEvent): InboxRoute {
+  const base = { namespace: e.namespace, name: e.project }
+  const hash = `#event-${e.id}`
+  if (e.milestoneIID) return cockpit(base, e.milestoneIID, hash)
+  return { name: 'stream-project', params: base, query: { tab: 'cockpit' }, hash }
 }
 
 function cockpit(base: { namespace: string; name: string }, iid: number, hash: string): MilestoneRoute {

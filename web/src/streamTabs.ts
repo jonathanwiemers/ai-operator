@@ -186,13 +186,13 @@ function hasTab(query: Record<string, unknown>): boolean {
 // thread without ?tab= (D6 of "Desk: Milestones and Issues first"): a
 // GitLab comment's #prompt-Q<n>, an old notification's #issue-<iid> or
 // #pinned, an old problem link's #problem-<iid> (MilestoneNeeds opens its
-// thread), an old Now & next row's ?live=1. It is the query with
+// thread), an event's card (#event-<id>), an old Now & next row's ?live=1. It is the query with
 // ?tab=cockpit, null for a link that names a tab or points at nothing in
 // the Cockpit. ?live= stays; the caller keeps the hash.
 export function cockpitQuery<V>(query: Record<string, V>, hash: string): Record<string, V | string> | null {
   if (hasTab(query)) return null
   const live: unknown = Array.isArray(query.live) ? query.live[0] : query.live
-  const card = ['#prompt-', '#issue-', '#problem-'].some((p) => hash.startsWith(p)) || hash === pinnedAnchor
+  const card = ['#prompt-', '#issue-', '#problem-', '#event-'].some((p) => hash.startsWith(p)) || hash === pinnedAnchor
   return card || live === '1' ? { ...query, tab: 'cockpit' } : null
 }
 

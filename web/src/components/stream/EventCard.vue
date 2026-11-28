@@ -112,7 +112,7 @@ function taskLink(ev: StreamEvent) {
 
 <template>
   <NoteThread v-if="notes" compact :notes="threadNotes" />
-  <div v-else-if="e" class="ev" :class="{ warn: e.kind === 'needs' }">
+  <div v-else-if="e" :id="`event-${e.id}`" tabindex="-1" class="ev" :class="{ warn: e.kind === 'needs' }">
     <div class="av sys">
       <template v-if="e.kind === 'run.started' || e.kind === 'run.finished'">▶</template>
       <template v-else-if="e.kind === 'ci'">✕</template>
@@ -337,6 +337,28 @@ function taskLink(ev: StreamEvent) {
   grid-template-columns: 34px minmax(0, 1fr);
   gap: 10px;
   margin-bottom: 14px;
+  border-radius: var(--radius);
+}
+/* The card an #event-<id> link opened (CockpitThread.vue): a primary ring
+   that fades out over about 2 s; static with reduced motion. */
+.ev.event-highlight {
+  outline: 2px solid var(--primary);
+  outline-offset: 4px;
+  animation: event-highlight 2s ease-out forwards;
+}
+@keyframes event-highlight {
+  0%,
+  60% {
+    outline-color: var(--primary);
+  }
+  100% {
+    outline-color: transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ev.event-highlight {
+    animation: none;
+  }
 }
 .av {
   width: 30px;

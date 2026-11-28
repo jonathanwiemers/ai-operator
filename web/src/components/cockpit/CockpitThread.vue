@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import UButton from '@nuxt/ui/components/Button.vue'
 import UCollapsible from '@nuxt/ui/components/Collapsible.vue'
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import type { ThreadHeader } from '../../cockpitThread'
+import { eventPlace, type ThreadHeader } from '../../cockpitThread'
 import type { CockpitGroup, CockpitItem as Item, CockpitThread } from '../../stream'
 import type { ProjectDetail, PromptView } from '../../types'
 import Badge from '../Badge.vue'
@@ -98,6 +98,50 @@ watch(
   },
   { immediate: true },
 )
+
+// #event-<id> (R4 of "Desk: a notification click opens the event it is
+// about"): the thread that holds the event opens Show N more and the group
+// around it, then scrolls the card into view, focuses it and highlights it
+// for highlightMs. Once per hash, also when the items arrive after it (the
+// ?open= landing); a thread without the event, or an event not loaded,
+// leaves the page as it is.
+const highlightMs = 2000
+let followedEvent = ''
+let highlight: ReturnType<typeof setTimeout> | undefined
+watch(
+  () => [route.hash, props.thread.items] as const,
+  ([hash, items]) => {
+    const id = /^#event-(\d+)$/.exec(hash)?.[1]
+    if (!id) {
+      followedEvent = ''
+      return
+    }
+    if (followedEvent === hash) return
+    const place = eventPlace(items, Number(id))
+    if (!place) return
+    followedEvent = hash
+    if (place.index >= newest) more.value = true
+    if (place.group) setOpen(place.group, true)
+    void nextTick(() => showEvent(`event-${id}`, 10))
+  },
+  { immediate: true },
+)
+// showEvent waits up to frames animation frames for the opened
+// collapsibles to render the card.
+function showEvent(anchor: string, frames: number) {
+  const card = document.getElementById(anchor)
+  if (!card) {
+    if (frames > 0) requestAnimationFrame(() => showEvent(anchor, frames - 1))
+    return
+  }
+  card.scrollIntoView({ block: 'center' })
+  card.focus({ preventScroll: true })
+  clearTimeout(highlight)
+  document.querySelector('.event-highlight')?.classList.remove('event-highlight')
+  card.classList.add('event-highlight')
+  highlight = setTimeout(() => card.classList.remove('event-highlight'), highlightMs)
+}
+onBeforeUnmount(() => clearTimeout(highlight))
 </script>
 
 <template>
