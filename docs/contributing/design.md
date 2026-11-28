@@ -1835,6 +1835,13 @@ push is not "done" until its pipeline is green:
   `failedJobs`; the note links its `issueIID`), else the latest finished
   pipeline of the default branch is listed. Otherwise the operator requests a CI fix run
   (`spec.source.ciFixPipelineID`).
+* Before that, `infraFailure` (`internal/controller/ci_infra.go`) judges a red
+  pipeline by `spec.ci.infraFailures`. When every failing job matches a runner
+  `failure_reason` or a log pattern in the last 64 KiB of its trace (checked
+  job by job, stopping at the first miss), `status.ci.infra.dueAt` is set to
+  the doubling backoff. Polls before it make no calls; then the pipeline is
+  retried (`retries++`, `retried` set, so the next code failure is a fix round).
+  Out of retries, the tree is `Failed` without a fix run: a ciRed hold.
 * A CI fix run resumes the implementer's session with the failed jobs and a
   cleaned excerpt of their logs (ANSI codes, section markers and progress
   output removed, the last 150 lines / 8 KB of at most 3 jobs), marked as
@@ -1852,6 +1859,8 @@ stateDiagram-v2
     Pending --> None: no pipeline within noPipelineTimeout
     Pending --> Running: pipeline found
     Running --> Running: red the first time, failed jobs retried
+    Running --> Running: red because of the runner, retried after a backoff
+    Running --> Failed: red because of the runner, retries used up
     Running --> Success: green, skipped or manual
     Running --> Canceled: canceled
     Running --> BaseFailing: red, same jobs red on the default branch

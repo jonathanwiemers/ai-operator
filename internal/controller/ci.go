@@ -88,6 +88,9 @@ func (r *AgentProjectReconciler) syncCI(ctx context.Context, gl gitlab.API, spec
 	if err != nil {
 		return err
 	}
+	if err := infraRetryNotes(ctx, gl, spec, is, open, ci, run); err != nil {
+		return err
+	}
 	homeFinal, compFinal := ci.State.Final(), cc == nil || cc.State.Final()
 	// A final state with a note stays open until the other tree is done too,
 	// so the note goes out once, with the loop's end.
@@ -96,8 +99,14 @@ func (r *AgentProjectReconciler) syncCI(ctx context.Context, gl gitlab.API, spec
 			*state, *note = aiv1.CIStateRunning, ""
 		}
 	}
+	// A tree held for the runner (Failed, with its note) stays open the same
+	// way, so the other tree is still followed and fixed; its judged pipeline
+	// is not read again (redPipeline).
 	switch {
 	case homeRed:
+		if cc != nil && cc.State == aiv1.CIStateFailed {
+			keepOpen(&cc.State, &compNote)
+		}
 		return r.ciRed(ctx, gl, spec, is, task, mr, open, ci, "")
 	case !homeFinal:
 		if cc != nil {
@@ -195,17 +204,17 @@ func (r *AgentProjectReconciler) followHomeCI(ctx context.Context, gl gitlab.API
 	}
 	p := pipelines[0]
 	ci.PipelineID, ci.PipelineURL = p.ID, p.WebURL
-	jobs, state, err := r.redPipeline(ctx, gl, spec, glProject, p, &ci.Retried)
+	state, err := r.redPipeline(ctx, gl, spec, glProject, p, ciTree{&ci.Retried, &ci.FailedJobs, &ci.Infra})
 	if err != nil {
 		return false, "", err
 	}
-	if p.Status == "failed" {
-		ci.FailedJobs = jobs
-	}
 	if state != "" {
 		ci.State = state
-		if state == aiv1.CIStateCanceled {
+		switch state {
+		case aiv1.CIStateCanceled:
 			note = fmt.Sprintf("🤖 The pipeline %s was canceled, so CI could not confirm this change. Moving the issue to review.", p.WebURL)
+		case aiv1.CIStateFailed:
+			note = infraHeldNote(ci.Infra, p.WebURL, "")
 		}
 		return false, note, nil
 	}
@@ -259,17 +268,17 @@ func (r *AgentProjectReconciler) followCompanionCI(ctx context.Context, gl gitla
 	}
 	p := pipelines[0]
 	cc.PipelineID, cc.PipelineURL = p.ID, p.WebURL
-	jobs, state, err := r.redPipeline(ctx, gl, spec, c.Project, p, &cc.Retried)
+	state, err := r.redPipeline(ctx, gl, spec, c.Project, p, ciTree{&cc.Retried, &cc.FailedJobs, &cc.Infra})
 	if err != nil {
 		return false, "", err
 	}
-	if p.Status == "failed" {
-		cc.FailedJobs = jobs
-	}
 	if state != "" {
 		cc.State = state
-		if state == aiv1.CIStateCanceled {
+		switch state {
+		case aiv1.CIStateCanceled:
 			note = fmt.Sprintf("🤖 The pipeline %s of the companion repository %s was canceled, so CI could not confirm its change.", p.WebURL, c.Project)
+		case aiv1.CIStateFailed:
+			note = infraHeldNote(cc.Infra, p.WebURL, " of the companion repository "+c.Project)
 		}
 		return false, note, nil
 	}
@@ -277,39 +286,95 @@ func (r *AgentProjectReconciler) followCompanionCI(ctx context.Context, gl gitla
 	return true, "", nil
 }
 
+// ciTree is the part of a tree's CI status that redPipeline keeps.
+type ciTree struct {
+	retried    *bool
+	failedJobs *[]string
+	infra      **aiv1.CIInfraRetry
+}
+
 // redPipeline handles the parts of a pipeline both trees share. A state
 // says where the pipeline stands unless it is red for good: Success
-// (green, manual), Canceled, or Running (still running, or its failed jobs
-// were retried just now, once per head as *retried records). With no
-// state, the pipeline is red; jobs are its failed jobs that fail it.
-func (r *AgentProjectReconciler) redPipeline(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, project string, p gitlab.Pipeline, retried *bool) (jobs []string, state aiv1.CIState, err error) {
+// (green, manual), Canceled, Running (still running, or its failed jobs
+// were retried just now, once per head as t.retried records, or will be
+// for the runner, see spec.ci.infraFailures), or Failed (red because of the runner
+// after the last infra retry). With no state, the pipeline is red; its
+// failed jobs that fail it are in t.failedJobs.
+func (r *AgentProjectReconciler) redPipeline(ctx context.Context, gl gitlab.API, spec aiv1.AgentProjectSpec, project string, p gitlab.Pipeline, t ciTree) (aiv1.CIState, error) {
+	if in := *t.infra; in != nil && (p.Status != "failed" || in.PipelineID != p.ID) {
+		// Retried by now, or another pipeline: its failure is judged anew.
+		in.DueAt, in.PipelineID = nil, 0
+	}
 	switch p.Status {
 	case "success", "manual":
-		return nil, aiv1.CIStateSuccess, nil
+		return aiv1.CIStateSuccess, nil
 	case "canceled":
-		return nil, aiv1.CIStateCanceled, nil
+		return aiv1.CIStateCanceled, nil
 	case "failed":
 	default:
-		return nil, aiv1.CIStateRunning, nil
+		return aiv1.CIStateRunning, nil
+	}
+	logger := log.FromContext(ctx).WithValues("project", project, "pipeline", p.ID)
+	// This pipeline's failed jobs were judged already: wait for the retry, or
+	// stay held once the retries are used up, without calls.
+	if in := *t.infra; in != nil && in.PipelineID == p.ID {
+		if in.DueAt == nil {
+			return aiv1.CIStateFailed, nil
+		}
+		if r.now().Before(in.DueAt.Time) {
+			return aiv1.CIStateRunning, nil
+		}
+		if _, err := gl.RetryPipeline(ctx, project, p.ID); err != nil {
+			return "", fmt.Errorf("retrying pipeline %d: %w", p.ID, err)
+		}
+		in.Retries++
+		in.DueAt, in.PipelineID = nil, 0
+		*t.retried = true // the infra retry is the flaky retry too
+		logger.Info("retried the failed jobs of a pipeline the runner failed", "retry", in.Retries, "signature", in.Signature)
+		return aiv1.CIStateRunning, nil
 	}
 	failed, err := gl.ListPipelineJobs(ctx, project, p.ID, "failed")
 	if err != nil {
-		return nil, "", fmt.Errorf("listing failed jobs of pipeline %d: %w", p.ID, err)
+		return "", fmt.Errorf("listing failed jobs of pipeline %d: %w", p.ID, err)
 	}
+	var jobs []string
 	for _, j := range failed {
 		if !j.AllowFailure {
 			jobs = append(jobs, j.Name)
 		}
 	}
-	if *spec.CI.RetryFailedJobs && !*retried {
-		log.FromContext(ctx).Info("pipeline failed, retrying failed jobs once", "project", project, "pipeline", p.ID, "jobs", jobs)
-		if _, err := gl.RetryPipeline(ctx, project, p.ID); err != nil {
-			return nil, "", fmt.Errorf("retrying pipeline %d: %w", p.ID, err)
+	*t.failedJobs = jobs
+	if inf := *spec.CI.InfraFailures; *inf.MaxRetries > 0 {
+		sig, ok, err := infraFailure(ctx, gl, inf, project, failed)
+		if err != nil {
+			return "", err
 		}
-		*retried = true
-		return jobs, aiv1.CIStateRunning, nil
+		if ok {
+			in := *t.infra
+			if in == nil {
+				in = &aiv1.CIInfraRetry{}
+				*t.infra = in
+			}
+			in.Signature, in.PipelineID = sig, p.ID
+			if in.Retries >= *inf.MaxRetries {
+				logger.Info("pipeline still fails because of the runner, infra retries used up", "retries", in.Retries, "signature", sig)
+				return aiv1.CIStateFailed, nil
+			}
+			wait := inf.InfraBackoff(in.Retries)
+			in.DueAt = &metav1.Time{Time: r.now().Add(wait)}
+			logger.Info("pipeline failed because of the runner, retrying it later", "in", wait, "retry", in.Retries+1, "signature", sig)
+			return aiv1.CIStateRunning, nil
+		}
 	}
-	return jobs, "", nil
+	if *spec.CI.RetryFailedJobs && !*t.retried {
+		logger.Info("pipeline failed, retrying failed jobs once", "jobs", jobs)
+		if _, err := gl.RetryPipeline(ctx, project, p.ID); err != nil {
+			return "", fmt.Errorf("retrying pipeline %d: %w", p.ID, err)
+		}
+		*t.retried = true
+		return aiv1.CIStateRunning, nil
+	}
+	return "", nil
 }
 
 // ciRed asks the agent to fix a red pipeline, of the home project (project

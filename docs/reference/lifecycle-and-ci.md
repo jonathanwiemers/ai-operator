@@ -73,6 +73,7 @@ agent gets the failed jobs' logs and fixes them. See
 | `maxFixRounds` | CI fix runs per push before the issue goes to needs-input. | `2` |
 | `retryFailedJobs` | Retry the failed jobs once before the agent is involved. | `true` |
 | `noPipelineTimeout` | No pipeline for the pushed commit within this time means "no CI". | `10m` |
+| `infraFailures` | Tell runner failures from code failures, see [Runner failures](#runner-failures). | see below |
 
 The GitLab token needs the `api` scope (Developer role) to read pipelines
 and job logs and to retry jobs.
@@ -99,6 +100,38 @@ way, from its merge request's head. While the hold waits, `status.ci`
 records what the pipeline does: `Running` while it runs, `Failed` with the
 failed jobs when it fails again. A commit that someone else pushes to the
 merge request keeps the hold. Holds for other causes do not lift this way.
+
+### Runner failures
+
+A pipeline can fail because of the CI runner, not the code: a DNS outage,
+a lost or OOM-killed runner. Such a failure uses no fix round. For example:
+
+```yaml
+spec:
+  ci:
+    infraFailures:
+      failureReasons: [runner_system_failure, stuck_or_timeout_failure]
+      logPatterns: [EAI_AGAIN, error resolving DNS, Temporary failure in name resolution, OOMKilled]
+      maxRetries: 6
+      backoff: 2m
+```
+
+| Field | Meaning | Default |
+|-------|---------|---------|
+| `failureReasons` | GitLab `failure_reason` values that count as the runner's, matched exactly. The job's log is not read. | `runner_system_failure`, `stuck_or_timeout_failure` |
+| `logPatterns` | Text that marks a runner failure, matched without case in the last 64 KiB of a failed job's log. A list you set replaces the default. | `EAI_AGAIN`, `error resolving DNS`, `Temporary failure in name resolution`, `OOMKilled` |
+| `maxRetries` | Runner retries per pushed commit. `0` turns the check off. | `6` |
+| `backoff` | Wait before the first retry. It doubles with each retry, up to 30m. | `2m` |
+
+The operator checks a red pipeline like this:
+
+| The failing jobs | What happens |
+|------------------|--------------|
+| All match a reason or pattern, retries left | The failed jobs are retried after the backoff. No fix round is used. The first retry of a commit gets one note: "🔁 The pipeline … failed because of the runner, not the code (…)". `status.ci.infra` counts the retries. |
+| All match, retries used up | The issue is held in `agent::needs-input` (`ciRed`), with no fix run and the note "🤖 CI is still red because of the runner, not the code, after 6 retries …". Fix the runner and retry the pipeline: the hold lifts once it is green. |
+| One or more do not match | A normal red pipeline: the flaky retry, then a fix round. A runner retry counts as the flaky retry. |
+
+Each failed job's log is read at most once.
 
 A milestone can change `maxFixRounds` and `retryFailedJobs` for its issues
 with a rule, see [`spec.pilot`](agentproject.md#specpilot).

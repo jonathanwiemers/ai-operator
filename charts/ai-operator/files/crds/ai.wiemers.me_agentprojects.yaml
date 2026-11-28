@@ -1936,6 +1936,39 @@ spec:
                     description: 'Disabled turns the loop off: issues go to review
                       right after the push.'
                     type: boolean
+                  infraFailures:
+                    description: |-
+                      InfraFailures: a red pipeline whose failing jobs all failed because
+                      of the runner, not the code, is retried with a backoff and uses no
+                      fix round.
+                    properties:
+                      backoff:
+                        description: |-
+                          Backoff is the wait before the first retry; it doubles with each
+                          retry, up to 30m. Default 2m.
+                        type: string
+                      failureReasons:
+                        description: |-
+                          FailureReasons are GitLab failure_reason values that count as the
+                          runner's, matched exactly. Unset: the defaults.
+                        items:
+                          type: string
+                        type: array
+                      logPatterns:
+                        description: |-
+                          LogPatterns are substrings, matched case-insensitively in the last
+                          64 KiB of a failed job's log. Unset: the defaults.
+                        items:
+                          type: string
+                        type: array
+                      maxRetries:
+                        description: |-
+                          MaxRetries is how many times the failed jobs are retried for the
+                          runner per pushed head; 0 turns the check off. Default 6.
+                        format: int32
+                        minimum: 0
+                        type: integer
+                    type: object
                   maxFixRounds:
                     default: 2
                     description: |-

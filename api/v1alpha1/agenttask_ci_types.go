@@ -61,6 +61,10 @@ type CIStatus struct {
 	// lifted the hold. A new push starts a new status, without it.
 	// +optional
 	RecoveredAt *metav1.Time `json:"recoveredAt,omitempty"`
+	// Infra records the retries of a pipeline that failed because of the
+	// runner (spec.ci.infraFailures).
+	// +optional
+	Infra *CIInfraRetry `json:"infra,omitempty"`
 	// Companion is the pipeline of the companion's pushed head
 	// (status.run.companion.pushedSHA); unset without a pushed companion.
 	// +optional
@@ -87,6 +91,29 @@ type CompanionCI struct {
 	// after ci.noPipelineTimeout it counts as no CI (None).
 	// +optional
 	Since *metav1.Time `json:"since,omitempty"`
+	// Infra records the retries of a pipeline that failed because of the
+	// runner (spec.ci.infraFailures).
+	// +optional
+	Infra *CIInfraRetry `json:"infra,omitempty"`
+}
+
+// CIInfraRetry records the retries of a red pipeline whose failing jobs all
+// failed because of the runner, for one pushed head. They use no fix round.
+type CIInfraRetry struct {
+	// Retries done for this head.
+	// +optional
+	Retries int32 `json:"retries,omitempty"`
+	// DueAt is when the failed jobs of the judged pipeline are retried;
+	// unset when no retry waits.
+	// +optional
+	DueAt *metav1.Time `json:"dueAt,omitempty"`
+	// PipelineID is the failed pipeline judged a runner failure; unset once
+	// it was retried or runs again.
+	// +optional
+	PipelineID int64 `json:"pipelineID,omitempty"`
+	// Signature is what matched, e.g. "build:client: EAI_AGAIN".
+	// +optional
+	Signature string `json:"signature,omitempty"`
 }
 
 // Done reports whether the CI loop is done with the pushed heads: one tree

@@ -582,6 +582,39 @@ type CISpec struct {
 	// +kubebuilder:default="10m"
 	// +optional
 	NoPipelineTimeout metav1.Duration `json:"noPipelineTimeout,omitempty"`
+
+	// InfraFailures: a red pipeline whose failing jobs all failed because
+	// of the runner, not the code, is retried with a backoff and uses no
+	// fix round.
+	// +optional
+	InfraFailures *CIInfraSpec `json:"infraFailures,omitempty"`
+}
+
+// CIInfraSpec tells failures of the CI runner (DNS, a lost or OOM-killed
+// runner) from failures of the code. A failing job is the runner's when
+// its failure_reason is one of FailureReasons, or else the end of its log
+// contains one of LogPatterns.
+type CIInfraSpec struct {
+	// FailureReasons are GitLab failure_reason values that count as the
+	// runner's, matched exactly. Unset: the defaults.
+	// +optional
+	FailureReasons []string `json:"failureReasons,omitempty"`
+
+	// LogPatterns are substrings, matched case-insensitively in the last
+	// 64 KiB of a failed job's log. Unset: the defaults.
+	// +optional
+	LogPatterns []string `json:"logPatterns,omitempty"`
+
+	// MaxRetries is how many times the failed jobs are retried for the
+	// runner per pushed head; 0 turns the check off. Default 6.
+	// +kubebuilder:validation:Minimum=0
+	// +optional
+	MaxRetries *int32 `json:"maxRetries,omitempty"`
+
+	// Backoff is the wait before the first retry; it doubles with each
+	// retry, up to 30m. Default 2m.
+	// +optional
+	Backoff metav1.Duration `json:"backoff,omitempty"`
 }
 
 // CheckpointSpec configures checkpoints: when an implementer call is cut

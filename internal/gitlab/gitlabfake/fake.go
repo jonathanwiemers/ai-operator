@@ -41,7 +41,9 @@ type Fake struct {
 	Pipelines []gitlab.Pipeline
 	Jobs      map[int64][]gitlab.Job
 	Traces    map[int64]string
-	Retried   []int64
+	// TraceReads are the job IDs JobTrace was called for, in order.
+	TraceReads []int64
+	Retried    []int64
 	// RetryError makes RetryPipeline fail.
 	RetryError error
 	nextID     int64

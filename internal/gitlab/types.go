@@ -23,6 +23,9 @@ type Job struct {
 	WebURL string `json:"web_url"`
 	// AllowFailure jobs do not fail the pipeline.
 	AllowFailure bool `json:"allow_failure"`
+	// FailureReason of a failed job, e.g. script_failure or
+	// runner_system_failure.
+	FailureReason string `json:"failure_reason,omitempty"`
 }
 
 // ListPipelinesOptions filters pipelines; results are newest first.

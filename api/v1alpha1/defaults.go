@@ -38,6 +38,9 @@ const (
 	DefaultMaxMRLines           = 300
 	DefaultCIFixRounds          = 2
 	DefaultNoPipelineTimeout    = 10 * time.Minute
+	DefaultCIInfraMaxRetries    = 6
+	DefaultCIInfraBackoff       = 2 * time.Minute
+	MaxCIInfraBackoff           = 30 * time.Minute // caps the doubling infra backoff
 	DefaultMainHealthInterval   = 5 * time.Minute
 	DefaultReviewIters          = 2
 	DefaultReviewRetries        = 2
@@ -524,7 +527,52 @@ func (c CISpec) WithDefaults() CISpec {
 	if c.NoPipelineTimeout.Duration == 0 {
 		c.NoPipelineTimeout = metav1.Duration{Duration: DefaultNoPipelineTimeout}
 	}
+	var in CIInfraSpec
+	if c.InfraFailures != nil {
+		in = *c.InfraFailures
+	}
+	in = in.WithDefaults()
+	c.InfraFailures = &in
 	return c
+}
+
+// DefaultCIInfraFailureReasons are the GitLab failure_reason values of the
+// runner's failures.
+var DefaultCIInfraFailureReasons = []string{"runner_system_failure", "stuck_or_timeout_failure"}
+
+// DefaultCIInfraLogPatterns are log lines of the runner's failures: DNS
+// and an OOM-killed runner pod.
+var DefaultCIInfraLogPatterns = []string{"EAI_AGAIN", "error resolving DNS", "Temporary failure in name resolution", "OOMKilled"}
+
+// WithDefaults fills in the defaults of the infra failure check; a list
+// that is set replaces its default.
+func (c CIInfraSpec) WithDefaults() CIInfraSpec {
+	if c.FailureReasons == nil {
+		c.FailureReasons = slices.Clone(DefaultCIInfraFailureReasons)
+	}
+	if c.LogPatterns == nil {
+		c.LogPatterns = slices.Clone(DefaultCIInfraLogPatterns)
+	}
+	if c.MaxRetries == nil {
+		n := int32(DefaultCIInfraMaxRetries)
+		c.MaxRetries = &n
+	}
+	if c.Backoff.Duration == 0 {
+		c.Backoff = metav1.Duration{Duration: DefaultCIInfraBackoff}
+	}
+	return c
+}
+
+// InfraBackoff is the wait before infra retry n+1 (n done): Backoff,
+// doubled per retry, at most MaxCIInfraBackoff.
+func (c CIInfraSpec) InfraBackoff(n int32) time.Duration {
+	d := c.Backoff.Duration
+	for range n {
+		if d *= 2; d >= MaxCIInfraBackoff {
+			return MaxCIInfraBackoff
+		}
+	}
+	return min(d, MaxCIInfraBackoff)
 }
 
 // WithDefaults fills in main health defaults.

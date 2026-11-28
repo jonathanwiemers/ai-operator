@@ -2346,6 +2346,32 @@ spec:
                         items:
                           type: string
                         type: array
+                      infra:
+                        description: |-
+                          Infra records the retries of a pipeline that failed because of the
+                          runner (spec.ci.infraFailures).
+                        properties:
+                          dueAt:
+                            description: |-
+                              DueAt is when the failed jobs of the judged pipeline are retried;
+                              unset when no retry waits.
+                            format: date-time
+                            type: string
+                          pipelineID:
+                            description: |-
+                              PipelineID is the failed pipeline judged a runner failure; unset once
+                              it was retried or runs again.
+                            format: int64
+                            type: integer
+                          retries:
+                            description: Retries done for this head.
+                            format: int32
+                            type: integer
+                          signature:
+                            description: 'Signature is what matched, e.g. "build:client:
+                              EAI_AGAIN".'
+                            type: string
+                        type: object
                       pipelineID:
                         format: int64
                         type: integer
@@ -2386,6 +2412,32 @@ spec:
                     items:
                       type: string
                     type: array
+                  infra:
+                    description: |-
+                      Infra records the retries of a pipeline that failed because of the
+                      runner (spec.ci.infraFailures).
+                    properties:
+                      dueAt:
+                        description: |-
+                          DueAt is when the failed jobs of the judged pipeline are retried;
+                          unset when no retry waits.
+                        format: date-time
+                        type: string
+                      pipelineID:
+                        description: |-
+                          PipelineID is the failed pipeline judged a runner failure; unset once
+                          it was retried or runs again.
+                        format: int64
+                        type: integer
+                      retries:
+                        description: Retries done for this head.
+                        format: int32
+                        type: integer
+                      signature:
+                        description: 'Signature is what matched, e.g. "build:client:
+                          EAI_AGAIN".'
+                        type: string
+                    type: object
                   pingedFor:
                     description: |-
                       PingedFor is the event the owners were last mentioned for on this

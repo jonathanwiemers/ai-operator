@@ -1990,6 +1990,46 @@ export interface CISpec {
    * +optional
    */
   noPipelineTimeout?: string;
+  /**
+   * InfraFailures: a red pipeline whose failing jobs all failed because
+   * of the runner, not the code, is retried with a backoff and uses no
+   * fix round.
+   * +optional
+   */
+  infraFailures?: CIInfraSpec;
+}
+/**
+ * CIInfraSpec tells failures of the CI runner (DNS, a lost or OOM-killed
+ * runner) from failures of the code. A failing job is the runner's when
+ * its failure_reason is one of FailureReasons, or else the end of its log
+ * contains one of LogPatterns.
+ */
+export interface CIInfraSpec {
+  /**
+   * FailureReasons are GitLab failure_reason values that count as the
+   * runner's, matched exactly. Unset: the defaults.
+   * +optional
+   */
+  failureReasons?: string[];
+  /**
+   * LogPatterns are substrings, matched case-insensitively in the last
+   * 64 KiB of a failed job's log. Unset: the defaults.
+   * +optional
+   */
+  logPatterns?: string[];
+  /**
+   * MaxRetries is how many times the failed jobs are retried for the
+   * runner per pushed head; 0 turns the check off. Default 6.
+   * +kubebuilder:validation:Minimum=0
+   * +optional
+   */
+  maxRetries?: number /* int32 */;
+  /**
+   * Backoff is the wait before the first retry; it doubles with each
+   * retry, up to 30m. Default 2m.
+   * +optional
+   */
+  backoff?: string;
 }
 /**
  * CheckpointSpec configures checkpoints: when an implementer call is cut
@@ -4549,6 +4589,12 @@ export interface CIStatus {
    */
   recoveredAt?: string;
   /**
+   * Infra records the retries of a pipeline that failed because of the
+   * runner (spec.ci.infraFailures).
+   * +optional
+   */
+  infra?: CIInfraRetry;
+  /**
    * Companion is the pipeline of the companion's pushed head
    * (status.run.companion.pushedSHA); unset without a pushed companion.
    * +optional
@@ -4589,6 +4635,40 @@ export interface CompanionCI {
    * +optional
    */
   since?: string;
+  /**
+   * Infra records the retries of a pipeline that failed because of the
+   * runner (spec.ci.infraFailures).
+   * +optional
+   */
+  infra?: CIInfraRetry;
+}
+/**
+ * CIInfraRetry records the retries of a red pipeline whose failing jobs all
+ * failed because of the runner, for one pushed head. They use no fix round.
+ */
+export interface CIInfraRetry {
+  /**
+   * Retries done for this head.
+   * +optional
+   */
+  retries?: number /* int32 */;
+  /**
+   * DueAt is when the failed jobs of the judged pipeline are retried;
+   * unset when no retry waits.
+   * +optional
+   */
+  dueAt?: string;
+  /**
+   * PipelineID is the failed pipeline judged a runner failure; unset once
+   * it was retried or runs again.
+   * +optional
+   */
+  pipelineID?: number /* int64 */;
+  /**
+   * Signature is what matched, e.g. "build:client: EAI_AGAIN".
+   * +optional
+   */
+  signature?: string;
 }
 /**
  * TaskPhase is a coarse summary of where a task is in its lifecycle.

@@ -149,6 +149,7 @@ func (f *Fake) ListPipelineJobs(_ context.Context, _ string, pipelineID int64, s
 func (f *Fake) JobTrace(_ context.Context, _ string, jobID int64) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	f.TraceReads = append(f.TraceReads, jobID)
 	return f.Traces[jobID], nil
 }
 
