@@ -59,6 +59,62 @@ export function clickTarget(windows: readonly WindowInfo[], origin: string): Cli
   return best < 0 ? { openWindow: true } : { focus: best }
 }
 
+// clickReplyMs is how long a click waits for the picked window to answer
+// that it has routed, before the worker navigates it.
+export const clickReplyMs = 1000
+
+// A window the click can use: WindowClient's focus and navigate.
+export type ClickWindow = WindowInfo & {
+  focus(): Promise<unknown>
+  navigate(url: string): Promise<unknown>
+}
+
+export type ClickDeps<W> = {
+  // post sends `{ open }` to w with a reply port; it resolves true when the
+  // page answers `{ opened: true }`, and need not resolve otherwise.
+  post: (w: W, message: { open: NotifyOpen }) => Promise<boolean>
+  openWindow: (url: string) => Promise<unknown>
+  ms?: number
+}
+
+// clickOpen runs a notification click (docs/contributing/web-ui.md, "Service
+// worker"): without a Desk window a new one opens; without `open` the window
+// only comes forward. Else the window comes forward and gets `{ open }`. A
+// window that does not answer within ms (frozen, discarded, or its listener
+// not loaded yet) is navigated to openURL(open), and where the browser
+// refuses that (rejects or null, as for an uncontrolled window), a new
+// window opens there.
+export async function clickOpen<W extends ClickWindow>(
+  windows: readonly W[],
+  origin: string,
+  open: NotifyOpen | null,
+  { post, openWindow, ms = clickReplyMs }: ClickDeps<W>,
+): Promise<void> {
+  const target = clickTarget(windows, origin)
+  if (!('focus' in target)) {
+    await openWindow(open ? openURL(open) : '/')
+    return
+  }
+  const w = windows[target.focus]!
+  await w.focus().catch(() => undefined)
+  if (!open) return
+  if (await answered(post(w, { open }), ms)) return
+  const url = openURL(open)
+  const navigated = await w.navigate(url).then(
+    (c) => c !== null && c !== undefined,
+    () => false,
+  )
+  if (!navigated) await openWindow(url)
+}
+
+// answered is true when reply resolves true within ms; a reply that fails
+// counts as none.
+function answered(reply: Promise<boolean>, ms: number): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timeout = new Promise<boolean>((resolve) => (timer = setTimeout(() => resolve(false), ms)))
+  return Promise.race([reply.then((ok) => ok === true, () => false), timeout]).finally(() => clearTimeout(timer))
+}
+
 function sameOrigin(url: string, origin: string): boolean {
   try {
     return new URL(url).origin === origin

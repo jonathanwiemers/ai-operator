@@ -78,3 +78,25 @@ test('/?open= with garbage only drops the query@1280', async ({ page, baseURL })
   expect(new URL(page.url()).pathname).toBe('/')
   expect(errors).toEqual([])
 })
+
+test('a click message with a reply port routes to the problem and answers opened@1280', async ({ page, baseURL }) => {
+  const errors = await open(page, baseURL, '/')
+  // The listener lives in the lazy deskWorker chunk: send until it answers.
+  const reply = await page.evaluate(async (item) => {
+    for (let i = 0; i < 50; i++) {
+      const ch = new MessageChannel()
+      const answered = new Promise<unknown>((resolve) => {
+        ch.port1.onmessage = (m) => resolve(m.data)
+        setTimeout(() => resolve(null), 200)
+      })
+      navigator.serviceWorker.dispatchEvent(new MessageEvent('message', { data: { open: { item } }, ports: [ch.port2] }))
+      const data = await answered
+      if (data) return data
+    }
+    return null
+  }, problem)
+  expect(reply).toEqual({ opened: true })
+  await expect(page).toHaveURL(/\/projects\/team-a\/shop\/milestones\/14\/problems\/issue-281$/)
+  await expect(page.locator('[data-problem-thread="issue-281"], [data-problem-thread="1281"], [data-problem-thread="2281"]')).toBeVisible()
+  expect(errors).toEqual([])
+})

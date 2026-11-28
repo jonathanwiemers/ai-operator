@@ -1,7 +1,7 @@
 // Tests of src/notifyOpen.ts: npm test (node --test, no extra dependencies).
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { clickTarget, openURL, parseOpen } from '../src/notifyOpen.ts'
+import { clickOpen, clickReplyMs, clickTarget, openURL, parseOpen } from '../src/notifyOpen.ts'
 
 const origin = 'https://desk.example'
 const win = (url, over = {}) => ({ url, focused: false, visibilityState: 'hidden', ...over })
@@ -48,4 +48,89 @@ test('parseOpen: garbage is null', () => {
   for (const v of [undefined, null, '', '{', 'null', '42', '"x"', '{}', '{"item":null}', '{"item":"x"}', ['{}'], { item: { namespace: 'team', project: 'shop' } }, { item: { namespace: 1, project: 'shop', kind: 'pause' } }]) {
     assert.equal(parseOpen(v), null, JSON.stringify(v))
   }
+})
+
+// A fake Desk window and click deps that record every call. answer is what
+// post's reply does: true answers, undefined stays silent.
+function clickFakes({ windows = [win(`${origin}/inbox`)], answer, navigate = async (url) => ({ url }) } = {}) {
+  const calls = []
+  const ws = windows.map((w, i) => ({
+    ...w,
+    focus: async () => {
+      calls.push(['focus', i])
+      throw new Error('focus refused') // errors are ignored
+    },
+    navigate: async (url) => {
+      calls.push(['navigate', i, url])
+      return navigate(url)
+    },
+  }))
+  const deps = {
+    ms: 20,
+    post: (w, message) => {
+      calls.push(['post', ws.indexOf(w), message])
+      return answer === undefined ? new Promise(() => {}) : Promise.resolve(answer)
+    },
+    openWindow: async (url) => calls.push(['openWindow', url]),
+  }
+  return { ws, deps, calls }
+}
+
+const clickItem = { item: { namespace: 'team', project: 'shop', kind: 'problem', milestoneIID: 3, issueIID: 12, title: 'Refunds', reason: 'stuck', key: 'k' } }
+
+test('clickOpen: the timeout is 1000 ms', () => {
+  assert.equal(clickReplyMs, 1000)
+})
+
+test('clickOpen: an answering window gets no navigate and no openWindow', async () => {
+  const { ws, deps, calls } = clickFakes({ answer: true })
+  await clickOpen(ws, origin, clickItem, deps)
+  assert.deepEqual(calls, [['focus', 0], ['post', 0, { open: clickItem }]])
+})
+
+test('clickOpen: a silent window is navigated after the timeout', async () => {
+  const { ws, deps, calls } = clickFakes()
+  const start = Date.now()
+  await clickOpen(ws, origin, clickItem, deps)
+  assert.ok(Date.now() - start >= 15)
+  assert.deepEqual(calls, [['focus', 0], ['post', 0, { open: clickItem }], ['navigate', 0, openURL(clickItem)]])
+})
+
+test('clickOpen: a reply other than opened counts as silence', async () => {
+  const { ws, deps, calls } = clickFakes({ answer: false })
+  await clickOpen(ws, origin, clickItem, deps)
+  assert.deepEqual(calls.at(-1), ['navigate', 0, openURL(clickItem)])
+})
+
+test('clickOpen: a navigate that rejects opens a window', async () => {
+  const { ws, deps, calls } = clickFakes({ navigate: async () => { throw new TypeError('not controlled') } })
+  await clickOpen(ws, origin, clickItem, deps)
+  assert.deepEqual(calls.slice(2), [['navigate', 0, openURL(clickItem)], ['openWindow', openURL(clickItem)]])
+})
+
+test('clickOpen: a navigate that resolves null opens a window', async () => {
+  const { ws, deps, calls } = clickFakes({ navigate: async () => null })
+  await clickOpen(ws, origin, clickItem, deps)
+  assert.deepEqual(calls.slice(2), [['navigate', 0, openURL(clickItem)], ['openWindow', openURL(clickItem)]])
+})
+
+test('clickOpen: a post that throws is a silent window', async () => {
+  const { ws, deps, calls } = clickFakes()
+  deps.post = () => Promise.reject(new Error('gone'))
+  await clickOpen(ws, origin, clickItem, deps)
+  assert.deepEqual(calls, [['focus', 0], ['navigate', 0, openURL(clickItem)]])
+})
+
+test('clickOpen: without a window a new one opens on the target, or on /', async () => {
+  for (const [open, url] of [[clickItem, openURL(clickItem)], [null, '/']]) {
+    const { ws, deps, calls } = clickFakes({ windows: [win('https://other.example/')] })
+    await clickOpen(ws, origin, open, deps)
+    assert.deepEqual(calls, [['openWindow', url]])
+  }
+})
+
+test('clickOpen: without open the window only comes forward', async () => {
+  const { ws, deps, calls } = clickFakes({ windows: [win(`${origin}/a`), win(`${origin}/b`, { visibilityState: 'visible' })] })
+  await clickOpen(ws, origin, null, deps)
+  assert.deepEqual(calls, [['focus', 1]])
 })

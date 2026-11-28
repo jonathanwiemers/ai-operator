@@ -5,7 +5,7 @@
 // Web Push notifications the server sends while the Desk is closed and
 // subscribes again when the browser drops the subscription. It has no fetch
 // handler and caches nothing (docs/contributing/web-ui.md, "Service worker").
-import { clickTarget, openURL, parseOpen } from './notifyOpen'
+import { clickOpen, parseOpen, type NotifyOpen } from './notifyOpen'
 import { pushNotification } from './pushNotify'
 import { keyBytes, subscriptionBody } from './pushSubscribe'
 
@@ -58,17 +58,26 @@ self.addEventListener('notificationclick', (e) => {
   e.waitUntil(onClick(e.notification.data))
 })
 
-// onClick focuses a Desk window and posts it `{ open }`; the app routes to
-// the item. Without a window, a new one opens on `/?open=…`.
+// onClick hands the click to clickOpen: it focuses a Desk window and posts it
+// `{ open }` with a reply port; the app routes to the item and answers
+// `{ opened: true }`. A silent window is navigated to `/?open=…`, and without
+// a window (or when navigating is refused) a new one opens there.
 async function onClick(data: unknown) {
   const open = parseOpen(data !== null && typeof data === 'object' ? (data as { open?: unknown }).open : undefined)
   const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
-  const target = clickTarget(windows, self.location.origin)
-  if ('focus' in target) {
-    const w = windows[target.focus]!
-    await w.focus().catch(() => undefined)
-    if (open) w.postMessage({ open })
-    return
+  const ports: MessagePort[] = []
+  const post = (w: WindowClient, message: { open: NotifyOpen }) =>
+    new Promise<boolean>((resolve) => {
+      const ch = new MessageChannel()
+      ports.push(ch.port1)
+      ch.port1.onmessage = (m) => {
+        if ((m.data as { opened?: unknown } | null)?.opened === true) resolve(true)
+      }
+      w.postMessage(message, [ch.port2])
+    })
+  try {
+    await clickOpen(windows, self.location.origin, open, { post, openWindow: (url) => self.clients.openWindow(url) })
+  } finally {
+    for (const p of ports) p.close()
   }
-  await self.clients.openWindow(open ? openURL(open) : '/')
 }

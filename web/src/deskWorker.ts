@@ -10,7 +10,8 @@ import type { StreamPage } from './types'
 // "Service worker"). App.vue loads it after the shell, which keeps the
 // initial bundle in its budget. Notifications go through the worker, so
 // Chrome on Android shows them; a click on one focuses this window and the
-// worker posts `{ open }`, or it opens a new one on `/?open=…`.
+// worker posts `{ open }` with a reply port, or it opens a new one on
+// `/?open=…`.
 
 // Web Push's start (push.ts) comes along: a second lazy import in App.vue
 // would cost the initial bundle its preload list.
@@ -28,7 +29,7 @@ export function startWorker(r: Router) {
   if (!window.isSecureContext || !('serviceWorker' in navigator)) return
   navigator.serviceWorker.addEventListener('message', (e: MessageEvent) => {
     const open = parseOpen((e.data as { open?: unknown } | null)?.open)
-    if (open) openNotified(open)
+    if (open) openNotified(open, e.ports[0])
   })
   navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => undefined)
   void navigator.serviceWorker.ready.then((reg) => (worker = reg))
@@ -91,9 +92,20 @@ export function resetEvents() {
   events.reset()
 }
 
-function openNotified(open: NotifyOpen) {
+// openNotified routes to a notification's target. With the worker's reply
+// port it answers `{ opened: true }` once routed, also when the window was
+// already there (a duplicated navigation); without an answer the worker
+// navigates the window after clickReplyMs (notifyOpen.ts).
+function openNotified(open: NotifyOpen, port?: MessagePort) {
   window.focus()
-  router?.push(openRoute(open)).catch(() => undefined)
+  void router?.push(openRoute(open))
+    .then((failure) => {
+      if (!port) return
+      // A duplicated navigation (to is from) also leaves the window on it.
+      if (!failure || failure.to.fullPath === failure.from.fullPath) port.postMessage({ opened: true })
+      port.close()
+    })
+    .catch(() => undefined)
 }
 
 // openRoute is where a notification leads: an Inbox item's card, an
